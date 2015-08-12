@@ -1,0 +1,14 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Lambert problem
+CPU time (seconds):				2.420000e+00
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	0.000000e+00
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		0.000000e+00
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				4.560000e+03
+Phase 1 maximum relative local error:		3.440783e-05
+NLP solver reports: 				The problem solved!

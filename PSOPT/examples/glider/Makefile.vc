@@ -1,0 +1,20 @@
+include ..\Makefile.inc
+
+all: glider.exe
+
+
+SRC = glider.cxx \
+ $(SNFW_SRC)
+
+OBJ = glider.obj \
+ $(SNFW_OBJ)
+
+
+
+glider.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:glider.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+

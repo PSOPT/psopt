@@ -1,0 +1,14 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Bryson-Denham Problem
+CPU time (seconds):				1.448254e+00
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	3.999539e+00
+Phase 1 endpoint cost function value:		3.999539e+00
+Phase 1 integrated part of the cost: 		0.000000e+00
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				6.474159e-01
+Phase 1 maximum relative local error:		6.441690e-05
+NLP solver reports: 				The problem solved!

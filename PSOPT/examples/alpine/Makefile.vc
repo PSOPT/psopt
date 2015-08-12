@@ -1,0 +1,20 @@
+include ..\Makefile.inc
+
+all: alpine.exe
+
+
+SRC = alpine.cxx \
+ $(SNFW_SRC)
+
+OBJ = alpine.obj \
+ $(SNFW_OBJ)
+
+
+
+alpine.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:alpine.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+

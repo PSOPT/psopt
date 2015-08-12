@@ -1,0 +1,22 @@
+include ..\Makefile.inc
+
+all: shutt.exe
+
+
+SRC = shuttle_reentry1.cxx \
+  $(SNFW_SRC)
+
+OBJ = shuttle_reentry1.obj \
+  $(SNFW_OBJ)
+
+
+
+
+
+shutt.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:shutt.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+

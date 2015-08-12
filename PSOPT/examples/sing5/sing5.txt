@@ -1,0 +1,14 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Singular control 5
+CPU time (seconds):				9.600000e-01
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	1.188646e-01
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		1.188646e-01
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				1.000000e+00
+Phase 1 maximum relative local error:		1.201301e-03
+NLP solver reports: 				The problem solved!

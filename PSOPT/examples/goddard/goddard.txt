@@ -1,0 +1,24 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Goddard Rocket Maximum Ascent
+CPU time (seconds):				6.210000e+00
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	-1.874466e+04
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		0.000000e+00
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				1.498379e+01
+Phase 1 maximum relative local error:		1.917444e-02
+Phase 2 endpoint cost function value:		0.000000e+00
+Phase 2 integrated part of the cost: 		0.000000e+00
+Phase 2 initial time:				1.498379e+01
+Phase 2 final time:				2.001830e+01
+Phase 2 maximum relative local error:		7.284868e-08
+Phase 3 endpoint cost function value:		-1.874466e+04
+Phase 3 integrated part of the cost: 		0.000000e+00
+Phase 3 initial time:				2.001830e+01
+Phase 3 final time:				4.270924e+01
+Phase 3 maximum relative local error:		1.373835e-02
+NLP solver reports: 				The problem solved!

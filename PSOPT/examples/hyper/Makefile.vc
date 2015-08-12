@@ -1,0 +1,22 @@
+include  ..\Makefile.inc
+
+all: hyper.exe
+
+
+SRC = hypersensitive.cxx \
+  $(SNFW_SRC)
+
+OBJ = hypersensitive.obj \
+  $(SNFW_OBJ)
+
+
+
+hyper.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:hyper.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+
+

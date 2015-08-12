@@ -1,0 +1,21 @@
+include ..\Makefile.inc
+
+all: zpm.exe
+
+
+SRC = zpm.cxx \
+  $(SNFW_SRC)
+
+OBJ = zpm.obj \
+  $(SNFW_OBJ)
+
+
+
+zpm.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:zpm.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

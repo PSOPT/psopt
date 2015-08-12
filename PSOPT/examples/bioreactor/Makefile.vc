@@ -1,0 +1,20 @@
+include ..\Makefile.inc
+
+all: bioreactor.exe
+
+
+SRC = bioreactor.cxx \
+ $(SNFW_SRC)
+
+OBJ = bioreactor.obj \
+ $(SNFW_OBJ)
+
+
+
+bioreactor.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:bioreactor.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+

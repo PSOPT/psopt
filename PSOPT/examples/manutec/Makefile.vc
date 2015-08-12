@@ -1,0 +1,20 @@
+include ..\Makefile.inc
+
+all: manutec.exe
+
+
+SRC = manutec.cxx \
+ $(SNFW_SRC)
+
+OBJ = manutec.obj \
+ $(SNFW_OBJ)
+
+
+
+manutec.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:manutec.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+

@@ -1,0 +1,24 @@
+include ..\Makefile.inc
+
+all: dae_i3.exe
+
+
+SRC = dae_i3.cxx \
+   $(SNFW_SRC)
+
+OBJ = dae_i3.obj \
+   $(SNFW_OBJ)
+
+
+
+
+
+
+dae_i3.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:dae_i3.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

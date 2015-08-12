@@ -1,0 +1,20 @@
+include ..\Makefile.inc
+
+all: lowthr.exe
+
+
+SRC = low_thrust.cxx \
+  $(SNFW_SRC)
+
+OBJ = low_thrust.obj \
+  $(SNFW_OBJ)
+
+
+
+lowthr.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:lowthr.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+

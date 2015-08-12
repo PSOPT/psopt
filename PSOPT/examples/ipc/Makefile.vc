@@ -1,0 +1,21 @@
+include ..\Makefile.inc
+
+all: ipc.exe
+
+
+SRC = interior_point.cxx \
+   $(SNFW_SRC)
+
+OBJ = interior_point.obj \
+  $(SNFW_OBJ)
+
+
+ipc.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:ipc.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+
+

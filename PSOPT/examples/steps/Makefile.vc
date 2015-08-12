@@ -1,0 +1,21 @@
+include ..\Makefile.inc
+
+all: steps.exe
+
+
+SRC = steps.cxx \
+  $(SNFW_SRC)
+
+OBJ = steps.obj \
+  $(SNFW_OBJ)
+
+
+
+steps.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:steps.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

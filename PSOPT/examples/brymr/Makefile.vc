@@ -1,0 +1,21 @@
+include ..\Makefile.inc
+
+all: brymr.exe
+
+
+SRC = bryson_max_range.cxx \
+  $(SNFW_SRC)
+
+OBJ = bryson_max_range.obj \
+  $(SNFW_OBJ)
+
+
+
+brymr.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:brymr.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

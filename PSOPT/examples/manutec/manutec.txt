@@ -1,0 +1,14 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Manutec R3 robot problem
+CPU time (seconds):				4.705465e+00
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	2.040419e+01
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		2.040419e+01
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				5.300000e-01
+Phase 1 maximum relative local error:		7.660114e-06
+NLP solver reports: 				The problem solved!

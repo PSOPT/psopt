@@ -1,0 +1,20 @@
+include ..\Makefile.inc
+
+all: coulomb.exe
+
+
+SRC = coulomb.cxx \
+   $(SNFW_SRC)
+
+OBJ = coulomb.obj \
+   $(SNFW_OBJ)
+
+
+
+
+coulomb.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:coulomb.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+

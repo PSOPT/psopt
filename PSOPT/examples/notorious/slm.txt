@@ -1,0 +1,14 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					DNN identification of SLM
+CPU time (seconds):				2.598000e+01
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	2.698693e-05
+Phase 1 endpoint cost function value:		2.698693e-05
+Phase 1 integrated part of the cost: 		0.000000e+00
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				7.900000e+00
+Phase 1 maximum relative local error:		3.904325e-03
+NLP solver reports: 				The problem solved!

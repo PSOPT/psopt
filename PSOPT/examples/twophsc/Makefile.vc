@@ -1,0 +1,23 @@
+include ..\Makefile.inc
+
+all: twophsc.exe
+
+
+SRC = twophase_schwartz.cxx \
+  $(SNFW_SRC)
+
+OBJ = twophase_schwartz.obj \
+  $(SNFW_OBJ)
+
+
+
+
+
+twophsc.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:twophsc.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

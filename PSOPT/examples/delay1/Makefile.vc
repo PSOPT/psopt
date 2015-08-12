@@ -1,0 +1,21 @@
+include ..\Makefile.inc
+
+all: delay1.exe
+
+
+SRC = delay1.cxx \
+   $(SNFW_SRC)
+
+OBJ = delay1.obj \
+   $(SNFW_OBJ)
+
+
+
+delay1.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:delay1.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

@@ -1,0 +1,23 @@
+include ..\Makefile.inc
+
+all: isop.exe
+
+
+SRC = isoperimetric.cxx \
+  $(SNFW_SRC)
+
+OBJ = isoperimetric.obj \
+   $(SNFW_OBJ)
+
+
+
+
+
+isop.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:isop.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

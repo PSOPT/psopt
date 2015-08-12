@@ -1,0 +1,14 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Breakwell Problem
+CPU time (seconds):				4.680000e+00
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	4.444441e+00
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		4.444441e+00
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				1.000000e+00
+Phase 1 maximum relative local error:		8.294796e-06
+NLP solver reports: 				The problem solved!

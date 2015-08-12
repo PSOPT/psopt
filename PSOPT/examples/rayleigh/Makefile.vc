@@ -1,0 +1,24 @@
+include ..\Makefile.inc
+
+all: rayleigh.exe
+
+
+SRC = rayleigh.cxx \
+   $(SNFW_SRC)
+
+OBJ = rayleigh.obj \
+  $(SNFW_OBJ)
+
+
+
+
+
+
+rayleigh.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:rayleigh.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

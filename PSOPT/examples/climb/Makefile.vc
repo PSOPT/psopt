@@ -1,0 +1,21 @@
+include ..\Makefile.inc
+
+all: climb.exe
+
+
+SRC = climb.cxx \
+  $(SNFW_SRC)
+
+OBJ = climb.obj \
+  $(SNFW_OBJ)
+
+
+
+climb.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:climb.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

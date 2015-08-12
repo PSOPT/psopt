@@ -1,0 +1,21 @@
+include ..\Makefile.inc
+
+all: catmix.exe
+
+
+SRC = catmix.cxx \
+  $(SNFW_SRC)
+
+OBJ = catmix.obj \
+   $(SNFW_OBJ)
+
+
+
+catmix.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:catmix.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

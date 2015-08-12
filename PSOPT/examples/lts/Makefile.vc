@@ -1,0 +1,24 @@
+include ..\Makefile.inc
+
+all: lts.exe
+
+
+SRC = lts.cxx \
+   $(SNFW_SRC)
+
+OBJ = lts.obj \
+  $(SNFW_OBJ)
+
+
+
+
+
+
+lts.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:lts.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

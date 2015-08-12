@@ -1,0 +1,304 @@
+//////////////////////////////////////////////////////////////////////////
+////////////////        bryson_max_range.cxx         /////////////////////
+//////////////////////////////////////////////////////////////////////////
+////////////////           PSOPT  Example            /////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////// Title:         Dynamic MPEC problem              ////////////////
+//////// Last modified: 27 May 2011                       ////////////////
+//////// Reference:     Betts (2010)                      ////////////////
+//////// (See PSOPT handbook for full reference)          ////////////////
+//////////////////////////////////////////////////////////////////////////
+////////     Copyright (c) Victor M. Becerra, 2009        ////////////////
+//////////////////////////////////////////////////////////////////////////
+//////// This is part of the PSOPT software library, which////////////////
+//////// is distributed under the terms of the GNU Lesser ////////////////
+//////// General Public License (LGPL)                    ////////////////
+//////////////////////////////////////////////////////////////////////////
+
+#include "psopt.h"
+
+//////////////////////////////////////////////////////////////////////////
+///////////////////  Define the end point (Mayer) cost function //////////
+//////////////////////////////////////////////////////////////////////////
+
+adouble endpoint_cost(adouble* initial_states, adouble* final_states,
+                      adouble* parameters,adouble& t0, adouble& tf,
+                      adouble* xad, int iphase, Workspace* workspace)
+{
+   adouble y_f = final_states[ CINDEX(1) ];
+
+   return pow( y_f - (5.0/3.0) , 2.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+///////////////////  Define the integrand (Lagrange) cost function  //////
+//////////////////////////////////////////////////////////////////////////
+
+adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
+                     adouble& time, adouble* xad, int iphase, Workspace* workspace)
+{
+    adouble y = states[ CINDEX(1) ];
+    adouble s = controls[ CINDEX(1) ];
+    adouble p = controls[ CINDEX(2) ];
+    adouble q = controls[ CINDEX(3) ];
+
+
+    adouble retval;
+
+    double rho = 1.e3;
+
+    retval = y*y + rho*( p*(s+1.0)+ q*(1.0-s));
+
+    return  retval;
+
+}
+
+
+//////////////////////////////////////////////////////////////////////////
+///////////////////  Define the DAE's ////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+void dae(adouble* derivatives, adouble* path, adouble* states,
+         adouble* controls, adouble* parameters, adouble& time,
+         adouble* xad, int iphase, Workspace* workspace)
+{
+
+
+   adouble y = states[ CINDEX(1) ];
+   adouble ydot;
+
+
+   adouble s = controls[ CINDEX(1) ];
+   adouble p = controls[ CINDEX(2) ];
+   adouble q = controls[ CINDEX(3) ];
+
+   ydot = 2.0 -s;
+
+   derivatives[ CINDEX(1) ] = ydot;
+
+
+   path[ CINDEX(1) ] = -y - p + q;
+
+}
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Define the events function ////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+void events(adouble* e, adouble* initial_states, adouble* final_states,
+            adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
+            int iphase, Workspace* workspace)
+
+{
+   adouble y0 = initial_states[ CINDEX(1) ];
+
+
+   e[ CINDEX(1) ] = y0;
+
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////  Define the phase linkages function ///////////////////
+///////////////////////////////////////////////////////////////////////////
+
+void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
+{
+  // No linkages as this is a single phase problem
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Define the main routine ///////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+int main(void)
+{
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Declare key structures ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    Alg  algorithm;
+    Sol  solution;
+    Prob problem;
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Register problem name  ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    problem.name        		= "Dynamic MPEC problem";
+    problem.outfilename                 = "mpec.txt";
+
+////////////////////////////////////////////////////////////////////////////
+////////////  Define problem level constants & do level 1 setup ////////////
+////////////////////////////////////////////////////////////////////////////
+
+    problem.nphases   			= 1;
+    problem.nlinkages                   = 0;
+
+    psopt_level1_setup(problem);
+
+/////////////////////////////////////////////////////////////////////////////
+/////////   Define phase related information & do level 2 setup  ////////////
+/////////////////////////////////////////////////////////////////////////////
+
+    problem.phases(1).nstates   		= 1;
+    problem.phases(1).ncontrols 		= 3;
+    problem.phases(1).nevents   		= 1;
+    problem.phases(1).npath     		= 1;
+    problem.phases(1).nodes             = "[20]";
+
+    psopt_level2_setup(problem, algorithm);
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Declare DMatrix objects to store results //////////////
+////////////////////////////////////////////////////////////////////////////
+
+    DMatrix y, controls, s, p, q, t;
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Enter problem bounds information //////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    double y0 = -1.0;
+
+    problem.phases(1).bounds.lower.states(1) = -10.0;
+
+
+
+    problem.phases(1).bounds.upper.states(1) = 10.0;
+
+
+
+    problem.phases(1).bounds.lower.controls(1) = -1.0;
+    problem.phases(1).bounds.lower.controls(2) = 0.0;
+    problem.phases(1).bounds.lower.controls(3) = 0.0;
+
+    problem.phases(1).bounds.upper.controls(1) = 1.0;
+    problem.phases(1).bounds.upper.controls(2) = inf;
+    problem.phases(1).bounds.upper.controls(3) = inf;
+
+    problem.phases(1).bounds.lower.events(1) = y0;
+    problem.phases(1).bounds.upper.events(1) = y0;
+
+
+    problem.phases(1).bounds.upper.path(1) = 0.0;
+    problem.phases(1).bounds.lower.path(1) = 0.0;
+
+
+    problem.phases(1).bounds.lower.StartTime    = 0.0;
+    problem.phases(1).bounds.upper.StartTime    = 0.0;
+
+    problem.phases(1).bounds.lower.EndTime      = 2.0;
+    problem.phases(1).bounds.upper.EndTime      = 2.0;
+
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Register problem functions  ///////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+
+    problem.integrand_cost 	= &integrand_cost;
+    problem.endpoint_cost 	= &endpoint_cost;
+    problem.dae             	= &dae;
+    problem.events 		= &events;
+    problem.linkages		= &linkages;
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Define & register initial guess ///////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    int nnodes    			= problem.phases(1).nodes(1);
+    int ncontrols           = problem.phases(1).ncontrols;
+    int nstates             = problem.phases(1).nstates;
+
+    DMatrix x_guess    =  zeros(nstates,nnodes);
+
+    x_guess(1,colon()) = y0*ones(1,nnodes);
+
+    problem.phases(1).guess.controls       = zeros(ncontrols,nnodes);
+    problem.phases(1).guess.states         = x_guess;
+    problem.phases(1).guess.time           = linspace(0.0,2.0,nnodes);
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Enter algorithm options  //////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+
+    algorithm.nlp_iter_max                = 1000;
+    algorithm.nlp_tolerance               = 1.e-4;
+    algorithm.nlp_method                  = "IPOPT";
+    algorithm.scaling                     = "automatic";
+    algorithm.derivatives                 = "automatic";
+    algorithm.mesh_refinement             = "automatic";
+    algorithm.collocation_method = "trapezoidal";
+//    algorithm.defect_scaling = "jacobian-based";
+    algorithm.ode_tolerance               = 1.e-6;
+
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Now call PSOPT to solve the problem   /////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    psopt(solution, problem, algorithm);
+
+////////////////////////////////////////////////////////////////////////////
+///////////  Extract relevant variables from solution structure   //////////
+////////////////////////////////////////////////////////////////////////////
+
+
+    y        = solution.get_states_in_phase(1);
+    controls = solution.get_controls_in_phase(1);
+    t        = solution.get_time_in_phase(1);
+    s        = controls(1,colon());
+    p        = controls(2,colon());
+    q        = controls(3,colon());
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////  Save solution data to files if desired ////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    y.Save("y.dat");
+    controls.Save("controls.dat");
+    t.Save("t.dat");
+
+////////////////////////////////////////////////////////////////////////////
+///////////  Plot some results if desired (requires gnuplot) ///////////////
+////////////////////////////////////////////////////////////////////////////
+
+    plot(t,y,problem.name+": state", "time (s)", "state","y");
+
+    plot(t,s,problem.name+": algebraic variable s","time (s)", "s", "s");
+
+    plot(t,p,problem.name+": algebraic variable p","time (s)", "p", "p");
+
+    plot(t,q,problem.name+": algebraic variable q","time (s)", "q", "q");
+
+
+    plot(t,y,problem.name+": state", "time (s)", "state","y",
+         "pdf", "y.pdf");
+
+    plot(t,s,problem.name+": algebraic variable s","time (s)", "s", "s",
+         "pdf", "s.pdf");
+
+    plot(t,p,problem.name+": algebraic variable p","time (s)", "p", "p",
+         "pdf", "p.pdf");
+
+    plot(t,q,problem.name+": algebraic variable q","time (s)", "q", "q",
+         "pdf", "q.pdf");
+
+
+
+}
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////////      END OF FILE     ///////////////////////////////
+////////////////////////////////////////////////////////////////////////////

@@ -1,0 +1,19 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Problem with interior point constraint
+CPU time (seconds):				1.400000e-01
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	9.205314e-01
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		6.607877e-01
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				7.500000e-01
+Phase 1 maximum relative local error:		3.477757e-08
+Phase 2 endpoint cost function value:		0.000000e+00
+Phase 2 integrated part of the cost: 		2.597438e-01
+Phase 2 initial time:				7.500000e-01
+Phase 2 final time:				1.000000e+00
+Phase 2 maximum relative local error:		1.882112e-08
+NLP solver reports: 				The problem solved!

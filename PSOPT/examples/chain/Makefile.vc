@@ -1,0 +1,16 @@
+include ..\Makefile.inc
+
+all: chain.exe
+
+
+SRC = chain.cxx \
+  $(SNFW_SRC)
+
+OBJ = chain.obj \
+   $(SNFW_OBJ)
+
+
+
+chain.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:chain.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+

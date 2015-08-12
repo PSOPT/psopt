@@ -1,0 +1,24 @@
+include ..\Makefile.inc
+
+all: stc1.exe
+
+
+SRC = stc1.cxx \
+  $(SNFW_SRC)
+
+OBJ = stc1.obj \
+  $(SNFW_OBJ)
+
+
+
+
+
+stc1.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:stc1.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+
+

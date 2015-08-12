@@ -1,0 +1,29 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Two burn transfer problem
+CPU time (seconds):				1.260316e+01
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	-2.367249e-01
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		0.000000e+00
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				2.609964e+03
+Phase 1 maximum relative local error:		1.451279e-06
+Phase 2 endpoint cost function value:		0.000000e+00
+Phase 2 integrated part of the cost: 		0.000000e+00
+Phase 2 initial time:				2.609964e+03
+Phase 2 final time:				2.751426e+03
+Phase 2 maximum relative local error:		9.391974e-07
+Phase 3 endpoint cost function value:		0.000000e+00
+Phase 3 integrated part of the cost: 		0.000000e+00
+Phase 3 initial time:				2.751426e+03
+Phase 3 final time:				2.163415e+04
+Phase 3 maximum relative local error:		1.158679e-05
+Phase 4 endpoint cost function value:		-2.367249e-01
+Phase 4 integrated part of the cost: 		0.000000e+00
+Phase 4 initial time:				2.163415e+04
+Phase 4 final time:				2.168351e+04
+Phase 4 maximum relative local error:		5.589031e-06
+NLP solver reports: 				The problem solved!

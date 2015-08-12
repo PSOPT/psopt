@@ -1,0 +1,22 @@
+include ..\Makefile.inc
+
+all: obstacle.exe
+
+
+SRC = obstacle.cxx \
+  $(SNFW_SRC)
+
+OBJ = obstacle.obj \
+  $(SNFW_OBJ)
+
+
+
+
+obstacle.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:obstacle.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

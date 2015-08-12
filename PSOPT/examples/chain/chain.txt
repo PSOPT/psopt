@@ -1,0 +1,14 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Hanging chain problem
+CPU time (seconds):				9.700000e-01
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	5.068480e+00
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		5.068480e+00
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				1.000000e+00
+Phase 1 maximum relative local error:		2.393446e-06
+NLP solver reports: 				The problem solved!

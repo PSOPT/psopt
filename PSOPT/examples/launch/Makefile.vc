@@ -1,0 +1,20 @@
+
+include ..\Makefile.inc
+
+SRC = launch.cxx \
+   $(SNFW_SRC)
+
+OBJ = launch.obj \
+  $(SNFW_OBJ)
+
+all: launch.exe
+
+launch.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:launch.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+
+

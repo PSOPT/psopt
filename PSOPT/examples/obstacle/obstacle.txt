@@ -1,0 +1,14 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Obstacle avoidance problem
+CPU time (seconds):				1.377402e+00
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	4.571044e+00
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		4.571044e+00
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				1.000000e+00
+Phase 1 maximum relative local error:		6.468613e-03
+NLP solver reports: 				The problem solved!

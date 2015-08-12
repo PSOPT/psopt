@@ -1,0 +1,14 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Minimum swing control for a container crane
+CPU time (seconds):				4.190000e+00
+NLP solver used: 				IPOPT
+Optimal (unscaled) cost function value: 	5.152166e-03
+Phase 1 endpoint cost function value:		0.000000e+00
+Phase 1 integrated part of the cost: 		5.152166e-03
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				1.000000e+00
+Phase 1 maximum relative local error:		8.917468e-04
+NLP solver reports: 				The problem solved!
