@@ -1,3 +1,5 @@
+# Script for Ubuntu 14.04, taken from PSOPT manual.
+
 sudo apt-get -y install g++ gfortran f2c libf2c2-dev libf2c2 libblas-dev libblas3gf libatlas-base-dev liblapack-dev liblapack3gf
 cd $HOME
 wget --continue http://www.coin-or.org/download/source/Ipopt/Ipopt-3.12.3.tgz
