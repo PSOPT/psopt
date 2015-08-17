@@ -1,0 +1,8 @@
+
+language: cpp
+
+before_install:
+  - sh ./install-ubuntu.sh
+
+install:
+  - make all
