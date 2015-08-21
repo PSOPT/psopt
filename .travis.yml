@@ -49,13 +49,10 @@ before_install:
   - cd gnuplot-4.2.2
   - ./configure -with-readline=gnu -without-tutorial
   - make;sudo make install
-  - cd $HOME
-  - wget --continue https://github.com/PSOPT/psopt/archive/master.zip
-  - unzip psopt-master.zip
-  - cd $HOME/psopt-master
+  - cd $TRAVIS_BUILD_DIR
   - wget --continue http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.4.3.tar.gz
   - tar xzvf SuiteSparse-4.4.3.tar.gz
-  - cd $HOME/psopt-master
+  - cd $TRAVIS_BUILD_DIR
   - wget --continue http://www.stanford.edu/group/SOL/software/lusol/lusol.zip
   - unzip lusol.zip
 
