@@ -30,7 +30,7 @@ before_install:
   - sudo make install
   - sudo cp /usr/local/lib/libCol* /usr/lib
   - cd $HOME/ADOL-C-2.5.2
-  - ./configure --enable-sparse --with-colpack=$HOME/ADOL-C-2.5.2/ThirdParty/ColPack
+  - ./configure --enable-sparse --with-colpack=$HOME/ADOL-C-2.5.2/ThirdParty/ColPack --prefix=$HOME/adolc
   - make
   - make install
   - sudo cp ~/adolc base/lib64/* /usr/lib
