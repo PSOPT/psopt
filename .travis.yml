@@ -44,6 +44,7 @@ before_install:
   - sudo ldconfig
   - cd $HOME
   - wget --continue http://sourceforge.net/projects/gnuplot/files/gnuplot/4.2.2/gnuplot-4.2.2.tar.gz/download
+  - mv download gnuplot-4.2.2.tar.gz
   - tar zxvf gnuplot-4.2.2.tar.gz
   - cd gnuplot-4.2.2
   - ./configure with-readline=gnu -without-tutorial
