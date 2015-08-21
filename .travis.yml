@@ -47,7 +47,7 @@ before_install:
   - mv download gnuplot-4.2.2.tar.gz
   - tar zxvf gnuplot-4.2.2.tar.gz
   - cd gnuplot-4.2.2
-  - ./configure with-readline=gnu -without-tutorial
+  - ./configure -with-readline=gnu -without-tutorial
   - make;sudo make install
   - cd $HOME
   - wget --continue https://github.com/PSOPT/psopt/archive/master.zip
