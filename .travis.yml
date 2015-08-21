@@ -33,8 +33,8 @@ before_install:
   - ./configure --enable-sparse --with-colpack=$HOME/ADOL-C-2.5.2/ThirdParty/ColPack --prefix=$HOME/adolc
   - make
   - make install
-  - sudo cp ~/adolc base/lib64/* /usr/lib
-  - sudo cp -r ~/adolc base/include/* /usr/include/
+  - sudo cp ~/adolc/lib64/* /usr/lib
+  - sudo cp -r ~/adolc/include/* /usr/include/
   - cd $HOME/downloads
   - wget --continue http://www.pdflib.com/binaries/PDFlib/705/PDFlib-Lite-7.0.5p3.tar.gz
   - tar zxvf PDFlib-Lite-7.0.5p3.tgz
