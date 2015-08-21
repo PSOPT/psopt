@@ -17,12 +17,12 @@ before_install:
   - make install
   - cd $HOME
   - wget --continue www.coin-or.org/download/source/ADOL-C/ADOL-C-2.5.2.tgz
-  - tar -tgz ADOL-C-2.5.2.tgz
+  - tar xzvf ADOL-C-2.5.2.tgz
   - cd $HOME/ADOL-C-2.5.2
   - mkdir ./ThirdParty
   - cd ./ThirdParty
   - wget --continue http://cscapes.cs.purdue.edu/download/ColPack/ColPack-1.0.9.tar.gz
-  - tar -tgz ColPack-1.0.9.tar.gz
+  - tar xzvf ColPack-1.0.9.tar.gz
   - mv ColPack-1.0.9 ColPack
   - cd ColPack
   - ./configure
