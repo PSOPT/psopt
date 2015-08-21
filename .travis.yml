@@ -35,13 +35,13 @@ before_install:
   - make install
   - sudo cp -r ~/adolc/lib64/* /usr/lib
   - sudo cp -r ~/adolc/include/* /usr/include/
-  - cd $HOME/downloads
+  - cd $HOME
   - wget --continue http://www.pdflib.com/binaries/PDFlib/705/PDFlib-Lite-7.0.5p3.tar.gz
   - tar zxvf PDFlib-Lite-7.0.5p3.tgz
   - cd PDFlib-Lite-7.0.5p3 $ ./configure
   - make; sudo make install
   - sudo ldconfig
-  - cd $HOME/downloads
+  - cd $HOME
   - wget --continue http://sourceforge.net/projects/gnuplot/files/gnuplot/4.2.2/gnuplot-4.2.2.tar.gz/download
   - tar zxvf gnuplot-4.2.2.tar.gz
   - cd gnuplot-4.2.2
