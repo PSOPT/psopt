@@ -37,7 +37,7 @@ sudo cp -r $HOME/adolc_base/include/* /usr/include/
 # Download and install PDFlib
 cd $HOME/Downloads
 wget --continue http://www.pdflib.com/binaries/PDFlib/705/PDFlib-Lite-7.0.5p3.tar.gz
-tar zxvf PDFlib-Lite-7.0.5p3.tgz
+tar zxvf PDFlib-Lite-7.0.5p3.tar.gz
 cd PDFlib-Lite-7.0.5p3 $ ./configure
 make; sudo make install
 sudo ldconfig
