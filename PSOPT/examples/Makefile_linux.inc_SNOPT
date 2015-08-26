@@ -32,7 +32,7 @@ SNOPT_LIBS    =
 SPARSE_LIBS   = $(LUSOL)/liblusol.a  $(CXSPARSE)/Lib/libcxsparse.a -ldl
 # IPOPT_LIBS    =  $(IPOPTLIBDIR)/libipopt.a $(IPOPTLIBDIR)/libcoinhsl.a  $(IPOPTLIBDIR)/ThirdParty/libcoinmumps.a $(IPOPTLIBDIR)/ThirdParty/libcoinmetis.a -lpthread -lgfortran -lblas -llapack -latlas -lf77blas
 IPOPT_LIBS = `PKG_CONFIG_PATH=$(prefix)/lib64/pkgconfig:$(prefix)/lib/pkgconfig:$(prefix)/share/pkgconfig: /usr/bin/pkg-config --libs ipopt`
-ADOLC_LIBS    = $(USERHOME)/adolc_base/lib64/libadolc.a $(USERHOME)/Colpack/lib/libColPack.a
+ADOLC_LIBS    = /usr/lib/libadolc.a /usr/lib/libColPack.a
 PSOPT_LIBS    = $(PSOPTDIR)/lib/libpsopt.a
 DMATRIX_LIBS  = $(DMATRIXDIR)/lib/libdmatrix.a
 
@@ -41,7 +41,7 @@ LDFLAGS	      = -Wl,--rpath -Wl,$(USERHOME)/Ipopt-3.12.3/lib
 
 CXX           = /usr/bin/g++
 CC            = /usr/bin/gcc
-CXXFLAGS      = -O0 -g -I$(USERHOME)/adolc_base/include -I$(SNOPTDIR)/cppsrc -I$(SNOPTDIR)/cppexamples -I$(DMATRIXDIR)/include -I$(SNOPTDIR)/cppexamples -I$(PSOPTSRCDIR) -DLAPACK -DUNIX -DSPARSE_MATRIX -DUSE_SNOPT -DUSE_IPOPT -I$(CXSPARSE)/Include -I$(LUSOL) $(IPOPTINCDIR) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC
+CXXFLAGS      = -O0 -g -I$(USERHOME)/adolc_base/include -I$(SNOPTDIR)/cppsrc -I$(SNOPTDIR)/cppexamples -I$(DMATRIXDIR)/include -I$(SNOPTDIR)/cppexamples -I$(PSOPTSRCDIR) -DLAPACK -DUNIX -DSPARSE_MATRIX -DUSE_SNOPT -DUSE_IPOPT -I$(CXSPARSE)/Include -I$(CXSPARSE)/../SuiteSparse_config -I$(LUSOL) $(IPOPTINCDIR) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC
 
 CFLAGS        = -O0 -fPIC
 
@@ -65,7 +65,6 @@ clean:
 
 $(EXAMPLESDIR)/%.o : $(EXAMPLESDIR)/%.cxx
 	$(CXX) -c $(CXXFLAGS) $< -o $@
-
 
 
 
