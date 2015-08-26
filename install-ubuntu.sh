@@ -55,6 +55,7 @@ make;sudo make install
 cd $HOME
 wget --continue https://github.com/PSOPT/psopt/archive/master.zip
 unzip master.zip
+mv master.zip $HOME/Downloads
 cd $HOME/psopt-master
 # Download and extract SuiteSparse
 wget --continue http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.4.3.tar.gz
@@ -67,3 +68,4 @@ cd $HOME/psopt-master
 # Compile SuiteSparse, LUSOL, dmatrix and PSOPT
 make all
 echo 'PSOPT installation script completed'
+echo 'PSOPT installed in $HOME\psopt-master'
