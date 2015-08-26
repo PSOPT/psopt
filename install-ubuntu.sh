@@ -2,6 +2,7 @@
 # Install miscellaneous libraries
 sudo apt-get -y install g++ gfortran f2c libf2c2-dev libf2c2 libblas-dev libopenblas-base libopenblas-dev libblas3gf libatlas-base-dev liblapack-dev liblapack3gf
 # Download and install Ipopt, Metis and Mumps
+CWD = pwd
 cd $HOME/Downloads
 wget --continue http://www.coin-or.org/download/source/Ipopt/Ipopt-3.12.3.tgz
 cd $HOME
@@ -53,9 +54,10 @@ cd gnuplot-4.2.2
 make;sudo make install
 # Download and extract PSOPT
 cd $HOME/Downloads
-wget --continue https://github.com/PSOPT/psopt/archive/master.zip
-unzip master.zip
-mv psopt-master $HOME
+# wget --continue https://github.com/PSOPT/psopt/archive/master.zip
+# unzip master.zip
+cd $CWD; cd ..
+mv ./psopt-master $HOME
 cd $HOME/psopt-master
 # Download and extract SuiteSparse
 wget --continue http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.4.3.tar.gz
