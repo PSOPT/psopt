@@ -49,6 +49,7 @@ cd $HOME/Downloads
 wget --continue http://sourceforge.net/projects/gnuplot/files/gnuplot/4.2.2/gnuplot-4.2.2.tar.gz/download
 mv download gnuplot-4.2.2.tar.gz
 tar zxvf gnuplot-4.2.2.tar.gz
+sudo apt-get -y install libx11-dev libxt-dev libgd2-xpm-dev libreadline6-dev
 cd gnuplot-4.2.2
 ./configure -with-readline=gnu -without-tutorial
 make;sudo make install
