@@ -1,0 +1,22 @@
+
+\begin{table}
+\caption{Mesh refinement statistics: Alp rider problem}
+\label{mesh_stats_alpine}
+\renewcommand{\tabcolsep}{0.15cm}
+\tiny
+\begin{tabular}{llllllllllll}
+Iter&DM&M&NV&NC&OE&CE&JE&HE&RHS&$\epsilon_{\max}$&CPU$_\mathrm{a}$ \\ \hline \\
+1&LGL-CD&120&722&609&528&528&146&0&63360&2.210e-03&2.733e+00\\
+2&LGL-CD&125&752&634&2001&2002&490&0&250250&3.410e-03&1.174e+01\\
+3&LGL-CD&126&758&639&4455&4457&661&0&561582&3.714e-03&1.983e+01\\
+4&LGL-CD&127&764&644&771&773&266&0&98171&2.998e-03&6.110e+00\\
+5&LGL-CD&132&794&669&1331&1332&427&0&175824&3.395e-03&1.067e+01\\
+6&LGL-CD&133&800&674&962&963&278&0&128079&3.351e-03&7.103e+00\\
+7&LGL-CD&172&1034&869&788&789&264&0&135708&2.902e-03&8.099e+00\\
+\hline
+CPU$_\mathrm{b}$ &-&-&-&-&-&-&-&-&-&-&3.549e+01\\
+-&-&-&-&-&10836&10844&2532&0&1412974&-&1.018e+02\\
+\end{tabular}
+\newline \\ \emph{Key}: Iter=iteration number, DM= discretization method, M=number of nodes, NV=number of variables, NC=number of constraints, OE=objective evaluations,  	              CE = constraint evaluations, JE = Jacobian evaluations, HE = Hessian evaluations, RHS = ODE right hand side 		      evaluations, $\epsilon_{\max}$ = maximum relative ODE error, CPU$_\mathrm{a}$ = CPU time in seconds spent by NLP algorithm, 		      CPU$_\mathrm{b}$ = additional CPU time in seconds spent by PSOPT
+\normalsize
+\end{table}

@@ -24,7 +24,7 @@ ALL_LIBRARIES =   $(DMATRIX_LIBS) $(FLIBS) $(SPARSE_LIBS) -ldl -lm -lgcc_s
 
 CXX           = /usr/bin/g++
 CC            = /usr/bin/gcc
-CXXFLAGS      = -O0 -g -I$(DMATRIXDIR)/include -DLAPACK -DUNIX -DSPARSE_MATRIX  -I$(CXSPARSE)/Include -I$(LUSOL) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC
+CXXFLAGS      = -O0 -g -I$(DMATRIXDIR)/include -DLAPACK -DUNIX -DSPARSE_MATRIX  -I$(CXSPARSE)/Include -I$(CXSPARSE)/../SuiteSparse_config -I$(LUSOL) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC
 
 CFLAGS        = -O0 -fPIC
 
@@ -71,7 +71,6 @@ all: ricc colon expm rand sparse
 
 $(EXAMPLESDIR)/%.o : $(EXAMPLESDIR)/%.cxx
 	$(CXX) -c $(CXXFLAGS) $< -o $@
-
 
 
 

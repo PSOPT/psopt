@@ -3,10 +3,10 @@ USERHOME      = ~
 F2CINC = $(F2CINCLUDE)
 F2CLIB = $(F2CLIBRARY)
 DMATRIXDIR=./dmatrix
-CXSPARSE=./CXSparse
+CXSPARSE=./SuiteSparse/CXSparse
 LUSOL=./lusol/csrc
 
-prefix = $(USERHOME)/Ipopt-3.10.3
+prefix = $(USERHOME)/Ipopt-3.12.3
 # Directory with header files
 IPOPTINCDIR = ${prefix}/include/coin
 # Directory with libipopt.a
@@ -26,7 +26,8 @@ DMATRIX_LIBS  = $(DMATRIXDIR)/lib/libdmatrix.a
 
 
 $(CXSPARSE_LIBS):
-	(cp UFconfig.h $(CXSPARSE)/Include;cd $(CXSPARSE)/Lib; $(MAKE))
+# 	(cp UFconfig.h $(CXSPARSE)/Include;cd $(CXSPARSE)/Lib; $(MAKE))
+	(cd $(CXSPARSE);cd ..;$(MAKE))
 
 $(LUSOL_LIBS):
 	(cp Makefile.lusol $(LUSOL)/Makefile; cd $(LUSOL); $(MAKE))
@@ -194,6 +195,5 @@ distclean:
 	(cd $(LUSOL); $(MAKE) clean)
 	(cd $(DMATRIXDIR)/examples; $(MAKE) distclean)
 	(cd $(PSOPTDIR)/lib; $(MAKE) distclean)
-
 
 

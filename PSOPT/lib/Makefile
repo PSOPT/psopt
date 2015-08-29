@@ -1,4 +1,3 @@
-
 #Usage:  make
 #add ../lib to LD_LIBRARY_PATH
 
@@ -27,7 +26,7 @@ PSOPTSRCDIR = ../src
 
 CXX           = /usr/bin/g++
 CC            = /usr/bin/gcc
-CXXFLAGS      = -O0 -g -I$(USERHOME)/adolc_base/include  -I$(DMATRIXDIR)/include -I$(SNOPTDIR)/cppexamples -I$(PSOPTSRCDIR) -DLAPACK -DUNIX -DSPARSE_MATRIX -DUSE_IPOPT -I$(CXSPARSE)/Include -I$(LUSOL) $(IPOPTINCDIR) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC
+CXXFLAGS      = -O0 -g -I$(USERHOME)/adolc_base/include  -I$(DMATRIXDIR)/include -I$(SNOPTDIR)/cppexamples -I$(PSOPTSRCDIR) -DLAPACK -DUNIX -DSPARSE_MATRIX -DUSE_IPOPT -I$(CXSPARSE)/Include -I$(CXSPARSE)/../SuiteSparse_config -I$(LUSOL) $(IPOPTINCDIR) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC
 
 CFLAGS        = -O0 -fPIC
 
@@ -49,5 +48,4 @@ $(PSOPTSRCDIR)/%.o : $(PSOPTSRCDIR)/%.cxx
 
 $(DMATRIXDIR)/src/%.o : $(DMATRIXDIR)/src/%.cxx
 	$(CXX) -c $(CXXFLAGS) $< -o $@
-
 
