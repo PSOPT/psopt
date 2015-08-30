@@ -17,8 +17,8 @@ before_install:
   - ./get.Mumps
   - cd $HOME/Ipopt-3.12.3
   - ./configure --enable-static coin_skip_warn_cxxflags=yes
-  - make -j4
-  - make install
+  - make -j4 --silent
+  - make install --silent
   - # Download and install ADOLC and ColPack
   - cd $HOME/Downloads
   - wget --continue www.coin-or.org/download/source/ADOL-C/ADOL-C-2.5.2.tgz
@@ -32,13 +32,13 @@ before_install:
   - mv ColPack-1.0.9 ColPack
   - cd ColPack
   - ./configure
-  - make -j4
-  - sudo make install
+  - make -j4 --silent
+  - sudo make install --silent
   - sudo cp /usr/local/lib/libCol* /usr/lib
   - cd $HOME/ADOL-C-2.5.2
   - ./configure --enable-sparse --with-colpack=$HOME/ADOL-C-2.5.2/ThirdParty/ColPack
-  - make -j4
-  - make install
+  - make -j4 --silent
+  - make install --silent
   - sudo cp $HOME/adolc_base/lib64/*.a /usr/lib
   - sudo cp -r $HOME/adolc_base/include/* /usr/include/
   - # Download and install PDFlib
@@ -47,8 +47,8 @@ before_install:
   - tar zxvf PDFlib-Lite-7.0.5p3.tar.gz
   - cd PDFlib-Lite-7.0.5p3 
   - ./configure
-  - make -j4
-  - sudo make install
+  - make -j4 --silent
+  - sudo make install --silent
   - sudo ldconfig
   - # Download and install GNUplot
   - cd $HOME/Downloads
@@ -58,8 +58,8 @@ before_install:
   - sudo apt-get -y install libx11-dev libxt-dev libgd2-xpm-dev libreadline6-dev
   - cd gnuplot-4.2.2
   - ./configure -with-readline=gnu -without-tutorial
-  - make -j4
-  - sudo make install
+  - make -j4 --silent
+  - sudo make install --silent
   - cd $TRAVIS_BUILD_DIR
   - # Download and extract SuiteSparse
   - wget --continue http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.4.3.tar.gz
