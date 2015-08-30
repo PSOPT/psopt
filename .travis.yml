@@ -72,4 +72,4 @@ before_install:
 install:
   - # Compile SuiteSparse, LUSOL, dmatrix and PSOPT
   - cd $TRAVIS_BUILD_DIR
-  - make -j4 all
+  - make all
