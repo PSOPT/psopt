@@ -79,3 +79,6 @@ install:
   - # Compile SuiteSparse, LUSOL, dmatrix and PSOPT
   - cd $TRAVIS_BUILD_DIR
   - make all
+
+script:
+  - echo 'done'
