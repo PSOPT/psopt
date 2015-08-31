@@ -1,15 +1,15 @@
+sudo: required
+services:
+  - docker # just to force using ubuntu 14.04.
+
 language: cpp
 
 before_install:
-  # Necessary for ubuntu 12.04.
-  #- export LD_LIBRARY_PATH=/usr/lib/openblas-base:$LD_LIBRARY_PATH
 
   #- sh ./install-ubuntu.sh
   - # Script for Ubuntu 14.04
   - # Install miscellaneous libraries
   - sudo apt-get -y install g++ gfortran f2c libf2c2-dev libf2c2 libblas-dev libopenblas-base libopenblas-dev libblas3gf libatlas-base-dev liblapack-dev liblapack3gf
-  - ls /usr/lib/openblas-base
-  - sudo cp /usr/lib/openblas-base/* /usr/lib/
   - # Download and install Ipopt, Metis and Mumps
   - mkdir $HOME/Downloads
   - cd $HOME/Downloads
