@@ -7,7 +7,7 @@ before_install:
   #- sh ./install-ubuntu.sh
   - # Script for Ubuntu 14.04
   - # Install miscellaneous libraries
-  - sudo apt-get -y install g++ gfortran f2c libf2c2-dev libf2c2 libblas-dev libopenblas-base libopenblas-dev libblas3gf libatlas-base-dev liblapack-dev liblapack3gf
+  - sudo apt-get -y install g++ gfortran f2c libf2c2-dev libf2c2 libblas-dev liblapack-dev liblapack3gf
   #- ls /usr/lib/openblas-base
   #- sudo cp /usr/lib/openblas-base/* /usr/lib/
   - sudo ln -s /usr/lib/libblas.so /usr/lib/libopenblas.so
