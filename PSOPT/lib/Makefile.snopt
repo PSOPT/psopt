@@ -10,12 +10,11 @@ F2CINC = $(F2CINCLUDE)
 F2CLIB = $(F2CLIBRARY)
 
 DMATRIXDIR=../../dmatrix
-CPPEXAMPLESDIR = $(SNOPTDIR)/cppexamples
 CXSPARSE=../../SuiteSparse/CXSparse
 LUSOL=../../lusol/csrc
 
 SNOPTDIR=$(USERHOME)/snopt7
-CPPEXAMPLESDIR = $(SNOPTDIR)/cppexamples
+SNOPTINTERFACEDIR=../../snopt-interface
 
 prefix = $(USERHOME)/Ipopt-3.12.3
 # Directory with header files
@@ -30,7 +29,7 @@ PSOPTSRCDIR = ../src
 
 CXX           = /usr/bin/g++
 CC            = /usr/bin/gcc
-CXXFLAGS      = -O0 -g -I$(SNOPTDIR)/cppsrc -I$(SNOPTDIR)/cppexamples -I$(USERHOME)/adolc_base/include  -I$(DMATRIXDIR)/include -I$(SNOPTDIR)/cppexamples -I$(PSOPTSRCDIR) -DLAPACK -DUNIX -DSPARSE_MATRIX -DUSE_SNOPT -DUSE_IPOPT -I$(CXSPARSE)/Include -I$(CXSPARSE)/../SuiteSparse_config -I$(LUSOL) $(IPOPTINCDIR) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC
+CXXFLAGS      = -O0 -g -I$(SNOPTINTERFACEDIR)/include -I$(USERHOME)/adolc_base/include  -I$(DMATRIXDIR)/include -I$(PSOPTSRCDIR) -DLAPACK -DUNIX -DSPARSE_MATRIX -DUSE_SNOPT -DUSE_IPOPT -I$(CXSPARSE)/Include -I$(CXSPARSE)/../SuiteSparse_config -I$(LUSOL) $(IPOPTINCDIR) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC
 
 CFLAGS        = -O0 -fPIC
 

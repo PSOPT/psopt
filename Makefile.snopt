@@ -6,7 +6,6 @@ DMATRIXDIR=./dmatrix
 CXSPARSE=./SuiteSparse/CXSparse
 LUSOL=./lusol/csrc
 SNOPTDIR=$(USERHOME)/snopt7
-CPPEXAMPLESDIR = $(SNOPTDIR)/cppexamples
 
 prefix = $(USERHOME)/Ipopt-3.12.3
 # Directory with header files
@@ -26,8 +25,7 @@ ADOLC_LIBS    = -ladolc
 PSOPT_LIBS    = $(PSOPTDIR)/lib/libpsopt.a
 DMATRIX_LIBS  = $(DMATRIXDIR)/lib/libdmatrix.a
 
-LIBDIR        = $(SNOPTDIR)/lib
-SNOPT_LIBS    = $(SNOPTDIR)/lib/libsnopt_cpp.a $(SNOPTDIR)/lib/libsnopt_c.a $(SNOPTDIR)/lib/libsnprint_c.a $(SNOPTDIR)/lib/libblas.a
+SNOPT_LIBS    = $(SNOPTDIR)/lib/libsnopt_cpp.a $(SNOPTDIR)/lib/libblas.a
 
 
 # $(CXSPARSE_LIBS):

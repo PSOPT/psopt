@@ -1058,10 +1058,7 @@ int dormqr_(char *side, char *trans, integer *m, integer *n,
 
 
 #ifdef USE_SNOPT
-#include "f2c.h"
-#include "snfilewrapper.hh"
-#include "snopt.hh"
-#include "snoptProblem.hh"
+#include "snoptProblem.hpp"
 
 
 extern "C" {
