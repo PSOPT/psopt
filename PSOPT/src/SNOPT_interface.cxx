@@ -16,6 +16,8 @@ void snPSOPTusrf_(int    *Status, int *n,    double x[],
 
 {
 
+  workspace = tempsnoptworkspace;
+
   Alg& algorithm    = *workspace->algorithm;
 
   DMatrix&        X = *workspace->Xsnopt;

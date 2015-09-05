@@ -1073,6 +1073,8 @@ void snPSOPTusrf_
 }
 
 
+extern Workspace* tempsnoptworkspace;
+
 
 
 #endif // USE_SNOPT

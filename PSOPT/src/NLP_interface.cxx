@@ -33,6 +33,7 @@ Author:    Professor Victor M. Becerra
 
 #ifdef USE_SNOPT
 #include "snoptProblem.hpp"
+Workspace* tempsnoptworkspace;
 #endif
 
 
@@ -63,6 +64,8 @@ int NLP_interface(
 #ifdef USE_SNOPT
   // C++ interface to SNOPT.
   snoptProblemA snprob;
+
+  tempsnoptworkspace = workspace;
 
   // Allocate and initialize. 
   int n     =  length(*x0);
@@ -282,6 +285,9 @@ int NLP_interface(
   delete [] Fupp;
   delete [] Fmul;
   delete [] Fstate;
+
+  // TODO
+  tempsnoptworkspace = NULL;
 
 /*
 // ************* C INTERFACE ************************
