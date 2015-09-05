@@ -31,6 +31,10 @@ Author:    Professor Victor M. Becerra
 
 #include "psopt.h"
 
+#ifdef USE_SNOPT
+#include "snoptProblem.hpp"
+#endif
+
 
 int NLP_interface(
          Alg& algorithm,
@@ -106,7 +110,7 @@ int NLP_interface(
   // TODO could be improved.
   memcpy(xlow, xlb->GetPr(), n*sizeof(double) );
   memcpy(xupp, xub->GetPr(), n*sizeof(double) );
-  for (int ix = 0; int ix < n; ++ix) {
+  for (int ix = 0; ix < n; ++ix) {
       x[ix]=0.0;
       xstate[ix]=3;
   }
@@ -129,12 +133,17 @@ int NLP_interface(
   memcpy(x, x0->GetPr(), n*sizeof(double) );
 
   snprob.setProbName(problem->name.c_str());
+  snprob.setPrintFile("snopt.out");
+
+  snprob.setProblemSize(n, neF);
   snprob.setObjective(ObjRow, ObjAdd);
   snprob.setX(x, xlow, xupp, xmul, xstate);
   snprob.setF(F, Flow, Fupp, Fmul, Fstate);
   snprob.setUserFun(snPSOPTusrf_);
 
   // snopta will compute the Jacobian by finite-differences.
+  int neA = -1;
+  int neG = -1;
   snprob.setA(lenA, neA, iAfun, jAvar, A);
   snprob.setG(lenG, neG, iGfun, jGvar);
 
@@ -149,14 +158,6 @@ int NLP_interface(
   }
 
   (*workspace->Gsp).Resize(neF, n, neG);
-
-  if (useAutomaticDifferentiation())
-  {
-    adouble* xad = workspace->xad;
-    adouble* fgad = workspace->fgad;
-    double* fg = workspace->fg;
-    
-  }
 
   if ( useAutomaticDifferentiation(algorithm) )
   {
@@ -318,11 +319,11 @@ int NLP_interface(
 	iPrint = 0;
   }
 
-  /* open output files using snfilewrappers.[ch] */
+  // open output files using snfilewrappers.[ch]
   sprintf(specname ,   "%s", "psopt.spc");   spec_len = strlen(specname);
   sprintf(printname,   "%s", "psopt.out");   prnt_len = strlen(printname);
 
-  /* Open the print file, fortran style */
+  // Open the print file, fortran style
   snopenappend_
     ( &iPrint, printname,   &INFO, prnt_len );
 
@@ -357,7 +358,7 @@ int NLP_interface(
      adouble* fgad = workspace->fgad;
      double*    fg = workspace->fg;
 
-     /* Tracing of function fg() */
+     // Tracing of function fg()
      trace_on(workspace->tag_fg);
      for(i=0;i<n;i++)
 		xad[i] <<= x[i];
@@ -473,9 +474,9 @@ int NLP_interface(
 
 
 
-  /*     ------------------------------------------------------------------ */
-  /*     Go for it                                                          */
-  /*     ------------------------------------------------------------------ */
+  //     ------------------------------------------------------------------ 
+  //     Go for it                                                          
+  //     ------------------------------------------------------------------ 
 
   if (hotflag) StartOption=Warm;
   else StartOption=Cold;

@@ -12,7 +12,7 @@ CXSPARSE=../../../SuiteSparse/CXSparse
 LUSOL=../../../lusol/csrc
 SNOPTDIR=$(USERHOME)/snopt7
 SNOPTINTERFACEDIR=../../../snopt-interface
-SNOPT_LIBS    = $(SNOPTDIR)/lib/libsnopt7_cpp.a #$(SNOPTDIR)/lib/libblas.a
+SNOPT_LIBS    = $(SNOPTDIR)/lib/libsnopt7_cpp.a $(SNOPTDIR)/lib/libsnopt7.a #$(SNOPTDIR)/lib/libblas.a
 
 
 prefix = $(USERHOME)/Ipopt-3.12.3
