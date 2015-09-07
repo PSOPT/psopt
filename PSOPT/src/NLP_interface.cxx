@@ -31,6 +31,11 @@ Author:    Professor Victor M. Becerra
 
 #include "psopt.h"
 
+#ifdef USE_SNOPT
+#include "snoptProblem.hpp"
+Workspace* tempsnoptworkspace;
+#endif
+
 
 int NLP_interface(
          Alg& algorithm,
@@ -57,54 +62,60 @@ int NLP_interface(
     {
 
 #ifdef USE_SNOPT
-//  snoptProblem psocProb;
-  // Allocate and initialize;
-  int ii, k;
+  // C++ interface to SNOPT.
+  snoptProblemA snprob;
 
-  integer n     =  length(*x0);
-  integer neF   =  nlp_ncons+1;
-  integer lenA  =  (nlp_ncons+1)*n;
+  tempsnoptworkspace = workspace;
 
-  integer *iAfun = (integer*) my_calloc(lenA,sizeof(integer));
-  integer *jAvar = (integer*) my_calloc(lenA,sizeof(integer));
-  doublereal *A  = (doublereal*) my_calloc(lenA,sizeof(doublereal));
+  // Allocate and initialize. 
+  int n     =  length(*x0);
+  int neF   =  nlp_ncons+1;
 
+  int lenA  =  (nlp_ncons+1)*n;
 
-  integer lenG   = lenA;
-  integer *iGfun = (integer*) my_calloc(lenG,sizeof(integer));
-  integer *jGvar = (integer*) my_calloc(lenG,sizeof(integer));
+  int *iAfun = new int[lenA];
+  int *jAvar = new int[lenA];
+  double *A  = new double[lenA];
 
+  int lenG   = lenA;
+  int *iGfun = new int[lenG];
+  int *jGvar = new int[lenG];
 
-  doublereal *x     = (doublereal*) my_calloc(n,sizeof(doublereal));
-  doublereal *xlow  = (doublereal*) my_calloc(n,sizeof(doublereal));
-  doublereal *xupp  = (doublereal*) my_calloc(n,sizeof(doublereal));
-  doublereal *xmul  = (doublereal*) my_calloc(n,sizeof(doublereal));
-  integer   *xstate = (integer*)    my_calloc(n,sizeof(integer));
+  double *x      = new double[n];
+  double *xlow   = new double[n];
+  double *xupp   = new double[n];
+  double *xmul   = new double[n];
+  int    *xstate = new int[n];
 
-  doublereal *F     = (doublereal*) my_calloc(neF,sizeof(doublereal));
-  doublereal *Flow  = (doublereal*) my_calloc(neF,sizeof(doublereal));
-  doublereal *Fupp  = (doublereal*) my_calloc(neF,sizeof(doublereal));
-  doublereal *Fmul  = (doublereal*) my_calloc(neF,sizeof(doublereal));
-  integer   *Fstate = (integer*)    my_calloc(neF,sizeof(integer));
+  double *F      = new double[neF];
+  double *Flow   = new double[neF];
+  double *Fupp   = new double[neF];
+  double *Fmul   = new double[neF];
+  int    *Fstate = new int[neF];
 
+  // TODO: the below is for the old f2c interface and
+  // I don't know how to port it over to the C++ interface.
+  // integer nxnames = 1;
+  // integer nFnames = 1;
+  // char *xnames = (char*) my_calloc(nxnames*8, sizeof(char));
+  // char *Fnames = (char*) my_calloc(nFnames*8, sizeof(char));
 
-  integer nxnames = 1;
-  integer nFnames = 1;
-  char *xnames = (char*) my_calloc(nxnames*8, sizeof(char));
-  char *Fnames = (char*) my_calloc(nFnames*8, sizeof(char));
+  int    ObjRow = 0;
+  double ObjAdd = 0;
 
+  int Cold = 0;
+  int Basis = 1;
+  int Warm = 2;
+  int StartOption;
 
-  integer    ObjRow = 1;
-  doublereal ObjAdd = 0;
+  double InfValue = 1.0e20;
 
-  doublereal InfValue = 1.0e20;
-
+  // TODO could be improved.
   memcpy(xlow, xlb->GetPr(), n*sizeof(double) );
   memcpy(xupp, xub->GetPr(), n*sizeof(double) );
-
-  for (ii=0;ii<n;ii++) {
-      x[ii]=0.0;
-      xstate[ii]=3;
+  for (int ix = 0; ix < n; ++ix) {
+      x[ix]=0.0;
+      xstate[ix]=3;
   }
 
   Flow[0] = -InfValue;
@@ -114,16 +125,171 @@ int NLP_interface(
   get_constraint_bounds( &Flow[1], &Fupp[1], workspace );
 
 
-  for (ii=1; ii<neF ; ii++) {
-     Fmul[ii] = (*lambda)(ii);
+  for (int iF = 1; iF < neF; ++iF) {
+     Fmul[iF] = (*lambda)(iF);
   }
 
-  for (ii=0; ii<neF ; ii++) {
-     Fstate[ii] = 0;
+  for (int iF = 0; iF < neF; ++ iF) {
+     Fstate[iF] = 0; // TODO why is this 0 and xstate is 3?
   }
 
-  memcpy( x, x0->GetPr(), n*sizeof(double) );
+  memcpy(x, x0->GetPr(), n*sizeof(double) );
 
+  snprob.setProbName(problem->name.c_str());
+  snprob.setPrintFile("snopt.out");
+
+  snprob.setProblemSize(n, neF);
+  snprob.setObjective(ObjRow, ObjAdd);
+  snprob.setX(x, xlow, xupp, xmul, xstate);
+  snprob.setF(F, Flow, Fupp, Fmul, Fstate);
+  snprob.setUserFun(snPSOPTusrf_);
+
+  // snopta will compute the Jacobian by finite-differences.
+  int neA = -1;
+  int neG = -1;
+  snprob.setA(lenA, neA, iAfun, jAvar, A);
+  snprob.setG(lenG, neG, iGfun, jGvar);
+
+  workspace->jac_done = 0;
+
+  // computeJac will determine sparsity and will set neA and neG.  
+  snprob.computeJac(neA, neG);
+
+  for (int iG = 0; iG < neG; ++iG) {
+    workspace->iGfun[iG] = (unsigned int) iGfun[iG];
+    workspace->jGvar[iG] = (unsigned int) jGvar[iG];
+  }
+
+  (*workspace->Gsp).Resize(neF, n, neG);
+
+  if ( useAutomaticDifferentiation(algorithm) )
+  {
+     adouble* xad  = workspace->xad;
+     adouble* fgad = workspace->fgad;
+     double*    fg = workspace->fg;
+
+     /* Tracing of function fg() */
+     trace_on(workspace->tag_fg);
+     for(i=0;i<n;i++)
+		xad[i] <<= x[i];
+
+     fg_ad(xad, fgad, workspace);
+
+     for(i=0;i<neF;i++)
+	fgad[i] >>= fg[i];
+     trace_off();
+
+#ifdef ADOLC_VERSION_1
+     sparse_jac(workspace->tag_fg, neF, n, 0, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2);
+#endif
+
+
+#ifdef ADOLC_VERSION_2
+    int options[4];
+    options[0]=0; options[1]=0; options[2]=0;options[3]=0;
+    sparse_jac(workspace->tag_fg, neF, n, 0, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
+#endif
+
+     sprintf(workspace->text,"\nJacobian sparsity detected using ADOLC:");
+     psopt_print(workspace,workspace->text);
+
+     double jsratio = (double) ((double)  workspace->F_nnz/((double) (n*neF)));
+
+     if (jsratio > workspace->algorithm->jac_sparsity_ratio) {
+           sprintf(workspace->text, "increase algorithm.jac_sparsity_ratio to just above %f", jsratio);
+           error_message(workspace->text);
+     }
+
+     sprintf(workspace->text,"\n%i nonzero elements out of %li [ratio=%f]\n", workspace->F_nnz, n*neF, jsratio);
+     psopt_print(workspace,workspace->text);
+
+
+      for (i=0;i<workspace->F_nnz;i++) {
+          	  workspace->iGfun1[i] = workspace->iGfun2[i]+1;
+        	  workspace->jGvar1[i] = workspace->jGvar2[i]+1;
+      }
+
+  }
+
+
+  workspace->jac_done=1;
+
+  // Create and store matrix A (sparse).
+  int * iAfuni = new int[neA];
+  int * jAvari = new int[neA];
+
+  for (int iA = 0; iA < neA; ++iA) {
+       iAfuni[iA] = iAfun[iA];
+       jAvari[iA] = jAvar[iA];
+  }
+
+  SparseMatrix As(A, neF, n, neA, iAfuni, jAvari);
+
+//  As.SaveSparsityPattern("SNOPT_Linear_pattern.txt");
+
+  workspace->As = &As;
+
+  // Set optimizer options.
+  snprob.setIntParameter("Derivative option", 0);
+  snprob.setIntParameter("Verify level ", 3);
+  snprob.setIntParameter("Major iterations limit",
+		  workspace->algorithm->nlp_iter_max);
+  snprob.setIntParameter("Minor iterations limit",
+		  workspace->algorithm->nlp_iter_max);   
+  snprob.setIntParameter("Iterations limit",
+		  50 * workspace->algorithm->nlp_iter_max);
+  snprob.setRealParameter("Major optimality tolerance",
+		  workspace->algorithm->nlp_tolerance);
+  if (!algorithm.print_level) {
+    snprob.setIntParameter("Major print level", 0);
+    snprob.setIntParameter("Minor print level", 0);
+  }
+  snprob.setParameter("LU complete pivoting");
+
+  if (hotflag) StartOption=Warm;
+  else StartOption=Cold;
+
+  // ---------
+  // Go for it
+  // ---------
+
+  int inform = snprob.solve(StartOption);
+
+  solution->nlp_return_code = int (inform/10);
+
+  // Copy results.
+  memcpy(x0->GetPr(), x, n*sizeof(double));
+
+  for (int ix = 0; ix < n; ++ix) solution->xad[ix] = x[ix];
+
+  for (int iF = 1; iF < neF; ++iF) {
+    (*lambda)(iF) = Fmul[iF];
+  }
+
+  // Delete allocated variables.
+  delete [] iAfun;
+  delete [] jAvar;
+  delete [] A;
+
+  delete [] iGfun;
+  delete [] jGvar;
+  
+  delete [] x;
+  delete [] xlow;
+  delete [] xupp;
+  delete [] xmul;
+  delete [] xstate;
+
+  delete [] F;
+  delete [] Flow;
+  delete [] Fupp;
+  delete [] Fmul;
+  delete [] Fstate;
+
+  // TODO
+  tempsnoptworkspace = NULL;
+
+/*
 // ************* C INTERFACE ************************
   integer Cold = 0, Basis = 1, Warm = 2;
   integer StartOption;
@@ -159,11 +325,11 @@ int NLP_interface(
 	iPrint = 0;
   }
 
-  /* open output files using snfilewrappers.[ch] */
+  // open output files using snfilewrappers.[ch]
   sprintf(specname ,   "%s", "psopt.spc");   spec_len = strlen(specname);
   sprintf(printname,   "%s", "psopt.out");   prnt_len = strlen(printname);
 
-  /* Open the print file, fortran style */
+  // Open the print file, fortran style
   snopenappend_
     ( &iPrint, printname,   &INFO, prnt_len );
 
@@ -198,7 +364,7 @@ int NLP_interface(
      adouble* fgad = workspace->fgad;
      double*    fg = workspace->fg;
 
-     /* Tracing of function fg() */
+     // Tracing of function fg()
      trace_on(workspace->tag_fg);
      for(i=0;i<n;i++)
 		xad[i] <<= x[i];
@@ -314,9 +480,9 @@ int NLP_interface(
 
 
 
-  /*     ------------------------------------------------------------------ */
-  /*     Go for it                                                          */
-  /*     ------------------------------------------------------------------ */
+  //     ------------------------------------------------------------------ 
+  //     Go for it                                                          
+  //     ------------------------------------------------------------------ 
 
   if (hotflag) StartOption=Warm;
   else StartOption=Cold;
@@ -353,6 +519,7 @@ int NLP_interface(
   }
 
 
+*/
 
   return 0;
 

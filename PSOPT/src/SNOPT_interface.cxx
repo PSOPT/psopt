@@ -7,14 +7,16 @@ static Workspace* workspace= NULL; // Temporary measure to get this file to comp
                                       // Consider changing to C++ interface to see if
                                       // the same thing as IPOPT can be done with workspace.
 
-int snPSOPTusrf_(integer    *Status, integer *n,    doublereal x[],
-	     integer    *needF,  integer *neF,  doublereal F[],
-	     integer    *needG,  integer *neG,  doublereal G[],
-	     char       *cu,     integer *lencu,
-	     integer    iu[],    integer *leniu,
-	     doublereal ru[],    integer *lenru )
+void snPSOPTusrf_(int    *Status, int *n,    double x[],
+	     int    *needF,  int *neF,  double F[],
+	     int    *needG,  int *neG,  double G[],
+	     char       *cu,     int *lencu,
+	     int    iu[],    int *leniu,
+	     double ru[],    int *lenru )
 
 {
+
+  workspace = tempsnoptworkspace;
 
   Alg& algorithm    = *workspace->algorithm;
 
@@ -101,7 +103,6 @@ int snPSOPTusrf_(integer    *Status, integer *n,    doublereal x[],
 
 
 
-  return 0;
 }
 
 
