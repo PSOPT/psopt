@@ -115,7 +115,7 @@ int NLP_interface(
   memcpy(xupp, xub->GetPr(), n*sizeof(double) );
   for (int ix = 0; ix < n; ++ix) {
       x[ix]=0.0;
-      xstate[ix]=3;
+      xstate[ix]=0;
   }
 
   Flow[0] = -InfValue;
@@ -230,7 +230,15 @@ int NLP_interface(
   workspace->As = &As;
 
   // Set optimizer options.
-  snprob.setIntParameter("Derivative option", 0);
+
+  int derivative_option;
+  if ( useAutomaticDifferentiation(algorithm) ) {
+       derivative_option = 1;
+  }
+  else {
+       derivative_option = 0;
+  }
+  snprob.setIntParameter("Derivative option", derivative_option);
   snprob.setIntParameter("Verify level ", 3);
   snprob.setIntParameter("Major iterations limit",
 		  workspace->algorithm->nlp_iter_max);

@@ -85,6 +85,7 @@ void snPSOPTusrf_(int    *Status, int *n,    double x[],
     int options[4];
     options[0]=0; options[1]=0; options[2]=0;options[3]=0;
 	sparse_jac(workspace->tag_fg, nF, nvars, 0, xvars, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
+
 #endif
 
         SparseMatrix GS2(workspace->G2, nF, nvars, workspace->F_nnz, (int*) workspace->iGfun1, (int*) workspace->jGvar1);

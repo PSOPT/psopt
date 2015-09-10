@@ -574,7 +574,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		   solution.dual.events[i] = elemProduct( solution.dual.events[i],  problem.phase[i].scale.events );
 	}
 
-    if (algorithm.scaling=="automatic") {
+    if (algorithm.scaling=="automatic" && nevents>0) {
 	   solution.dual.events[i] = elemProduct( solution.dual.events[i],  (*works.constraint_scaling)(colon(offset+1,offset+nevents) )) ;
     }
 	solution.dual.events[i] /= problem.scale.objective;
