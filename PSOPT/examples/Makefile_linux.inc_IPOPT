@@ -48,7 +48,7 @@ CFLAGS        = -O0 -fPIC
 # libg2c and libm are added to satisfy  f2c references
 
 # FLIBS        =   /usr/lib/libf2c.a  -lblas -llapack -lm
-FLIBS        =  -lm /usr/lib/libf2c.a  -llapack -lf77blas -lcblas
+FLIBS        =  -lm -lf2c  -llapack -lf77blas -lcblas
 #FLIBS = ../dmatrix/lib/lapack_LINUX.a ../dmatrix/lib/blas_LINUX.a ../dmatrix/lib/F2CLIBS/libf2c_LINUX.a   -lm
 
 ALL_LIBRARIES = $(PSOPT_LIBS) $(DMATRIX_LIBS) $(FLIBS) $(SPARSE_LIBS) $(IPOPT_LIBS)  $(ADOLC_LIBS)

@@ -16,7 +16,7 @@ SPARSE_LIBS   = $(LUSOL)/liblusol.a  $(CXSPARSE)/Lib/libcxsparse.a
 
 DMATRIX_LIBS  = $(DMATRIXDIR)/lib/libdmatrix.a 
 
-FLIBS        =   -llapack -lblas /usr/lib/libf2c.a
+FLIBS        =   -llapack -lblas -lf2c
 
 LDFLAGS	      = -Wl,--rpath  -lgcc_s
 
