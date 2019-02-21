@@ -2,7 +2,7 @@
 
 This file is part of the PSOPT library, a software tool for computational optimal control
 
-Copyright (C) 2009-2015 Victor M. Becerra
+Copyright (C) 2009-2020 Victor M. Becerra
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -20,11 +20,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA,
 or visit http://www.gnu.org/licenses/
 
 Author:    Professor Victor M. Becerra
-           University of Reading
-           School of Systems Engineering
-           P.O. Box 225, Reading RG6 6AY
+Address:   University of Portsmouth
+           School of Energy and Electronic Engineering
+           Portsmouth PO1 3DJ
            United Kingdom
-           e-mail: vmbecerra99@gmail.com
+e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
 
@@ -334,9 +334,9 @@ void determine_constraint_scaling_factors(DMatrix & X, Sol& solution, Prob& prob
                 if ( jac_row_norm(i) > 1.e7 ) {
     		      (*workspace->constraint_scaling)(i) = 1.0/1.e7;
                 }
-                if ( jac_row_norm(i) == 0.0 ) {
-    		      (*workspace->constraint_scaling)(i) = 1.0;
-                }
+//                if ( jac_row_norm(i) == 0.0 ) {
+//    		      (*workspace->constraint_scaling)(i) = 1.0;
+//                }
 
 	}
    }
@@ -364,28 +364,29 @@ void determine_constraint_scaling_factors(DMatrix & X, Sol& solution, Prob& prob
 
      // By default, use the state scaling factors for the differential defects. See Betts (2001).
 
+     int offset = 0;
 
+ 
      for(i=0; i< problem.nphases; i++) {
 
         DMatrix& state_scaling = (problem.phase[i].scale.states);
 
      	int norder    = problem.phase[i].current_number_of_intervals;
 
-	int nstates   = problem.phase[i].nstates;
+	    int nstates   = problem.phase[i].nstates;
 
-	int nevents   = problem.phase[i].nevents;
+	    int nevents   = problem.phase[i].nevents;
 
-	int npath     = problem.phase[i].npath;
+        int npath     = problem.phase[i].npath;
+    
 
-	int offset;
 
         int ncons_phase_i = get_ncons_phase_i(problem,i, workspace);
 
-        offset = 0;
 
-  	for (k=1;k<=norder+1;k++) {
+        for (k=1;k<=norder+1;k++) {
 
-  		for( j=1;j<=nstates;j++) {
+  		    for( j=1;j<=nstates;j++) {
 
                 	l = offset + (k-1)*nstates+j;
 
@@ -393,7 +394,7 @@ void determine_constraint_scaling_factors(DMatrix & X, Sol& solution, Prob& prob
 
         	}
 
-   	}
+   	    }
 
         offset += ncons_phase_i;
 

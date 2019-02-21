@@ -156,7 +156,7 @@ int main(void)
 
     R2.Print("sprandn(10,10,0.1)");
 
-    fprintf(stderr, "\nrank(R1)=%i\n", rank(R1));
+    fprintf(stderr, "\nrank(R1)=%i\n", rank_sparse(R1));
 
     SparseMatrix A1000=sprand(1000,1000,0.02);
     SparseMatrix B1000=sprand(1000,1000,0.02);

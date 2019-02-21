@@ -2,7 +2,7 @@
 
 This file is part of the PSOPT library, a software tool for computational optimal control
 
-Copyright (C) 2009-2015 Victor M. Becerra
+Copyright (C) 2009-2020 Victor M. Becerra
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -20,11 +20,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA,
 or visit http://www.gnu.org/licenses/
 
 Author:    Professor Victor M. Becerra
-           University of Reading
-           School of Systems Engineering
-           P.O. Box 225, Reading RG6 6AY
+Address:   University of Portsmouth
+           School of Energy and Electronic Engineering
+           Portsmouth PO1 3DJ
            United Kingdom
-           e-mail: vmbecerra99@gmail.com
+e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
 
@@ -660,7 +660,7 @@ void compute_jacobian_of_constraints_with_respect_to_variables(DMatrix& Jc, DMat
      xp = X;
 //     clip_vector_given_bounds( xp, xlb, xub);
 
-     if ( 0*useAutomaticDifferentiation(algorithm) ) {
+     if ( useAutomaticDifferentiation(algorithm) ) {
 
     unsigned int *jac_rind  = NULL;
 	unsigned int *jac_cind  = NULL;

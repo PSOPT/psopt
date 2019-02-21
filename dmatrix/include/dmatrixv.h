@@ -1,7 +1,8 @@
-/************************************************************************************************
- This file is part of the DMatrix library, a C++ tool for numerical linear algebra
+/*********************************************************************************************
 
-Copyright (C) 2009 Victor M. Becerra
+This file is part of the DMatrix library, a C++ tool for numerical linear algebra
+
+Copyright (C) 2009-2020 Victor M. Becerra
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -18,12 +19,12 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA,
 or visit http://www.gnu.org/licenses/
 
-Author:    Dr. Victor M. Becerra
-           University of Reading
-           School of Systems Engineering
-           P.O. Box 225, Reading RG6 6AY
+Author:    Professor Victor M. Becerra
+Address:   University of Portsmouth
+           School of Energy and Electronic Engineering
+           Portsmouth PO1 3DJ
            United Kingdom
-           e-mail: v.m.becerra@ieee.org
+e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
 
@@ -687,7 +688,7 @@ public:
   */
    DMatrix& mpow(int p);
 
-
+   void initVars();
    // Constructors
 
   //! Default constructor. Creates an empty matrix.
@@ -1530,7 +1531,7 @@ public:
       \param  A is a DMatrix object.
       \return the rank estimate.
   */
-   friend int rank( const DMatrix& A );
+   friend int rank_matrix( const DMatrix& A );
    //!  This function returns the determinant of a square matrix. If the input matrix is not square, an error is thrown.
   /**
       \param  A is a DMatrix object.
@@ -1797,7 +1798,7 @@ double dotProduct( const DMatrix& A, const DMatrix& B );
 int isSymmetric( const DMatrix& A );
 double cond( const DMatrix& A );
 double rcond( const DMatrix& A );
-int rank( const DMatrix& A );
+int rank_matrix(const DMatrix& A );
 double det(  const DMatrix& A );
 double trace( const DMatrix& A );
 DMatrix& mean( const DMatrix& A );
@@ -2236,7 +2237,7 @@ public:
       \param  A is a SparseMatrix object.
       \return the rank estimate.
   */
-   friend int rank( const SparseMatrix& A );
+   friend int rank_sparse( const SparseMatrix& A );
    //! This function returns a sparse matrix with a given sparsity pattern where each non-zero element is a uniform pseudo-random number in the range (0,1).
   /**
       \param  S is a SparseMatrix object from which the sparsity pattern is taken.
@@ -2475,7 +2476,7 @@ double norm(const SparseMatrix& A);
 SparseMatrix& Abs(const SparseMatrix& A);
 double cond( const SparseMatrix& A );
 double rcond( const SparseMatrix& A );
-int rank( const SparseMatrix& A );
+int rank_sparse( const SparseMatrix& A );
 SparseMatrix& sprand(const SparseMatrix& S);
 SparseMatrix& sprand(int n, int m, double density);
 SparseMatrix& sprandn(const SparseMatrix& S);

@@ -13,7 +13,7 @@ CPPEXAMPLESDIR = $(SNOPTDIR)/cppexamples
 CXSPARSE=../../SuiteSparse/CXSparse
 LUSOL=../../lusol/csrc
 
-prefix = $(USERHOME)/Ipopt-3.12.3
+prefix = $(USERHOME)/Ipopt-3.12.12
 # Directory with header files
 IPOPTINCDIR = -I${prefix}/Ipopt/src/Interfaces -I${prefix}/Ipopt/src/Common -I${prefix}/Ipopt/src/LinAlg
 # Directory with libipopt.a

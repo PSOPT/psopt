@@ -2,7 +2,7 @@
 
 This file is part of the PSOPT library, a software tool for computational optimal control
 
-Copyright (C) 2009-2015 Victor M. Becerra
+Copyright (C) 2009-2020 Victor M. Becerra
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -20,17 +20,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA,
 or visit http://www.gnu.org/licenses/
 
 Author:    Professor Victor M. Becerra
-           University of Reading
-           School of Systems Engineering
-           P.O. Box 225, Reading RG6 6AY
+Address:   University of Portsmouth
+           School of Energy and Electronic Engineering
+           Portsmouth PO1 3DJ
            United Kingdom
-           e-mail: vmbecerra99@gmail.com
+e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
 
 #include "psopt.h"
 
-void psopt_print(Workspace* workspace, char* msg)
+void psopt_print(Workspace* workspace, const char* msg)
 {
     if (workspace->algorithm->print_level) {
          fprintf(stderr,"%s", msg);
@@ -268,7 +268,7 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
 		fprintf(outfile,"\nPhase %i maximum relative local error:\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
-            auxstr = "The problem solved!";
+            auxstr = "The problem has been solved!";
         }
         else {
            auxstr = "*** The problem FAILED! - see screen output";
@@ -439,7 +439,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 		fprintf(outfile,"\nPhase %i maximum relative local error:\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
-            auxstr = "The problem solved!";
+            auxstr = "The problem has been solved!";
         }
         else {
            auxstr = "*** The problem FAILED! - see screen output";
@@ -566,7 +566,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
       }
 
 #ifdef UNIX
-     fprintf(outfile,"\n\n>>>>> Rank of parameter covariance matrix: %i ", rank(Cp));
+     fprintf(outfile,"\n\n>>>>> Rank of parameter covariance matrix: %i ", rank_matrix(Cp));
 #endif
       fprintf(outfile,"\n\n>>> 95 percent statistical confidence limits on estimated parameters ");
       fprintf(outfile,"\nPhase\tParameter\t(Low Confidence Limit) \t(Value) \t\t(High Confidence Limit)");
@@ -850,6 +850,9 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 
 
     }
+    
+    delete [] g_l;
+    delete [] g_u;
 
 }
 

@@ -6,7 +6,7 @@ DMATRIXDIR=./dmatrix
 CXSPARSE=./SuiteSparse/CXSparse
 LUSOL=./lusol/csrc
 
-prefix = $(USERHOME)/Ipopt-3.12.3
+prefix = $(USERHOME)/Ipopt-3.12.12
 # Directory with header files
 IPOPTINCDIR = ${prefix}/include/coin
 # Directory with libipopt.a

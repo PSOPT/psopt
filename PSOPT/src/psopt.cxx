@@ -3,7 +3,7 @@
 
 This file is part of the PSOPT library, a software tool for computational optimal control
 
-Copyright (C) 2009-2015 Victor M. Becerra
+Copyright (C) 2009-2020 Victor M. Becerra
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -21,11 +21,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA,
 or visit http://www.gnu.org/licenses/
 
 Author:    Professor Victor M. Becerra
-           University of Reading
-           School of Systems Engineering
-           P.O. Box 225, Reading RG6 6AY
+Address:   University of Portsmouth
+           School of Energy and Electronic Engineering
+           Portsmouth PO1 3DJ
            United Kingdom
-           e-mail: vmbecerra99@gmail.com
+e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
 
@@ -62,9 +62,16 @@ void psopt_main(Sol& solution, Prob& problem, Alg& algorithm)
 
 int MAX_STANDARD_PS_NODES = 200;
 
+
+Workspace* workspace = new Workspace;
+
 string startup_message= "\n *******************************************************************************\n * This is PSOPT, an optimal control solver based on pseudospectral and local  *\n * collocation methods, together with large scale nonlinear programming        *";
 
-string license_notice=  "\n * Copyright (C) 2010  Victor M. Becerra.                                      *\n *                                                                             *\n * This library is free software; you can redistribute it and/or               *\n * modify it under the terms of the GNU Lesser General Public License          *\n * as published by the Free Software Foundation;  version 2.1.                 *\n * This library is distributed in the hope that it will be useful,             *\n * but WITHOUT ANY WARRANTY; without even the implied warranty of              *\n * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU           *\n * Lesser General Public License for more details.                             *\n * You should have received a copy of the GNU Lesser General Public            *\n * License along with this library;                                            *\n * If not please visit http://www.gnu.org/licenses                             *\n *                                                                             *";
+sprintf(workspace->text, "%s %s %s", "\n *******************************************************************************\n * PSOPT release number: ", PSOPT_RELEASE_STRING, "                                                   *");
+
+string release_message= workspace->text;
+
+string license_notice=  "\n * Copyright (C) 2010-2020  Victor M. Becerra.                                 *\n *                                                                             *\n * This library is free software; you can redistribute it and/or               *\n * modify it under the terms of the GNU Lesser General Public License          *\n * as published by the Free Software Foundation;  version 2.1.                 *\n * This library is distributed in the hope that it will be useful,             *\n * but WITHOUT ANY WARRANTY; without even the implied warranty of              *\n * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU           *\n * Lesser General Public License for more details.                             *\n * You should have received a copy of the GNU Lesser General Public            *\n * License along with this library;                                            *\n * If not please visit http://www.gnu.org/licenses                             *\n *                                                                             *";
 
 string contact_notice=  "\n * The author can be contacted at his email address:    v.m.becerra@ieee.org   *\n *                                                                             *\n *******************************************************************************\n\n";
 
@@ -73,15 +80,13 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
   get_local_time( solution.start_date_and_time );
 
-  Workspace works;
 
-  Workspace* workspace = &works;
 
-  works.problem   = &problem;
+  workspace->problem   = &problem;
 
-  works.algorithm = &algorithm;
+  workspace->algorithm = &algorithm;
 
-  works.solution  = &solution;
+  workspace->solution  = &solution;
 
   int nlp_ncons;
   int nlp_neq;
@@ -97,9 +102,11 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
   int x_phase_offset = 0;
   int lam_phase_offset = 0;
 
-  workspace = &works;
+
 
   sprintf(workspace->text,"%s",startup_message.c_str());
+  psopt_print(workspace,workspace->text);
+  sprintf(workspace->text,"%s",release_message.c_str());
   psopt_print(workspace,workspace->text);
   sprintf(workspace->text,"%s",license_notice.c_str());
   psopt_print(workspace,workspace->text);
@@ -120,16 +127,16 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	  problem.phase[i-1].zero_cost_integrand = true;
       }
   }
-
+  
   for (iter_nodes=1; iter_nodes<= number_of_mesh_refinement_iterations; iter_nodes++) {
 
 
     workspace->current_mesh_refinement_iteration = iter_nodes;
 
-    DMatrix& x0     = *works.x0;
-    DMatrix& lambda = *works.lambda;
-    DMatrix& xlb    = *works.xlb;
-    DMatrix& xub    = *works.xub;
+    DMatrix& x0     = *workspace->x0;
+    DMatrix& lambda = *workspace->lambda;
+    DMatrix& xlb    = *workspace->xlb;
+    DMatrix& xub    = *workspace->xub;
 
 
 
@@ -234,14 +241,14 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     }
 
-    works.trace_f_done = false;
+    workspace->trace_f_done = false;
 
-    works.nvars     = get_number_nlp_vars(problem, workspace);
+    workspace->nvars     = get_number_nlp_vars(problem, workspace);
 
     nlp_ncons           = get_number_nlp_constraints(problem, workspace);
 
 
-    works.ncons = nlp_ncons;
+    workspace->ncons = nlp_ncons;
 
     resize_workspace_vars(problem,algorithm,solution, workspace);
 
@@ -257,9 +264,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		    // When using automatic mesh refinement, switch to central differences when the order is too large to avoid numerical problems.
 		    workspace->differential_defects="central-differences";
 		 }
-        	 lglnodes( problem.phase[i].current_number_of_intervals, works.snodes[i], works.w[i], works.P[i], works.D[i], workspace);
-         	 sort(works.snodes[i],works.sindex[i]);
-         	 works.w[i] = (works.w[i])(works.sindex[i]);
+        	 lglnodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->P[i], workspace->D[i], workspace);
+         	 sort(workspace->snodes[i],workspace->sindex[i]);
+         	 workspace->w[i] = (workspace->w[i])(workspace->sindex[i]);
 
     	}
     }
@@ -273,9 +280,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		    // When using automatic mesh refinement, switch to central differences when the order is too large to avoid numerical problems.
 		    workspace->differential_defects="central-differences";
 		 }
-         	cglnodes( problem.phase[i].current_number_of_intervals, works.snodes[i], works.w[i], works.D[i], workspace );
-         	sort(works.snodes[i],works.sindex[i]);
-         	works.w[i] = (works.w[i])(works.sindex[i]);
+         	cglnodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i], workspace );
+         	sort(workspace->snodes[i],workspace->sindex[i]);
+         	workspace->w[i] = (workspace->w[i])(workspace->sindex[i]);
             }
 
     }
@@ -284,7 +291,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 	    for(i=0; i<nphases; i++)
     	    {
-	        works.snodes[i] = linspace(-1.0, 1.0, problem.phase[i].current_number_of_intervals+1);
+	        workspace->snodes[i] = linspace(-1.0, 1.0, problem.phase[i].current_number_of_intervals+1);
             }
 
     }
@@ -297,7 +304,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     }
     else {
         hotflag = 1;
-	hot_start_nlp_guess(x0, lambda, solution,problem,algorithm, works.prev_states, works.prev_controls, works.prev_costates, works.prev_path, works.prev_nodes, works.prev_param, *works.prev_t0, *works.prev_tf, workspace);
+	hot_start_nlp_guess(x0, lambda, solution,problem,algorithm, workspace->prev_states, workspace->prev_controls, workspace->prev_costates, workspace->prev_path, workspace->prev_nodes, workspace->prev_param, *workspace->prev_t0, *workspace->prev_tf, workspace);
     }
 
   // Define NLP bounds on the decision vector
@@ -335,7 +342,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	  psopt_print(workspace,workspace->text);
     }
 
-    sprintf(workspace->text, "\nNumber of NLP variables\t\t\t\t\t%i", works.nvars );
+    sprintf(workspace->text, "\nNumber of NLP variables\t\t\t\t\t%i", workspace->nvars );
     psopt_print(workspace,workspace->text);
     sprintf(workspace->text, "\nNumber of NLP nonlinear constraints:\t\t\t%i", nlp_ncons);
     psopt_print(workspace,workspace->text);
@@ -402,7 +409,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 	if ( algorithm.collocation_method=="Legendre" ) {
 	    for(k=1;k<=norder+1;k++) {
-		   (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(works.w[i])(k);  // See PhD thesis by Huntington (2006).
+		   (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(workspace->w[i])(k);  // See PhD thesis by Huntington (2006).
 	    }
 	}
 
@@ -417,8 +424,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     if ( algorithm.collocation_method == "Chebyshev" ) {
         	for(k=2;k<=norder;k++) {
-                  double tk = (works.snodes[i])(k);
-                  (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(works.w[i])(k);
+                  double tk = (workspace->snodes[i])(k);
+                  (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(workspace->w[i])(k);
                   (solution.dual.costates[i])(colon(),k) =(1.0/sqrt(1.0 - tk*tk))*(solution.dual.costates[i])(colon(),k); // See PhD thesis by Pietz (2003)
 //                  (solution.dual.costates[i])(colon(),k) =(solution.dual.costates[i])(colon(),k)*(tf-t0);
 
@@ -435,7 +442,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
    if ( algorithm.scaling=="automatic" ) {
 	  solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates*(norder+1), 1 );
-          solution.dual.costates[i] = elemProduct( solution.dual.costates[i],  (*works.constraint_scaling)(colon(lam_phase_offset+1,lam_phase_offset+nstates*(norder+1) )) );
+          solution.dual.costates[i] = elemProduct( solution.dual.costates[i],  (*workspace->constraint_scaling)(colon(lam_phase_offset+1,lam_phase_offset+nstates*(norder+1) )) );
 	  solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1);
    }
 
@@ -448,8 +455,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 Pl1 = solution.dual.costates[i](colon(), norder-2);
                 Pl2 = solution.dual.costates[i](colon(), norder-3);
 
-                sl  = (works.snodes[i])(norder-1)-(works.snodes[i])(norder -2  );
-                sl1 = (works.snodes[i])(norder-2)-(works.snodes[i])(  norder-3 );
+                sl  = (workspace->snodes[i])(norder-1)-(workspace->snodes[i])(norder -2  );
+                sl1 = (workspace->snodes[i])(norder-2)-(workspace->snodes[i])(  norder-3 );
 
                 Pl = Pl1 + (Pl1-Pl2)/sl1*sl;
 
@@ -458,8 +465,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 Pl1 = solution.dual.costates[i](colon(), 5);
                 Pl2 = solution.dual.costates[i](colon(), 4);
 
-                sl1  = (works.snodes[i])(5)-(works.snodes[i])(4);
-                sl   = (works.snodes[i])(4)-(works.snodes[i])(3);
+                sl1  = (workspace->snodes[i])(5)-(workspace->snodes[i])(4);
+                sl   = (workspace->snodes[i])(4)-(workspace->snodes[i])(3);
 
                 Pl = Pl2 - (Pl1-Pl2)/sl1*sl;
 
@@ -471,8 +478,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 Pl1 = solution.dual.costates[i](colon(), norder-1);
                 Pl2 = solution.dual.costates[i](colon(), norder-2);
 
-                sl  = (works.snodes[i])(norder)-(works.snodes[i])(norder -1  );
-                sl1 = (works.snodes[i])(norder-1)-(works.snodes[i])(  norder-2 );
+                sl  = (workspace->snodes[i])(norder)-(workspace->snodes[i])(norder -1  );
+                sl1 = (workspace->snodes[i])(norder-1)-(workspace->snodes[i])(  norder-2 );
 
                 Pl = Pl1 + (Pl1-Pl2)/sl1*sl;
 
@@ -481,8 +488,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 Pl1 = solution.dual.costates[i](colon(), 4);
                 Pl2 = solution.dual.costates[i](colon(), 3);
 
-                sl1  = (works.snodes[i])(4)-(works.snodes[i])(3);
-                sl   = (works.snodes[i])(3)-(works.snodes[i])(2);
+                sl1  = (workspace->snodes[i])(4)-(workspace->snodes[i])(3);
+                sl   = (workspace->snodes[i])(3)-(workspace->snodes[i])(2);
 
                 Pl = Pl2 - (Pl1-Pl2)/sl1*sl;
 
@@ -493,8 +500,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 Pl1 = solution.dual.costates[i](colon(), norder);
                 Pl2 = solution.dual.costates[i](colon(), norder-1);
 
-                sl  = (works.snodes[i])(norder+1)-(works.snodes[i])(norder   );
-                sl1 = (works.snodes[i])(norder)-(works.snodes[i])(  norder-1 );
+                sl  = (workspace->snodes[i])(norder+1)-(workspace->snodes[i])(norder   );
+                sl1 = (workspace->snodes[i])(norder)-(workspace->snodes[i])(  norder-1 );
 
                 Pl = Pl1 + (Pl1-Pl2)/sl1*sl;
 
@@ -503,8 +510,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 Pl1 = solution.dual.costates[i](colon(), 3);
                 Pl2 = solution.dual.costates[i](colon(), 2);
 
-                sl1  = (works.snodes[i])(3)-(works.snodes[i])(2);
-                sl   = (works.snodes[i])(2)-(works.snodes[i])(1);
+                sl1  = (workspace->snodes[i])(3)-(workspace->snodes[i])(2);
+                sl   = (workspace->snodes[i])(2)-(workspace->snodes[i])(1);
 
                 Pl = Pl2 - (Pl1-Pl2)/sl1*sl;
 
@@ -537,10 +544,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         // use linear extrapolation to approximate the costate values at the collocation nodes...
         pint = solution.dual.costates[i](colon(),colon(1,norder));
 		for(int k=1;k<=norder;k++) {
-		   tint(k) = ( (works.snodes[i])(k)+(works.snodes[i])(k+1) )/2.0;
+		   tint(k) = ( (workspace->snodes[i])(k)+(workspace->snodes[i])(k+1) )/2.0;
 		}
         for (int l=1;l<=nstates;l++) {
-                   ts = tra(works.snodes[i]);
+                   ts = tra(workspace->snodes[i]);
                    tint = tra(tint);
                    pl = pint(l,colon());
                    linear_interpolation(pextra, ts, tint, pl,norder);
@@ -549,9 +556,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
         // use linear extrapolation to approximate costate values at end point (not perfect but better than nothing)
        	pint = solution.dual.costates[i](colon(),colon(norder-1,norder));
-       	tint = works.snodes[i](colon(norder-1,norder));
+       	tint = workspace->snodes[i](colon(norder-1,norder));
         for (int l=1;l<=nstates;l++) {
-                   double tss = (works.snodes[i])(norder+1);
+                   double tss = (workspace->snodes[i])(norder+1);
                    tint = tra(tint);
                    pl = pint(l,colon());
                    linear_interpolation(pextra, tss, tint, pl,2);
@@ -568,14 +575,14 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     }
 
 	solution.dual.events[i]  = -lambda(colon(offset+1,offset+nevents));
-	works.dual_events[i] = -(solution.dual.events[i]);
+	workspace->dual_events[i] = -(solution.dual.events[i]);
 
 	if (algorithm.scaling=="user") {
 		   solution.dual.events[i] = elemProduct( solution.dual.events[i],  problem.phase[i].scale.events );
 	}
 
     if (algorithm.scaling=="automatic" && nevents>0) {
-	   solution.dual.events[i] = elemProduct( solution.dual.events[i],  (*works.constraint_scaling)(colon(offset+1,offset+nevents) )) ;
+	   solution.dual.events[i] = elemProduct( solution.dual.events[i],  (*workspace->constraint_scaling)(colon(offset+1,offset+nevents) )) ;
     }
 	solution.dual.events[i] /= problem.scale.objective;
 
@@ -627,9 +634,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         	}
                 // use linear extrapolation to approximate multiplier values at end point (not perfect but better than nothing)
              	pint = solution.dual.path[i](colon(),colon(norder-1,norder));
-             	tint = works.snodes[i](colon(norder-1,norder));
+             	tint = workspace->snodes[i](colon(norder-1,norder));
                 for (int l=1;l<=npath;l++) {
-                   double tss = (works.snodes[i])(norder+1);
+                   double tss = (workspace->snodes[i])(norder+1);
                    tint = tra(tint);
                    pl = pint(l,colon());
                    linear_interpolation(pextra, tss, tint, pl,2);
@@ -640,10 +647,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         	    // use linear extrapolation to approximate the multiplier values at the collocation nodes...
 //             	pint = solution.dual.path[i](colon(),colon(1,norder));
 //		        for(int k=1;k<=norder;k++) {
-//		             tint(k) = ( (works.snodes[i])(k)+(works.snodes[i])(k+1) )/2.0;
+//		             tint(k) = ( (workspace->snodes[i])(k)+(workspace->snodes[i])(k+1) )/2.0;
 //		        }
 //                for (int l=1;l<=npath;l++) {
-//                   ts = tra(works.snodes[i]);
+//                   ts = tra(workspace->snodes[i]);
 //                   tint = tra(tint);
 //                   pl = pint(l,colon());
 //                   linear_interpolation(pextra, ts, tint, pl,norder);
@@ -653,23 +660,23 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 	     if ( algorithm.collocation_method == "Legendre") {
              for (k=1;k<=norder+1;k++) {
-	     		(solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)/(works.w[i])(k);  // See PhD thesis by Huntington (2006).
+	     		(solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)/(workspace->w[i])(k);  // See PhD thesis by Huntington (2006).
 	     		(solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k)*(2.0/(tf-t0));
              }
 	     }
 
 	     if ( algorithm.collocation_method == "Chebyshev" ) {
              for (k=2; k<= norder;k++) {
-                  double tk = (works.snodes[i])(k);
-                  (solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k)/(works.w[i])(k);
+                  double tk = (workspace->snodes[i])(k);
+                  (solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k)/(workspace->w[i])(k);
                   (solution.dual.path[i])(colon(),k) = -(1.0/sqrt(1.0 - tk*tk))*(solution.dual.path[i])(colon(),k); // See PhD thesis by Pietz (2003)
                   (solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k)*(2.0/(tf-t0));
              }
             // use linear extrapolation to approximate multiplier values at both ends (not perfect but better than nothing)
         	pint = solution.dual.path[i](colon(),colon(3,norder-1));
-            tint = works.snodes[i](colon(3,norder-2));
+            tint = workspace->snodes[i](colon(3,norder-2));
             for (int l=1;l<=npath;l++) {
-                   ts = tra(works.snodes[i]);
+                   ts = tra(workspace->snodes[i]);
                    tint = tra(tint);
                    pl = pint(l,colon());
                    linear_interpolation(pextra, ts, tint, pl,norder-4);
@@ -685,7 +692,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
          if (algorithm.scaling=="automatic") {
              for (k=1;k<=norder+1;k++) {
-  	            solution.dual.path[i](colon(),k) =elemProduct( solution.dual.path[i](colon(),k),(*works.constraint_scaling)(colon(offset+(k-1)*npath+1,offset+k*npath)));
+  	            solution.dual.path[i](colon(),k) =elemProduct( solution.dual.path[i](colon(),k),(*workspace->constraint_scaling)(colon(offset+(k-1)*npath+1,offset+k*npath)));
   	         }
          }
          solution.dual.path[i] /= problem.scale.objective;
@@ -722,7 +729,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
            *solution.dual.linkages = (*solution.dual.linkages)&problem.scale.linkages;
          }
          if (algorithm.scaling=="automatic") {
-           *solution.dual.linkages = elemProduct( (*solution.dual.linkages),   (*works.constraint_scaling)(colon(offset+1,offset+problem.nlinkages))    );
+           *solution.dual.linkages = elemProduct( (*solution.dual.linkages),   (*workspace->constraint_scaling)(colon(offset+1,offset+problem.nlinkages))    );
          }
          *solution.dual.linkages /= problem.scale.objective;
 
@@ -732,7 +739,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     }
 
     if (!useAutomaticDifferentiation(algorithm) && algorithm.nlp_method=="IPOPT")  {
-//          deleteIndexGroups( works.igroup, works.nvars );
+//          deleteIndexGroups( workspace->igroup, workspace->nvars );
     }
 
     evaluate_solution(problem, algorithm, solution, workspace);
@@ -791,7 +798,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
   }
 
 
-
+  delete workspace;
   return;
 
 }

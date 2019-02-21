@@ -2,7 +2,7 @@
 
 This file is part of the PSOPT library, a software tool for computational optimal control
 
-Copyright (C) 2009-2015 Victor M. Becerra
+Copyright (C) 2009-2020 Victor M. Becerra
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -20,14 +20,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA,
 or visit http://www.gnu.org/licenses/
 
 Author:    Professor Victor M. Becerra
-           University of Reading
-           School of Systems Engineering
-           P.O. Box 225, Reading RG6 6AY
+Address:   University of Portsmouth
+           School of Energy and Electronic Engineering
+           Portsmouth PO1 3DJ
            United Kingdom
-           e-mail: vmbecerra99@gmail.com
+e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
-
 
 #include "psopt.h"
 
@@ -290,7 +289,7 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
   workspace->JacCol2->Resize(nlp_ncons,1);
   workspace->JacCol3->Resize(nlp_ncons,1);
   workspace->xp->Resize(nvars,1);
-  workspace->constraint_scaling->Resize(nlp_ncons+1,1);
+  workspace->constraint_scaling->Resize(nlp_ncons,1);
 
 
   solution.xad = workspace->xad;
@@ -300,6 +299,8 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
 
   workspace->xlb->Resize(nvars,1);
   workspace->xub->Resize(nvars,1);
+  
+  workspace->nphases = problem.nphases;
 
   for(i=0; i< problem.nphases; i++)
   {
@@ -330,6 +331,160 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
 	workspace->order_reduction[i].Resize(1,norder);
 
   }
+
+}
+
+
+
+work_str::~work_str()
+{
+  for(long unsigned int i=0; i< this->nphases; i++)
+  {
+    delete [] this->states[i];
+    delete [] this->controls[i];
+    delete [] this->parameters[i];
+    delete [] this->resid[i];
+    delete [] this->derivatives[i];
+    delete [] this->initial_states[i];
+    delete [] this->final_states[i];
+    delete [] this->initial_controls[i];
+    delete [] this->final_controls[i];
+    delete [] this->events[i];
+    delete [] this->path[i];
+
+    delete [] this->states_next[i];
+    delete [] this->controls_next[i];
+    delete [] this->derivatives_next[i];
+    delete [] this->path_next[i];
+    delete [] this->states_bar[i];
+    delete [] this->controls_bar[i];
+    delete [] this->derivatives_bar[i];
+
+    delete [] this->path_bar[i];
+
+    delete [] this->observed_variable[i];
+    delete [] this->observed_residual[i];
+    delete [] this->lam_resid[i];
+
+    delete [] this->interp_states_pe[i];
+    delete [] this->interp_controls_pe[i];
+
+    delete [] this->states_traj[i];
+    delete [] this->derivs_traj[i];
+  }
+
+  if (this->G2) delete [] this->G2;
+  if (this->hess_ir) delete [] this->hess_ir;
+  if (this->hess_jc) delete [] this->hess_jc;
+  if (this->iArow) delete [] this->iArow;
+  if (this->iGfun1) delete [] this->iGfun1;
+  if (this->iGfun2) delete [] this->iGfun2;
+  if (this->iGfun) delete [] this->iGfun;
+  if (this->iGrow) delete [] this->iGrow;
+  if (this->jac_Aij) delete [] this->jac_Aij;
+  if (this->jac_Gij) delete [] this->jac_Gij;
+  if (this->jAcol) delete [] this->jAcol;
+  if (this->jGcol) delete [] this->jGcol;
+  if (this->jGvar1) delete [] this->jGvar1;
+  if (this->jGvar2) delete [] this->jGvar2;
+  if (this->jGvar) delete [] this->jGvar;
+  if (this->lambda_d) delete [] this->lambda_d;
+
+  delete [] this->xad;
+  delete [] this->gad;
+  delete [] this->fgad;
+  delete [] this->fg;
+  delete [] this->nrm_row;
+
+  delete [] this->states;
+  delete [] this->controls;
+  delete [] this->parameters;
+  delete [] this->resid;
+  delete [] this->derivatives;
+  delete [] this->initial_states;
+  delete [] this->final_states;
+  delete [] this->initial_controls;
+  delete [] this->final_controls;
+  delete [] this->events;
+  delete [] this->path;
+  delete [] this->states_traj;
+  delete [] this->derivs_traj;
+  delete [] this->linkages;
+  delete [] this->states_next;
+  delete [] this->controls_next;
+  delete [] this->derivatives_next;
+  delete [] this->path_next;
+  delete [] this->states_bar;
+  delete [] this->controls_bar;
+  delete [] this->derivatives_bar;
+  delete [] this->path_bar;
+  delete [] this->observed_variable;
+  delete [] this->observed_residual;
+  delete [] this->interp_states_pe;
+  delete [] this->interp_controls_pe;
+  delete [] this->lam_resid;
+
+  delete [] this->time_array_tmp;
+  delete [] this->single_trajectory_tmp;
+  delete [] this->L_ad_tmp;
+  delete [] this->u_spline;
+  delete [] this->z_spline;
+  delete [] this->y2a_spline;
+
+  delete this->igroup;
+
+  delete [] this->P;
+  delete [] this->sindex;
+  delete [] this->w;
+  delete [] this->D;
+  delete [] this->snodes;
+  delete [] this->old_snodes;
+  delete    this->xlb;
+  delete    this->xub;
+  delete    this->x0;
+  delete    this->lambda;
+  delete [] this->dual_costates;
+  delete [] this->dual_events;
+  delete [] this->dual_path;
+  delete    this->linkage;
+  delete    this->constraint_scaling;
+  delete [] this->prev_states;
+  delete [] this->prev_costates;
+  delete [] this->prev_controls;
+  delete [] this->prev_path;
+  delete [] this->prev_param;
+  delete [] this->prev_nodes;
+  delete    this->Ax;
+  delete    this->Gsp;
+  delete    this->Xsnopt;
+  delete    this->gsnopt;
+  delete    this->Xip;
+  delete    this->JacRow;
+  delete    this->Gip;
+  delete    this->GFip;
+  delete [] this->Xdot;
+  delete [] this->DerivResid;
+  delete [] this->Xdotgg;
+  delete [] this->e;
+  delete [] this->hgg;
+  delete    this->prev_t0;
+  delete    this->prev_tf;
+  delete    this->JacCol1;
+  delete    this->JacCol2;
+  delete    this->JacCol3;
+  delete    this->xp;
+  delete [] this->emax_history;
+  delete [] this->order_reduction;
+  delete [] this->old_relative_errors;
+  delete [] this->error_scaling_weights;
+
+  delete this->grw->dfdx_j;
+  delete this->grw->F1;
+  delete this->grw->F2;
+  delete this->grw->F3;
+  delete this->grw->F4;
+
+  delete this->grw;
 
 }
 

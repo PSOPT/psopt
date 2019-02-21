@@ -11,7 +11,7 @@ DMATRIXDIR=../../../dmatrix
 CXSPARSE=../../../SuiteSparse/CXSparse
 LUSOL=../../../lusol/csrc
 
-prefix = $(USERHOME)/Ipopt-3.12.3
+prefix = $(USERHOME)/Ipopt-3.12.12
 IPOPTINCDIR = -I${prefix}/Ipopt/src/Interfaces -I${prefix}/Ipopt/src/Common -I${prefix}/Ipopt/src/LinAlg
 # Directory with libipopt.a
 IPOPTLIBDIR = ${exec_prefix}/lib
@@ -27,12 +27,14 @@ SNOPT_LIBS    =
 SPARSE_LIBS   = $(LUSOL)/liblusol.a  $(CXSPARSE)/Lib/libcxsparse.a -ldl
 # IPOPT_LIBS    =  $(IPOPTLIBDIR)/libipopt.a $(IPOPTLIBDIR)/libcoinhsl.a  $(IPOPTLIBDIR)/ThirdParty/libcoinmumps.a $(IPOPTLIBDIR)/ThirdParty/libcoinmetis.a -lpthread -lgfortran -lblas -llapack -latlas -lf77blas
 IPOPT_LIBS = `PKG_CONFIG_PATH=$(prefix)/lib64/pkgconfig:$(prefix)/lib/pkgconfig:$(prefix)/share/pkgconfig: /usr/bin/pkg-config --libs ipopt`
-ADOLC_LIBS    = /usr/lib/libadolc.a /usr/lib/libColPack.a
+# ADOLC_LIBS    = /usr/lib/libadolc.a /usr/lib/libColPack.a
+# ADOLC_LIBS    = /usr/lib/libadolc.a -lColPack -Wl,-rpath=/usr/lib/x86_64-linux-gnu/
+ADOLC_LIBS    = -ladolc -lColPack -Wl,-rpath=/usr/lib/x86_64-linux-gnu/
 PSOPT_LIBS    = $(PSOPTDIR)/lib/libpsopt.a
 DMATRIX_LIBS  = $(DMATRIXDIR)/lib/libdmatrix.a
 
 # LDFLAGS	      = -Wl,--rpath -Wl,$(USERHOME)/Ipopt-3.9.3/lib/coin -L$(IPOPTLIBDIR)  -lm  -ldl    -lgcc_s
-LDFLAGS	      = -Wl,--rpath -Wl,$(USERHOME)/Ipopt-3.12.3/lib
+LDFLAGS	      = -Wl,--rpath -Wl,${prefix}/lib
 
 CXX           = /usr/bin/g++
 CC            = /usr/bin/gcc

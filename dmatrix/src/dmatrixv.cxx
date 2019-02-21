@@ -2,7 +2,7 @@
 
 This file is part of the DMatrix library, a C++ tool for numerical linear algebra
 
-Copyright (C) 2009 Victor M. Becerra
+Copyright (C) 2009-2020 Victor M. Becerra
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -19,14 +19,15 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA,
 or visit http://www.gnu.org/licenses/
 
-Author:    Dr. Victor M. Becerra
-           University of Reading
-           School of Systems Engineering
-           P.O. Box 225, Reading RG6 6AY
+Author:    Professor Victor M. Becerra
+Address:   University of Portsmouth
+           School of Energy and Electronic Engineering
+           Portsmouth PO1 3DJ
            United Kingdom
-           e-mail: v.m.becerra@reading.ac.uk
+e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
+
 #ifdef UNIX
 
 
@@ -237,23 +238,27 @@ InitializeDMatrixClass Dummy;
 
 #define FREE_ARG char*
 
+void DMatrix::initVars()
+{
+	a = NULL;
+	n = 0;
+	m = 0;
+	asize = 0;
+	atype = 0;
+	mtype = 0;
+	auxFlag = 0;
+	allocated = 0;
+	DMatrix* mt = NULL;
+	rowIndx = NULL;
+	colIndx = NULL;
+}
 
 
 DMatrix::DMatrix(void)
 // Default constructor
 {
-
-    n = 0;
-
-    m = 0;
-
-    a = NULL;
-
-    asize = 0;
-
-    atype = 0;
-
-	auxFlag=0;
+    
+    initVars();
 
     SetReferencedDMatrixPointer( NULL );
     SetRowIndexPointer(NULL);
@@ -268,6 +273,8 @@ DMatrix::DMatrix(void)
 DMatrix::DMatrix(long Initn, long Initm)
 //  Matrix constructor using memory allocation
 {
+    
+  initVars();
 
   n=Initn;
 
@@ -291,9 +298,6 @@ DMatrix::DMatrix(long Initn, long Initm)
 
   }
 
-  atype = 0;
-
-  auxFlag = 0;
 
   SetReferencedDMatrixPointer( NULL );
   SetRowIndexPointer(NULL);
@@ -306,6 +310,8 @@ DMatrix::DMatrix( long vDim, double* v, long Initn, long Initm )
 // Matrix constructor using pre-allocated array or pointer
 {
 
+   initVars();
+   
    n = Initn;
 
    m = Initm;
@@ -352,6 +358,8 @@ DMatrix::DMatrix( long Initn)
                      DMatrix::DMatrix(long)");
   }
 
+  initVars();
+  
   n=Initn;
 
   m=1;
@@ -383,6 +391,8 @@ DMatrix::DMatrix(long rows,long columns,double a11,...)
 // Matrix constructor with assigment
 
    long i,j;
+   
+   initVars();
 
    n = rows;
 
@@ -432,6 +442,8 @@ DMatrix::DMatrix( const DMatrix& A)
 // copy constructor
 {
 
+  initVars();
+  
   n=A.n;
 
   m=A.m;
@@ -519,6 +531,11 @@ void DMatrix::DeAllocateAuxArr( void )
 // Routine to deallocate temporary objects at program termination
 
     int i;
+    
+    if (DMatrix::seed) {
+        mxFree(DMatrix::seed);
+        DMatrix::seed = NULL;
+    }
 
     for ( i=0; i< GetNoAuxArr(); i++ )
     {
@@ -5797,7 +5814,7 @@ double cond( const DMatrix& A )
 #endif /* LAPACK */
 
 #ifdef  LAPACK
-int rank( const DMatrix& A )
+int rank_matrix( const DMatrix& A )
 {
      /* rank of a matrix */
 
@@ -6648,6 +6665,11 @@ DMatrix& DMatrix::operator() (const DMatrix& RowIndx, long col )
 {
 
       DMatrix* ColIndx;
+      
+      if (col > this->GetNoCols()) {
+            this->Resize(this->GetNoRows(), col);
+      }
+
 
       ColIndx  = DMatrix::GetTempPr(ChkTmpIndx(DMatrix::IncrementAuxIndx()));
       ColIndx->SetMType( 0 );
@@ -6695,6 +6717,10 @@ DMatrix& DMatrix::operator() (const char* end, const DMatrix& ColIndx )
 DMatrix& DMatrix::operator() (long row, const DMatrix& ColIndx )
 {
       DMatrix* RowIndx;
+      
+      if (row > this->GetNoRows()) {
+            this->Resize(row, this->GetNoRows());
+      }
 
       RowIndx  = DMatrix::GetTempPr(ChkTmpIndx(DMatrix::IncrementAuxIndx()));
       RowIndx->SetMType( 0 );
@@ -9358,7 +9384,7 @@ double rcond( const SparseMatrix& A )
 
 }
 
-int rank( const SparseMatrix& A )
+int rank_sparse( const SparseMatrix& A )
 {
     int r;
 
@@ -9366,7 +9392,7 @@ int rank( const SparseMatrix& A )
 
     *Af = full(A);
 
-    r = rank(*Af);
+    r = rank_matrix(*Af);
 
     delete Af;
 
