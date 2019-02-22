@@ -51,10 +51,6 @@ struct Constants {
 
 typedef struct Constants Constants_;
 
-static Constants_ CONSTANTS;
-
-
-
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Define the end point (Mayer) cost function //////////
@@ -99,6 +95,8 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 {
 
     int j;
+    
+    Constants_& CONSTANTS = *( (Constants_ *) workspace->problem->user_data );
 
     adouble* x = states;
     adouble* u = controls;
@@ -204,6 +202,9 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             int iphase, Workspace* workspace)
 {
 
+
+   Constants_& CONSTANTS = *( (Constants_ *) workspace->problem->user_data );
+   
    adouble rv[3]; rv[0]=final_states[0]; rv[1]=final_states[1]; rv[2]=final_states[2];
    adouble vv[3]; vv[0]=final_states[3]; vv[1]=final_states[4]; vv[2]=final_states[5];
 
@@ -275,6 +276,17 @@ int main(void)
 
     problem.name        		= "Multiphase vehicle launch";
     problem.outfilename                 = "launch.txt";
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Declare an instance of Constants structure /////////////
+////////////////////////////////////////////////////////////////////////////
+
+    
+    Constants_ CONSTANTS;    
+    
+    problem.user_data = (void*) &CONSTANTS;
+
+
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////  Define problem level constants & do level 1 setup ////////////
@@ -437,11 +449,7 @@ int main(void)
     problem.bounds.lower.times = "[0, 75.2, 150.4, 261.0, 261.0]";
     problem.bounds.upper.times = "[0, 75.2, 150.4  261.0, 961.0]";
 
-//    double t0 = 0;
-//    double t1 = 75.2;
-//    double t2 = 150.4;
-//    double t3 = 261.0;
-//    double t4 = 961.0;
+
 
     // Phase 1 bounds
 

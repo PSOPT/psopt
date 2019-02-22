@@ -1,6 +1,6 @@
 This is the PSOPT library, a software tool for computational optimal control
 
-Copyright (C) 2009-2019 Victor M. Becerra
+Copyright (C) 2009-2020 Victor M. Becerra
 
 
 To install on a Ubuntu 18.04 distribution, copy the file install-ubuntu-18.04.sh to the ~/Downloads folder, and using a command window, run it as follows:
@@ -9,7 +9,7 @@ To install on a Ubuntu 18.04 distribution, copy the file install-ubuntu-18.04.sh
 
 Full installation instructions can be found in the documentation PSOPT_Manual_R4.pdf
 
-If you wish to install on a Ubuntu 16.04 distribution, you will need to download release 4 (Beta). 
+If you wish to install on a Ubuntu 16.04 distribution, you will need to download release 4 (Beta) from the GitHub page, or tweak the installation of release 4 so that it works under Ubuntu 16.04.
 
 
 

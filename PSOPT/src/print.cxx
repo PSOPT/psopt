@@ -255,6 +255,8 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
     fprintf(outfile,"\n%s", auxstr.c_str());
     fprintf(outfile,"\nCPU time (seconds):\t\t\t\t%e", solution.cpu_time);
     fprintf(outfile,"\nNLP solver used: \t\t\t\t%s", algorithm.nlp_method.c_str());
+    fprintf(outfile,"\nPSOPT release number: \t\t\t\t%s", PSOPT_RELEASE_STRING );
+    fprintf(outfile,"\nDate and time of this run: \t\t\t%s", solution.end_date_and_time.c_str() );
 
     if ( algorithm.nlp_method == "IPOPT") {
         if (solution.nlp_return_code  == (int) Solve_Succeeded) {

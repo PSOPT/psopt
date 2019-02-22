@@ -798,7 +798,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
   }
 
 
-  delete workspace;
+  if (workspace) delete  workspace;
+  
   return;
 
 }

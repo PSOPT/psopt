@@ -3,27 +3,30 @@ PSOPT results summary
 =====================
 
 Problem: 					Multiphase vehicle launch
-CPU time (seconds):				2.089997e+00
+CPU time (seconds):				3.356515e+00
 NLP solver used: 				IPOPT
+PSOPT release number: 				4.0
+Date and time of this run: 			Thu Feb 21 16:00:31 2019
+
 Optimal (unscaled) cost function value: 	-7.529661e+03
 Phase 1 endpoint cost function value:		0.000000e+00
 Phase 1 integrated part of the cost: 		0.000000e+00
 Phase 1 initial time:				0.000000e+00
 Phase 1 final time:				7.520000e+01
-Phase 1 maximum relative local error:		1.179806e-06
+Phase 1 maximum relative local error:		1.173524e-06
 Phase 2 endpoint cost function value:		0.000000e+00
 Phase 2 integrated part of the cost: 		0.000000e+00
 Phase 2 initial time:				7.520000e+01
 Phase 2 final time:				1.504000e+02
-Phase 2 maximum relative local error:		7.293732e-07
+Phase 2 maximum relative local error:		1.301765e-06
 Phase 3 endpoint cost function value:		0.000000e+00
 Phase 3 integrated part of the cost: 		0.000000e+00
 Phase 3 initial time:				1.504000e+02
 Phase 3 final time:				2.610000e+02
-Phase 3 maximum relative local error:		4.236462e-07
+Phase 3 maximum relative local error:		3.952037e-07
 Phase 4 endpoint cost function value:		-7.529661e+03
 Phase 4 integrated part of the cost: 		0.000000e+00
 Phase 4 initial time:				2.610000e+02
 Phase 4 final time:				9.241413e+02
-Phase 4 maximum relative local error:		1.805398e-06
-NLP solver reports: 				The problem solved!
+Phase 4 maximum relative local error:		1.631374e-06
+NLP solver reports: 				The problem has been solved!

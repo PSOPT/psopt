@@ -165,7 +165,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 2;
     problem.phases(1).nevents   		= 12;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes 	 		= "[40]";
+    problem.phases(1).nodes 	 		= "[40, 60, 80]";
 
     psopt_level2_setup(problem, algorithm);
 
@@ -259,8 +259,8 @@ int main(void)
     algorithm.derivatives                 = "automatic";
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
-    algorithm.mesh_refinement             = "automatic";
-    algorithm.defect_scaling             = "jacobian-based";
+    algorithm.collocation_method          = "Legendre";
+ 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   /////////////////

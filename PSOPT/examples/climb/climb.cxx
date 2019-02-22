@@ -19,7 +19,7 @@
 #include "psopt.h"
 
 
-void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta);
+
 
 //////////////////////////////////////////////////////////////////////////
 /////////  Declare an auxiliary structure to hold local constants ////////
@@ -46,9 +46,9 @@ struct Constants {
 
 typedef struct Constants Constants_;
 
-static Constants_ CONSTANTS;
+void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta, Constants_& CONSTANTS);
 
-void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h);
+void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h, Constants_& CONSTANTS);
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -84,6 +84,8 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* xad, int iphase, Workspace* workspace)
 {
 
+  Constants_& CONSTANTS = *( (Constants_ *) workspace->problem->user_data );
+
   adouble alpha = controls[ CINDEX(1)]; // Angle of attack (rad)
 
 
@@ -113,7 +115,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
   adouble   m = w/g0;
   adouble   M;
 
-  atmosphere_model( &rho, &M, v, h);
+  atmosphere_model( &rho, &M, v, h, CONSTANTS);
 
   adouble CL_a, CD0, eta, T;
 
@@ -244,6 +246,15 @@ int main(void)
 
 
     psopt_level2_setup(problem, algorithm);
+    
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Declare an instance of Constants structure /////////////
+////////////////////////////////////////////////////////////////////////////
+
+    
+    Constants_ CONSTANTS;    
+    
+    problem.user_data = (void*) &CONSTANTS;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Declare DMatrix objects to store results //////////////
@@ -440,10 +451,10 @@ int main(void)
     algorithm.nlp_method                  	= "IPOPT";
     algorithm.scaling                     	= "automatic";
     algorithm.derivatives                 	= "numerical";
-    algorithm.collocation_method            = "Legendre";
+    algorithm.collocation_method            = "trapezoidal";
     algorithm.nlp_iter_max                	= 1000;
     algorithm.nlp_tolerance               	= 1.e-6;
- //   algorithm.mesh_refinement               = "automatic";
+    algorithm.mesh_refinement               = "automatic";
     algorithm.mr_max_iterations             = 4;
     algorithm.defect_scaling                = "jacobian-based";
 
@@ -507,7 +518,7 @@ int main(void)
 }
 
 
-void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta)
+void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta, Constants_& CONSTANTS)
 // US Standard Atmosphere Model 1976
 // Adopted from original Fortran 90 code by Ralph Carmichael
 // Fortran code located at: http://www.pdas.com/programs/atmos.f90
@@ -588,7 +599,7 @@ void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta)
 }
 
 
-void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h)
+void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h, Constants_& CONSTANTS)
 {
    double feet2meter = 0.3048;
    double kgperm3_to_slug_per_feet3 = 0.062427960841/32.174049;
@@ -597,7 +608,7 @@ void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h)
 
    // Call the standard atmosphere model 1976
 
-   atmosphere(&alt, &sigma, &delta, &theta);
+   atmosphere(&alt, &sigma, &delta, &theta, CONSTANTS);
 
    adouble rho1 = 1.22521 * sigma; // Multiply by standard density at zero altitude and 15 deg C.
 

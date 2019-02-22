@@ -116,7 +116,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   problem.events                      = NULL;
   problem.linkages                    = NULL;
   problem.observation_function        = NULL;
-  problem.user_data                   = NULL;
+
 
   // Set default values for some parameters
 

@@ -23,9 +23,6 @@
 //////////////////////////////////////////////////////////////////////////
 
 
-DMatrix tobs_global;
-DMatrix u_global;
-
 
 void  observation_function( adouble* observations,
                             adouble* states, adouble* controls,
@@ -238,31 +235,8 @@ int main(void)
 ///////////////////  Now call PSOPT to solve the problem   //////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int ntrials = 1;
 
-    Sol best_solution;
-    double best_cost = inf;
-
-    for(int i=1; i<=ntrials;i++) {
-       int j;
-       double dpj, r;
-
-       for(j=1;j<=problem.phases(1).nparameters;j++) {
-          r = (randu(1,1))(1);
-          dpj = problem.phases(1).bounds.upper.parameters(j) - problem.phases(1).bounds.lower.parameters(j);
-          problem.phases(1).guess.parameters(j) = problem.phases(1).bounds.lower.parameters(j) + r*dpj;
-       }
-
-       psopt(solution, problem, algorithm);
-
-       if (solution.get_cost() < best_cost ) {
-             best_solution = solution;
-             best_cost = solution.get_cost();
-       }
-
-    }
-
-    solution= best_solution;
+    psopt(solution, problem, algorithm);
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Declare DMatrix objects to store results //////////////

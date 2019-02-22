@@ -29,7 +29,8 @@ e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
 
-#define PSOPT_RELEASE_STRING  "4"
+#include "../../RELEASE_NUMBER"
+
 
 /* Define to the C type corresponding to Fortran INTEGER */
 #define FORTRAN_INTEGER_TYPE int

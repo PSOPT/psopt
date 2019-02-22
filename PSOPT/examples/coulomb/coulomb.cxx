@@ -229,7 +229,7 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x0(2,40);
+    DMatrix x0(4,40);
 
     x0(1,colon()) = linspace(q1_0,q1_f, 40);
     x0(2,colon()) = linspace(dotq1_0, dotq1_f, 40);
