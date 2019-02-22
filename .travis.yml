@@ -12,7 +12,7 @@ before_install:
   - sudo apt-get -y install g++ gfortran f2c libf2c2-dev libf2c2 libblas-dev libopenblas-base libopenblas-dev libblas3 libatlas-base-dev liblapack-dev liblapack3
   #- ls /usr/lib/openblas-base
   #- sudo cp /usr/lib/openblas-base/* /usr/lib/
-  - sudo ln -s /usr/lib/libblas.so /usr/lib/libopenblas.so
+  # - sudo ln -s /usr/lib/libblas.so /usr/lib/libopenblas.so
   - # Download and install Ipopt, Metis and Mumps
  
   - mkdir $HOME/Downloads
