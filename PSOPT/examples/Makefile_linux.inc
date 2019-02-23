@@ -54,7 +54,7 @@ CFLAGS        = -O0 -fPIC
 FLIBS        =  -lm -lf2c  -llapack -lf77blas -lcblas
 #FLIBS = ../dmatrix/lib/lapack_LINUX.a ../dmatrix/lib/blas_LINUX.a ../dmatrix/lib/F2CLIBS/libf2c_LINUX.a   -lm
 
-ALL_LIBRARIES = $(PSOPT_LIBS) $(DMATRIX_LIBS) $(FLIBS) $(SPARSE_LIBS) $(IPOPT_LIBS)  $(ADOLC_LIBS)
+ALL_LIBRARIES = $(ADOLC_LIBS) $(PSOPT_LIBS) $(DMATRIX_LIBS) $(FLIBS) $(SPARSE_LIBS) $(IPOPT_LIBS)  
 
 
 
