@@ -29,7 +29,8 @@ SPARSE_LIBS   = $(LUSOL)/liblusol.a  $(CXSPARSE)/Lib/libcxsparse.a -ldl
 IPOPT_LIBS = `PKG_CONFIG_PATH=$(prefix)/lib64/pkgconfig:$(prefix)/lib/pkgconfig:$(prefix)/share/pkgconfig: /usr/bin/pkg-config --libs ipopt`
 # ADOLC_LIBS    = /usr/lib/libadolc.a /usr/lib/libColPack.a
 # ADOLC_LIBS    = /usr/lib/libadolc.a -lColPack -Wl,-rpath=/usr/lib/x86_64-linux-gnu/
-ADOLC_LIBS    = -ladolc -lColPack -Wl,-rpath=/usr/lib/x86_64-linux-gnu/
+# ADOLC_LIBS    = -ladolc -lColPack -Wl,-rpath=/usr/lib/x86_64-linux-gnu/
+ADOLC_LIBS    = -ladolc /usr/lib/libColPack.a -Wl,-rpath=/usr/lib/x86_64-linux-gnu/
 PSOPT_LIBS    = $(PSOPTDIR)/lib/libpsopt.a
 DMATRIX_LIBS  = $(DMATRIXDIR)/lib/libdmatrix.a
 
