@@ -37,7 +37,7 @@ sudo make install
 # sudo cp /usr/local/lib/libCol* /usr/lib
 sudo cp -P ./build/lib/libCol* /usr/lib
 cd $HOME/ADOL-C-2.6.3
-./configure --enable-sparse --with-colpack=$HOME/ADOL-C-2.6.3/ThirdParty/ColPack
+./configure --enable-sparse --with-colpack=$HOME/ADOL-C-2.6.3/ThirdParty/ColPack/build
 make
 make install
 sudo cp -P $HOME/adolc_base/lib64/lib* /usr/lib
