@@ -67,7 +67,7 @@ Workspace* workspace = new Workspace;
 
 string startup_message= "\n *******************************************************************************\n * This is PSOPT, an optimal control solver based on pseudospectral and local  *\n * collocation methods, together with large scale nonlinear programming        *";
 
-sprintf(workspace->text, "%s %s %s", "\n *******************************************************************************\n * PSOPT release number: ", PSOPT_RELEASE_STRING, "                                                   *");
+sprintf(workspace->text, "%s %s %s", "\n *******************************************************************************\n * PSOPT release number: ", PSOPT_RELEASE_STRING, "                                                 *");
 
 string release_message= workspace->text;
 
