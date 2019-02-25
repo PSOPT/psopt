@@ -113,6 +113,18 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 		workspace->lambda_d  = new double [max_ncons];
 	}
   }
+  else {
+    workspace->iArow     = NULL;
+	workspace->jAcol     = NULL;
+	workspace->iGrow     = NULL;
+	workspace->jGcol     = NULL;
+	workspace->jac_Aij   = NULL;
+	workspace->jac_Gij   = NULL;
+    workspace->hess_ir   = NULL;
+    workspace->hess_jc   = NULL;
+    workspace->lambda_d  = NULL;
+  }
+  
   if ( algorithm.nlp_method == "SNOPT") {
   	workspace->iGfun     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->jGvar     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
@@ -121,6 +133,15 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   	workspace->iGfun2    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->jGvar2    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->G2        = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
+  }
+  else {
+  	workspace->iGfun     = NULL;
+  	workspace->jGvar     = NULL;
+  	workspace->iGfun1    = NULL;
+  	workspace->jGvar1    = NULL;
+  	workspace->iGfun2    = NULL;
+  	workspace->jGvar2    = NULL;
+  	workspace->G2        = NULL;
   }
   workspace->xad       = new adouble[max_nvars];
   workspace->gad       = new adouble[max_ncons];

@@ -1,5 +1,7 @@
 # Script for installing PSOPT on Ubuntu 18.04
 # Install miscellaneous libraries
+export MYHOME=`pwd`
+echo $MYHOME
 sudo apt-get install build-essential pkg-config
 sudo apt-get install dh-autoreconf
 sudo apt-get -y install g++ gfortran f2c libf2c2-dev libf2c2 libblas-dev libopenblas-base libopenblas-dev libblas3 libatlas-base-dev liblapack-dev liblapack3
@@ -61,21 +63,21 @@ cd gnuplot-4.4.0
 ./configure -with-readline=gnu -without-tutorial
 make;sudo make install
 # Download and extract PSOPT
-cd $HOME
-wget --continue https://github.com/PSOPT/psopt/archive/master.zip
-unzip master.zip
-mv master.zip $HOME/Downloads
-cd $HOME/psopt-master
+# cd $HOME
+# wget --continue https://github.com/PSOPT/psopt/archive/master.zip
+# unzip master.zip
+# mv master.zip $HOME/Downloads
+cd $MYHOME
 # Download and extract SuiteSparse
 wget --continue http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.4.3.tar.gz
 tar zxvf SuiteSparse-4.4.3.tar.gz
-cd $HOME/psopt-master
+cd $MYHOME
 # Download and extract LUSOL
 wget --continue http://www.stanford.edu/group/SOL/software/lusol/lusol.zip
 unzip lusol.zip
-cd $HOME/psopt-master
+cd $MYHOME
 # Compile SuiteSparse, LUSOL, dmatrix and PSOPT
 make all
 echo 'PSOPT installation script completed'
-echo 'PSOPT installed in $HOME\psopt-master'
+echo 'PSOPT installed in $MYHOME'
 
