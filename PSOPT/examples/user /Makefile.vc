@@ -1,0 +1,24 @@
+include ..\Makefile.inc
+
+all: user.exe
+
+
+SRC = user.cxx \
+   $(SNFW_SRC)
+
+OBJ = user.obj \
+  $(SNFW_OBJ)
+
+
+
+
+
+
+user.exe: $(OBJ) $(PSOPT)\lib\libpsopt.lib $(DMATRIX)\lib\libdmatrix.lib
+	$(LD)  -out:user.exe $(OBJ) $(LIBS)  /NODEFAULTLIB:"LIBC.lib" /DEFAULTLIB:"LIBCMT.lib"
+
+
+
+
+
+

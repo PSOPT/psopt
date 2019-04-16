@@ -1,0 +1,12 @@
+
+set terminal pdf
+set output "car_path_planning_controls.pdf"
+set style data lines
+set multiplot
+set title 'Car-like robot path planning problem: controls'
+set xlabel 'time (s)'
+set ylabel 'controls'
+set key box
+set key outside
+plot [ ] [-3.146509:3.146523] 'XY.dat' using 1:2 title "acc" with linespoints, 'XY.dat' using 1:3 title "omg" with linespoints
+unset multiplot

@@ -1,0 +1,12 @@
+
+set terminal pdf
+set output "launch_control.pdf"
+set style data lines
+set multiplot
+set title 'Multiphase vehicle launch'
+set xlabel 'time (s)'
+set ylabel 'u (dimensionless)'
+set key box
+set key outside
+plot [ ] [-0.677481:1.031564] 'XY.dat' using 1:2 title "u1" with linespoints, 'XY.dat' using 1:3 title "u2" with linespoints, 'XY.dat' using 1:4 title "u3" with linespoints
+unset multiplot

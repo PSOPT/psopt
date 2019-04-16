@@ -1,0 +1,17 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					Car-like robot path planning problem
+CPU time (seconds):				6.461650e-01
+NLP solver used: 				IPOPT
+PSOPT release number: 				4.0.1
+Date and time of this run: 			Tue Apr 16 13:05:49 2019
+
+Optimal (unscaled) cost function value: 	1.134285e+01
+Phase 1 endpoint cost function value:		1.040340e+01
+Phase 1 integrated part of the cost: 		9.394529e-01
+Phase 1 initial time:				0.000000e+00
+Phase 1 final time:				1.040340e+01
+Phase 1 maximum relative local error:		7.266339e-02
+NLP solver reports: 				The problem has been solved!
