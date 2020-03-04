@@ -15,7 +15,7 @@ mkdir Downloads
 sudo apt-get install build-essential pkg-config
 sudo apt-get install dh-autoreconf
 sudo apt-get -y install g++ gfortran f2c libf2c2-dev libf2c2 libblas-dev libopenblas-base libopenblas-dev libblas3 libatlas-base-dev liblapack-dev liblapack3
-echo -e '\n\n\e[33m \e[1mHit enter apt installation was succesfull. Otherwise press Ctrl-C and resolve arisen errors.\e[0m'
+echo -e '\n\n\e[33m \e[1mHit enter apt installation has been succesfull. Otherwise press Ctrl-C and resolve arisen errors.\e[0m'
 read x
 
 ####  Download and install Ipopt, Metis and Mumps #### 
@@ -121,6 +121,8 @@ cd $MYHOME
 
 ####  Compile SuiteSparse, LUSOL, dmatrix and PSOPT #### 
 make all
+echo -e '\n\n\e[33m \e[1mHit enter if compilation of SuiteSparse, Lusol, dmatrix and PSOPT has been succesfull. Otherwise press Ctrl-C and resolve arisen errors.\e[0m'
+read x
 echo -e '\n\n\e[33m \e[1mPSOPT installation script completed\e[0m'
 echo        '\e[33m \e[1mPSOPT installed in \e[0m' $MYHOME 
 
