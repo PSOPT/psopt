@@ -124,5 +124,5 @@ make all
 echo -e '\n\n\e[33m \e[1mHit enter if compilation of SuiteSparse, Lusol, dmatrix and PSOPT has been succesfull. Otherwise press Ctrl-C and resolve arisen errors.\e[0m'
 read x
 echo -e '\n\n\e[33m \e[1mPSOPT installation script completed\e[0m'
-echo        '\e[33m \e[1mPSOPT installed in \e[0m' $MYHOME 
+echo -e     '\e[33m \e[1mPSOPT installed in \e[0m' $MYHOME 
 
