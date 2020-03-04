@@ -1,12 +1,12 @@
 SHELL         = /bin/sh
-USERHOME      = ~
+USERHOME      = .
 F2CINC = $(F2CINCLUDE)
 F2CLIB = $(F2CLIBRARY)
 DMATRIXDIR=./dmatrix
 CXSPARSE=./SuiteSparse/CXSparse
 LUSOL=./lusol/csrc
 
-prefix = $(USERHOME)/Ipopt-3.12.12
+prefix = $(USERHOME)/Ipopt
 # Directory with header files
 IPOPTINCDIR = ${prefix}/include/coin
 # Directory with libipopt.a
@@ -15,8 +15,8 @@ exec_prefix = ${prefix}
 
 PSOPTDIR    = ./PSOPT
 
-PSOPTSRCDIR = $(PSOPTDIR)/src
-EXAMPLESDIR = $(PSOPTDIR)/examples
+PSOPTSRCDIR   = $(PSOPTDIR)/src
+EXAMPLESDIR   = $(PSOPTDIR)/examples
 CXSPARSE_LIBS = $(CXSPARSE)/Lib/libcxsparse.a
 LUSOL_LIBS    = $(LUSOL)/liblusol.a
 SPARSE_LIBS   = $(CXSPARSE_LIBS) $(LUSOL_LIBS) -ldl

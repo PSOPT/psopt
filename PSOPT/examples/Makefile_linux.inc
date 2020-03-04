@@ -1,7 +1,7 @@
 #Usage:  make
 
 SHELL         = /bin/sh
-USERHOME      = /home/$(shell whoami)
+USERHOME      = ../../..
 
 F2CINC = $(F2CINCLUDE)
 F2CLIB = $(F2CLIBRARY)
@@ -11,7 +11,7 @@ DMATRIXDIR=../../../dmatrix
 CXSPARSE=../../../SuiteSparse/CXSparse
 LUSOL=../../../lusol/csrc
 
-prefix = $(USERHOME)/Ipopt-3.12.12
+prefix = $(USERHOME)/Ipopt
 IPOPTINCDIR = -I${prefix}/Ipopt/src/Interfaces -I${prefix}/Ipopt/src/Common -I${prefix}/Ipopt/src/LinAlg
 # Directory with libipopt.a
 IPOPTLIBDIR = ${exec_prefix}/lib
@@ -39,7 +39,7 @@ LDFLAGS	      = -Wl,--rpath -Wl,${prefix}/lib
 
 CXX           = /usr/bin/g++
 CC            = /usr/bin/gcc
-CXXFLAGS      = -O0 -g -I$(USERHOME)/adolc_base/include -I$(SNOPTDIR)/cppsrc -I$(DMATRIXDIR)/include -I$(SNOPTDIR)/cppexamples -I$(PSOPTSRCDIR) -DLAPACK -DUNIX -DSPARSE_MATRIX -DUSE_IPOPT -I$(CXSPARSE)/Include -I$(CXSPARSE)/../SuiteSparse_config -I$(LUSOL) $(IPOPTINCDIR) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC -std=c++11
+CXXFLAGS      = -O0 -g -fpermissive -I$(USERHOME)/Adol-c/adolc_base/include -I$(SNOPTDIR)/cppsrc -I$(DMATRIXDIR)/include -I$(SNOPTDIR)/cppexamples -I$(PSOPTSRCDIR) -DLAPACK -DUNIX -DSPARSE_MATRIX -DUSE_IPOPT -I$(CXSPARSE)/Include -I$(CXSPARSE)/../SuiteSparse_config -I$(LUSOL) $(IPOPTINCDIR) -fomit-frame-pointer -pipe -DNDEBUG -pedantic-errors -Wimplicit -Wparentheses -Wreturn-type -Wcast-qual -Wall -Wpointer-arith -Wwrite-strings -Wconversion -fPIC -DHAVE_MALLOC -std=c++11
 
 CFLAGS        = -O0 -fPIC
 
