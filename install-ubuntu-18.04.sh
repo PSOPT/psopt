@@ -5,6 +5,7 @@ export IPOPT_FILE=Ipopt-3.12.12.tgz
 export ADOL_FILE=ADOL-C-2.6.3.tgz
 export COLPACK_FILE=colpack_1.0.10.orig.tar.gz
 export PDFLIB_FILE=PDFlib-Lite-7.0.5p3.tar.gz
+export GNUPLOT_FILE=gnuplot-4.4.0
 export SUITESPARSE_FILE=SuiteSparse-4.4.3.tar.gz
 export LUSOL_FILE=lusol.zip
 
@@ -86,13 +87,13 @@ read x
 
 
 #### Download and install GNUplot ####
-# cd $MYHOME/Downloads
-# wget --continue https://sourceforge.net/projects/gnuplot/files/gnuplot/4.4.0/gnuplot-4.4.0.tar.gz/download
-# mv download gnuplot-4.4.0.tar.gz
-# tar zxvf gnuplot-4.4.0.tar.gz
+# cd $MYHOME/Downloads GNUPLOT_FILE
+# wget --continue https://sourceforge.net/projects/gnuplot/files/gnuplot/4.4.0/$GNUPLOT_FILE/download
+# mkdir GnuPlot && tar zxvf $GNUPLOT_FILE -C GnuPlot --strip-components 1
+# mv $GNUPLOT_FILE $MYHOME/Downloads
 # sudo apt-get -y install libx11-dev libxt-dev libgd2-xpm-dev libreadline6-dev
 sudo apt-get -y install libx11-dev libxt-dev libreadline6-dev libgd-dev gnuplot-qt
-# cd gnuplot-4.4.0
+# cd GnuPlot
 # ./configure -with-readline=gnu -without-tutorial
 # make;sudo make install
 

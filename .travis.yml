@@ -1,93 +1,111 @@
 language: cpp
 
 before_install:
+  - export IPOPT_FILE=Ipopt-3.12.12.tgz
+  - export ADOL_FILE=ADOL-C-2.6.3.tgz
+  - export COLPACK_FILE=colpack_1.0.10.orig.tar.gz
+  - export PDFLIB_FILE=PDFlib-Lite-7.0.5p3.tar.gz
+  - export GNUPLOT_FILE=gnuplot-4.4.0
+  - export SUITESPARSE_FILE=SuiteSparse-4.4.3.tar.gz
+  - export LUSOL_FILE=lusol.zip
+ 
 
-  #- export LD_LIBRARY_PATH=/usr/lib/openblas-base:$LD_LIBRARY_PATH
-
-  #- sh ./install-ubuntu-18.04.sh
-  - # Script for Ubuntu 18.04
   - # Install miscellaneous libraries
   - sudo apt-get install build-essential pkg-config
   - sudo apt-get install dh-autoreconf
   - sudo apt-get -y install g++ gfortran f2c libf2c2-dev libf2c2 libblas-dev libopenblas-base libopenblas-dev libblas3 libatlas-base-dev liblapack-dev liblapack3
-  #- ls /usr/lib/openblas-base
-  #- sudo cp /usr/lib/openblas-base/* /usr/lib/
-  # - sudo ln -s /usr/lib/libblas.so /usr/lib/libopenblas.so
-  - # Download and install Ipopt, Metis and Mumps
  
-  - mkdir $HOME/Downloads
-  - cd $HOME/Downloads
+ 
+  - cd $TRAVIS_BUILD_DIR
+  - mkdir Downloads
   
-  - wget --continue http://www.coin-or.org/download/source/Ipopt/Ipopt-3.12.12.tgz
-  - cd $HOME
-  - tar xzvf ./Downloads/Ipopt-3.12.12.tgz
-  - cd $HOME/Ipopt-3.12.12/ThirdParty/Metis
+  - # Download and install Ipopt, Metis and Mumps
+  - wget --continue http://www.coin-or.org/download/source/Ipopt/$IPOPT_FILE
+  - mkdir Ipopt && tar zxvf $IPOPT_FILE -C Ipopt --strip-components 1
+  - mv $IPOPT_FILE $TRAVIS_BUILD_DIR/Downloads
+  - cd $TRAVIS_BUILD_DIR/Ipopt/ThirdParty/Metis
   - ./get.Metis
-  - cd $HOME/Ipopt-3.12.12/ThirdParty/Mumps
+  - cd $TRAVIS_BUILD_DIR/Ipopt/ThirdParty/Mumps
   - ./get.Mumps
-  - cd $HOME/Ipopt-3.12.12
-  - ./configure --enable-static coin_skip_warn_cxxflags=yes
-  
+  - cd $TRAVIS_BUILD_DIR/Ipopt
+  - ./configure --enable-static coin_skip_warn_cxxflags=yes >/dev/null
   - make -j4 > /dev/null
   - make install > /dev/null
-  - # Download and install ADOLC and ColPack
-  - cd $HOME/Downloads
   
-  - wget --continue www.coin-or.org/download/source/ADOL-C/ADOL-C-2.6.3.tgz
-  - cd $HOME
-  - tar zxvf ./Downloads/ADOL-C-2.6.3.tgz
-  - cd $HOME/ADOL-C-2.6.3
+  
+  
+  - # Download and install ADOLC and ColPack
+  - cd $TRAVIS_BUILD_DIR
+  - wget --continue www.coin-or.org/download/source/ADOL-C/$ADOL_FILE
+  - mkdir Adol-c && tar zxvf $ADOL_FILE -C Adol-c --strip-components 1
+  - mv $ADOL_FILE $TRAVIS_BUILD_DIR/Downloads
+  - cd $TRAVIS_BUILD_DIR/Adol-c
+
+  - sed -i 's|export HOME=`pwd`||g' configure
+  - sed '2iexport HOME=`pwd`' configure > tmp.txt
+  - mv tmp.txt configure
+  
   - mkdir ./ThirdParty
   - cd ./ThirdParty
-
-  - wget --continue http://archive.ubuntu.com/ubuntu/pool/universe/c/colpack/colpack_1.0.10.orig.tar.gz
-
-  - tar zxvf colpack_1.0.10.orig.tar.gz
-
-  - mv ColPack-1.0.10 ColPack
+  - wget --continue http://archive.ubuntu.com/ubuntu/pool/universe/c/colpack/$COLPACK_FILE
+  - mkdir ColPack && tar zxvf $COLPACK_FILE -C ColPack --strip-components 1
   - cd ColPack
   - ./autoconf.sh
-  - make >/dev/null
-  - sudo make install >/dev/null
+  - make > /dev/null
+  - sudo make install > /dev/null
+
 
   - sudo cp -P ./build/lib/libCol* /usr/lib
-  - cd $HOME/ADOL-C-2.6.3
-  - ./configure --enable-sparse --with-colpack=$HOME/ADOL-C-2.6.3/ThirdParty/ColPack/build >/dev/null
+  - cd $TRAVIS_BUILD_DIR/Adol-c
+  - chmod +x configure
+  - ./configure --enable-sparse --with-colpack=$TRAVIS_BUILD_DIR/Adol-c/ThirdParty/ColPack/build >/dev/null
   - make -j4 > /dev/null
-  - make install > /dev/null
-  - sudo cp -P $HOME/adolc_base/lib64/lib* /usr/lib
-  - sudo cp -r $HOME/adolc_base/include/* /usr/include/
+  - make install -j4 > /dev/null
+  - sudo cp -P $TRAVIS_BUILD_DIR/Adol-c/adolc_base/lib64/lib* /usr/lib
+  - sudo cp -r $TRAVIS_BUILD_DIR/Adol-c/adolc_base/include/* /usr/include/
   
   
 
+
+
+
   - # Download and install PDFlib
-  
-  - cd $HOME/Downloads
-  - wget --continue https://fossies.org/linux/misc/old/PDFlib-Lite-7.0.5p3.tar.gz
-  - tar zxvf PDFlib-Lite-7.0.5p3.tar.gz
-  - cd PDFlib-Lite-7.0.5p3 
-  - ./configure >/dev/null
-  - make -j4>/dev/null; sudo make install >/dev/null
+  - cd $TRAVIS_BUILD_DIR
+  - wget --continue https://fossies.org/linux/misc/old/$PDFLIB_FILE
+  - mkdir PDFLib && tar zxvf $PDFLIB_FILE -C PDFLib --strip-components 1
+  - mv $PDFLIB_FILE $TRAVIS_BUILD_DIR/Downloads
+  - cd PDFLib
+  - ./configure > /dev/null
+  - make; sudo make install > /dev/null
   - sudo ldconfig
+  
+  
   - # Download and install GNUplot
-  - cd $HOME/Downloads
-  - wget --continue https://sourceforge.net/projects/gnuplot/files/gnuplot/4.4.0/gnuplot-4.4.0.tar.gz/download
-  - mv download gnuplot-4.4.0.tar.gz
-  - tar zxvf gnuplot-4.4.0.tar.gz
-  - sudo apt-get -y install libx11-dev libxt-dev libreadline6-dev libgd-dev
-  - cd gnuplot-4.4.0
-  - ./configure -with-readline=gnu -without-tutorial >/dev/null
-  - make -j4>/dev/null;sudo make install >/dev/null
+  - # cd $TRAVIS_BUILD_DIR/Downloads GNUPLOT_FILE
+  - # wget --continue https://sourceforge.net/projects/gnuplot/files/gnuplot/4.4.0/$GNUPLOT_FILE/download
+  - # mkdir GnuPlot && tar zxvf $GNUPLOT_FILE -C GnuPlot --strip-components 1
+  - # mv $GNUPLOT_FILE $TRAVIS_BUILD_DIR/Downloads
+  - # sudo apt-get -y install libx11-dev libxt-dev libgd2-xpm-dev libreadline6-dev
+  - sudo apt-get -y install libx11-dev libxt-dev libreadline6-dev libgd-dev gnuplot-qt
+  - # cd GnuPlot
+  - # ./configure -with-readline=gnu -without-tutorial > /dev/null
+  - # make;sudo make install > /dev/null
   
   
-  - cd $TRAVIS_BUILD_DIR
+
   - # Download and extract SuiteSparse
-  - wget --continue http://faculty.cse.tamu.edu/davis/SuiteSparse/SuiteSparse-4.4.3.tar.gz
-  - tar zxvf SuiteSparse-4.4.3.tar.gz
   - cd $TRAVIS_BUILD_DIR
+  - wget --continue http://faculty.cse.tamu.edu/davis/SuiteSparse/$SUITESPARSE_FILE
+  - mkdir SuiteSparse && tar zxvf $SUITESPARSE_FILE -C SuiteSparse --strip-components 1
+  - mv $SUITESPARSE_FILE $TRAVIS_BUILD_DIR/Downloads
+
+
   - # Download and extract LUSOL
-  - wget --continue http://www.stanford.edu/group/SOL/software/lusol/lusol.zip
-  - unzip lusol.zip
+  - cd $TRAVIS_BUILD_DIR
+  - wget --continue http://www.stanford.edu/group/SOL/software/lusol/$LUSOL_FILE
+  - unzip $LUSOL_FILE
+  - mv $LUSOL_FILE $TRAVIS_BUILD_DIR/Downloads
+  - cd $TRAVIS_BUILD_DIR
 
 install:
   - # Compile SuiteSparse, LUSOL, dmatrix and PSOPT
