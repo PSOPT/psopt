@@ -21,9 +21,8 @@ if(NOT TARGET ${adolc})
 	  message(FATAL_ERROR "Build step for adolc failed: ${result}")
 	endif()
 
-	# Add adolc directly to our build
-	add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/adolc-src
-	               	 EXCLUDE_FROM_ALL)
+	add_library(adolc SHARED IMPORTED)
+	set_target_properties(adolc PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/adolc-build/lib64)
 endif()
 
 file(GLOB SRC src/*.cxx)

@@ -8,8 +8,8 @@ ExternalProject_Add(adolc
   GIT_TAG           master
   BUILD_IN_SOURCE   ON
   SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/adolc-src"
-  CONFIGURE_COMMAND autoreconf -fi
-  BUILD_COMMAND     ls && make -j3
-  INSTALL_COMMAND   ""
+  CONFIGURE_COMMAND autoreconf -fi && ./configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/adolc-build
+  BUILD_COMMAND     make -j3
+  INSTALL_COMMAND   make install
   TEST_COMMAND      ""
 )
