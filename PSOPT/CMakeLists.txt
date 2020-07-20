@@ -3,6 +3,7 @@ project(PSOPT VERSION 4.0.1 LANGUAGES CXX)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(adolc adolc)
+pkg_check_modules(ipopt REQUIRED ipopt)
 
 if(NOT TARGET ${adolc})
 	message(STATUS "ADOL-C will be downloaded and added to the project...")
@@ -33,5 +34,5 @@ file(GLOB HEADER "src/*.h")
 
 add_library(${PROJECT_NAME} ${SRC} ${HEADER})
 add_dependencies(${PROJECT_NAME} dmatrix)
-target_include_directories(${PROJECT_NAME} PUBLIC src/)
-target_link_libraries(${PROJECT_NAME} PUBLIC adolc PRIVATE dmatrix)
+target_include_directories(${PROJECT_NAME} PUBLIC src/ PRIVATE ${ipopt_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PUBLIC adolc ${ipopt_LIBRARIES} PRIVATE dmatrix)
