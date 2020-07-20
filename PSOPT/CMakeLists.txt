@@ -22,7 +22,10 @@ if(NOT TARGET ${adolc})
 	endif()
 
 	add_library(adolc SHARED IMPORTED)
+    target_include_directories(adolc INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/adolc-build/include/)
 	set_target_properties(adolc PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/adolc-build/lib64)
+ 
+    set(CMAKE_CXX_FLAGS "-std=c++11")
 endif()
 
 file(GLOB SRC src/*.cxx)
