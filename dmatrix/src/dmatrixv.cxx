@@ -631,7 +631,7 @@ void DMatrix::Resize( long nnrow, long nncol )
 
 	 DMatrix::Allocate(asize);
 
-         memcpy( a, atemp, min( n*m, asize )*sizeof(double) );
+         memcpy( a, atemp, std::min( n*m, asize )*sizeof(double) );
 
          n = nnrow;
 
