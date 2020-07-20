@@ -107,7 +107,9 @@ extern "C" {
 #endif
 
 #ifndef WIN32
-#include <mem.h> static long start_clock;
+    #ifndef __APPLE__
+        #include <mem.h> static long start_clock;
+    #endif
 #endif
 
 #endif
