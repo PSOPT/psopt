@@ -121,6 +121,7 @@ using namespace std;
 
 #endif
 
+#include "f2c.h"
 #include <string>
 using std::string;
 
