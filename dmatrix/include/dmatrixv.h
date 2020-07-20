@@ -151,10 +151,6 @@ using std::string;
 #define RAND_A256       22925      /* jump multiplier, DO NOT CHANGE THIS VALUE */
 #define RAND_DEFAULT    123456789  /* initial seed, use 0 < RAND_DEFAULT < RAND_MODULUS  */
 
-
-class DMatrix;
-class SparseMatrix;
-
 //! DMatrix class
 
 /**
@@ -376,9 +372,7 @@ protected:
 public:
 
 
-#ifdef SPARSE_MATRIX
    friend class SparseMatrix;
-#endif
 
    // Public methods
   //! Allocates the array of auxiliary (temporary) objects used by the class
@@ -1371,7 +1365,8 @@ public:
       \param  V is a pointer to a DMatrix object, which is modified on output to contain the V factor of the decomposition.
       \return Reference to a temporary DMatrix object with a vector that contains the singular values of matrix A.
   */
-   friend DMatrix& SVD( const DMatrix& A, DMatrix* U=NULL, DMatrix* V=NULL );
+  friend DMatrix& SVD( const DMatrix& A);
+   friend DMatrix& SVD( const DMatrix& A, DMatrix* U, DMatrix* V );
    //! This function returns Q, the orthonormal basis for the range of a matrix A, such that \f$ Q Q' = I \f$. The number of columns of Q is the rank of A.
    /**
    	\param A is a DMatrix object
@@ -1398,14 +1393,16 @@ public:
       \param  U is a pointer to a DMatrix object.
       \return Reference to a temporary DMatrix object with the unitary matrix Q.
   */
-   friend DMatrix& schur(const DMatrix& A, DMatrix* U= NULL  );
+  friend DMatrix& schur(const DMatrix& A);
+   friend DMatrix& schur(const DMatrix& A, DMatrix* U  );
    //!  This function computes the eigenvalues and (optionally) the eigenvectors of a matrix A. This function uses the LAPACK routines dsyev_() and dgeev_.
   /**
       \param  A is a DMatrix object.
       \param  V is a pointer to a DMatrix object.
       \return Reference to a temporary DMatrix object with the real part of the eigenvalues in the first column and the complex part of the eigenvalues in the second column.
   */
-   friend DMatrix& eig(const DMatrix& A, DMatrix* V= NULL  );
+    friend DMatrix& eig(const DMatrix& A);
+   friend DMatrix& eig(const DMatrix& A, DMatrix* V  );
    //!  This function computes and return the Euclidean norm of a matrix A, which is the square root of the sum of its squared elements.
   /**
       \param  A is a DMatrix object.
@@ -1443,7 +1440,9 @@ public:
       \param  cindx is an optional pointer to an integer which is modified with the column index.
       \return the value of the element with maximum value.
   */
-   friend double Max(const DMatrix& A,int* rindx=NULL, int* cindx=NULL);
+  friend double Max(const DMatrix& A);
+    friend double Max(const DMatrix& A,int* rindx);
+   friend double Max(const DMatrix& A,int* rindx, int* cindx);
    //!  This function finds and returns the element of matrix A with maximum absolute value. It also returns the indices of such element. If more than one element has the same maximum absolute value, the indices of the first element found when searching column by column is returned.
   /**
       \param  A is a DMatrix object.
@@ -1451,7 +1450,8 @@ public:
       \param  cindx is a pointer to an integer which is modified with the column index.
       \return the absolute value of the element with maximum absolute value.
   */
-   friend double MaxAbs(const DMatrix& A, int* rindx=NULL, int* cindx=NULL);
+  friend double MaxAbs(const DMatrix& A);
+   friend double MaxAbs(const DMatrix& A, int* rindx, int* cindx);
    //!  This function finds and returns the element of matrix A with minimum value. It also returns the indices of such element.  If more than one element has the same minimum value, the indices of the first element found when searching column by column is returned.
   /**
       \param  A is a DMatrix object.
@@ -1459,7 +1459,8 @@ public:
       \param  cindx is a pointer to an integer which is modified with the column index.
       \return the absolute value of the element with minimum absolute value.
   */
-   friend double Min(const DMatrix& A, int* rindx=NULL, int* cindx=NULL );
+  friend double Min(const DMatrix& A);
+   friend double Min(const DMatrix& A, int* rindx, int* cindx );
    //!  This function finds and returns the element of matrix A with minimum absolute value. It also returns the indices of such element.  If more than one element has the same minimum absolute value, the indices of the first element found when searching column by column is returned.
   /**
       \param  A is a DMatrix object.
@@ -1467,14 +1468,16 @@ public:
       \param  cindx is a pointer to an integer which is modified with the column index.
       \return the absolute value of the element with minimum absolute value.
   */
-   friend double MinAbs(const DMatrix& A, int* rindx=NULL, int* cindx=NULL);
+  friend double MinAbs(const DMatrix& A);
+   friend double MinAbs(const DMatrix& A, int* rindx, int* cindx);
    //!  This function sorts the input vector x in ascending order. Optionally, it also returns an integer array of sorted indices. If the input object is not a vector, then an error is thrown.
   /**
       \param  x is a DMatrix object which upon input contains the unsorted vector and upon output contains the sorted vector.
       \param  indx is a pointer to the first element of the array of sorted indices.
       \return void
   */
-   friend void   sort( DMatrix& x, int indx[] = NULL);
+  friend void   sort( DMatrix& x);
+   friend void   sort( DMatrix& x, int indx[]);
    //!  This function sorts the input vector x in ascending order. It also returns a DMatrix object with the sorted indices. If the input object is not a vector, then an error is thrown.
   /**
       \param  x is a DMatrix object which upon input contains the unsorted vector and upon output contains the sorted vector.
@@ -1558,14 +1561,16 @@ public:
       \param  ntype is the type of normalization, 0 (default) or 1.
       \return a temporary DMatrix object with the result of the operation
   */
-   friend DMatrix& Std(  const DMatrix& A, int ntype=0 );
+  friend DMatrix& Std(  const DMatrix& A);
+   friend DMatrix& Std(  const DMatrix& A, int ntype);
    //!  Computes the covariance matrix of a data matrix where the N rows correspond to samples and the M columns are variables. The result is returned as an M x M matrix. If ntype=0 (default) then the result is normalised with N-1. Otherwise, if ntype=1, the  result is normalised with N.
   /**
       \param  A is a DMatrix object.
       \param  ntype is the type of normalization, 0 (default) or 1.
       \return a temporary DMatrix object with the result of the operation
   */
-   friend DMatrix& cov( const DMatrix& A, int ntype=0 );
+  friend DMatrix& cov( const DMatrix& A);
+   friend DMatrix& cov( const DMatrix& A, int ntype);
    //!  Computes the covariance matrix of two vectors X and Y of dimension N. The result is returned as an 1 x 1 DMatrix object. If ntype=0 (default) then the result is normalised with N-1. Otherwise, if ntype=1, the  result is normalised with N.
   /**
       \param  X is a DMatrix object.
@@ -1573,14 +1578,16 @@ public:
       \param  ntype is the type of normalization, 0 (default) or 1.
       \return a temporary DMatrix object with the result of the operation
   */
-   friend DMatrix& cov(DMatrix& X, DMatrix& Y, int ntype=0 );
+  friend DMatrix& cov(DMatrix& X, DMatrix& Y);
+   friend DMatrix& cov(DMatrix& X, DMatrix& Y, int ntype );
    //!  This function returns a row vector with the variance of each column of matrix A. If ntype is 0 (default) the result is normalised with (n-1), where n is the number of rows of A. Otherwise, the result is normalised with n.
   /**
       \param  A is a DMatrix object.
       \param  ntype is the type of normalization, 0 (default) or 1.
       \return a temporary DMatrix object with the result of the operation
   */
-   friend DMatrix& var(DMatrix& A, int ntype=0 );
+  friend DMatrix& var(DMatrix& A);
+   friend DMatrix& var(DMatrix& A, int ntype);
    //!  This function returns a row vector with the sum of the elements of each column of matrix A.
   /**
       \param  A is a DMatrix object.
@@ -1902,11 +1909,6 @@ int dgelqf_(integer *m, integer *n, doublereal *a, integer *
 #endif /* LAPACK */
 
 
-// #define SPARSE
-
-#ifdef SPARSE_MATRIX
-
-
 //! SparseMatrix class
 /**
     A C++ class for sparse numerical linear algebra with interfaces to
@@ -2170,7 +2172,8 @@ public:
       \param  V is a pointer to a DMatrix object, which is modified on output to contain the V factor of the decomposition.
       \return Reference to a temporary DMatrix object with a vector that contains the singular values of matrix A.
   */
-   friend DMatrix& SVD(const SparseMatrix& A, DMatrix* U=NULL, DMatrix* V=NULL );
+  friend DMatrix& SVD(const SparseMatrix& A);
+   friend DMatrix& SVD(const SparseMatrix& A, DMatrix* U, DMatrix* V );
   //! Returns the QR factorisation of a sparse matrix A. The number of rows of matrix A must be greater or equal than the number of columns.
   /**
       \param  A is a SparseMatrix object·
@@ -2196,14 +2199,16 @@ public:
       \param  U is a pointer to a DMatrix object.
       \return Reference to a temporary DMatrix object with the unitary matrix Q.
   */
-   friend DMatrix& schur(const SparseMatrix& A, DMatrix* U= NULL  );
+  friend DMatrix& schur(const SparseMatrix& A);
+   friend DMatrix& schur(const SparseMatrix& A, DMatrix* U  );
    //!  This function computes the eigenvalues and (optionally) the eigenvectors of a sparse matrix A. This function uses the LAPACK routines dsyev_() and dgeev_.
   /**
       \param  A is a SparseMatrix object.
       \param  V is a pointer to a DMatrix object.
       \return Reference to a temporary DMatrix object with the real part of the eigenvalues in the first column and the complex part of the eigenvalues in the second column.
   */
-   friend DMatrix& eig(const SparseMatrix& A, DMatrix* V= NULL  );
+  friend DMatrix& eig(const SparseMatrix& A);
+   friend DMatrix& eig(const SparseMatrix& A, DMatrix* V  );
    //!  This function computes and return the Euclidean norm of a sparse matrix A, which is the square root of the sum of its (nonzero) squared elements.
   /**
       \param  A is a SparseMatrix object.
@@ -2488,10 +2493,6 @@ SparseMatrix& operator *(double Arg, const SparseMatrix& A);
 
 // ===========================================================
 
-
-
-
-#endif /* SPARSE_MATRIX */
 
 
 //! ErrorHandler class
