@@ -3611,7 +3611,9 @@ DMatrix& Std(const DMatrix& A, int ntype)
 
 }
 
-
+DMatrix& Std(const DMatrix& A) {
+      return Std(A, 0);
+}
 
 DMatrix& cov(const DMatrix& A, int ntype)
 {
@@ -3699,7 +3701,9 @@ DMatrix& cov(const DMatrix& A, int ntype)
 
 }
 
-
+DMatrix& cov(const DMatrix& A) {
+      return cov(A, 0);
+}
 
 DMatrix& cov( DMatrix& X, DMatrix& Y, int ntype)
 {
@@ -4072,7 +4076,10 @@ void DMatrix::Fprint( FILE *fp )
 
 }
 
-
+double Max(const DMatrix & A) {
+      return Max(A, nullptr, nullptr);
+}
+                    
 double Max(const DMatrix & A, int* rindx, int* cindx )
 {
 
@@ -4152,6 +4159,10 @@ double Min(const DMatrix & A, int* rindx, int* cindx )
 
 }
 
+double MaxAbs(const DMatrix& A) {
+      return MaxAbs(A, nullptr, nullptr);
+}
+                    
 double MaxAbs(const DMatrix & A, int* rindx, int* cindx )
 {
 
@@ -7328,9 +7339,6 @@ void* my_calloc(size_t num, size_t size )
 
 // =====================================SPARSE MATRIX CLASS IMPLEMENTATION ==============================
 
-#ifdef SPARSE_MATRIX
-
-
 
 SparseMatrix::SparseMatrix(void)
 {
@@ -7454,8 +7462,8 @@ SparseMatrix::SparseMatrix( const DMatrix& A ) // Constructor using DMatrix obje
      memcpy(RowIndx, I, nz*sizeof(int) );
      memcpy(ColIndx, J, nz*sizeof(int) );
 
-     delete I;
-     delete J;
+    delete[] I;
+    delete[] J;
 
 }
 
@@ -9478,4 +9486,4 @@ SparseMatrix& sprandn(int n, int m, double density)
 }
 
 
-#endif // SPARSE_MATRIX
+}
