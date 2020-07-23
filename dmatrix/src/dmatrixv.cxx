@@ -105,30 +105,7 @@ extern "C" {
 #endif
 
 
-
-#ifdef MATLAB_MEX_FILE
-
-#define ERROR_MESSAGE error_message
-
-#define PRINTF mexPrintf
-
-
-#else
-
-#define ERROR_MESSAGE error_message
-
-#define PRINTF printf
-
-#endif
-
-
-#ifndef MAX
-#define MAX(a, b) ( (a)>(b)?  (a):(b) )
-#endif
-#ifndef MIN
-#define MIN(a, b) ( (a)<(b)?  (a):(b) )
-#endif
-
+#include "helper.h"
 
 DMatrix*  DMatrix::GetTempPr(int i) {
 
@@ -138,25 +115,6 @@ DMatrix*  DMatrix::GetTempPr(int i) {
    auxPr[i].rowIndx = NULL;
    auxPr[i].colIndx = NULL;
    return &auxPr[i];
-
-}
-
-inline long ChkTmpIndx( long taindx )
-{
-
-
-   if ( taindx >= N_TEMP_OBJECTS )
-
-     ERROR_MESSAGE(" Temporary arrays error: Increase N_TEMP_OBJECTS");
-
-#ifdef DEBUG_TEMPS
-
-   printf("\n Temp Created --> indx: %d", taindx );
-
-#endif
-
-   return  taindx;
-
 
 }
 

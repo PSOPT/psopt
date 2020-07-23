@@ -1,4 +1,4 @@
-#include "dmatrixv.h"
+#include "SparseMatrix.h"
 
 // This file is provided as a template for testing the examples given
 // in the DMatrix class manual

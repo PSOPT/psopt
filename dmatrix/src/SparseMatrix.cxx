@@ -6,7 +6,8 @@
 //
 
 #include "SparseMatrix.h"
-
+#include <commonlib.h>
+#include "helper.h"
 
 // =====================================SPARSE MATRIX CLASS IMPLEMENTATION ==============================
 
@@ -1123,6 +1124,7 @@ SparseMatrix& SparseMatrix::sub_matrix(int istart, int iend, int jstart, int jen
 
 
 }
+
 
 DMatrix& SparseMatrix::Column(int j) const
 {

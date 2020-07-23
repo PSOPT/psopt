@@ -8,8 +8,8 @@
 #ifndef SparseMatrix_hpp
 #define SparseMatrix_hpp
 
-#include "dmatrix.h"
-#include "cs.h"
+#include "dmatrixv.h"
+#include <cs.h>
 
 //! SparseMatrix class
 /**

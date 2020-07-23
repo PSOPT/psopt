@@ -1906,25 +1906,6 @@ int dgelqf_(integer *m, integer *n, doublereal *a, integer *
 
 
 
-//! ErrorHandler class
-/**
-   This is a C++ class intended to handle error conditions.
-*/
-class ErrorHandler
-{
-    public:
-        //! A string of characters which contains the error message
-        string error_message;
-        //! A constructor which takes the error message as an argument and assigns it to error_message
-        /**
-          \param m is the error message string.
-          \sa function error_message().
-        */
-        ErrorHandler(const string m);
-};
-
-
-
 #endif /* DMATRIX_H */
 
 
