@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 2.8.2)
+
+project(lusol-download NONE)
+
+include(ExternalProject)
+ExternalProject_Add(lusol
+  URL		    http://www.stanford.edu/group/SOL/software/lusol/lusol.zip
+  SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/lusol-src"
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND     ""
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND     ""
+  INSTALL_COMMAND   ""
+  TEST_COMMAND      ""
+)
