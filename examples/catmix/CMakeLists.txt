@@ -1,0 +1,5 @@
+cmake_minimum_required (VERSION 3.10)
+project(catmix LANGUAGES CXX)
+
+add_executable(${PROJECT_NAME} catmix.cxx)
+target_link_libraries(catmix PUBLIC PSOPT  )
