@@ -1,6 +1,8 @@
 cmake_minimum_required (VERSION 3.10)
 project(PSOPT VERSION 4.0.1 LANGUAGES CXX)
 
+option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
+
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(adolc adolc)
@@ -36,3 +38,7 @@ file(GLOB HEADER "src/*.h")
 add_library(${PROJECT_NAME} ${SRC} ${HEADER})
 target_include_directories(${PROJECT_NAME} PUBLIC src/ PRIVATE ${ipopt_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC adolc ${ipopt_LIBRARIES} PRIVATE Eigen3::Eigen)
+
+if(${BUILD_EXAMPLES})
+	add_subdirectory(examples/)
+endif()

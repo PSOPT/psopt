@@ -1,0 +1,5 @@
+cmake_minimum_required (VERSION 3.10)
+project(rayleigh LANGUAGES CXX)
+
+add_executable(${PROJECT_NAME} rayleigh.cxx)
+target_link_libraries(rayleigh PUBLIC PSOPT  )

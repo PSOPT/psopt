@@ -1,0 +1,5 @@
+cmake_minimum_required (VERSION 3.10)
+project(chain LANGUAGES CXX)
+
+add_executable(${PROJECT_NAME} chain.cxx)
+target_link_libraries(chain PUBLIC PSOPT  )

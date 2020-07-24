@@ -1,0 +1,5 @@
+cmake_minimum_required (VERSION 3.10)
+project(steps LANGUAGES CXX)
+
+add_executable(${PROJECT_NAME} steps.cxx)
+target_link_libraries(steps PUBLIC PSOPT  )
