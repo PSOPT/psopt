@@ -1,0 +1,5 @@
+cmake_minimum_required (VERSION 3.10)
+project(coulomb LANGUAGES CXX)
+
+add_executable(${PROJECT_NAME} coulomb.cxx)
+target_link_libraries(colon PUBLIC PSOPT dmatrix)

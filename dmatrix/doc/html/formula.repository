@@ -1,8 +1,0 @@
-\form#0:$ A x = b $
-\form#1:$ A x = B $
-\form#2:$ A = U' diag(s) V $
-\form#3:$ Q Q' = I $
-\form#4:$ Z Z' = I $
-\form#5:$ A Z=0 $
-\form#6:$ || B - A x ||_2 $
-\form#7:$ A=Q'U Q $
