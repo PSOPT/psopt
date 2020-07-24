@@ -1,5 +1,0 @@
-cmake_minimum_required (VERSION 3.10)
-project(climb LANGUAGES CXX)
-
-add_executable(${PROJECT_NAME} climb.cxx)
-target_link_libraries(colon PUBLIC PSOPT dmatrix)
