@@ -39,24 +39,23 @@ Workspace* tempsnoptworkspace;
 
 int NLP_interface(
          Alg& algorithm,
-         DMatrix* x0,
-         double (*f)(DMatrix&, Workspace*),
-	 void (*g)(DMatrix&,DMatrix*, Workspace*),
+         MatrixXd* x0,
+         double (*f)(MatrixXd&, Workspace*),
+	 void (*g)(MatrixXd&,MatrixXd*, Workspace*),
 	 int nlp_ncons,
 	 int nlp_neq  ,
-	 DMatrix* xlb,
-	 DMatrix* xub,
-         DMatrix* lambda,
+	 MatrixXd* xlb,
+	 MatrixXd* xub,
+         MatrixXd* lambda,
          int hotflag,
          int iprint,
          Workspace* workspace,
          void* user_data
          )
 {
-    Prob *problem = workspace->problem;
+
     Sol*  solution= workspace->solution;
 
-    int  i;
 
     if ( algorithm.nlp_method=="SNOPT" )
     {
@@ -111,8 +110,10 @@ int NLP_interface(
   double InfValue = 1.0e20;
 
   // TODO could be improved.
-  memcpy(xlow, xlb->GetPr(), n*sizeof(double) );
-  memcpy(xupp, xub->GetPr(), n*sizeof(double) );
+//  memcpy(xlow, xlb->GetPr(), n*sizeof(double) );
+  memcpy(xlow, &(*xlb)(0), n*sizeof(double) );
+//  memcpy(xupp, xub->GetPr(), n*sizeof(double) );
+    memcpy(xupp, &(*xub)(0), n*sizeof(double) );
   for (int ix = 0; ix < n; ++ix) {
       x[ix]=0.0;
       xstate[ix]=0;
@@ -176,19 +177,15 @@ int NLP_interface(
      fg_ad(xad, fgad, workspace);
 
      for(i=0;i<neF;i++)
-	fgad[i] >>= fg[i];
+	     fgad[i] >>= fg[i];
      trace_off();
 
-#ifdef ADOLC_VERSION_1
-     sparse_jac(workspace->tag_fg, neF, n, 0, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2);
-#endif
 
 
-#ifdef ADOLC_VERSION_2
     int options[4];
     options[0]=0; options[1]=0; options[2]=0;options[3]=0;
     sparse_jac(workspace->tag_fg, neF, n, 0, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
-#endif
+
 
      sprintf(workspace->text,"\nJacobian sparsity detected using ADOLC:");
      psopt_print(workspace,workspace->text);
@@ -205,8 +202,8 @@ int NLP_interface(
 
 
       for (i=0;i<workspace->F_nnz;i++) {
-          	  workspace->iGfun1[i] = workspace->iGfun2[i]+1;
-        	  workspace->jGvar1[i] = workspace->jGvar2[i]+1;
+           workspace->iGfun1[i] = workspace->iGfun2[i];  
+        	  workspace->jGvar1[i] = workspace->jGvar2[i];
       }
 
   }
@@ -223,7 +220,7 @@ int NLP_interface(
        jAvari[iA] = jAvar[iA];
   }
 
-  SparseMatrix As(A, neF, n, neA, iAfuni, jAvari);
+  TripletSparseMatrix As(A, neF, n, neA, iAfuni, jAvari);
 
 //  As.SaveSparsityPattern("SNOPT_Linear_pattern.txt");
 
@@ -266,7 +263,8 @@ int NLP_interface(
   solution->nlp_return_code = int (inform/10);
 
   // Copy results.
-  memcpy(x0->GetPr(), x, n*sizeof(double));
+//  memcpy(x0->GetPr(), x, n*sizeof(double));
+  memcpy( &(*x0)(0), x, n*sizeof(double));
 
   for (int ix = 0; ix < n; ++ix) solution->xad[ix] = x[ix];
 
@@ -296,238 +294,6 @@ int NLP_interface(
 
   // TODO
   tempsnoptworkspace = NULL;
-
-/*
-// ************* C INTERFACE ************************
-  integer Cold = 0, Basis = 1, Warm = 2;
-  integer StartOption;
-  integer    iSpecs = 4,  spec_len;
-  integer    iSumm  = 6;
-  integer    iPrint = 1,  prnt_len;
-
-  integer    INFO;
-  integer    neA, neG;
-
-  integer    nxname = 1, nFname = 1, npname;
-  char       Prob[200];
-
-  integer    minrw, miniw, mincw;
-  integer    lenrw = 4000*(neF+n), leniw = 2000*(neF+n), lencw = 1000;
-  doublereal *rw  = (doublereal*) my_calloc(lenrw, sizeof(doublereal));
-  integer    *iw  = (integer*)    my_calloc(leniw, sizeof(integer));
-
-  char       cw[8*500];
-
-  char       printname[200];
-  char       specname[200];
-
-  integer    nS, nInf;
-  doublereal sInf;
-  integer    DerOpt, Major, iSum, iPrt, strOpt_len;
-  char       strOpt[200];
-  integer    IterOpt;
-
-  if ( !algorithm.print_level )
-  {
-  	iSumm  = 0;
-	iPrint = 0;
-  }
-
-  // open output files using snfilewrappers.[ch]
-  sprintf(specname ,   "%s", "psopt.spc");   spec_len = strlen(specname);
-  sprintf(printname,   "%s", "psopt.out");   prnt_len = strlen(printname);
-
-  // Open the print file, fortran style
-  snopenappend_
-    ( &iPrint, printname,   &INFO, prnt_len );
-
-  sninit_
-    ( &iPrint, &iSumm, cw, &lencw, iw, &leniw, rw, &lenrw, 8*500 );
-
-  sprintf(Prob,"%s",problem->name.c_str());
-
-  workspace->jac_done = 0;
-
-  snjac_
-    ( &INFO, &neF, &n,  snPSOPTusrf_,
-      iAfun, jAvar, &lenA, &neA, A,
-      iGfun, jGvar, &lenG, &neG,
-      x, xlow, xupp, &mincw, &miniw, &minrw,
-      cw, &lencw, iw, &leniw, rw, &lenrw,
-      cw, &lencw, iw, &leniw, rw, &lenrw,
-      8*500, 8*500 );
-
-  // Store co-ordinates of nonlinear Jacobian
-
-  for(k=0; k<neG; k++) {
-        workspace->iGfun[k] = (unsigned int) iGfun[k];
-        workspace->jGvar[k] = (unsigned int) jGvar[k];
-  }
-
-  (*workspace->Gsp).Resize(neF,n,neG);
-
-  if ( useAutomaticDifferentiation(algorithm) )
-  {
-     adouble* xad  = workspace->xad;
-     adouble* fgad = workspace->fgad;
-     double*    fg = workspace->fg;
-
-     // Tracing of function fg()
-     trace_on(workspace->tag_fg);
-     for(i=0;i<n;i++)
-		xad[i] <<= x[i];
-
-     fg_ad(xad, fgad, workspace);
-
-     for(i=0;i<neF;i++)
-	fgad[i] >>= fg[i];
-     trace_off();
-
-#ifdef ADOLC_VERSION_1
-     sparse_jac(workspace->tag_fg, neF, n, 0, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2);
-#endif
-
-
-#ifdef ADOLC_VERSION_2
-    int options[4];
-    options[0]=0; options[1]=0; options[2]=0;options[3]=0;
-    sparse_jac(workspace->tag_fg, neF, n, 0, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
-#endif
-
-     sprintf(workspace->text,"\nJacobian sparsity detected using ADOLC:");
-     psopt_print(workspace,workspace->text);
-
-     double jsratio = (double) ((double)  workspace->F_nnz/((double) (n*neF)));
-
-     if (jsratio > workspace->algorithm->jac_sparsity_ratio) {
-           sprintf(workspace->text, "increase algorithm.jac_sparsity_ratio to just above %f", jsratio);
-           error_message(workspace->text);
-     }
-
-     sprintf(workspace->text,"\n%i nonzero elements out of %li [ratio=%f]\n", workspace->F_nnz, n*neF, jsratio);
-     psopt_print(workspace,workspace->text);
-
-
-      for (i=0;i<workspace->F_nnz;i++) {
-          	  workspace->iGfun1[i] = workspace->iGfun2[i]+1;
-        	  workspace->jGvar1[i] = workspace->jGvar2[i]+1;
-      }
-
-  }
-
-
-  workspace->jac_done=1;
-
-  int * iAfuni = (int*) my_calloc(neA, sizeof(int) );
-  int * jAvari = (int*) my_calloc(neA, sizeof(int) );
-
-  for (i=0; i< neA; i++) {
-       iAfuni[i] = iAfun[i];
-       jAvari[i] = jAvar[i];
-  }
-
-  SparseMatrix As(A, neF, n, neA, iAfuni, jAvari);
-
-//  As.SaveSparsityPattern("SNOPT_Linear_pattern.txt");
-
-  workspace->As = &As;
-
-
-  DerOpt = 0;
-  iPrt   = 0;
-  iSum   = 0;
-  sprintf(strOpt,"%s","Derivative option");
-  strOpt_len = strlen(strOpt);
-  snseti_
-    ( strOpt, &DerOpt, &iPrt, &iSum, &INFO,
-      cw, &lencw, iw, &leniw, rw, &lenrw, strOpt_len, 8*500 );
-
-
-
-  IterOpt = workspace->algorithm->nlp_iter_max;
-  iPrt   = 0;
-  iSum   = 0;
-  sprintf(strOpt,"%s","Major iterations limit");
-  strOpt_len = strlen(strOpt);
-  snseti_
-    ( strOpt, &IterOpt, &iPrt, &iSum, &INFO,
-      cw, &lencw, iw, &leniw, rw, &lenrw, strOpt_len, 8*500 );
-  sprintf(strOpt,"%s","Minor iterations limit");
-  strOpt_len = strlen(strOpt);
-  snseti_
-    ( strOpt, &IterOpt, &iPrt, &iSum, &INFO,
-      cw, &lencw, iw, &leniw, rw, &lenrw, strOpt_len, 8*500 );
-  sprintf(strOpt,"%s","Iterations limit");
-  IterOpt = 50*IterOpt;
-  strOpt_len = strlen(strOpt);
-  snseti_
-    ( strOpt, &IterOpt, &iPrt, &iSum, &INFO,
-      cw, &lencw, iw, &leniw, rw, &lenrw, strOpt_len, 8*500 );
-  if (!algorithm.print_level) {
-  	sprintf(strOpt,"%s","Major print level 0");
-  	IterOpt = 0;
-  	strOpt_len = strlen(strOpt);
-        snset_
-        ( strOpt, &iPrt, &iSum, &INFO,
-            cw, &lencw, iw, &leniw, rw, &lenrw, strOpt_len, 8*500 );
-  	sprintf(strOpt,"%s","Minor print level 0");
-  	IterOpt = 0;
-  	strOpt_len = strlen(strOpt);
-        snset_
-        ( strOpt, &iPrt, &iSum, &INFO,
-            cw, &lencw, iw, &leniw, rw, &lenrw, strOpt_len, 8*500 );
-  }
-
-  // Set some extra options
-
-  sprintf(strOpt,"%s","LU complete pivoting");
-  strOpt_len = strlen(strOpt);
-  snset_
-    ( strOpt, &iPrt, &iSum, &INFO,
-      cw, &lencw, iw, &leniw, rw, &lenrw, strOpt_len, 8*500 );
-
-
-
-  //     ------------------------------------------------------------------ 
-  //     Go for it                                                          
-  //     ------------------------------------------------------------------ 
-
-  if (hotflag) StartOption=Warm;
-  else StartOption=Cold;
-
-  snopta_
-    ( &StartOption, &neF, &n, &nxname, &nFname,
-      &ObjAdd, &ObjRow, Prob,  snPSOPTusrf_,
-      iAfun, jAvar, &lenA, &neA, A,
-      iGfun, jGvar, &lenG, &neG,
-      xlow, xupp, xnames, Flow, Fupp, Fnames,
-      x, xstate, xmul, F, Fstate, Fmul,
-      &INFO, &mincw, &miniw, &minrw,
-      &nS, &nInf, &sInf,
-      cw, &lencw, iw, &leniw, rw, &lenrw,
-
-      cw, &lencw, iw, &leniw, rw, &lenrw,
-      npname, 8*nxname, 8*nFname,
-      8*500, 8*500);
-
-   solution->nlp_return_code = int (INFO/10);
-
-// *************************************************
-
-
-// Copy results...
-
-  memcpy( x0->GetPr(), x, n*sizeof(double) );
-
-  for(ii=0;ii<n;ii++) solution->xad[ii] = x[ii];
-
-
-  for (ii=1;ii<neF;ii++) {
-       (*lambda)(ii) = Fmul[ii];
-  }
-
-
-*/
 
   return 0;
 
