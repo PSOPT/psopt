@@ -138,7 +138,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 5;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes                     = "[40]";
+    problem.phases(1).nodes                     << 40;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -148,14 +148,14 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).bounds.lower.states   	= "[ 0;  0;  0]";
-    problem.phases(1).bounds.upper.states   	= "[20; 20; 20]";
+    problem.phases(1).bounds.lower.states   	<<  0,  0,  0;
+    problem.phases(1).bounds.upper.states   	<< 20, 20, 20;
 
-    problem.phases(1).bounds.lower.controls 	= 0.0;
-    problem.phases(1).bounds.upper.controls 	= 2*pi;
+    problem.phases(1).bounds.lower.controls 	<< 0.0;
+    problem.phases(1).bounds.upper.controls 	<< 2*pi;
 
-    problem.phases(1).bounds.lower.events   	= "[0,  0,  0,  2,  2]";
-    problem.phases(1).bounds.upper.events   	= "[0,  0,  0,  2,  2]";
+    problem.phases(1).bounds.lower.events   	<< 0,  0,  0,  2,  2;
+    problem.phases(1).bounds.upper.events   	<< 0,  0,  0,  2,  2;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -195,11 +195,11 @@ int main(void)
 
 
 
-    DMatrix x0(3,20);
+    MatrixXd x0(3,20);
 
-    x0(1,colon()) = linspace(0.0,1.0, 20);
-    x0(2,colon()) = linspace(0.0,1.0, 20);
-    x0(3,colon()) = linspace(0.0,1.0, 20);
+    x0.row(0) = linspace(0.0,1.0, 20);
+    x0.row(1) = linspace(0.0,1.0, 20);
+    x0.row(2) = linspace(0.0,1.0, 20);
 
     problem.phases(1).guess.controls       = ones(1,20);
     problem.phases(1).guess.states         = x0;
@@ -216,7 +216,8 @@ int main(void)
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
 //    algorithm.hessian			  = "exact";
-    algorithm.collocation_method          = "Legendre";
+    algorithm.collocation_method          = "trapezoidal";
+//    algorithm.mesh_refinement             = "automatic";
 
 
 
@@ -234,20 +235,20 @@ int main(void)
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x 		= solution.get_states_in_phase(1);
-    DMatrix u 		= solution.get_controls_in_phase(1);
-    DMatrix t 		= solution.get_time_in_phase(1);
-    DMatrix H           = solution.get_dual_hamiltonian_in_phase(1);
-    DMatrix lambda      = solution.get_dual_costates_in_phase(1);
+    MatrixXd x 		= solution.get_states_in_phase(1);
+    MatrixXd u 		= solution.get_controls_in_phase(1);
+    MatrixXd t 		= solution.get_time_in_phase(1);
+    MatrixXd H           = solution.get_dual_hamiltonian_in_phase(1);
+    MatrixXd lambda      = solution.get_dual_costates_in_phase(1);
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
-    lambda.Save("p.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
+    Save(lambda,"p.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////
