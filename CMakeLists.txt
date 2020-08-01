@@ -9,6 +9,8 @@ pkg_check_modules(adolc adolc)
 pkg_check_modules(ipopt REQUIRED ipopt)
 
 if(NOT TARGET ${adolc})
+	find_package(Python2 REQUIRED COMPONENTS Development)
+
 	message(STATUS "ADOL-C will be downloaded and added to the project...")
 	# Download and unpack adolc at configure time
 	configure_file(CMakeLists-adolc.txt.in adolc-download/CMakeLists.txt)
