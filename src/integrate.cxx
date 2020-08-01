@@ -53,7 +53,7 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
         adouble ieval;
         adouble retval = 0.0;
 
-	DMatrix& w = workspace->w[i];
+	MatrixXd& w = workspace->w[i];
 
         int norder    = problem.phase[i].current_number_of_intervals;
 
@@ -68,7 +68,7 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 
 	if ( !use_local_collocation(algorithm) ) {
 
-	      for(k=1; k<=norder+1; k++)
+	      for(k=0; k<norder+1; k++)  // EIGEN_UPDATE: k index shifted by -1
 	      {
 
 		  get_controls(controls, xad, iphase, k, workspace);
@@ -87,8 +87,8 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 	else {
 
 
-		  for (k=1; k<=norder;k++) {
-		      int j, l;
+		  for (k=0; k<norder;k++) {  // EIGEN_UPDATE: k index shifted by -1
+		      int l;
 
 		      adouble interval_value = 0.0;
 
