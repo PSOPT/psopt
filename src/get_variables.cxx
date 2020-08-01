@@ -36,7 +36,7 @@ void get_controls(adouble* controls, adouble* xad, int iphase, int k, Workspace*
 {
         int i = iphase-1;
         Prob& problem = *workspace->problem;
-	DMatrix& control_scaling = problem.phase[i].scale.controls;
+	MatrixXd& control_scaling = problem.phase[i].scale.controls;
 
 	int j;
 
@@ -49,7 +49,8 @@ void get_controls(adouble* controls, adouble* xad, int iphase, int k, Workspace*
 
 
         for(j=0;j<ncontrols;j++) {
-           controls[j] =  xad[iphase_offset+(k-1)*ncontrols+j]/control_scaling(j+1);
+//           controls[j] =  xad[iphase_offset+(k-1)*ncontrols+j]/control_scaling(j+1); // EIGEN_UPDATE
+           controls[j] =  xad[iphase_offset+(k)*ncontrols+j]/control_scaling(j);
         }
 
 }
@@ -58,7 +59,7 @@ void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Wo
 {
         int i = iphase-1;
         Prob& problem = *workspace->problem;
-	DMatrix& control_scaling = problem.phase[i].scale.controls;
+	MatrixXd& control_scaling = problem.phase[i].scale.controls;
 
 	int j;
 
@@ -72,7 +73,8 @@ void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Wo
         int offset = (nstates+ncontrols)*(norder+1)+nparam;
 
         for(j=0;j<ncontrols;j++) {
-           controls_bar[j] =  xad[iphase_offset+offset+(k-1)*ncontrols+j]/control_scaling(j+1);
+//           controls_bar[j] =  xad[iphase_offset+offset+(k-1)*ncontrols+j]/control_scaling(j+1); //EIGEN_UPDATE
+             controls_bar[j] =  xad[iphase_offset+offset+(k)*ncontrols+j]/control_scaling(j);
         }
 }
 
@@ -81,20 +83,20 @@ void get_final_controls(adouble* controls, adouble* xad, int iphase, Workspace* 
 {
         int i = iphase-1;
         Prob& problem = *workspace->problem;
-        int k = problem.phase[i].current_number_of_intervals+1;
+        int k = problem.phase[i].current_number_of_intervals;
         get_controls(controls, xad, iphase, k, workspace);
 }
 
 void get_initial_controls(adouble* controls, adouble* xad, int iphase, Workspace* workspace)
 {
-        get_controls(controls, xad, iphase, 1, workspace);
+        get_controls(controls, xad, iphase, 0, workspace);
 }
 
 void get_states(adouble* states, adouble* xad, int iphase, int k, Workspace* workspace)
 {
         int i = iphase-1;
         Prob& problem            = *workspace->problem;
-	DMatrix& state_scaling   = problem.phase[i].scale.states;
+	MatrixXd& state_scaling   = problem.phase[i].scale.states;
 
 
 	int j;
@@ -108,7 +110,8 @@ void get_states(adouble* states, adouble* xad, int iphase, int k, Workspace* wor
 	int offset1   = ncontrols*(norder+1);
         // get states
         for(j=0;j<nstates;j++) {
-           states[j] =  xad[iphase_offset+offset1+(k-1)*nstates+j]/state_scaling(j+1);
+//           states[j] =  xad[iphase_offset+offset1+(k-1)*nstates+j]/state_scaling(j+1);  // EIGEN_UPDATE
+           states[j] =  xad[iphase_offset+offset1+(k)*nstates+j]/state_scaling(j);
         }
 
 }
@@ -116,13 +119,13 @@ void get_states(adouble* states, adouble* xad, int iphase, int k, Workspace* wor
 void get_final_states(adouble* states, adouble* xad, int iphase, Workspace* workspace)
 {
         Prob& problem = *workspace->problem;
-        int k = problem.phase[iphase-1].current_number_of_intervals + 1;
+        int k = problem.phase[iphase-1].current_number_of_intervals;
         get_states(states, xad, iphase, k, workspace);
 }
 
 void get_initial_states(adouble* states, adouble* xad, int iphase, Workspace* workspace)
 {
-        get_states(states, xad, iphase, 1, workspace);
+        get_states(states, xad, iphase, 0, workspace);
 }
 
 
@@ -142,7 +145,7 @@ void get_parameters(adouble* parameters, adouble* xad, int iphase, Workspace* wo
 
 
         int i = iph-1;
-        DMatrix& param_scaling   = problem.phase[i].scale.parameters;
+        MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
 
 
 	int j;
@@ -159,7 +162,8 @@ void get_parameters(adouble* parameters, adouble* xad, int iphase, Workspace* wo
 
         // get parameters
         for(j=0;j<nparam;j++) {
-           parameters[j] =  xad[iphase_offset+offset2+j]/param_scaling(j+1);
+//           parameters[j] =  xad[iphase_offset+offset2+j]/param_scaling(j+1);  // EIGEN_UPDATE
+             parameters[j] =  xad[iphase_offset+offset2+j]/param_scaling(j);
         }
 
 }
@@ -170,10 +174,6 @@ void get_times(adouble *t0, adouble *tf, adouble* xad, int iphase, Workspace* wo
         Prob& problem = *workspace->problem;
         double   time_scaling    =  problem.phase[i].scale.time;
 
-	int norder    = problem.phase[i].current_number_of_intervals;
-	int ncontrols = problem.phase[i].ncontrols;
-	int nstates   = problem.phase[i].nstates;
-        int nparam    = problem.phase[i].nparameters;
 
 	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
 
@@ -191,10 +191,6 @@ adouble get_initial_time(adouble* xad, int iphase, Workspace* workspace)
         double   time_scaling    =  problem.phase[i].scale.time;
         adouble t0;
 
-	int norder    = problem.phase[i].current_number_of_intervals;
-	int ncontrols = problem.phase[i].ncontrols;
-	int nstates   = problem.phase[i].nstates;
-        int nparam    = problem.phase[i].nparameters;
 
 
 	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
@@ -213,10 +209,6 @@ adouble get_final_time(adouble* xad, int iphase, Workspace* workspace)
         double   time_scaling    =  problem.phase[i].scale.time;
         adouble tf;
 
-	int norder    = problem.phase[i].current_number_of_intervals;
-	int ncontrols = problem.phase[i].ncontrols;
-	int nstates   = problem.phase[i].nstates;
-        int nparam    = problem.phase[i].nparameters;
 
 
 	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
