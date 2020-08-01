@@ -30,6 +30,8 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+using namespace std;
+using namespace Eigen;
 
 adouble dot(adouble* x, adouble* y, int n)
 {
@@ -120,7 +122,9 @@ double inverse_twotailed_t_cdf(double A, int ndf)
 {
 
 
-DMatrix TwoTailed_T_table(56,6,
+MatrixXd TwoTailed_T_table(56,6);
+
+TwoTailed_T_table <<
 1.,	 	3.078,	6.314,	12.706,	31.820,	63.657,
 2.,	 	1.886,	2.920,	4.303,	6.965,	9.925,
 3.,	 	1.638,	2.353,	3.182,	4.541,	5.841,
@@ -176,40 +180,40 @@ DMatrix TwoTailed_T_table(56,6,
 200.,	 	1.286,	1.652,	1.972,	2.345,	2.601,
 300.,	 	1.284,	1.650,	1.968,	2.339,	2.592,
 500.,	 	1.283,	1.648,	1.965,	2.334,	2.586,
-inf,	  	1.282,	1.645,	1.960, 	2.326,	2.576);
+Infinity,	  	1.282,	1.645,	1.960, 	2.326,	2.576;
 
 
-    DMatrix pointx;
-    DMatrix pointy;
-    DMatrix y(1,1);
+    MatrixXd pointx;
+    MatrixXd pointy;
+    MatrixXd y(1,1);
 
-    pointx = TwoTailed_T_table(colon(),1);
+    pointx = TwoTailed_T_table.col(0); // EIGEN_UPDATE:   (colon(),1);
 
     if (A==0.80) {
-      pointy = TwoTailed_T_table(colon(),2);
+      pointy = TwoTailed_T_table.col(1); // EIGEN_UPDATE: (colon(),2);
     }
     else if( A==0.90 ) {
-    pointy = TwoTailed_T_table(colon(),3);
+    pointy = TwoTailed_T_table.col(2); 
     }
     else if (A==0.95) {
-    pointy = TwoTailed_T_table(colon(),4);
+    pointy = TwoTailed_T_table.col(3);
     }
     else if (A == 0.98) {
-    pointy = TwoTailed_T_table(colon(),5);
+    pointy = TwoTailed_T_table.col(4);
     }
     else if (A== 0.99) {
-        pointy = TwoTailed_T_table(colon(),6);
+        pointy = TwoTailed_T_table.col(5);
     }
     else {
         error_message("\n A value not supported by inverse_twotailed_t_cdf()");
     }
 
-    int npoints = pointy.GetNoRows();
+    long npoints = pointy.rows();
 
-    pointx.Transpose();
-    pointy.Transpose();
+    pointx = pointx.transpose().eval();
+    pointy = pointy.transpose().eval();
 
-    linear_interpolation(y, (double) ndf, pointx, pointy, npoints);
+    linear_interpolation(y, (double) ndf, pointx, pointy, (int) npoints);
 
     return y(1,1);
 
@@ -223,9 +227,9 @@ double nint(double x)
 
 
 
-void product_ad(const DMatrix& A, const adouble* x, int nx, adouble* y)
+void product_ad(const MatrixXd& A, const adouble* x, int nx, adouble* y)
 {
-// Multiplies a constant matrix stored in DMatrix object A (nxn) by adouble vector
+// Multiplies a constant matrix stored in MatrixXd object A (nxn) by adouble vector
 // stored in array x, and returns the result in adouble array y.
 
   long  i,k,na;
@@ -234,11 +238,11 @@ void product_ad(const DMatrix& A, const adouble* x, int nx, adouble* y)
 
   adouble sum;
 
-  na=A.GetNoRows();
+  na=A.rows();
 
-  const double* apr = A.GetConstPr();
+  const double* apr = &A(0); // EIGEN_UPDATE .GetConstPr();
 
-  if (A.GetNoCols() != nx )
+  if (A.cols() != nx )
 
   { error_message("Incompatible matrix dimensions in product_ad()"); }
 
@@ -254,7 +258,7 @@ void product_ad(const DMatrix& A, const adouble* x, int nx, adouble* y)
       {
           if (apr[ rowA ]!=0)
             sum += apr[ rowA ]*x[ k ];
-          rowA += A.GetNoRows();
+          rowA += A.rows();
 
       }
 
@@ -308,7 +312,7 @@ void inverse_ad(adouble* minput, int n, adouble* minv)
 // Output:
 //          minv: n x n matrix stored columnwise with the inverse of minput.
 //
-  int i,p,k,m;
+  int i,p,k;
 
   adouble pivot;
 
@@ -375,14 +379,14 @@ void inverse_ad(adouble* minput, int n, adouble* minv)
   }
 }
 
-#define MTX( a, i, j, n )  (a)[((j)-1)*(n) + (i-1) ]
+#define MTX( a, i, j, n )  (a)[((j))*(n) + (i) ]    // EIGEN_UPDATE
 
 void transpose_ad(adouble* Apr, int na, int ma,  adouble* Atpr)
 {
     int i,j;
 
-    for(i=1;i<=na;i++) {
-        for(j=1;j<=ma;j++) {
+    for(i=0;i<na;i++) {   // EIGEN_UPDATE
+        for(j=0;j<ma;j++) {
 	     MTX( Atpr, j, i, ma ) = MTX( Apr, i, j, na );
 	}
     }
@@ -445,29 +449,27 @@ void product_ad(adouble* Apr,adouble* Bpr, int na, int ma, int nb, int mb, adoub
 
 
 
-ADMatrix::ADMatrix(int ninput, int minput)
+AutoDiffMatrix::AutoDiffMatrix(int ninput, int minput)
 {
    n = ninput;
    m = minput;
 
-   // a = (adouble*) my_calloc( n*m, sizeof(adouble) );
    a = new adouble[n*m];
-   if (a==NULL) error_message("Allocation error in ADMatrix::ADMatrix()");
+   if (a==NULL) error_message("Allocation error in AutoDiffMatrix::AutoDiffMatrix()");
 
 
 }
 
-ADMatrix::ADMatrix(int ninput)
+AutoDiffMatrix::AutoDiffMatrix(int ninput)
 {
    n = ninput;
    m = 1;
 
-//   a = (adouble*) my_calloc( n*m, sizeof(adouble) );
-    a = new adouble[n*m];
+   a = new adouble[n*m];
 
 }
 
-ADMatrix::ADMatrix()
+AutoDiffMatrix::AutoDiffMatrix()
 {
    n = 0;
    m = 0;
@@ -476,74 +478,73 @@ ADMatrix::ADMatrix()
 
 }
 
-adouble& ADMatrix::operator() (int i, int j)
+adouble& AutoDiffMatrix::operator() (int i, int j)
 {
-  if ( i<1 || j<1 || i>n || j>m )
-     error_message("\nIndex error in ADMatrix::operator()");
+  if ( i<0 || j<0 || i>n-1 || j>m-1 )  // EIGEN_UPDATE
+     error_message("\nIndex error in AutoDiffMatrix::operator()");
 
-  return a[((j-1)*n+i) -1 ];
+  return a[((j)*n+i) ];
 }
 
-adouble& ADMatrix::elem(int i, int j)
+adouble& AutoDiffMatrix::elem(int i, int j)
 {
-  if ( i<1 || j<1 || i>n || j>m )
-     error_message("\nIndex error in ADMatrix::operator()");
+  if ( i<0 || j<0 || i>n-1 || j>m-1 )  // EIGEN_UPDATE
+     error_message("\nIndex error in AutoDiffMatrix::operator()");
 
-  return a[((j-1)*n+i) -1 ];
+  return a[((j)*n+i) ];
 }
 
-adouble& ADMatrix::operator() (int i)
+adouble& AutoDiffMatrix::operator() (int i)
 {
-  if ( i<1 || i>n*m )
-     error_message("\nIndex error in ADMatrix::operator()");
+  if ( i<0 || i>n*m-1 )  // EIGEN_UPDATE
+     error_message("\nIndex error in AutoDiffMatrix::operator()");
 
-  return a[ i -1 ];
+  return a[ i ];
 }
 
-adouble ADMatrix::operator() (int i, int j) const
+adouble AutoDiffMatrix::operator() (int i, int j) const
 {
-  if ( i<1 || j<1 || i>n || j>m )
-     error_message("\nIndex error in ADMatrix::operator()");
+  if ( i<0 || j<0 || i>n-1 || j>m-1 )   // EIGEN_UPDATE
+     error_message("\nIndex error in AutoDiffMatrix::operator()");
 
-  return a[((j-1)*n+i) -1 ];
+  return a[((j)*n+i)];
 }
 
-adouble ADMatrix::elem(int i, int j) const
+adouble AutoDiffMatrix::elem(int i, int j) const
 {
-  if ( i<1 || j<1 || i>n || j>m )
-     error_message("\nIndex error in ADMatrix::operator()");
+  if ( i<0 || j<0 || i>n-1 || j>m-1 )  // EIGEN_UPDATE
+     error_message("\nIndex error in AutoDiffMatrix::operator()");
 
-  return a[((j-1)*n+i) -1 ];
+  return a[((j)*n+i)  ];
 }
 
-adouble ADMatrix::operator() (int i) const
+adouble AutoDiffMatrix::operator() (int i) const
 {
-  if ( i<1 || i>n*m )
-     error_message("\nIndex error in ADMatrix::operator()");
+  if ( i<0 || i>n*m-1 )  // EIGEN_UPDATE
+     error_message("\nIndex error in AutoDiffMatrix::operator()");
 
-  return a[ i -1 ];
+  return a[ i ];
 }
 
-ADMatrix::~ADMatrix()
+AutoDiffMatrix::~AutoDiffMatrix()
 {
-   // mxFree((FREE_ARG) (a) );
    delete[] a;
 }
 
 
-void inverse_ad(const ADMatrix& minput, ADMatrix* minv)
+void inverse_ad(const AutoDiffMatrix& minput, AutoDiffMatrix* minv)
 {
   int i,p,k,n,m;
 
   adouble pivot;
 
-  n = minput.GetNoRows();
-  m = minput.GetNoCols();
+  n = minput.rows();
+  m = minput.cols();
 
   if (n!=m) { error_message("\n Matrix must be square in inverse_ad()"); }
 
-  for( i=1;i<=n;i++) {
-    for(k=1;k<=n;k++) {
+  for( i=0;i<n;i++) {
+    for(k=0;k<n;k++) {
          (*minv)(i,k) = minput(i,k);
     }
   }
@@ -608,7 +609,7 @@ void inverse_ad(const ADMatrix& minput, ADMatrix* minv)
 }
 
 
-void product_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AB)
+void product_ad(const AutoDiffMatrix& A,const AutoDiffMatrix& B, AutoDiffMatrix* AB)
 {
 
   // Matrix product optimised for vector columnwise storage
@@ -620,17 +621,17 @@ void product_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AB)
 
   adouble sum;
 
-  na=A.GetNoRows();
+  na=A.rows();
 
-  mb=B.GetNoCols();
+  mb=B.cols();
 
-  nb=B.GetNoRows();
+  nb=B.rows();
 
   const adouble* apr = A.GetConstPr();
 
   const adouble* bpr = B.GetConstPr();
 
-  if (A.GetNoCols() != B.GetNoRows() )
+  if (A.cols() != B.rows() )
 
   { error_message("Incoherent matrix dimensions in product_ad()"); }
 
@@ -641,7 +642,7 @@ void product_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AB)
     for (j=0; j<mb; j++)
     {
 
-      colB = j*B.GetNoRows();
+      colB = j*B.rows();
 
       sum=0.0;
 
@@ -651,11 +652,11 @@ void product_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AB)
       {
 
           sum += apr[ rowA ]*bpr[ colB + k ];
-          rowA += A.GetNoRows();
+          rowA += A.rows();
 
       }
 
-      AB->elem(i+1,j+1) = sum;
+      (*AB)(i,j) = sum;
 
     }
 
@@ -665,14 +666,14 @@ void product_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AB)
 }
 
 
-void subtract_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AmB)
+void subtract_ad(const AutoDiffMatrix& A,const AutoDiffMatrix& B, AutoDiffMatrix* AmB)
 {
 
   int i;
 
-  int n = A.GetNoRows();
+  int n = A.rows();
 
-  int m = B.GetNoCols();
+  int m = B.cols();
 
   int nelem = n*m;
 
@@ -681,7 +682,7 @@ void subtract_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AmB)
   const adouble *a = A.GetConstPr();
 
 
-  if (m != B.GetNoCols() || n != B.GetNoRows())
+  if (m != B.cols() || n != B.rows())
 
   { error_message("Incoherent matrix dimensions in subtract_ad()"); }
 
@@ -696,13 +697,13 @@ void subtract_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AmB)
 
 }
 
-void sum_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* ApB)
+void sum_ad(const AutoDiffMatrix& A,const AutoDiffMatrix& B, AutoDiffMatrix* ApB)
 {
   int i;
 
-  int n = A.GetNoRows();
+  int n = A.rows();
 
-  int m = B.GetNoCols();
+  int m = B.cols();
 
   int nelem = n*m;
 
@@ -711,7 +712,7 @@ void sum_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* ApB)
   const adouble *a = A.GetConstPr();
 
 
-  if (m != B.GetNoCols() || n != B.GetNoRows())
+  if (m != B.cols() || n != B.rows())
 
   { error_message("Incoherent matrix dimensions in add_ad()"); }
 
@@ -725,17 +726,17 @@ void sum_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* ApB)
   }
 }
 
-void ADMatrix::Print(const char* text) const
+void AutoDiffMatrix::Print(const char* text) const
 {
-// Prints a matrix
+// Prints an AutoDiffMatrix
 // Eg. A.Print(" A = ");
 
   int i,j;
 
   fprintf(stderr,"\n%s\n",text);
-  for (i=1;i<=n;i++)
+  for (i=0;i<n;i++)  // EIGEN_UPDATE
   {
-    for (j=1;j<=m;j++)
+    for (j=0;j<m;j++)
     {
       fprintf(stderr," %f ", (this->elem(i,j).value()) );
       fprintf(stderr,"\t");
@@ -747,24 +748,29 @@ void ADMatrix::Print(const char* text) const
 
 }
 
-void ADMatrix::Resize(int nn, int mm)
+void AutoDiffMatrix::resize(int nn, int mm)
 {
-    if (a!=NULL) mxFree( (FREE_ARG) a);
+    if (a!=NULL) delete[] a;
 
     n = nn;
     m = mm;
 
-    // a = (adouble*) my_calloc( n*m, sizeof(adouble) );
     a = new adouble[n*m];
 }
 
-void ADMatrix::FillWithZeros()
+void AutoDiffMatrix::setZero()
 {
     for(int i=0;i< n*m; i++) {
        a[i] = 0.0;
     }
 }
 
+void AutoDiffMatrix::setOne()
+{
+    for(int i=0;i< n*m; i++) {
+       a[i] = 1.0;
+    }
+}
 
 double convert_to_original_time(double tbar,double t0,double tf)
 {
@@ -774,7 +780,9 @@ double convert_to_original_time(double tbar,double t0,double tf)
 adouble convert_to_original_time_ad(double tbar,adouble& t0,adouble& tf)
 {
 
-    adouble retval = (tf+t0)/2.0 + (tf-t0)*tbar/2.0;
+    adouble retval;
+    
+    retval = (tf+t0)/2.0 + (tf-t0)*(tbar/2.0);
 
     return retval;
 }
@@ -850,10 +858,10 @@ bool useAutomaticDifferentiation(Alg& algorithm)
 }
 
 
-void clip_vector_given_bounds(DMatrix& xp, DMatrix& xlb, DMatrix& xub)
+void clip_vector_given_bounds(MatrixXd& xp, MatrixXd& xlb, MatrixXd& xub)
 {
-    int nvars = xp.GetNoRows();
-    for(int i=1; i<=nvars;i++) {
+    long nvars = xp.rows();
+    for(int i=0; i<nvars;i++) { // EIGEN_UPDATE
          if( xp(i) > xub(i) )
             xp(i)=xub(i);
          else if ( xp(i) < xlb(i) )
@@ -864,7 +872,7 @@ void clip_vector_given_bounds(DMatrix& xp, DMatrix& xlb, DMatrix& xub)
 
 
 
-void copy_decision_variables(Sol& solution, DMatrix& x, Prob& problem, Alg& algorithm, Workspace* workspace)
+void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& algorithm, Workspace* workspace)
 {
    // Assign the contents of the decision vector x into the
    // relevant variables of the solution structure.
@@ -875,34 +883,38 @@ void copy_decision_variables(Sol& solution, DMatrix& x, Prob& problem, Alg& algo
 
    for (i=0; i< problem.nphases; i++) {
 
-	DMatrix& control_scaling = problem.phase[i].scale.controls;
-	DMatrix& state_scaling   = problem.phase[i].scale.states;
-        DMatrix& param_scaling   = problem.phase[i].scale.parameters;
-        double   time_scaling    =  problem.phase[i].scale.time;
+	MatrixXd& control_scaling  = problem.phase[i].scale.controls;
+	MatrixXd& state_scaling    = problem.phase[i].scale.states;
+   MatrixXd& param_scaling    = problem.phase[i].scale.parameters;
+   double   time_scaling      = problem.phase[i].scale.time;
 
 	int k;
 
-	int norder    = problem.phase[i].current_number_of_intervals;
-	int ncontrols = problem.phase[i].ncontrols;
-	int nstates   = problem.phase[i].nstates;
-        int nparam    = problem.phase[i].nparameters;
-	int offset1   = ncontrols*(norder+1);
-        int offset2   = (ncontrols+nstates)*(norder+1);
+	int norder        = problem.phase[i].current_number_of_intervals;
+	int ncontrols     = problem.phase[i].ncontrols;
+	int nstates       = problem.phase[i].nstates;
+   int nparam        = problem.phase[i].nparameters;
+	int offset1       = ncontrols*(norder+1);
+   int offset2       = (ncontrols+nstates)*(norder+1);
 
 	int nvars_phase_i = get_nvars_phase_i(problem,i,workspace);
 
-	double    t0  = x(iphase_offset + nvars_phase_i-1)/time_scaling;
-	double    tf  = x(iphase_offset + nvars_phase_i)/time_scaling;
-
-	for (k=1; k<=norder+1; k++) {
+//	double    t0  = x(iphase_offset + nvars_phase_i-1)/time_scaling;
+             double    t0  = x(iphase_offset + nvars_phase_i-2)/time_scaling;
+//	double    tf  = x(iphase_offset + nvars_phase_i)/time_scaling;
+             double    tf  = x(iphase_offset + nvars_phase_i-1)/time_scaling;
+	for (k=0; k<norder+1; k++) {  // EIGEN_UPDATE
                 if (ncontrols>0) {
-		    (solution.controls[i])(colon(),k) = elemDivision(x(colon(iphase_offset+(k-1)*ncontrols+1,iphase_offset+k*ncontrols) ) , control_scaling);
+//		    (solution.controls[i])(colon(),k) = elemDivision(x(colon(iphase_offset+(k-1)*ncontrols+1,iphase_offset+k*ncontrols) ) , control_scaling);
+          (solution.controls[i]).col(k) = elemDivision(x.block(iphase_offset+(k)*ncontrols, 0, ncontrols,1) , control_scaling);
                 }
-		(solution.states[i])(colon(),k)   = elemDivision(x(colon(iphase_offset+(k-1)*nstates+1+offset1, iphase_offset + k*nstates+offset1)), state_scaling);
-		(solution.nodes[i])(1,k)          =  convert_to_original_time( (workspace->snodes[i])(k), t0, tf );
+//		(solution.states[i])(colon(),k)   = elemDivision(x(colon(iphase_offset+(k-1)*nstates+1+offset1, iphase_offset + k*nstates+offset1)), state_scaling);
+      (solution.states[i]).col(k)   = elemDivision(x.block(iphase_offset+(k)*nstates+offset1, 0, nstates, 1), state_scaling);
+  	   (solution.nodes[i])(0,k)          =  convert_to_original_time( (workspace->snodes[i])(k), t0, tf );
 	}
 
-        solution.parameters[i] = elemDivision( x(colon(iphase_offset+offset2+1, iphase_offset+offset2+nparam)), param_scaling);
+//        solution.parameters[i] = elemDivision( x(colon(iphase_offset+offset2+1, iphase_offset+offset2+nparam)), param_scaling);
+        solution.parameters[i] = elemDivision( x.block(iphase_offset+offset2,0,nparam,1), param_scaling);
 
         iphase_offset += nvars_phase_i;
 
@@ -912,4 +924,1141 @@ void copy_decision_variables(Sol& solution, DMatrix& x, Prob& problem, Alg& algo
 
 
 
+void sort_vector(MatrixXd& A, RowVectorXi& sindex)
+{
+	/* Sorts vector A in ascending order              */
+   /* Returns the array of sorted indices  */
+
+   double *a;
+   long   n = MAX(A.rows(), A.cols());
+
+   if ( A.rows()!=1 && A.cols() != 1 ) {
+
+      error_message("Argument must be a column or row vector in sort_vector() ");
+
+   }
+
+
+   long i,j,inc;
+   long vi;
+   double v;
+   inc=1;
+
+   // a = A.a - 1;
+   a = &A(0)-1;
+
+   sindex.resize(n);
+   
+   int* pindx = &sindex(0); pindx--;
+
+   if (1) { for( i=1; i<= n; i++ )  pindx[i] = (int) i; }
+
+
+        do {
+                inc *= 3;
+                inc++;
+        } while (inc <= n);
+        do {
+                inc /= 3;
+                for (i=inc+1;i<=n;i++) {
+                        v=a[i];
+                        vi=(int) pindx[i];
+                        j=i;
+                        while (a[j-inc] > v) {
+                                a[j]=a[j-inc];
+                                pindx[j]=pindx[j-inc];
+                                j -= inc;
+                                if (j <= inc) break;
+                        }
+                        a[j]=v;
+                        pindx[j]= (int) vi;
+
+                }
+        } while (inc > 1);
+
+
+   for( i=0; i< n; i++ )  sindex(i) = sindex(i)-1; 
+
+}
+
+void sort(MatrixXd& A)
+{
+   double *a;
+   RowVectorXi sindex;
+   long   n = MAX(A.rows(), A.cols());
+
+   if ( A.rows()!=1 && A.cols() != 1 ) {
+
+      error_message("Argument must be a column or row vector in sort_vector() ");
+
+   }
+
+
+   long i,j,inc;
+   int vi;
+   double v;
+   inc=1;
+
+   // a = A.a - 1;
+   a = &A(0)-1;
+
+   sindex.resize(A.rows(),A.cols());
+   
+   int* pindx = &sindex(0); pindx--;
+
+   if (1) { for( i=1; i<= n; i++ )  pindx[i] = (int) i; }
+
+
+        do {
+                inc *= 3;
+                inc++;
+        } while (inc <= n);
+        do {
+                inc /= 3;
+                for (i=inc+1;i<=n;i++) {
+                        v=a[i];
+                        vi=(int) pindx[i];
+                        j=i;
+                        while (a[j-inc] > v) {
+                                a[j]=a[j-inc];
+                                pindx[j]=pindx[j-inc];
+                                j -= inc;
+                                if (j <= inc) break;
+                        }
+                        a[j]=v;
+                        pindx[j]= (int) vi;
+
+                }
+        } while (inc > 1);
+
+
+}
+
+void rearrange_vector(MatrixXd& m, RowVectorXi& sindex)
+{
+	
+	bool rowVector = false;
+	 
+	if ( m.rows()!=1 && m.cols() != 1 ) {
+
+      error_message("Argument must be a column or row vector in sort() ");
+
+   }
+   
+   if (m.rows()==1) rowVector=true;
+	
+   MatrixXd A = stack_columns(m);
+   
+   m=A;
+	
+	for (long i =0; i< sindex.size(); i++) {
+	
+	  m(i) = A(sindex(i));
+	  
+	}
+	
+	if (rowVector==true) m=m.transpose().eval();
+
+}
+
+void Save(const MatrixXd& m, const char* filename)
+{
+  long i,j;
+
+  FILE *fp;
+
+  if ( (fp = fopen(filename,"w")) == NULL )
+
+  {  error_message( "Error opening file in Save()"); }
+
+
+    for (i=0;i<m.rows();i++) { for (j=0;j<m.cols();j++) {
+
+    fprintf(fp,"%g\t", m(i,j)); } fprintf(fp,"\n"); }
+
+  fclose(fp);
+  
+}
+
+MatrixXd linspace(double X1, double X2, long N)
+{
+     MatrixXd  m;
+     VectorXd  v1;
+     v1 = VectorXd::LinSpaced(N,X1,X2);
+     m = v1;
+     long lm = length(m);
+     m.resize(1,lm);
+     return m;
+}
+
+double sum(MatrixXd& A)
+{
+   return A.sum();
+}
+
+
+MatrixXd reshape(MatrixXd& M1, int nrow, int ncol)
+{
+    Map<MatrixXd> M2(M1.data(), nrow, ncol);
+    
+    return M2;
+}
+
+MatrixXd zeros(long nrows, long ncols)
+{
+    MatrixXd m(nrows, ncols);
+    
+    m.setZero();
+    
+    return m;
+}
+
+MatrixXd eye(long n)
+{
+	 MatrixXd m(n, n);
+    
+    m.setIdentity(n,n);
+    
+    return m;
+}
+
+MatrixXd ones(long nrows, long ncols)
+{
+    MatrixXd m(nrows, ncols);
+    
+    m.setOnes();
+    
+    return m;
+
+}
+
+MatrixXd elemProduct(const MatrixXd& m1,const MatrixXd& m2)
+{
+	 MatrixXd m;
+	 
+	 m = m1.cwiseProduct(m2);
+	 
+	 return m;
+
+}
+
+MatrixXd elemDivision(const MatrixXd& m1,const MatrixXd& m2)
+{
+	 MatrixXd m;
+	 
+	 m = m1.cwiseQuotient(m2);
+	 
+	 return m;
+}
+
+bool any(const MatrixXd& m)
+{
+   return m.any();
+}
+
+MatrixXd load_data(const char* filename, long nrows, long ncols)
+{
+  long i,j;
+
+  FILE *fp;
+  
+  MatrixXd m;
+
+  if ( (fp = fopen(filename,"r")) == NULL )
+
+  {  error_message( "Error opening file in load_data()"); }
+
+
+  for (i=0;i<nrows;i++) { 
+      for (j=0;j<ncols;j++) {
+
+           fscanf(fp,"%lf", &m(i,j)); 
+      } 
+  }
+
+  fclose(fp);
+  
+  return m;
+}
+
+MatrixXd Abs(const MatrixXd& m)
+{
+   return m.array().abs();
+}
+
+MatrixXd tra(const MatrixXd& m)
+{
+	return m.transpose();
+}
+
+MatrixXd stack_columns(const MatrixXd& m)
+{
+     MatrixXd m1;
+     
+     m1.resize(m.rows()*m.cols(),1);
+     
+     long count=0;
+     
+     for (long i=0;i<m.rows();i++) { 
+        for (long j=0;j<m.cols();j++) {
+           m1(count,0) = m(i,j);
+           count++; 
+        } 
+     }
+     
+     return m1;
+}
+
+long length(const MatrixXd& m)
+{
+    return (m.rows()*m.cols());
+}
+
+double Max(const MatrixXd& m)
+{
+    return m.array().maxCoeff();
+}
+
+double Max(const MatrixXd& m, long* i)
+{
+	  long irow, icol;
+	 
+     if ( m.rows()!=1 && m.cols() != 1 ) {
+
+          error_message("Argument must be a column or row vector in sort() ");
+
+     }	 
+	 
+    double maxval = m.maxCoeff(&irow,&icol);
+    
+    
+    if (irow == 0) {
+       *i = icol;
+    }
+    else if(icol==0) {
+       *i = irow;    
+    }
+    
+    return maxval;
+}
+
+double Min(const MatrixXd& m)
+{
+   return m.array().minCoeff();
+}
+
+double Min(const MatrixXd& m, long* i)
+{
+	 long irow, icol;
+    double minval = m.minCoeff(&irow,&icol);
+    
+    *i = irow*icol-1;
+    
+    return minval;
+}
+
+double mean(const MatrixXd& m)
+{
+  return m.mean();
+}
+
+double MaxAbs(const MatrixXd& m)
+{
+    return m.lpNorm<Infinity>();
+}
+
+
+
+MatrixXd sum_columns(const MatrixXd& A)  // matrix sum function
+{
+// Returns a row vector containing the sum of values of each column
+
+  long i, j;
+
+  double sum;
+
+  MatrixXd Temp;
+
+  sum=0.0;
+
+  Temp.resize( 1, A.cols() );
+
+
+  for ( j = 0; j<A.cols(); j++ ) {
+
+
+    for( i=0 ; i< A.rows(); i++ )
+    {
+
+        sum += A(i,j);
+
+    }
+
+    Temp(0,j) = sum;
+
+    sum=0;
+
+  }
+
+  return Temp;
+
+}
+
+
+
+
+TripletSparseMatrix::TripletSparseMatrix(void)
+{
+// Default constructor
+   asize = 0;
+   a     = 0;
+   n     = 0;
+   m     = 0;
+   nz    = 0;
+
+   a = NULL;
+   RowIndx = NULL;
+   ColIndx = NULL;
+}
+
+
+TripletSparseMatrix::TripletSparseMatrix( int nn, int mm, int nzz)
+{
+    n = nn;
+    m = mm;
+    nz= nzz;
+    asize = nz;
+    a       = new double[nz];
+    RowIndx = new int[nz];
+    ColIndx = new int[nz];
+
+    for(int k=0;k<nz;k++)  {
+       RowIndx[k]=0;
+       ColIndx[k]=0;
+       a[k]      = 0.0;
+    }
+
+}
+
+TripletSparseMatrix::TripletSparseMatrix(double* aArg, int nArg, int mArg, int nzArg, int* RowIndxArg, int* ColIndxArg)
+// Constructor using arrays
+{
+   int i;
+   n     = nArg;
+   m     = mArg;
+   nz    = nzArg;
+   asize = nz;
+
+   a       = new double[nz];
+   RowIndx = new int[nz];
+   ColIndx = new int[nz];
+
+
+   for(i=0;i<nz;i++)
+   {
+         a[i]       = aArg[i];
+         ColIndx[i] = ColIndxArg[i];
+         RowIndx[i] = RowIndxArg[i];
+   }
+
+
+}
+
+
+
+void TripletSparseMatrix::resize(int nnew, int mnew, int nznew)
+{
+
+    double *anew;
+    int    *RowIndxNew;
+    int    *ColIndxNew;
+    int    dmax;
+
+    anew = new double[nznew];
+    RowIndxNew = new int[nznew];
+    ColIndxNew = new int[nznew];
+
+    dmax = MIN( nznew, nz );
+
+    if (a!= NULL)
+    {
+        memcpy(anew, a, dmax*sizeof(double) );
+        delete a;
+    }
+
+    if (RowIndx!=NULL) {
+    	memcpy(RowIndxNew, RowIndx, dmax*sizeof(int) );
+	delete RowIndx;
+    }
+
+    if (ColIndx!=NULL) {
+    	memcpy(ColIndxNew, ColIndx, dmax*sizeof(int) );
+        delete ColIndx;
+    }
+
+    a       = anew;
+    RowIndx = RowIndxNew;
+    ColIndx = ColIndxNew;
+
+    n  = nnew;
+    m  = mnew;
+    nz = nznew;
+
+}
+
+
+
+TripletSparseMatrix::TripletSparseMatrix( const TripletSparseMatrix& A) // copy constructor
+{
+   asize = A.nz;
+   a     = A.a;
+   n     = A.n;
+   m     = A.m;
+   nz    = A.nz;
+
+   a = new double[nz];
+   RowIndx = new int[nz];
+   ColIndx = new int[nz];
+
+   memcpy(a, A.a, nz*sizeof(double) );
+   memcpy(ColIndx, A.ColIndx, nz*sizeof(int) );
+   memcpy(RowIndx, A.RowIndx, nz*sizeof(int) );
+}
+
+// Destructor
+TripletSparseMatrix::~TripletSparseMatrix()
+{
+    if (a!=NULL)
+ 	delete a;
+    if (RowIndx!= NULL)
+        delete RowIndx;
+    if (ColIndx!= NULL)
+        delete ColIndx;
+
+}
+
+
+
+
+void TripletSparseMatrix::InsertNonZero(int i, int j, double val)
+{
+    int k;
+
+    double* anew;
+    int* RowNew;
+    int* ColNew;
+    int nznew=nz+1;
+    int eflag = 0;
+
+    anew =  new double[nznew];
+    RowNew= new int[nznew];
+    ColNew= new int[nznew];
+
+    for (k=0; k< nz; k++)
+    {
+        if (RowIndx[k]==i && ColIndx[k]==j) {
+               a[k]= val;
+               eflag = 1;
+               break;
+        }
+    }
+
+    if (!eflag) {
+    	memcpy(anew,   a,       nz*sizeof(double) );
+    	memcpy(RowNew, RowIndx, nz*sizeof(int) );
+    	memcpy(ColNew, ColIndx, nz*sizeof(int) );
+
+    	delete a;
+    	delete RowIndx;
+    	delete ColIndx;
+
+    	a = anew;
+    	RowIndx = RowNew;
+    	ColIndx = ColNew;
+    	nz = nznew;
+    	asize = nznew;
+
+    	  RowIndx[nznew-1] = i;
+        ColIndx[nznew-1] = j;
+        a[nznew-1]       = val;
+    }
+
+    // Now resize the matrix if necessary
+    for (k=0;k<nz;k++) {
+        if (RowIndx[k]>n)
+           n = RowIndx[k];
+        if (ColIndx[k]>m)
+           m = ColIndx[k];
+    }
+
+}
+
+
+// Operators
+
+TripletSparseMatrix& TripletSparseMatrix::operator += (const TripletSparseMatrix &rval)
+{
+    int i;
+
+    if ( (this->n != rval.n) || (this->m != rval.m) )
+        fprintf(stderr,"\nTripletSparseMatrix::operator += error: matrix dimensions do not agree");
+
+    for (i=0; i<rval.nz; i++)
+    {
+        if ( (*this)(rval.RowIndx[i],rval.ColIndx[i])!=0.0 )
+               this->a[i] += rval.a[i];
+        else
+               this->InsertNonZero( rval.RowIndx[i], rval.ColIndx[i], rval.a[i] );
+    }
+    this->Compress();
+    return (*this);
+}
+
+
+TripletSparseMatrix& TripletSparseMatrix::operator+ (const TripletSparseMatrix& Other_matrix) const
+{
+   TripletSparseMatrix* Result;
+
+   Result = new TripletSparseMatrix;
+
+   (*Result)=(*this);
+
+   return ((*Result)+=Other_matrix);
+
+}
+
+TripletSparseMatrix& TripletSparseMatrix::operator -= (const TripletSparseMatrix &rval)
+{
+    int i;
+
+    if ( (this->n != rval.n) || (this->m != rval.m) )
+        fprintf(stderr,"\nTripletSparseMatrix::operator -= error: matrix dimensions do not agree");
+
+    for (i=0; i<rval.nz; i++)
+    {
+        if ( (*this)(rval.RowIndx[i],rval.ColIndx[i])!=0.0 )
+               this->a[i] -= rval.a[i];
+        else
+               this->InsertNonZero( rval.RowIndx[i], rval.ColIndx[i], -rval.a[i] );
+    }
+    this->Compress();
+    return (*this);
+}
+
+
+TripletSparseMatrix& TripletSparseMatrix::operator- (const TripletSparseMatrix& Other_matrix) const
+{
+   TripletSparseMatrix* Result;
+
+   Result = new TripletSparseMatrix;
+
+   (*Result)=(*this);
+
+   return ((*Result)-=Other_matrix);
+}
+
+
+
+
+TripletSparseMatrix& TripletSparseMatrix::operator*= (double Arg)
+{
+   int i;
+   for (i=0; i<nz; i++)
+   {
+      a[i]*= Arg;
+   }
+   return (*this);
+}
+
+
+TripletSparseMatrix& TripletSparseMatrix::operator* (double Arg) const
+{
+   TripletSparseMatrix* Result;
+
+   Result = new TripletSparseMatrix;
+
+   (*Result)=(*this);
+
+   return ( (*Result)*=Arg );
+}
+
+TripletSparseMatrix& operator *(double Arg, const TripletSparseMatrix& A)
+{
+   return (A*Arg);
+}
+
+
+
+TripletSparseMatrix& elemProduct(const TripletSparseMatrix A, const TripletSparseMatrix& B)
+{
+          int i, j, k;
+
+          double sum;
+
+          double *a = A.GetPr();
+
+          int *RowIndx = A.GetRowIndx_C_Array();
+          int *ColIndx = A.GetColIndx_C_Array();
+
+          TripletSparseMatrix *sp = new TripletSparseMatrix( A.rows(), B.cols(), 0 );
+
+          if (A.rows() != B.rows() ||  A.cols() != B.cols())
+                sp_error_message("Inconsistent matrix dimensions in TripletSparseMatrix elemProduct()");
+
+
+
+          for (k = 0; k < A.GetNonZero(); k++) {
+                i = RowIndx[k];
+                j = ColIndx[k];
+                sum = a[k]*B(i,j);
+                if (sum!=0.0) sp->InsertNonZero(i, j, sum);
+          }
+
+          return (*sp);
+}
+
+
+TripletSparseMatrix& TripletSparseMatrix::operator/= (double Arg)
+{
+   int i;
+
+   if (Arg==0.0) sp_error_message("Division by zero in TripletSparseMatrix::operator/");
+
+   for (i=0; i<nz; i++)
+   {
+      a[i]/= Arg;
+   }
+   return (*this);
+}
+
+TripletSparseMatrix& TripletSparseMatrix::operator/ (double Arg) const
+{
+   TripletSparseMatrix* Result;
+
+   if (Arg==0.0) sp_error_message("Division by zero in TripletSparseMatrix::operator/");
+
+   Result = new TripletSparseMatrix;
+
+   (*Result)=(*this);
+
+   return ( (*Result)/=Arg );
+}
+
+TripletSparseMatrix& TripletSparseMatrix::operator= (const TripletSparseMatrix& Other_matrix)
+{
+     this->resize(Other_matrix.n, Other_matrix.m, Other_matrix.nz);
+     memcpy(a, Other_matrix.a, nz*sizeof(double) );
+     memcpy(RowIndx, Other_matrix.RowIndx, nz*sizeof(int) );
+     memcpy(ColIndx, Other_matrix.ColIndx, nz*sizeof(int) );
+     return (*this);
+}
+
+double& TripletSparseMatrix::operator() (int i,int j)
+{
+   int k;
+
+    int ii;
+
+    int eflag = 0;
+
+    for (k=0; k< nz; k++)
+    {
+       if (RowIndx[k]==i && ColIndx[k]==j) {
+              ii = k;
+              eflag = 1;
+              break;
+       }
+
+    }
+
+    if( !eflag ) {
+
+    	for (k=0; k<nz; k++) {
+
+        	  if (RowIndx[k]==0 || ColIndx[k]==0) {
+           		RowIndx[k]=i;
+           		ColIndx[k]=j;
+                        ii=k;
+                        eflag=1;
+                        break;
+       		  }
+        }
+
+    }
+
+    if (!eflag) {
+       this->InsertNonZero(i,j,0.0);
+       ii = nz-1;
+    }
+
+    return a[ii];
+
+}
+
+double TripletSparseMatrix::operator() (int row,int col) const
+{
+      int i;
+      double retval = 0.0;
+
+      if ( (row>n) || (row<0) || (col<0) || (col>m) ) {
+          error_message("Out of range index in TripletSparseMatrix::operator()");
+      }
+
+      for (i=0; i< nz; i++) {
+          if (RowIndx[i]==row && ColIndx[i]==col)
+          {
+               retval = a[i];
+               break;
+          }
+      }
+
+      return retval;
+}
+
+
+
+void TripletSparseMatrix::Print(const char* text)
+{
+   int i;
+
+   fprintf(stderr,"\nSparse matrix %s",text);
+   fprintf(stderr,"\nNumber of rows: %li", n);
+   fprintf(stderr,"\nNumber of columns: %li", m);
+   fprintf(stderr,"\nNumber of non-zero elements: %li", nz);
+   if (n*m!=0) fprintf(stderr,"\nDensity: %lf%%", (  ((double) nz*100)/(double) (n*m)  ) );
+   if (nz>0) fprintf(stderr,"\n(Row,Col)\tValue");
+
+   for (i=0; i<nz; i++)
+   {
+       fprintf(stderr,"\n(%li,%li)\t\t%e", RowIndx[i], ColIndx[i], a[i]);
+
+   }
+   fprintf(stderr,"\n");
+
+}
+
+void TripletSparseMatrix::SaveSparsityPattern(const char* text) const
+{
+   int i, j;
+   FILE *outfile;
+
+   outfile = fopen(text,"w");
+
+   for (i=0; i<n; i++)  {
+       for(j=0; j<m; j++)  {
+           if ( (*this)(i,j)!=0.0 )
+               fprintf(outfile,"%c ",'*');
+           else
+               fprintf(outfile,"%c ",'0');
+       }
+       fprintf(outfile,"\n");
+   }
+   fclose(outfile);
+}
+
+
+void TripletSparseMatrix::Compress()
+{
+
+    int i, j;
+    int deleted_count=0;
+
+    double* anew;
+    int* RowNew;
+    int* ColNew;
+    int nznew;
+    int nztemp=nz;
+
+    for (i=0; i< nztemp; i++)
+    {
+        if (fabs(a[i])<=(PSOPT_extras::GetEPS()) ) {
+             for(j=i; j<nztemp-1; j++)
+	     {
+                    a[j] = a[j+1];
+                    RowIndx[j]=RowIndx[j+1];
+                    ColIndx[j]=ColIndx[j+1];
+	     }
+ 	     deleted_count++;
+             nztemp--;
+             i--;
+        }
+    }
+
+    nznew = nz-deleted_count;
+    anew = new double[nznew];
+    RowNew= new int[nznew];
+    ColNew= new int[nznew];
+
+    memcpy(anew,a, nznew*sizeof(double) );
+    memcpy(RowNew, RowIndx, nznew*sizeof(int) );
+    memcpy(ColNew, ColIndx, nznew*sizeof(int) );
+
+    delete a;
+    delete RowIndx;
+    delete ColIndx;
+
+    a = anew;
+    RowIndx = RowNew;
+    ColIndx = ColNew;
+
+    nz = nznew;
+    asize = nznew;
+
+}
+
+
+
+TripletSparseMatrix& speye(int n)
+{
+// Returns a sparse identity matrix
+     TripletSparseMatrix *sp = new TripletSparseMatrix;
+     int i;
+     sp->resize(n, n, n);
+
+     for (i=0;i<sp->GetNonZero();i++) {
+         sp->GetRowIndx_C_Array()[i]=i;
+         sp->GetColIndx_C_Array()[i]=i;
+         sp->GetPr()[i]=1.0;
+     }
+
+     return (*sp);
+}
+
+
+void TripletSparseMatrix::Load(const char* fname)
+{
+  int nrow, ncol, nnz;
+
+  int k;
+
+  FILE *fp;
+
+  if ( (fp = fopen(fname,"r")) == NULL )
+
+  {  sp_error_message( "Error opening file in TripletSparseMatrix::Load()"); }
+
+
+   fscanf(fp,"%li", &nrow);
+   fscanf(fp,"%li", &ncol);
+   fscanf(fp,"%li", &nnz);
+
+   this->resize(nrow, ncol, nnz);
+
+   for (k=0;k<nnz;k++) {
+            fscanf(fp,"%li",  &RowIndx[k] );
+            fscanf(fp,"%li",  &ColIndx[k] );
+            fscanf(fp,"%lf", &a[k]);
+   }
+
+
+  fclose(fp);
+
+}
+
+void TripletSparseMatrix::Save(const char* fname) const
+{
+
+  int k;
+
+  FILE *fp;
+
+  if ( (fp = fopen(fname,"w")) == NULL )
+
+  {  sp_error_message( "Error opening file in TripletSparseMatrix::Save()"); }
+
+
+   fprintf(fp,"%li\t%li\t%li\n", n, m, nz);
+
+   for (k=0;k<nz;k++) {
+            fprintf(fp,"%li\t%li\t%e\n",  RowIndx[k], ColIndx[k], a[k] );
+   }
+
+   fclose(fp);
+
+}
+
+
+
+TripletSparseMatrix& tra(const TripletSparseMatrix& A)
+{
+// Returns a Sparse matrix object with the transposition of input sparse matrix A.
+
+   TripletSparseMatrix *sp = new TripletSparseMatrix(A.cols(), A.rows(), A.GetNonZero() );
+
+   memcpy(sp->RowIndx, A.ColIndx, A.nz*sizeof(int) );
+   memcpy(sp->ColIndx, A.RowIndx, A.nz*sizeof(int) );
+   memcpy(sp->a      , A.a,       A.nz*sizeof(double) );
+
+   return (*sp);
+
+}
+
+
+
+
+
+MatrixXd TripletSparseMatrix::col(int j) const
+{
+// Returns a dense column vector (MatrixXd object) with the j-th column of the calling
+// sparse matrix.
+  MatrixXd Temp;
+
+  Temp.resize( this->rows(), 1 );
+  Temp.setZero();
+  for(int i=0;i<nz;i++) {
+       if (ColIndx[i]==j) {
+       		Temp( RowIndx[i], 0 ) = a[i];
+       }
+  }
+  return Temp;
+
+}
+
+MatrixXd TripletSparseMatrix::row(int i) const
+{
+// Returns a dense row vector (MatrixXd object) with the i-th row of the calling
+// sparse matrix.
+  MatrixXd Temp;
+
+  Temp.resize( 1, this->cols());
+  Temp.setZero();
+  for(int j=0;j<nz;j++) {
+       if (RowIndx[j]==i) {
+       		Temp(0, ColIndx[j] ) = a[i];
+       }
+  }
+  return Temp;
+}
+
+
+
+
+void TripletSparseMatrix::Transpose()
+{
+// Transposes a sparse matrix object
+   int s;
+   int *temp = new int[nz];
+
+
+   memcpy(temp, RowIndx,    nz*sizeof(int) );
+   memcpy(RowIndx, ColIndx, nz*sizeof(int) );
+   memcpy(ColIndx, temp,    nz*sizeof(int) );
+
+   s = n;
+   n = m;
+   m = s;
+
+   return;
+
+}
+
+
+void sp_error_message(const char *error_text)
+{
+     error_message( error_text );
+}
+
+
+bool isEmpty(const MatrixXd& m)     {  
+	return !((bool) m.rows()&&m.cols()); 
+}
+
+
+bool isSymmetric(const MatrixXd& m) {  
+	return m.isApprox(m.transpose()); 
+}
+
+
+DEC_THREAD int     PSOPT_extras::errorFlag   = 0;	   
+
+DEC_THREAD int     PSOPT_extras::print_level = 1;        
+
+DEC_THREAD clock_t PSOPT_extras::start_clock = 0;
+
+
+
+void PSOPT_extras::SetPrintLevel( int plevel )
+{
+	 print_level=plevel;
+	 return;
+}
+
+
+int PSOPT_extras::PrintLevel() {
+	return print_level;
+}
+
+#ifndef OUTPUT_STREAM
+#define OUTPUT_STREAM stderr
+#endif
+
+void error_message(const char *error_text)
+{
+// Error handling routine
+
+  string m1;
+  string m2;
+
+  m1 =  "\n**** Run time error";
+  m1 += "\n**** To trace this error, set up your debugger to break at";
+  m1 += "\n**** function 'error_message', then do a backtrace.";
+  m1 += "\n**** A diagnostic message is given below:";
+  m2 = error_text;
+  m2 =  "\n**** ====> " + m2 + " <====\n\n";
+
+  if ( PSOPT_extras::PrintLevel() ) {
+
+  fprintf(OUTPUT_STREAM,"%s", m1.c_str());
+  fprintf(OUTPUT_STREAM,"%s", m2.c_str());
+  FILE* err_file = fopen("error_message.txt","w");
+  fprintf(err_file,"%s", m1.c_str() );
+  fprintf(err_file,"%s", m2.c_str() );
+  fclose(err_file);
+
+
+ }
+
+  PSOPT_extras::RiseErrorFlag();
+
+  throw ErrorHandler(m1+m2);
+
+
+}
+
+ErrorHandler::ErrorHandler(const string m)
+{
+  error_message = m;
+}
+
+
+void PSOPT_extras::tic(void)
+{
+// Chronometer starts
+   PSOPT_extras::SetStartTicks(clock());
+
+}
+
+double PSOPT_extras::toc()
+{
+// Chronometer stops
+
+   clock_t  stop_ticks     = clock();
+   clock_t  elapsed_ticks;
+   double elapsed_time;
+
+   elapsed_ticks= stop_ticks-PSOPT_extras::GetStartTicks();
+
+   elapsed_time = ((double) elapsed_ticks/CLOCKS_PER_SEC);
+
+   if (1) {
+
+       if (PSOPT_extras::PrintLevel() ) {
+       	fprintf(stderr,"\n Elapsed time is %e seconds\n", elapsed_time );
+       }
+
+   }
+
+   return (elapsed_time);
+
+}
 
