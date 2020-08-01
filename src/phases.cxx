@@ -31,6 +31,7 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+using namespace Eigen;
 
 
 
@@ -144,12 +145,9 @@ void auto_link_2(adouble* linkages, int* index, adouble* xad, int iphase_a, int 
 Phases& Prob::phases(int iphase)
 {
      if (iphase <1 || iphase > nphases)
-          error_message("incorrect phase index in Prob::phases()");
+          error_message("Phase index must be between 1 and problem.nphases in Prob::phases()");
      return phase[iphase-1];
 }
-
-
-
 
 
 void multi_segment_setup(Prob& problem, Alg& algorithm, MSdata& msdata)
@@ -163,7 +161,7 @@ void multi_segment_setup(Prob& problem, Alg& algorithm, MSdata& msdata)
        	  problem.nlinkages = auto_link2_count(problem, msdata.nstates, msdata.ncontrols);
      }
 
-     if (msdata.nodes.GetNoRows() != 1 && msdata.nodes.GetNoRows() != problem.nphases) {
+     if (msdata.nodes.rows() != 1 && msdata.nodes.rows() != problem.nphases) {
 	      error_message("Incorrect dimensions of msdata.nodes matrix, its row dimension should\n  \
 	                        be either 1 or equal to the number of segments");
      }
@@ -183,8 +181,9 @@ void multi_segment_setup(Prob& problem, Alg& algorithm, MSdata& msdata)
 
      problem.phases(1).npath = msdata.npath;
 
-     problem.phases(1).nodes = msdata.nodes(1,colon());
-
+//   problem.phases(1).nodes = msdata.nodes(1,colon());  // EIGEN_UPDATE
+     problem.phases(1).nodes = msdata.nodes.row(0); 
+  
      problem.phases(1).nparameters = msdata.nparameters;
 
      if (problem.observation_function!=NULL) {
@@ -213,6 +212,10 @@ void multi_segment_setup(Prob& problem, Alg& algorithm, MSdata& msdata)
 
 }
 
+
+
+
+
 int auto_link_count(Prob& problem, int nstates)
 {
    return (problem.nphases-1)*(nstates + 1);
@@ -223,8 +226,7 @@ int auto_link2_count(Prob& problem, int nstates, int ncontrols)
    return (problem.nphases-1)*(nstates+ncontrols+1);
 }
 
-
-void auto_phase_setup(Prob& problem,int n_final_events, DMatrix& nodes)
+void auto_phase_setup(Prob& problem,int n_final_events, RowVectorXi& nodes)
 {
 	int i, j;
 
@@ -233,39 +235,38 @@ void auto_phase_setup(Prob& problem,int n_final_events, DMatrix& nodes)
 
 	for(i=2;i<=problem.nphases;i++)
 	{
-	        if ( nodes.GetNoRows() == 1 ) j = 1;
-		else if (nodes.GetNoRows() == problem.nphases) j=i;
-		problem.phases(i).nstates   		= problem.phases(1).nstates;
-		problem.phases(i).ncontrols 		= problem.phases(1).ncontrols;
-    		problem.phases(i).nevents   		= 0;
-    		problem.phases(i).npath     		= problem.phases(1).npath;
-    		problem.phases(i).nodes                 = nodes(j,colon());
-		problem.phases(i).nparameters           = 0;
-                problem.phases(i).nobserved             = problem.phases(1).nobserved;
-                problem.phases(i).nsamples              = problem.phases(1).nsamples;
+	        if ( nodes.rows() == 1 ) j = 1;
+		else if (nodes.rows() == problem.nphases) j=i;
+		   problem.phases(i).nstates   		       = problem.phases(1).nstates;
+		   problem.phases(i).ncontrols 		       = problem.phases(1).ncontrols;
+    		problem.phases(i).nevents   		       = 0;
+    		problem.phases(i).npath     		       = problem.phases(1).npath;
+//    		problem.phases(i).nodes          = nodes(j,colon());  // EIGEN_UPDATE
+	      problem.phases(i).nodes                 = nodes.row(j);
+		   problem.phases(i).nparameters           = 0;
+         problem.phases(i).nobserved             = problem.phases(1).nobserved;
+         problem.phases(i).nsamples              = problem.phases(1).nsamples;
 	}
 
-	problem.phases(problem.nphases).nevents  	= n_final_events;
+	problem.phases(problem.nphases).nevents  	    = n_final_events;
 
 
 }
 
 
-
-
-
 void  auto_phase_bounds(Prob& problem)
 {
 	int i;
-	double t0l, t0u, tfl, tfu;
 
-        if (problem.nphases == 1) return;
+//   double dt;
 
-	double dt, t0, tf;
+   if (problem.nphases == 1) return;
 
-	if ( problem.bounds.lower.times.isEmpty() ) {
+	double  t0, tf;
 
-           dt = problem.phases(problem.nphases).bounds.upper.EndTime - problem.phases(1).bounds.lower.StartTime;
+	if ( isEmpty(problem.bounds.lower.times) ) {
+
+//           dt = problem.phases(problem.nphases).bounds.upper.EndTime - problem.phases(1).bounds.lower.StartTime;
            t0 = problem.phases(1).bounds.lower.StartTime;
            tf = problem.phases(problem.nphases).bounds.upper.EndTime;
 
@@ -273,42 +274,43 @@ void  auto_phase_bounds(Prob& problem)
 
 	else {
 
-	   problem.phases(1).bounds.lower.StartTime = problem.bounds.lower.times(1);
-	   problem.phases(1).bounds.upper.StartTime = problem.bounds.upper.times(1);
-	   problem.phases(problem.nphases).bounds.lower.EndTime = problem.bounds.lower.times("end");
-	   problem.phases(problem.nphases).bounds.upper.EndTime = problem.bounds.upper.times("end");
+	   problem.phases(1).bounds.lower.StartTime = problem.bounds.lower.times(0); // EIGEN_UPDATE
+	   problem.phases(1).bounds.upper.StartTime = problem.bounds.upper.times(0);
+	   long iend= length(problem.bounds.lower.times)-1;
+	   problem.phases(problem.nphases).bounds.lower.EndTime = problem.bounds.lower.times(iend); //EIGEN_UPDATE
+	   problem.phases(problem.nphases).bounds.upper.EndTime = problem.bounds.upper.times(iend);
 
-	   dt = problem.phases(problem.nphases).bounds.upper.EndTime - problem.phases(1).bounds.lower.StartTime;
-           t0 = problem.phases(1).bounds.lower.StartTime;
-           tf = problem.phases(problem.nphases).bounds.upper.EndTime;
+//	   dt = problem.phases(problem.nphases).bounds.upper.EndTime - problem.phases(1).bounds.lower.StartTime;
+      t0 = problem.phases(1).bounds.lower.StartTime;
+      tf = problem.phases(problem.nphases).bounds.upper.EndTime;
 
 	}
 
 	for(i=2;i<=problem.nphases;i++)
 	{
 	    problem.phases(i).bounds.lower.states = problem.phases(1).bounds.lower.states;
-    	    problem.phases(i).bounds.upper.states = problem.phases(1).bounds.upper.states;
+    	 problem.phases(i).bounds.upper.states = problem.phases(1).bounds.upper.states;
 	    problem.phases(i).bounds.lower.controls = problem.phases(1).bounds.lower.controls;
-    	    problem.phases(i).bounds.upper.controls = problem.phases(1).bounds.upper.controls;
+    	 problem.phases(i).bounds.upper.controls = problem.phases(1).bounds.upper.controls;
 
 	    problem.phases(i).bounds.lower.path = problem.phases(1).bounds.lower.path;
-    	    problem.phases(i).bounds.upper.path = problem.phases(1).bounds.upper.path;
+    	 problem.phases(i).bounds.upper.path = problem.phases(1).bounds.upper.path;
 
 
 
-	    if ( problem.bounds.lower.times.isEmpty() ) {
+	    if ( isEmpty(problem.bounds.lower.times) ) {
                 if (problem.phases(i).nobserved==0) {
-	            	problem.phases(i).bounds.lower.StartTime = t0;
-	 	    	problem.phases(i).bounds.upper.StartTime = tf;
+	            	  problem.phases(i).bounds.lower.StartTime = t0;
+	 	    	        problem.phases(i).bounds.upper.StartTime = tf;
                 }
 	        else {
-	            	problem.phases(i).bounds.lower.StartTime = problem.phases(i).observation_nodes(1);
-	 	    	problem.phases(i).bounds.upper.StartTime = problem.phases(i).observation_nodes(1);
+	            	problem.phases(i).bounds.lower.StartTime = problem.phases(i).observation_nodes(0);  // EIGEN_UPDATE
+	 	    	      problem.phases(i).bounds.upper.StartTime = problem.phases(i).observation_nodes(0);
                 }
 	    }
 	    else {
-		problem.phases(i).bounds.lower.StartTime = problem.bounds.lower.times(i);
- 	    	problem.phases(i).bounds.upper.StartTime = problem.bounds.upper.times(i);
+		            problem.phases(i).bounds.lower.StartTime = problem.bounds.lower.times(i-1); // EIGEN_UPDATE
+ 	    	         problem.phases(i).bounds.upper.StartTime = problem.bounds.upper.times(i-1); // EIGEN_UPDATE
             }
 
 	}
@@ -317,12 +319,12 @@ void  auto_phase_bounds(Prob& problem)
 	{
             if (problem.phases(i).nobserved==0) {
 	            problem.phases(i).bounds.lower.EndTime = problem.phases(i+1).bounds.lower.StartTime;
-		    problem.phases(i).bounds.upper.EndTime = problem.phases(i+1).bounds.upper.StartTime;
+		         problem.phases(i).bounds.upper.EndTime = problem.phases(i+1).bounds.upper.StartTime;
             }
             else {
-	            problem.phases(i).bounds.lower.EndTime = problem.phases(i).observation_nodes("end");
-		    problem.phases(i).bounds.upper.EndTime = problem.phases(i).observation_nodes("end");
-
+            	long iend = length(problem.phases(i).observation_nodes)-1;
+	            problem.phases(i).bounds.lower.EndTime = problem.phases(i).observation_nodes(iend);
+		         problem.phases(i).bounds.upper.EndTime = problem.phases(i).observation_nodes(iend);
             }
 	}
 
@@ -331,47 +333,54 @@ void  auto_phase_bounds(Prob& problem)
          	fprintf(stderr,"\n Phase %i lower start time = %f", i, problem.phases(i).bounds.lower.StartTime);
          	fprintf(stderr,"\n Phase %i upper start time = %f", i, problem.phases(i).bounds.upper.StartTime);
 
-         	fprintf(stderr,"\n Phase %i lower end time = %f",  i, problem.phases(i).bounds.lower.EndTime);
+         	fprintf(stderr,"\n Phase %i lower end time = %f",   i, problem.phases(i).bounds.lower.EndTime);
          	fprintf(stderr,"\n Phase %i upper end time = %f",   i, problem.phases(i).bounds.upper.EndTime);
  	}
 
 }
 
 
-void  auto_phase_guess(Prob& problem, DMatrix& controls, DMatrix& states, DMatrix& param, DMatrix& time)
+void  auto_phase_guess(Prob& problem, MatrixXd& controls, MatrixXd& states, MatrixXd& param, MatrixXd& time)
 {
         int i,j;
         double time_min, time_max;
 
 	for(i=1;i<=problem.nphases;i++)
 	{
-            int min_nodes = Min(problem.phases(i).nodes);
+       int min_nodes = (problem.phases(i).nodes).minCoeff();
  	    problem.phases(i).guess.controls = zeros(problem.phases(i).ncontrols,min_nodes);
-	    for(j=1; j<=problem.phases(i).ncontrols;j++) {
-	         problem.phases(i).guess.controls(j,colon()) = linspace(controls(j,1), controls(j,"end"), min_nodes);
-            }
+	    for(j=0; j<problem.phases(i).ncontrols;j++) { // EIGEN_UPDATE
+//	         problem.phases(i).guess.controls(j,colon()) = linspace(controls(j,1), controls(j,"end"), min_nodes);
+	         problem.phases(i).guess.controls.row(j) = linspace(controls(j,0), controls(j,controls.cols()-1), min_nodes);
+       }
 	    problem.phases(i).guess.states = zeros(problem.phases(i).nstates,min_nodes);
-	    for(j=1; j<=problem.phases(i).nstates;j++) {
-    	    	problem.phases(i).guess.states(j,colon()) =linspace(states(j,1), states(j,"end"), min_nodes);
+	    for(j=0; j<problem.phases(i).nstates;j++) { // EIGEN_UPDATE
+//    	    	problem.phases(i).guess.states(j,colon()) = linspace(states(j,1), states(j,"end"), min_nodes);
+    	    	problem.phases(i).guess.states.row(j) = linspace(states(j,0), states(j,states.cols()), min_nodes);
+    	    	
 	    }
 	    if (problem.phase[i-1].nparameters>0) {
-		problem.phases(i).guess.parameters = zeros(problem.phases(i).nparameters,1);
-		for(j=1; j<=problem.phases(i).nparameters;j++) {
-		    problem.phases(i).guess.parameters(j)= param(j);
-		}
+	        	problem.phases(i).guess.parameters = zeros(problem.phases(i).nparameters,1);
+		      for(j=0; j<problem.phases(i).nparameters;j++) { // EIGEN_UPDATE
+		           problem.phases(i).guess.parameters(j)= param(j);
+		      }
 	    }
-            if (i==1) {
-                time_min = time(1);
-                time_max = time(1)+ (time("end")-time(1))/problem.nphases;
-            }
-            else {
-		time_min = problem.phases(i-1).guess.time("end");
-                time_max = time_min + i*(time("end")-time(1))/problem.nphases;
-            }
-    	    problem.phases(i).guess.time = linspace(time_min,time_max,min_nodes);
+       if (i==1) {
+                time_min = time(0);
+                time_max = time(0)+ (time(time.cols()-1)-time(0))/problem.nphases;
+       }
+       else {
+       	       long iend = length(problem.phases(i-1).guess.time)-1; // EIGEN_UPDATE
+		          time_min = problem.phases(i-1).guess.time(iend);
+                time_max = time_min + i*(time(length(time)-1)-time(0))/problem.nphases;
+       }
+    	 problem.phases(i).guess.time = linspace(time_min,time_max,min_nodes);
 	}
 
 }
+
+
+
 
 void auto_link_multiple(adouble* linkages, adouble* xad,int nphases, Workspace* workspace)
 {
@@ -380,14 +389,17 @@ void auto_link_multiple(adouble* linkages, adouble* xad,int nphases, Workspace* 
 
   if ( workspace->problem->continuous_controls_flag==false ) {
      for(i=1;i<=(nphases-1);i++) {
-	auto_link(linkages, &index, xad, i,  i+1, workspace);
+	     auto_link(linkages, &index, xad, i,  i+1, workspace);
      }
   }
 
   else {
       for(i=1;i<=(nphases-1);i++) {
-	    auto_link_2(linkages, &index, xad, i,  i+1, workspace);
+	      auto_link_2(linkages, &index, xad, i,  i+1, workspace);
       }
   }
 }
+
+
+
 
