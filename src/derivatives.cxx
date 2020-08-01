@@ -31,40 +31,46 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
-// Numerical Gradient Functions
-
-
-void JacobianColumn( void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x, DMatrix& xlb, DMatrix& xub, int jCol,
-                DMatrix* JacColumn, GRWORK* grw, Workspace* workspace )
+void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, MatrixXd& xlb, MatrixXd& xub, int jCol,
+                MatrixXd* JacColumn, GRWORK* grw, Workspace* workspace )
 {
   // Computes only one column of the Jacobian matrix
 
   int  j, k;
   double delj;
-  double sqreps;
+  MatrixXd sqreps;
   double xs;
-  long nf  = JacColumn->GetNoRows();
+  long nf  = JacColumn->rows();
 
-  DMatrix *dfdx_j = grw->dfdx_j;
-  DMatrix *F1   = grw->F1;
-  DMatrix *F2   = grw->F2;
-  DMatrix *F3   = grw->F3;
+  MatrixXd *dfdx_j = grw->dfdx_j;
+  MatrixXd *F1   = grw->F1;
+  MatrixXd *F2   = grw->F2;
+  MatrixXd *F3   = grw->F3;
+  int nvar = x.rows();
 
 
-  dfdx_j->Resize( nf, 1 );
-  F1->Resize(   nf, 1 );
-  F2->Resize(   nf, 1 );
+  dfdx_j->resize( nf, 1 );
+  F1->resize(   nf, 1 );
+  F2->resize(   nf, 1 );
 
-  sqreps= sqrt( DMatrix::GetEPS() );
+  sqreps=sqrt( PSOPT_extras::GetEPS() )*ones(nvar,1);
+  
+  int tcount=0;
+  
+  for (int jj=0; jj<nvar; jj++){
 
-  if (any( x < (xub-sqreps))|| any( x>(xlb+sqreps)) )
+        if(  x(jj) <= (xub(jj)-sqreps(jj))||   x(jj)>=(xlb(jj)+sqreps(jj)) ) 
+           tcount++; 
+  }
+
+  if ( tcount )
   {
-     F3->Resize( nf, 1);
+     F3->resize( nf, 1);
      fun(x, F3, workspace);
   }
 
   j = jCol;
-      delj = sqreps*(1.+fabs(x(j)));
+      delj = sqreps(0)*(1.+fabs(x(j)));
 //      delj = sqreps;
       xs   = x(j);
       if ((xs < xub(j)-delj && xs>xlb(j)+delj) || (xub(j)==xlb(j))) {
@@ -90,47 +96,55 @@ void JacobianColumn( void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x, 
         x(j)= xs;
       	*dfdx_j=( (*F1)-(*F3) )/(delj);
       }
-      for(k=1;k<=nf;k++) { (*JacColumn)(k,1)=(*dfdx_j)(k,1); }
+      for(k=0;k<nf;k++) { (*JacColumn)(k,1)=(*dfdx_j)(k,1); } //EIGEN_UPDATE
 
 }
 
 
 
 
-void JacobianRow( void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x, int iRow, int nf,
-                  DMatrix* JacRow, GRWORK* grw, Workspace* workspace )
+void JacobianRow( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, int iRow, int nf,
+                  MatrixXd* JacRow, GRWORK* grw, Workspace* workspace )
 {
   // Computes only one row of the Jacobian matrix
 
   int  j;
   double delj;
-  double sqreps;
+  MatrixXd sqreps;
   double xs;
-  long nvar= x.GetNoRows();
+  long nvar= x.rows();
 
-  DMatrix *dfdx_j = grw->dfdx_j;
-  DMatrix *F1   = grw->F1;
-  DMatrix *F2   = grw->F2;
-  DMatrix *F3   = grw->F3;
+  MatrixXd *dfdx_j = grw->dfdx_j;
+  MatrixXd *F1   = grw->F1;
+  MatrixXd *F2   = grw->F2;
+  MatrixXd *F3   = grw->F3;
 
-  DMatrix& xlb    = *workspace->xlb;
-  DMatrix& xub    = *workspace->xub;
+  MatrixXd& xlb    = *workspace->xlb;
+  MatrixXd& xub    = *workspace->xub;
 
 
-  dfdx_j->Resize( nf, 1 );
-  F1->Resize(   nf, 1 );
-  F2->Resize(   nf, 1 );
+  dfdx_j->resize( nf, 1 );
+  F1->resize(   nf, 1 );
+  F2->resize(   nf, 1 );
 
-  sqreps= sqrt( DMatrix::GetEPS() );
+  sqreps=sqrt( PSOPT_extras::GetEPS() )*ones(nvar,1);
+  
+  int tcount=0;
+  
+  for (int jj=0; jj<nvar; jj++){
 
-  if (any( x < (xub-sqreps))|| any( x>(xlb+sqreps)) )
+        if(  x(jj) <= (xub(jj)-sqreps(jj))||   x(jj)>=(xlb(jj)+sqreps(jj)) ) 
+           tcount++; 
+  }
+
+  if ( tcount )
   {
-     F3->Resize( nf, 1);
+     F3->resize( nf, 1);
      fun(x, F3, workspace);
   }
 
-  for(j=1;j<=nvar;j++) {
-      delj = sqreps;
+  for(j=0;j<nvar;j++) { // EIGEN_UPDATE
+      delj = sqreps(0);
       xs   = x(j);
       if ((xs < xub(j)-delj && xs>xlb(j)+delj) || (xub(j)==xlb(j))) {
         // Use central difference formula
@@ -161,47 +175,55 @@ void JacobianRow( void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x, int
 
 
 
-void ComputeJacobianNonZeros( void fun(DMatrix& x, DMatrix* f ), DMatrix& x,
+void ComputeJacobianNonZeros( void fun(MatrixXd& x, MatrixXd* f ), MatrixXd& x,
                 int nf, double *nzvalue, int nnz, int* iArow, int* jAcol, GRWORK* grw, Workspace* workspace )
 {
 
   int nvar, I, i;
   double delj;
-  double sqreps;
+  MatrixXd sqreps;
   double xs = 0.0;
-  nvar= x.GetNoRows();
+  nvar= x.rows(); // EIGEN_UPDATE
   int iflag=1;
 
 
 
-  DMatrix *F1   = grw->F1;
-  DMatrix *F2   = grw->F2;
-  DMatrix *F3   = grw->F3;
+  MatrixXd *F1   = grw->F1;
+  MatrixXd *F2   = grw->F2;
+  MatrixXd *F3   = grw->F3;
 
-  DMatrix& xlb    = *workspace->xlb;
-  DMatrix& xub    = *workspace->xub;
+  MatrixXd& xlb    = *workspace->xlb;
+  MatrixXd& xub    = *workspace->xub;
 
-  F1->Resize(   nf, 1 );
-  F2->Resize(   nf, 1 );
+  F1->resize(   nf, 1 );
+  F2->resize(   nf, 1 );
 
-  sqreps = sqrt( DMatrix::GetEPS() );
+  sqreps=sqrt( PSOPT_extras::GetEPS() )*ones(nvar,1);
+  
+  int tcount=0;
+  
+  for (int jj=0; jj<nvar; jj++){
+
+        if(  x(jj) <= (xub(jj)-sqreps(jj))||   x(jj)>=(xlb(jj)+sqreps(jj)) ) 
+           tcount++; 
+  }
 
 
 
-  if (any( x < (xub-sqreps))|| any( x>(xlb+sqreps)) )
+  if ( tcount )
   {
-     F3->Resize( nf, 1);
+     F3->resize( nf, 1);
      fun(x, F3);
   }
 
 
-  for (i=1;i<=nvar;i++)
+  for (i=0;i<nvar;i++)  // EIGEN_UPDATE: Index i shifted by -1.
   {
      for(I=0; I<nnz; I++)
      {
          if( jAcol[I]==i ) {
             if (iflag) {
-                      delj = sqreps;
+                      delj = sqreps(0);
                       xs   = x(i);
                       if (xs< xub(i)-delj  || (xub(i)==xlb(i)))
                       {
@@ -264,8 +286,8 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 
    int i, j, l, q, r;
    int group_index;
-   DMatrix& C1 = *workspace->JacCol1;
-   DMatrix& C2 = *workspace->JacCol2;
+   MatrixXd& C1 = *workspace->JacCol1;
+   MatrixXd& C2 = *workspace->JacCol2;
 
    double dotCols;
 
@@ -276,7 +298,7 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 
    for(i=0;i<nnz;i++)  ones_pr[i] = 1.0;
 
-   SparseMatrix J(ones_pr, nrows, ncols, nnz, iArow, jAcol );
+   TripletSparseMatrix J(ones_pr, nrows, ncols, nnz, iArow, jAcol );
 
 //   J.Save("J.dat");
 
@@ -302,7 +324,8 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 //  in turn and include each that has no unknowns in common with those columns already
 //  included.
    // Add the first column to the first group
-   igroup->colindex[0][0] = 1;
+//   igroup->colindex[0][0] = 1;
+   igroup->colindex[0][0] = 0; // EIGEN_UPDATE: The first group has index 0.
    col_done[0]=1;
    int gcount   = 1;
    int colcount = 1;
@@ -310,16 +333,17 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 
    // Now form the first group
    bool ok;
-   for(j=2;j<=ncols;j++) {
+   for(j=1;j<ncols;j++) {  // EIGEN_UPDATE index j shifted by -1.
           ok = true;
 	  for(l=0;l<gcount;l++) {
           	if (j== igroup->colindex[0][l]) {
                         ok=false;
                		break;
                 }
-                C1 = J.Column(igroup->colindex[0][l]);
-                C2 = J.Column(j);
-                dotCols = dot( C1, C2);
+                C1 = J.col(igroup->colindex[0][l]);
+                C2 = J.col(j);
+//                dotCols = dot( C1, C2);  // EIGEN_UPDATE
+                  dotCols = (C1.transpose()*C2)(0);
 //                sprintf(workspace->text,"\nz=%d, j=%d, dotCols=%f",igroup->colindex[0][l],j,dotCols);
           	if  ( dotCols>0.0 ) {
                         ok=false;
@@ -330,7 +354,8 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
                 	igroup->colindex[0][gcount]=j;
                 	gcount++;
                 	colcount++;
-                        col_done[j-1]=1;
+//                        col_done[j-1]=1; //EIGEN_UPDATE
+                          col_done[j]=1;
           }
 
    }
@@ -347,7 +372,7 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
    while (colcount<ncols) {
         group_index++;
         gcount = 0;
-   	for(j=2;j<=ncols;j++) {
+   	for(j=1;j<ncols;j++) { // EIGEN_UPDATE: index j shifted by -1.
                   ok=true;
 	 	  for(q = 0; q< group_index; q++)
                   {
@@ -367,9 +392,10 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
                                 ok=false;
                			break;
                         }
-                        C1 = J.Column(igroup->colindex[group_index][l]);
-                        C2 = J.Column(j);
-                        dotCols = dot( C1, C2 );
+                        C1 = J.col(igroup->colindex[group_index][l]);
+                        C2 = J.col(j);
+//                        dotCols = dot( C1, C2 ); // EIGEN_UPDATE
+                        dotCols = (C1.adjoint()*C2)(0);
           	  	if ( dotCols>0.0 ) {
                                 ok = false;
                                 break;
@@ -379,7 +405,8 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
                 	igroup->colindex[group_index][gcount]=j;
                 	gcount++;
                         colcount++;
-                        col_done[j-1]=1;
+//                        col_done[j-1]=1;  // EIGEN_UPDATE
+                          col_done[j] = 1;
           	  }
    	}
 
@@ -418,7 +445,7 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 
 }
 
-void EfficientlyComputeJacobianNonZeros( void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x, int nf,
+void EfficientlyComputeJacobianNonZeros( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, int nf,
             double *nzvalue, int nnz, int* iArow, int* jAcol, IGroup* igroup, GRWORK* grw, Workspace* workspace )
 {
 /* This function uses the method of Curtis, Powell and Reid (1974) to
@@ -433,18 +460,18 @@ void EfficientlyComputeJacobianNonZeros( void fun(DMatrix& x, DMatrix* f, Worksp
   int  j, k, i;
   double delj;
   double sqreps;
-  long nvar= x.GetNoRows();
+  long nvar= x.rows();
 
-  DMatrix *F1   = grw->F1;
-  DMatrix *F2   = grw->F2;
+  MatrixXd *F1   = grw->F1;
+  MatrixXd *F2   = grw->F2;
 
 
-  DMatrix xp(nvar,1);
+  MatrixXd xp(nvar,1);
 
-  F1->Resize(   nf, 1 );
-  F2->Resize(   nf, 1 );
+  F1->resize(   nf, 1 );
+  F2->resize(   nf, 1 );
 
-  sqreps = sqrt( DMatrix::GetEPS() );
+  sqreps = sqrt( PSOPT_extras::GetEPS() );
 
   for (i=0;i<igroup->number;i++)
   {
@@ -472,7 +499,7 @@ void EfficientlyComputeJacobianNonZeros( void fun(DMatrix& x, DMatrix* f, Worksp
 }
 
 
-void DetectJacobianSparsity(void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x, int nf,
+void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, int nf,
                            int* nnzA, int* iArow, int* jAcol, double* Aij,
                            int* nnzG, int* jGrow, int* jGcol,
                            GRWORK* grw, Workspace* workspace)
@@ -480,38 +507,38 @@ void DetectJacobianSparsity(void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatr
 
 
 
-  long nvars = x.GetNoRows();
+  long nvars = x.rows();
   long i,j;
   int nzcount_A=0;
   int nzcount_G=0;
-  double s = 1.0e6*sqrt(DMatrix::GetEPS());
-//  double tol  = pow( DMatrix::GetEPS(), 0.8)* MAX( 1.0, enorm(x) );
-  double tol  = 1.e-16*pow( DMatrix::GetEPS(), 0.8)* MAX( 1.0, enorm(x) );
+  double s = 1.0e6*sqrt(PSOPT_extras::GetEPS());
+//  double tol  = pow( MatrixXd::GetEPS(), 0.8)* MAX( 1.0, enorm(x) );
+  double tol  = 1.e-16*pow( PSOPT_extras::GetEPS(), 0.8)* MAX( 1.0, x.norm() );
 
 
 
 
 
-  DMatrix& JacCol1 = *workspace->JacCol1;
-  DMatrix& JacCol2 = *workspace->JacCol2;
-  DMatrix& JacCol3 = *workspace->JacCol3;
-  DMatrix& xp      = *workspace->xp;
-  DMatrix& xlb     = *workspace->xlb;
-  DMatrix& xub     = *workspace->xub;
+  MatrixXd& JacCol1 = *workspace->JacCol1;
+  MatrixXd& JacCol2 = *workspace->JacCol2;
+  MatrixXd& JacCol3 = *workspace->JacCol3;
+  MatrixXd& xp      = *workspace->xp;
+  MatrixXd& xlb     = *workspace->xlb;
+  MatrixXd& xub     = *workspace->xub;
 
-  for(j=1;j<=nvars;j++) {
+  for(j=0;j<nvars;j++) {   // EIGEN_UPDATE: j index shifted by -1.
 
      xp = x;
 #ifndef TESTING_HESSIAN
      clip_vector_given_bounds( xp, xlb, xub);
 #endif
      JacobianColumn( fun, xp, xlb, xub, j, &JacCol1,  grw, workspace);
-     xp = x + 0.1*Abs(x) + s*ones(nvars,1);
+     xp = x + 0.1*x.cwiseAbs() + s*ones(nvars,1);
 #ifndef TESTING_HESSIAN
      clip_vector_given_bounds( xp, xlb, xub);
 #endif
      JacobianColumn( fun, xp, xlb, xub, j, &JacCol2,  grw, workspace);
-     xp = x - 0.15*Abs(x) - 1.1*s*ones(nvars,1);
+     xp = x - 0.15*x.cwiseAbs() - 1.1*s*ones(nvars,1);
 #ifndef TESTING_HESSIAN
      clip_vector_given_bounds( xp, xlb, xub);
 #endif
@@ -519,15 +546,15 @@ void DetectJacobianSparsity(void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatr
 
 
 
-      for(i=1; i<=nf; i++) {
-            if ( ( fabs(JacCol1(i,1)) +  fabs(JacCol2(i,1)) + fabs(JacCol3(i,1)) )>=tol ) {
-              if ( fabs(JacCol1(i,1)-JacCol2(i,1))<=tol && fabs(JacCol1(i,1)-JacCol3(i,1))<=tol ) {
+      for(i=0; i<nf; i++) { // EIGEN_UPDATE: index i shifted by -1
+            if ( ( fabs(JacCol1(i,0)) +  fabs(JacCol2(i,0)) + fabs(JacCol3(i,0)) )>=tol ) {
+              if ( fabs(JacCol1(i,0)-JacCol2(i,0))<=tol && fabs(JacCol1(i,0)-JacCol3(i,0))<=tol ) {
 //            if ( JacCol1(i,1)!=0.0 || JacCol2(i,1)!=0.0 || JacCol3(i,1)!=0.0 ) {
 //              if ( JacCol1(i,1)==JacCol2(i,1) && JacCol2(i,1)==JacCol3(i,1) ) {
                         // Constant Jacobian element detected
               		iArow[nzcount_A]=(int) i;
               		jAcol[nzcount_A]=(int) j;
-                        Aij[nzcount_A]    = JacCol1(i,1);
+                        Aij[nzcount_A]    = JacCol1(i,0);
 
                         nzcount_A++;
               }
@@ -551,33 +578,41 @@ void DetectJacobianSparsity(void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatr
 }
 
 
-void ScalarGradient( double (*fun)(DMatrix& x, Workspace* workspace), DMatrix& x,
-                DMatrix* grad, GRWORK* grw, Workspace* workspace )
+void ScalarGradient( double (*fun)(MatrixXd& x, Workspace* workspace), MatrixXd& x,
+                MatrixXd* grad, GRWORK* grw, Workspace* workspace )
 {
 
   int j = 0, nf;
   double delj;
-  double sqreps;
+  MatrixXd sqreps;
   double xs = 0.0;
-  long nvar= x.GetNoRows();
+  long nvar= x.rows();
   nf  = 1;
   double F1 = 0.0;
   double F2 = 0.0;
   double F3 = 0.0;
   double dfdx = 0.0;;
 
-  DMatrix& xlb    = *workspace->xlb;
-  DMatrix& xub    = *workspace->xub;
+  MatrixXd& xlb    = *workspace->xlb;
+  MatrixXd& xub    = *workspace->xub;
 
-  sqreps=sqrt( DMatrix::GetEPS() );
+  sqreps=sqrt( PSOPT_extras::GetEPS() )*ones(nvar,1);
+  
+  int tcount=0;
+  
+  for (int jj=0; jj<nvar; jj++){
 
-  if (any( x <= (xub-sqreps))|| any( x>=(xlb+sqreps)) )
+        if(  x(jj) <= (xub(jj)-sqreps(jj))||   x(jj)>=(xlb(jj)+sqreps(jj)) ) 
+           tcount++; 
+  }
+
+  if (tcount)
   {
      F3 = fun(x, workspace);
   }
 
-  for(j=1;j<=nvar;j++) {
-      delj = sqreps*(1.0+fabs(x(j)));
+  for(j=0;j<nvar;j++) { // EIGEN_UPDATE: index j shifted by -1
+      delj = sqreps(0)*(1.0+fabs(x(j)));
       xs   = x(j);
       if (xs< xub(j)-delj || (xub(j)==xlb(j)))
       {
@@ -608,10 +643,10 @@ void ScalarGradient( double (*fun)(DMatrix& x, Workspace* workspace), DMatrix& x
 
 }
 
-void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), DMatrix& x, DMatrix* grad, bool* trace_done, int itag, Workspace* workspace )
+void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), MatrixXd& x, MatrixXd* grad, bool* trace_done, int itag, Workspace* workspace )
 {
     // Compute the gradient of a scalar function using automatic differentiation
-    int      n = length(x);
+    int      n = x.rows();
     int i;
     double  yp = 0.0;
     adouble *xad = workspace->xad;
@@ -620,7 +655,8 @@ void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), DMatrix& x, DMatri
     if( !(*trace_done) ) {
     	trace_on(itag);
     	for(i=0;i<n;i++) {
-    		xad[i] <<= (x.GetPr())[i];
+//    		xad[i] <<= (x.GetPr())[i]; // EIGEN_UPDATE
+            xad[i] <<= (&x(0))[i];
 	}
     	yad = (*fun)(xad, workspace);
     	yad >>= yp;
@@ -628,32 +664,33 @@ void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), DMatrix& x, DMatri
         *trace_done = true;
     }
 
-    gradient(itag,n,x.GetPr(),grad->GetPr());
+//    gradient(itag,n,x.GetPr(),grad->GetPr());
+    gradient(itag,n,&x(0),&(*grad)(0));
 
 }
 
 
-void compute_jacobian_of_constraints_with_respect_to_variables(DMatrix& Jc, DMatrix& X, DMatrix& XL, DMatrix& XU, Workspace* workspace)
+void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, MatrixXd& X, MatrixXd& XL, MatrixXd& XU, Workspace* workspace)
 {
 
     Alg& algorithm = *workspace->algorithm;
     Prob& problem  = *workspace->problem;
 
-    int i, j, l, k;
+    int i, j, k;
 
     int nvars = get_number_nlp_vars(problem, workspace);
 
     int ncons = get_number_nlp_constraints(problem, workspace);
 
-    DMatrix Jctmp(ncons,nvars);
+    MatrixXd Jctmp(ncons,nvars);
 
-    Jc.Resize(ncons,nvars);
+    Jc.resize(ncons,nvars);
 
-    DMatrix& JacCol1 = *workspace->JacCol1;
-    DMatrix& xlb     = *workspace->xlb;
-    DMatrix& xub     = *workspace->xub;
-    DMatrix& xp      = *workspace->xp;
-    DMatrix jtemp;
+    MatrixXd& JacCol1 = *workspace->JacCol1;
+    MatrixXd& xlb     = *workspace->xlb;
+    MatrixXd& xub     = *workspace->xub;
+    MatrixXd& xp      = *workspace->xp;
+    MatrixXd jtemp;
 
     workspace->use_constraint_scaling = 0;
 
@@ -670,7 +707,8 @@ void compute_jacobian_of_constraints_with_respect_to_variables(DMatrix& Jc, DMat
 	adouble *xad = workspace->xad;
 	adouble *gad = workspace->gad;
 	double  *g   = workspace->fg;
-	double  *x   = xp.GetPr();
+//	double  *x   = xp.GetPr();
+    double  *x   = &xp(0);
 
 	/* Tracing of function gg() */
 	trace_on(workspace->tag_gc);
@@ -695,26 +733,29 @@ void compute_jacobian_of_constraints_with_respect_to_variables(DMatrix& Jc, DMat
 
     for(j=0;j<nvars;j++)
     {
-       Jctmp( jac_rind[j]+1, jac_cind[j]+1) = jac_values[j];
+//       Jctmp( jac_rind[j]+1, jac_cind[j]+1) = jac_values[j]; // EIGEN_UPDATE
+         Jctmp( jac_rind[j], jac_cind[j]) = jac_values[j];
     }
 
 
    }
    else {
 
-    	DMatrix& xlb = *(workspace->xlb);
-	    DMatrix& xub = *(workspace->xub);
-	    for(j=1;j<=nvars;j++) {
+    	MatrixXd& xlb = *(workspace->xlb);
+	    MatrixXd& xub = *(workspace->xub);
+	    for(j=0;j<nvars;j++) { // EIGEN_UPDATE: index j shifted by -1
 	      JacobianColumn( gg_num, xp, xlb, xub,j, &JacCol1, workspace->grw, workspace);
-	      Jctmp(colon(),j) = JacCol1;
+//	      Jctmp(colon(),j) = JacCol1;  // EIGEN_UPDATE
+          long nrows = JacCol1.rows();
+          Jctmp.block(0,j,nrows,1)= JacCol1;
 	    }
 
    } // end if-else
 
 
-   DMatrix& lambda = *workspace->lambda;
+   MatrixXd& lambda = *workspace->lambda;
 
-   int icount=1;
+   int icount=0;  // EIGEN_UPDATE: icount starts from 0.
 
    int lam_phase_offset=0;
 
@@ -722,21 +763,21 @@ void compute_jacobian_of_constraints_with_respect_to_variables(DMatrix& Jc, DMat
 
    for(iphase=1;iphase<=problem.nphases;iphase++) {
        int ncons_phase_i =  get_ncons_phase_i(problem,iphase-1, workspace);
-       for(j=1;j<=ncons_phase_i;j++) {
+       for(j=0;j<ncons_phase_i;j++) {  // EIGEN_UPDATE: j index shifted by -1
            int nstates = problem.phases(iphase).nstates;
            int norder  = problem.phases(iphase).current_number_of_intervals;
            i = lam_phase_offset + j;
-           if (j<= nstates*(norder+1)) {
+           if (j<= nstates*(norder+1)-1) {
            // Copy rows corresponding to differential defect constraints.
-              for (k=1;k<=nvars;k++) {
+              for (k=0;k<nvars;k++) {  // EIGEN_UPDATE: j index shifted by -1
                     Jc(icount,k) = Jctmp(i,k);
               }
               icount++;
            }
-           else if( j< ncons_phase_i) { // discard constraint tf>=t0 for each phase
+           else if( j< ncons_phase_i-1) { // discard constraint tf>=t0 for each phase
               if ( lambda(i)!=0.0 ) {
                 // Only copy rows corresponding to active inequality constraints.
-                 for (k=1;k<=nvars;k++) {
+                 for (k=0;k<nvars;k++) {  // EIGEN_UPDATE: index k shifted by -1
                     Jc(icount,k) = Jctmp(i,k);
                  }
                  icount++;
@@ -746,18 +787,19 @@ void compute_jacobian_of_constraints_with_respect_to_variables(DMatrix& Jc, DMat
        lam_phase_offset+= ncons_phase_i;
    }
 
-   Jc = Jc(colon(1,icount-1), colon());
+//   Jc = Jc(colon(1,icount-1), colon());
+     Jc = Jc.block(0,0, icount-1, Jc.cols() );
 
    workspace->use_constraint_scaling = 1;
 
 }
 
 
-void compute_jacobian_of_residual_vector_with_respect_to_variables(DMatrix& Jr, DMatrix& X, DMatrix& XL, DMatrix& XU, Workspace* workspace)
+void compute_jacobian_of_residual_vector_with_respect_to_variables(MatrixXd& Jr, MatrixXd& X, MatrixXd& XL, MatrixXd& XU, Workspace* workspace)
 {
-    DMatrix Jcol;
+    MatrixXd Jcol;
 	Prob & problem = *(workspace->problem);
-    int nvar, nr, iphase, pindex, j;
+    int nvar, nr, iphase, j;
 
 	nvar = get_number_nlp_vars(problem, workspace);
 
@@ -768,12 +810,13 @@ void compute_jacobian_of_residual_vector_with_respect_to_variables(DMatrix& Jr, 
 	  nr    += problem.phases(iphase).nobserved*problem.phases(iphase).nsamples;
 	}
 
-	Jr.Resize(nr,nvar);
-	Jcol.Resize(nr,1);
+	Jr.resize(nr,nvar);
+	Jcol.resize(nr,1);
 
 
-	for(j=1;j<=nvar;j++) {
+	for(j=0;j<nvar;j++) {  // EIGEN_UPDATE: index j shifted by -1
 	    JacobianColumn( rr_num, X, XL, XU, j, &Jcol, workspace->grw, workspace);
-	    Jr(colon(),j) = Jcol;
+//	    Jr(colon(),j) = Jcol;  // EIGEN_UPDATE
+        Jr.block(0,j,Jcol.rows(), 1) = Jcol;
 	}
 }
