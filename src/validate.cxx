@@ -100,46 +100,46 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     {
 
          if (problem.phase[i].ncontrols>1) {
-		(problem.phase[i].bounds.lower.controls) =  (problem.phase[i].bounds.lower.controls)(colon());
-         	(problem.phase[i].bounds.upper.controls) =  (problem.phase[i].bounds.upper.controls)(colon());
+		      (problem.phase[i].bounds.lower.controls).resize(problem.phase[i].ncontrols,1);
+         	(problem.phase[i].bounds.upper.controls).resize(problem.phase[i].ncontrols,1);
          }
 
          if (problem.phase[i].nstates>1) {
-		(problem.phase[i].bounds.lower.states) =  (problem.phase[i].bounds.lower.states)(colon());
-         	(problem.phase[i].bounds.upper.states) =  (problem.phase[i].bounds.upper.states)(colon());
+		      (problem.phase[i].bounds.lower.states).resize(problem.phase[i].nstates,1);
+         	(problem.phase[i].bounds.upper.states).resize(problem.phase[i].nstates,1);
          }
 
          if (problem.phase[i].nevents>1) {
-		(problem.phase[i].bounds.lower.events) =  (problem.phase[i].bounds.lower.events)(colon());
-         	(problem.phase[i].bounds.upper.events) =  (problem.phase[i].bounds.upper.events)(colon());
+	       	(problem.phase[i].bounds.lower.events).resize(problem.phase[i].nevents,1); 
+         	(problem.phase[i].bounds.upper.events).resize(problem.phase[i].nevents,1);
          }
 
          if (problem.phase[i].nparameters>1) {
-		(problem.phase[i].bounds.lower.parameters) =  (problem.phase[i].bounds.lower.parameters)(colon());
-         	(problem.phase[i].bounds.upper.parameters) =  (problem.phase[i].bounds.upper.parameters)(colon());
+		      (problem.phase[i].bounds.lower.parameters).resize(problem.phase[i].nparameters,1);
+         	(problem.phase[i].bounds.upper.parameters).resize(problem.phase[i].nparameters,1);
          }
 
 
 
-         if (problem.phase[i].ncontrols>0 && any(problem.phase[i].bounds.lower.controls >  problem.phase[i].bounds.upper.controls))
+         if (problem.phase[i].ncontrols>0 && (problem.phase[i].bounds.lower.controls.array() >  problem.phase[i].bounds.upper.controls.array() ).any() )
          {
                 sprintf(m,"Infeasible control variable bounds supplied by the user in phase %i",i);
  		error_message(m);
          }
 
-         if (problem.phase[i].nstates>0 && any( problem.phase[i].bounds.lower.states >  problem.phase[i].bounds.upper.states ) )
+         if (problem.phase[i].nstates>0 && ( problem.phase[i].bounds.lower.states.array() >  problem.phase[i].bounds.upper.states.array() ).any() )
          {
                 sprintf(m,"Infeasible state variable bounds supplied by the user in phase %i",i);
  		error_message(m);
          }
 
-         if (problem.phase[i].nevents>0 && any( problem.phase[i].bounds.lower.events >  problem.phase[i].bounds.upper.events ) )
+         if (problem.phase[i].nevents>0 && ( problem.phase[i].bounds.lower.events.array() >  problem.phase[i].bounds.upper.events.array() ).any() )
          {
                 sprintf(m,"Infeasible event bounds supplied by the user in phase %i",i);
  		error_message(m);
          }
 
-         if (problem.phase[i].nparameters>0 && any( problem.phase[i].bounds.lower.parameters >  problem.phase[i].bounds.upper.parameters ) )
+         if (problem.phase[i].nparameters>0 && ( problem.phase[i].bounds.lower.parameters.array() >  problem.phase[i].bounds.upper.parameters.array() ).any() )
          {
                 sprintf(m,"Infeasible static parameter bounds supplied by the user in phase %i",i);
  		error_message(m);
@@ -178,27 +178,27 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
  		  error_message(m);
 		}
 
-		if (  problem.phase[i].residual_weights.isEmpty() ) {
+		if (  isEmpty( problem.phase[i].residual_weights ) ) {
                     problem.phase[i].residual_weights = ones( problem.phase[i].nobserved, problem.phase[i].nsamples );
 		}
 
-		if ( problem.phase[i].nsamples !=  problem.phase[i].residual_weights.GetNoCols() )
+		if ( problem.phase[i].nsamples !=  problem.phase[i].residual_weights.cols() )
 		{
 		  sprintf(m,"The number of columns of the residual weight vector in phase %i must be equal to problem.phases(%i).nsamples",i+1, i+1);
  		  error_message(m);
 		}
 
-		if ( problem.phase[i].nobserved !=  problem.phase[i].residual_weights.GetNoRows() )
+		if ( problem.phase[i].nobserved !=  problem.phase[i].residual_weights.rows() )
 		{
 		  sprintf(m,"The number of rows of the residual weight vector in phase %i must be equal to the number of observed variables", i+1 );
  		  error_message(m);
 		}
 
-		if (  problem.phase[i].covariance.isEmpty()  ) {
+		if (  isEmpty(problem.phase[i].covariance)  ) {
                     problem.phase[i].covariance = eye( problem.phase[i].nobserved );
 		}
 
-		if ( problem.phase[i].nobserved !=  problem.phase[i].covariance.GetNoRows() && problem.phase[i].nobserved !=  problem.phase[i].covariance.GetNoCols()  )
+		if ( problem.phase[i].nobserved !=  problem.phase[i].covariance.rows() && problem.phase[i].nobserved !=  problem.phase[i].covariance.cols()  )
 		{
 		  sprintf(m,"The number of rows and columns of matrix problem.phases(%i).covariance must be equal to problem.phases(%i).nobserved",i+1, i+1);
  		  error_message(m);
@@ -206,7 +206,7 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
 		if ( !isSymmetric(problem.phase[i].covariance)  )
 		{
-		  sprintf(m,"Matrix problem.phases(%i).covariance must be symmetric",i+1, i+1);
+		  sprintf(m,"Matrix problem.phases(%i).covariance must be symmetric",i+1);
  		  error_message(m);
 		}
 
@@ -226,28 +226,25 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
     }
 
-   if (problem.nlinkages>0 && any( problem.bounds.lower.linkage >  problem.bounds.upper.linkage ) )
+   if (problem.nlinkages>0 && ( problem.bounds.lower.linkage.array() >  problem.bounds.upper.linkage.array() ).any() )
    {
          sprintf(m,"Infeasible phase linkage bounds supplied by the user");
          error_message(m);
    }
 
-   if ( length(problem.bounds.lower.times) !=  length(problem.bounds.upper.times) || (!problem.bounds.lower.times.isEmpty() && length(problem.bounds.lower.times)!=problem.nphases+1) )
+   if ( length(problem.bounds.lower.times) !=  length(problem.bounds.upper.times) || (!isEmpty(problem.bounds.lower.times) && length(problem.bounds.lower.times)!=problem.nphases+1) )
    {
          sprintf(m,"Incorrect length of problem.bounds.lower.times or problem.bounds.upper.times");
          error_message(m);
    }
 
-   if ( !problem.bounds.lower.times.isEmpty() ) {
-     for (i=1;i<=problem.nphases;i++) {
-	   problem.phases(i).bounds.lower.StartTime = problem.bounds.lower.times(i);
-	   problem.phases(i).bounds.upper.StartTime = problem.bounds.upper.times(i);
-	   problem.phases(i).bounds.lower.EndTime   = problem.bounds.lower.times(i+1);
-	   problem.phases(i).bounds.upper.EndTime   = problem.bounds.upper.times(i+1);
-
+   if ( !isEmpty(problem.bounds.lower.times) ) {
+     for (i=0;i<problem.nphases;i++) { //EIGEN_UPDATE
+	    problem.phase[i].bounds.lower.StartTime = problem.bounds.lower.times(i);
+	    problem.phase[i].bounds.upper.StartTime = problem.bounds.upper.times(i);
+	    problem.phase[i].bounds.lower.EndTime   = problem.bounds.lower.times(i+1);
+	    problem.phase[i].bounds.upper.EndTime   = problem.bounds.upper.times(i+1);
      }
    }
 
-
 }
-
