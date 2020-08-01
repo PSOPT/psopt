@@ -34,12 +34,12 @@ e-mail:    v.m.becerra@ieee.org
 void euler_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* states,
          adouble* controls, adouble* parameters, adouble& time,
         adouble* xad, int iphase, Workspace* workspace),
-        DMatrix& control_trajectory,
-        DMatrix& time_vector,
+        MatrixXd& control_trajectory,
+        MatrixXd& time_vector,
         Prob & problem,
-        DMatrix& initial_state,
-	DMatrix& parameters,
-        DMatrix& state_trajectory,
+        MatrixXd& initial_state,
+	MatrixXd& parameters,
+        MatrixXd& state_trajectory,
         int iphase, Workspace* workspace)
 {
         int nsteps = length(time_vector) - 1;
@@ -70,14 +70,15 @@ void euler_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* 
 
 	for(i=1;i<=nparam;i++)  param[i-1] = parameters(i);
 
-	state_trajectory(colon(),1) = initial_state;
+//	state_trajectory(colon(),1) = initial_state;
+   state_trajectory.col(0) = initial_state;
 
-	for (k=1; k<= nsteps; k++)
+	for (k=0; k< nsteps; k++) // EIGEN_UPDATE
 	{
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k);
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k);
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = control_trajectory(i,k);
+	     for(i=0;i<ncontrols;i++)  controls[i] = control_trajectory(i,k);
 
 	     time = time_vector(k);
 
@@ -85,25 +86,26 @@ void euler_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* 
 
 	     double h = time_vector(k+1)-time_vector(k);
 
-	     for(i=1;i<=nstates;i++) {
-	        state_trajectory(i,k+1) = state_trajectory(i,k) + h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        state_trajectory(i,k+1) = state_trajectory(i,k) + h*derivatives[i].value();
 	     }
 	}
 }
 
 void rk4_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* states,
-         adouble* controls, adouble* parameters, adouble& time,
+        adouble* controls, adouble* parameters, adouble& time,
         adouble* xad, int iphase, Workspace* workspace),
-        DMatrix& control_trajectory,
-        DMatrix& time_vector,
-        DMatrix& initial_state,
-	DMatrix& parameters,
+        MatrixXd& control_trajectory,
+        MatrixXd& time_vector,
+        MatrixXd& initial_state,
+	     MatrixXd& parameters,
         Prob & problem,
         int iphase,
-        DMatrix& state_trajectory, Workspace* workspace)
+        MatrixXd& state_trajectory, Workspace* workspace)
 {
         // 4th order Runge Kutta algorithm with given time vector and control sequence
-        int nsteps = length(time_vector) - 1;
+   
+   int nsteps = length(time_vector) - 1;
 
 	int nstates = problem.phases(iphase).nstates;
 
@@ -127,22 +129,23 @@ void rk4_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 	adouble time;
 
-	state_trajectory.Resize(nstates,nsteps+1);
+	state_trajectory.resize(nstates,nsteps+1);
 
-	DMatrix K1(nstates,1), K2(nstates,1), K3(nstates,1), K4(nstates,1);
+	MatrixXd K1(nstates,1), K2(nstates,1), K3(nstates,1), K4(nstates,1);
 
 	int i, k;
 
-	for(i=1;i<=nparam;i++)  param[i-1] = parameters(i);
+	for(i=0;i<nparam;i++)  param[i-1] = parameters(i); // EIGEN_UPDATE
 
-	state_trajectory(colon(),1) = initial_state;
+//	state_trajectory(colon(),1) = initial_state;
+   state_trajectory.col(0)= initial_state;
 
-	for (k=1; k<= nsteps; k++)
+	for (k=0; k< nsteps; k++)
 	{
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k);
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k);
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = control_trajectory(i,k);
+	     for(i=0;i<ncontrols;i++)  controls[i] = control_trajectory(i,k);
 
 	     time = time_vector(k);
 
@@ -150,45 +153,45 @@ void rk4_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 	     double h = time_vector(k+1)-time_vector(k);
 
-	     for(i=1;i<=nstates;i++) {
-	        K1(i,1) =  h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) { // EIGEN_UPDATE
+	        K1(i,0) =  h*derivatives[i].value();
 	     }
 
-              time = time + h/2.0;
+        time = time + h/2.0;
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k) + K1(i)/2.0;
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k) + K1(i)/2.0;
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = ( control_trajectory(i,k) + control_trajectory(i,k+1) )/2.0;
+	     for(i=0;i<ncontrols;i++)  controls[i] = ( control_trajectory(i,k) + control_trajectory(i,k+1) )/2.0;
 
 	     dae( derivatives, path, states, controls, param, time, xad, iphase, workspace);
 
-	     for(i=1;i<=nstates;i++) {
-	        K2(i,1) = h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        K2(i,0) = h*derivatives[i].value();
 	     }
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k) + K2(i)/2.0;
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k) + K2(i)/2.0;
 
 	     dae( derivatives, path, states, controls, param, time, xad, iphase, workspace);
 
-	     for(i=1;i<=nstates;i++) {
-	        K3(i,1) = h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        K3(i,0) = h*derivatives[i].value();
 	     }
 
-             time = time + h/2.0;
+        time = time + h/2.0;
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k) + K3(i);
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k) + K3(i);
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = control_trajectory(i,k+1);
+	     for(i=0;i<ncontrols;i++)  controls[i] = control_trajectory(i,k+1);
 
 	     dae( derivatives, path, states, controls, param, time, xad, iphase, workspace);
 
-	     for(i=1;i<=nstates;i++) {
-	        K4(i,1) = h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        K4(i,0) = h*derivatives[i].value();
 	     }
 
-             K1 = (K1 + 2*K2 + 2*K3 + K4)/6.0;
+        K1 = (K1 + 2*K2 + 2*K3 + K4)/6.0;
 
-	     for(i=1;i<=nstates;i++) {
+	     for(i=0;i<nstates;i++) {
 	        state_trajectory(i,k+1) = state_trajectory(i,k)  + K1(i);
 	     }
 
@@ -206,20 +209,20 @@ void rk4_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 
 void rkf_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* states,
-         adouble* controls, adouble* parameters, adouble& time,
+        adouble* controls, adouble* parameters, adouble& time,
         adouble* xad, int iphase, Workspace* workspace),
-        DMatrix& control_trajectory,
-        DMatrix& time_vector,
-        DMatrix& initial_state,
-	DMatrix& parameters,
+        MatrixXd& control_trajectory,
+        MatrixXd& time_vector,
+        MatrixXd& initial_state,
+	     MatrixXd& parameters,
         double tolerance,
         double hmin,
-	double hmax,
+	     double hmax,
         Prob & problem,
         int iphase,
-        DMatrix& state_trajectory,
-        DMatrix& new_time_vector,
-	DMatrix& new_control_trajectory, Workspace* workspace)
+        MatrixXd& state_trajectory,
+        MatrixXd& new_time_vector,
+	     MatrixXd& new_control_trajectory, Workspace* workspace)
 {
 // Runge-Kutta-Fehlberg method with variable step size with local truncation error within a given tolerance.
 // Reference: Burden (2005) "Numerical Analysis", page 287.
@@ -248,131 +251,132 @@ void rkf_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 	int flag = 1;
 
-	DMatrix K1(nstates,1), K2(nstates,1), K3(nstates,1), K4(nstates,1), K5(nstates,1), K6(nstates,1);
+	MatrixXd K1(nstates,1), K2(nstates,1), K3(nstates,1), K4(nstates,1), K5(nstates,1), K6(nstates,1);
 
-	DMatrix controlp(ncontrols,1);
+	MatrixXd controlp(ncontrols,1);
 
 	int i, k;
 
-	for(i=1;i<=nparam;i++)  param[i-1] = parameters(i);
+	for(i=0;i<nparam;i++)  param[i] = parameters(i); // EIGEN_UPDATE
 
-	state_trajectory(colon(),1) = initial_state;
+//	state_trajectory(colon(),1) = initial_state;
+   state_trajectory.col(0) = initial_state;
 
-	time = time_vector(1);
+	time = time_vector(0);
 
 	double h = hmax;
 
-	double tf = time_vector("end");
+	double tf = time_vector(length(time_vector)-1);
 
 	k = 1;
 
 	double maxR, delta;
 
-	DMatrix R;
+	MatrixXd R;
 
-        new_time_vector(1) = time_vector(1); // Line added 16 Feb. 2011.
+   new_time_vector(0) = time_vector(0); // Line added 16 Feb. 2011.
 
 
 	while (flag==1) {
 
 	     //////////// K1 CALCULATIONS ////////////////////////
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k);
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k);
 
 	     timep = time;
 
 	     if ( ncontrols>0 ) linear_interpolation(controlp, timep.value(), time_vector, control_trajectory, length(time_vector));
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = controlp(i);
+	     for(i=0;i<ncontrols;i++)  controls[i] = controlp(i);
 
 	     dae( derivatives, path, states, controls, param, timep, xad, iphase, workspace);
 
-	     for(i=1;i<=nstates;i++) {
-	        K1(i,1) =  h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        K1(i) =  h*derivatives[i].value();
 	     }
 
-             /////////////// K2 CALCULATIONS ////////////////////
+        /////////////// K2 CALCULATIONS ////////////////////
              timep = time + h/4.0;
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k) + K1(i)/4.0;
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k) + K1(i)/4.0;
 
 	     if ( ncontrols>0 ) linear_interpolation(controlp, timep.value(), time_vector, control_trajectory, length(time_vector));
 
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = controlp(i);
+	     for(i=0;i<ncontrols;i++)  controls[i] = controlp(i);
 
 	     dae( derivatives, path, states, controls, param, timep, xad, iphase, workspace);
 
-	     for(i=1;i<=nstates;i++) {
-	        K2(i,1) = h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        K2(i) = h*derivatives[i].value();
 	     }
 
              /////////////// K3 CALCULATIONS //////////////////////////
              timep = time + 3.0*h/8.0;
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k) + (3.0/32.0)*K1(i) + (9.0/32.0)*K2(i);
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k) + (3.0/32.0)*K1(i) + (9.0/32.0)*K2(i);
 
 	     if ( ncontrols>0 ) linear_interpolation(controlp, timep.value(), time_vector, control_trajectory, length(time_vector));
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = controlp(i);
+	     for(i=0;i<ncontrols;i++)  controls[i] = controlp(i);
 
 	     dae( derivatives, path, states, controls, param, timep, xad, iphase, workspace);
 
-	     for(i=1;i<=nstates;i++) {
-	        K3(i,1) = h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        K3(i) = h*derivatives[i].value();
 	     }
 
 	     /////////////// K4 CALCULATIONS //////////////////////////
-             timep = time + 12.0*h/13.0;
+        timep = time + 12.0*h/13.0;
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k) + (1932.0/2197.0)*K1(i) - (7200.0/2197.0)*K2(i) + (7296.0/2197.0)*K3(i);
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k) + (1932.0/2197.0)*K1(i) - (7200.0/2197.0)*K2(i) + (7296.0/2197.0)*K3(i);
 
 	     if ( ncontrols>0 ) linear_interpolation(controlp, timep.value(), time_vector, control_trajectory, length(time_vector));
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = controlp(i);
+	     for(i=0;i<ncontrols;i++)  controls[i] = controlp(i);
 
 	     dae( derivatives, path, states, controls, param, timep, xad, iphase, workspace);
 
-	     for(i=1;i<=nstates;i++) {
-	        K4(i,1) = h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        K4(i) = h*derivatives[i].value();
 	     }
 
 
 	     /////////////// K5 CALCULATIONS //////////////////////////
-             timep = time + h;
+        timep = time + h;
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k) + (439.0/216.0)*K1(i) - (8.0)*K2(i) + (3680.0/513.0)*K3(i) - (845.0/4104.0)*K4(i);
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k) + (439.0/216.0)*K1(i) - (8.0)*K2(i) + (3680.0/513.0)*K3(i) - (845.0/4104.0)*K4(i);
 
 	     if ( ncontrols>0 ) linear_interpolation(controlp, timep.value(), time_vector, control_trajectory, length(time_vector));
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = controlp(i);
+	     for(i=0;i<ncontrols;i++)  controls[i] = controlp(i);
 
 	     dae( derivatives, path, states, controls, param, timep, xad, iphase, workspace);
 
-	     for(i=1;i<=nstates;i++) {
-	        K5(i,1) = h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        K5(i) = h*derivatives[i].value();
 	     }
 
 	     /////////////// K6 CALCULATIONS //////////////////////////
-             timep = time + h/2.0;
+        timep = time + h/2.0;
 
-	     for(i=1;i<=nstates;i++)  states[i-1] = state_trajectory(i,k) - (8.0/27.0)*K1(i) + (2.0)*K2(i) - (3544.0/2565.0)*K3(i) + (1859.0/4104.0)*K4(i) - (11.0/40.0)*K5(i);
+	     for(i=0;i<nstates;i++)  states[i] = state_trajectory(i,k) - (8.0/27.0)*K1(i) + (2.0)*K2(i) - (3544.0/2565.0)*K3(i) + (1859.0/4104.0)*K4(i) - (11.0/40.0)*K5(i);
 
 	     if ( ncontrols>0 ) linear_interpolation(controlp, timep.value(), time_vector, control_trajectory, length(time_vector));
 
-	     for(i=1;i<=ncontrols;i++)  controls[i-1] = controlp(i);
+	     for(i=0;i<ncontrols;i++)  controls[i] = controlp(i);
 
 	     dae( derivatives, path, states, controls, param, timep, xad, iphase, workspace);
 
-	     for(i=1;i<=nstates;i++) {
-	        K6(i,1) = h*derivatives[i-1].value();
+	     for(i=0;i<nstates;i++) {
+	        K6(i) = h*derivatives[i].value();
 	     }
 
 	     // COMPUTE R
 
-	     R = (1.0/h)*Abs(  (1.0/360.0)*K1 - (128.0/4275.0)*K3 - (2197.0/75240.0)*K4 + (1.0/50.0)*K5 + (2.0/55.0)*K6  );
+	     R = (1.0/h)*(  (1.0/360.0)*K1 - (128.0/4275.0)*K3 - (2197.0/75240.0)*K4 + (1.0/50.0)*K5 + (2.0/55.0)*K6  ).cwiseAbs();
 
-	     for (i=1;i<=nstates;i++) {
-	        double scale =  fabs(states[i-1].value());
+	     for (i=0;i<nstates;i++) {
+	        double scale =  fabs(states[i].value());
 		if ( scale < 1.e-6  ) scale = 1.0;
 		R(i)=R(i)/ scale;
 	     }
@@ -381,12 +385,14 @@ void rkf_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 	     if ( maxR <= tolerance ) { // Approximation accepted
 	         time = time + h;
-     	         state_trajectory(colon(),k+1) = state_trajectory(colon(),k) + (25.0/216.0)*K1 + (1408.0/2565.0)*K3 + (2197.0/4104.0)*K4 - (1.0/5.0)*K5;
+//     	         state_trajectory(colon(),k+1) = state_trajectory(colon(),k) + (25.0/216.0)*K1 + (1408.0/2565.0)*K3 + (2197.0/4104.0)*K4 - (1.0/5.0)*K5;
+            state_trajectory.col(k+1) = state_trajectory.col(k) + (25.0/216.0)*K1 + (1408.0/2565.0)*K3 + (2197.0/4104.0)*K4 - (1.0/5.0)*K5;
 		 new_time_vector(k+1) = time.value();
 		 timep = new_time_vector(k+1);
 		 if (ncontrols>0) {
 		    linear_interpolation(controlp, timep.value(), time_vector, control_trajectory, length(time_vector));
-		    new_control_trajectory( colon(), k+1) = controlp;
+//		    new_control_trajectory( colon(), k+1) = controlp;
+		    new_control_trajectory.col(k+1) = controlp;
 		 }
 		 k= k+1;
 
@@ -424,9 +430,9 @@ void rkf_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 	} // End while loop
 
-	state_trajectory.Resize(nstates,k);
-	new_control_trajectory.Resize(ncontrols,k);
-	new_time_vector.Resize(1,k);
+	state_trajectory.resize(nstates,k);
+	new_control_trajectory.resize(ncontrols,k);
+	new_time_vector.resize(1,k);
 
 	delete[] states;
 	delete[] controls;
