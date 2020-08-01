@@ -31,9 +31,10 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+using namespace Eigen;
 
 
-void lagrange_interpolation(DMatrix& y, DMatrix& x, DMatrix& pointx, DMatrix& pointy)
+void lagrange_interpolation(MatrixXd& y, MatrixXd& x, MatrixXd& pointx, MatrixXd& pointy)
 {
 //
 //       This function approximates a point-defined function using Lagrange polynomial interpolation
@@ -47,26 +48,27 @@ void lagrange_interpolation(DMatrix& y, DMatrix& x, DMatrix& pointx, DMatrix& po
 
    long n = length(pointx);
 
-   DMatrix L(n, x.GetNoCols() );
+   MatrixXd L(n, x.cols() );
 
-   for(i=1;i<=n;i++) {
-	for(j=1;j<=x.GetNoCols();j++) {
+   for(i=0;i<n;i++) {  // EIGEN_UPDATE: indices i and j shifted by -1
+	  for(j=0;j<x.cols();j++) {
             L(i,j) = 1.0;
-	}
-    }
+	  }
+   }
 
-   for (i=1;i<=n;i++) {
-      for (j=1;j<=n;j++) {
+   for (i=0;i<n;i++) {
+      for (j=0;j<n;j++) { // EIGEN_UPDATE: indices i and j shifted by -1
            if (i != j) {
-                L(i,colon()) = ( L(i,colon())&(  x-pointx(j)*ones(1,length(x)) )  )/(pointx(i)-pointx(j));
+//                L(i,colon()) = ( L(i,colon())&(  x-pointx(j)*ones(1,length(x)) )  )/(pointx(i)-pointx(j));
+                  L.row(i) = elemProduct( L.row(i), (  x-pointx(j)*ones(1,length(x)) )  )/(pointx(i)-pointx(j));
            }
       }
    }
 
-   y.Resize(1,length(x));
-   y.FillWithZeros();
-   for (i=1;i<=n;i++) {
-   	y = y+pointy(i)*L(i,colon());
+   y.resize(1,length(x));
+   y = zeros(1,length(x));
+   for (i=0;i<n;i++) {  // EIGEN_UPDATE index i shifted by -1
+   	y = y+pointy(i)*L.row(i);
    }
 }
 
@@ -141,29 +143,29 @@ void linear_interpolation(adouble* y, adouble& x, adouble* pointx, adouble* poin
 
 }
 
-void linear_interpolation(DMatrix& y, double x, DMatrix& pointx, DMatrix& pointy, int npoints)
+void linear_interpolation(MatrixXd& y, double x, MatrixXd& pointx, MatrixXd& pointy, int npoints)
 {
 //    Linear interpolation from point values
 
    int i,j;
    bool jdone = false;
 
-   if( x < pointx(1) )
+   if( x < pointx(0) )  // EIGEN_UPDATE
    {
-      j = 1;
+      j = 0;
       jdone = true;
    }
 
 
 
-  if ( x > pointx(npoints) )
+  if ( x > pointx(npoints-1) ) // EIGEN_UPDATE
    {
-      j=npoints-1;
+      j=npoints-2;
       jdone = true;
    }
 
   if (!jdone) {
-     for(i=1;i<npoints;i++) {
+     for(i=0;i<npoints-1;i++) {  // EIGEN_UPDATE
        if( x >= pointx(i) && x <=pointx(i+1) )
        {
          j=i;
@@ -172,33 +174,34 @@ void linear_interpolation(DMatrix& y, double x, DMatrix& pointx, DMatrix& pointy
      }
   }
 
-  y = pointy(colon(),j) + (x-pointx(j))*(pointy(colon(),j+1)-pointy(colon(),j))/(pointx(j+1)-pointx(j));
+//  y = pointy(colon(),j) + (x-pointx(j))*(pointy(colon(),j+1)-pointy(colon(),j))/(pointx(j+1)-pointx(j));
+ y = pointy.col(j) + (x-pointx(j))*(pointy.col(j+1)-pointy.col(j))/(pointx(j+1)-pointx(j));
 
 }
 
-void linear_interpolation(adouble* y, adouble x, DMatrix& pointx, DMatrix& pointy, int npoints)
+void linear_interpolation(adouble* y, adouble x, MatrixXd& pointx, MatrixXd& pointy, int npoints)
 {
 //    Linear interpolation from point values
 
    int i,j;
    bool jdone = false;
 
-   if( x.value() < pointx(1) )
+   if( x.value() < pointx(0) ) // EIGEN_UPDATE
    {
-      j = 1;
+      j = 0;
       jdone = true;
    }
 
 
 
-  if ( x.value() > pointx(npoints) )
+  if ( x.value() > pointx(npoints-1 ) )  // EIGEN_UPDATE
    {
-      j=npoints-1;
+      j=npoints-2;
       jdone = true;
    }
 
   if (!jdone) {
-     for(i=1;i<npoints;i++) {
+     for(i=0;i<npoints-1;i++) {   // EIGEN_UPDATE
        if( x.value() >= pointx(i) && x <=pointx(i+1) )
        {
          j=i;
@@ -212,59 +215,61 @@ void linear_interpolation(adouble* y, adouble x, DMatrix& pointx, DMatrix& point
 }
 
 
-void linear_interpolation(DMatrix& y, DMatrix& x, DMatrix& pointx, DMatrix& pointy, int npoints)
+void linear_interpolation(MatrixXd& y, MatrixXd& x, MatrixXd& pointx, MatrixXd& pointy, int npoints)
 {
 //    Linear interpolation from point values
 
    int i,j=0, k;
-   DMatrix pyj( pointy.GetNoRows(),1);
-   DMatrix pyj1(pointy.GetNoRows(),1);
+   MatrixXd pyj(  pointy.rows(),1 );
+   MatrixXd pyj1( pointy.rows(),1 );
 
-   for(k=1;k<=length(x);k++)  {
+   for(k=0;k<length(x);k++)  {  // EIGEN_UPDATE
 
-	bool jdone = false;
+		bool jdone = false;
 
-	if( x(k) < pointx(1) )
-	{
-	   j = 1;
-	   jdone = true;
-	}
+		if( x(k) < pointx(0) ) // EIGEN_UPDATE
+		{
+	   	j = 0;
+	   	jdone = true;
+		}
 
 
 
-	if ( x(k) > pointx(npoints) )
-	{
-	    j=npoints-1;
-	    jdone = true;
-	}
+		if ( x(k) > pointx(npoints-1) ) // EIGEN_UPDATE
+		{
+	    	j=npoints-2;
+	    	jdone = true;
+		}
 
-	if (!jdone) {
-	   for(i=1;i<npoints;i++) {
-	     if( x(k) >= pointx(i) && x(k) <=pointx(i+1) )
-	     {
-		j=i;
-		break;
-	     }
-	   }
-	}
+		if (!jdone) {
+	   	for(i=0;i<npoints-1;i++) {
+	     		if( x(k) >= pointx(i) && x(k) <=pointx(i+1) )
+	     		{
+		      	j=i;
+	       		break;
+	     		}
+	   	}
+		}
 
-//        DMatrix temp= pointy(colon(),j) + (x(k)-pointx(j))*(pointy(colon(), j+1)-pointy(colon(),j))/(pointx(j+1)-pointx(j));
 
-        y.Resize( pointy.GetNoRows(), length(x) );
+   	y.resize( pointy.rows(), length(x) );
 
-	pyj  = pointy(colon(),j);
-	pyj1 = pointy(colon(),j+1);
+//		pyj  = pointy(colon(),j);
+   	pyj  = pointy.col(j);
+//		pyj1 = pointy(colon(),j+1);
+   	pyj1 = pointy.col(j+1);
 
-	y(colon(),k) = pyj + (x(k)-pointx(j))*(pyj1-pyj)/(pointx(j+1)-pointx(j));
+//		y(colon(),k) = pyj + (x(k)-pointx(j))*(pyj1-pyj)/(pointx(j+1)-pointx(j));
+    	y.col(k) = pyj + (x(k)-pointx(j))*(pyj1-pyj)/(pointx(j+1)-pointx(j));
 
   }
 
 }
 
 
-void smooth_linear_interpolation(adouble* y, adouble& x, DMatrix& Xdata, DMatrix& Ydata, int n)
+void smooth_linear_interpolation(adouble* y, adouble& x, MatrixXd& Xdata, MatrixXd& Ydata, int n)
 {
-  // Given DMatrix objects Xdata and Ydata that contain a tabulated function, Ydata(i) = f(Xdata(i)), with
+  // Given MatrixXd objects Xdata and Ydata that contain a tabulated function, Ydata(i) = f(Xdata(i)), with
   // i=1,...n, and  x(j+1)>x(j),   given a value of x, this function returns the interpolated value y
   // using a smoothed linear interpolation
   int i;
@@ -278,16 +283,16 @@ void smooth_linear_interpolation(adouble* y, adouble& x, DMatrix& Xdata, DMatrix
      error_message("The legnth of vectors Xdata and Ydata must be the same in function smooth_linear_interpolation()");
   }
 
-  if( x.value() < Xdata(1) || x.value() > Xdata("end"))
+  if( x.value() < Xdata(0) || x.value() > Xdata(length(Xdata)))
   {
-//      error_message("Extrapolation not allowed in function smooth_linear_interpolation()");
+      error_message("Extrapolation not allowed in function smooth_linear_interpolation()");
   }
 
 
-  for (i=1; i<=n-1; i++) {
+  for (i=0; i<=n-2; i++) {  // EIGEN_UPDATE: i index shifted by -1
 
     if ( Xdata(i+1)<= Xdata(i) ) error_message("Xdata vector must be strictly monotonic increasing in smooth_linear_interpolation()");
-    if (i==1) {
+    if (i==0) {
        a  = epsilon* fabs( Xdata(i)-Xdata(i+1));
     }
     else {
@@ -304,10 +309,10 @@ void smooth_linear_interpolation(adouble* y, adouble& x, DMatrix& Xdata, DMatrix
 
   }
 
-  Si = smooth_heaviside( (x-(Xdata(1)-100*a)), a ) - smooth_heaviside( (x-Xdata(1)), a );
-  *y+=Si*Ydata(1);
-  Si = smooth_heaviside( (x-Xdata(n)), a ) - smooth_heaviside( (x-(Xdata(n)+100*a)), a );
-  *y+=Si*Ydata(n);
+//  Si = smooth_heaviside( (x-(Xdata(0)-100*a)), a ) - smooth_heaviside( (x-Xdata(0)), a );  // EIGEN_UPDATE
+//  *y+=Si*Ydata(1);
+//  Si = smooth_heaviside( (x-Xdata(n-1)), a ) - smooth_heaviside( (x-(Xdata(n-1)+100*a)), a ); // EIGEN_UPDATE
+//  *y+=Si*Ydata(n-1);   // EIGEN_UPDATE
 
 }
 
@@ -315,7 +320,7 @@ void smooth_linear_interpolation(adouble* y, adouble& x, DMatrix& Xdata, DMatrix
 
 void smooth_linear_interpolation(adouble* y, adouble& x, adouble* Xdata, adouble* Ydata, int n)
 {
-  // Given DMatrix objects Xdata and Ydata that contain a tabulated function, Ydata(i) = f(Xdata(i)), with
+  // Given MatrixXd objects Xdata and Ydata that contain a tabulated function, Ydata(i) = f(Xdata(i)), with
   // i=1,...n, and  x(j+1)>x(j),   given a value of x, this function returns the interpolated value y
   // using a smoothed linear interpolation
   int i;
@@ -361,29 +366,29 @@ void smooth_linear_interpolation(adouble* y, adouble& x, adouble* Xdata, adouble
 }
 
 
-void zoh_interpolation(adouble* y, adouble x, DMatrix& pointx, DMatrix& pointy, int npoints)
+void zoh_interpolation(adouble* y, adouble x, MatrixXd& pointx, MatrixXd& pointy, int npoints)
 {
 //    Zero Order Hold interpolation from point values
 
    int i,j;
    bool jdone = false;
 
-   if( x.value() < pointx(1) )
+   if( x.value() < pointx(0) ) // EIGEN_UPDATE
    {
-      j = 1;
+      j = 0;
       jdone = true;
    }
 
 
 
-  if ( x.value() > pointx(npoints) )
+  if ( x.value() > pointx(npoints-1) )  // EIGEN_UPDATE
    {
-      j=npoints-1;
+      j=npoints-2;
       jdone = true;
    }
 
   if (!jdone) {
-     for(i=1;i<npoints;i++) {
+     for(i=0;i<npoints-1;i++) { // EIGEN_UPDATE: index i shifted by -1
        if( x.value() >= pointx(i) && x <=pointx(i+1) )
        {
          j=i;
@@ -397,7 +402,7 @@ void zoh_interpolation(adouble* y, adouble x, DMatrix& pointx, DMatrix& pointy, 
 }
 
 
-void spline_2d_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMatrix& Y, DMatrix& Z, Workspace* workspace)
+void spline_2d_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, MatrixXd& Y, MatrixXd& Z, Workspace* workspace)
 {
 //    Spline 2d interpolation
 //    Output: z: a pointer to a single adouble variable. z must point to a valid address on entry to the function
@@ -409,13 +414,11 @@ void spline_2d_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMa
 //    Each element Z(i,j) corresponds to the pair ( X(i), Y(j) )
 //    Method: Cubic spline 2D interpolation
 //    The function does not deal with sparse data.
-   int i,j, jx, jy;
-   bool jxdone = false;
-   bool jydone = false;
-   int nxpoints = length(X);
-   int nypoints = length(Y);
-   int nrowsZ   = Z.GetNoRows();
-   int ncolsZ   = Z.GetNoCols();
+   int i,j;
+   long nxpoints = length(X);
+   long nypoints = length(Y);
+   long nrowsZ   = Z.rows();
+   long ncolsZ   = Z.cols();
 
    if ( nrowsZ != nxpoints ) {
        error_message("Number of rows of matrix Z must be equal to the length of vector X in call to bilinear_interpolation()");
@@ -424,28 +427,28 @@ void spline_2d_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMa
          error_message("Number of columns of matrix Z must be equal to the length of vector Y in call to bilinear_interpolation()");
    }
 
-   ADMatrix Arow(1,nypoints);
-   ADMatrix yval(1,nypoints);
-   ADMatrix xval(1,nxpoints);
-   ADMatrix Zval(1,nxpoints);
+   AutoDiffMatrix Arow(1,nypoints);
+   AutoDiffMatrix yval(1,nypoints);
+   AutoDiffMatrix xval(1,nxpoints);
+   AutoDiffMatrix Zval(1,nxpoints);
 
    adouble *zval = Zval.GetPr();
 
-   for(j=1;j<=nypoints;j++) {
-          yval(1,j) = Y(j);
+   for(j=0;j<nypoints;j++) { // EIGEN_UPDATE: index j shifted by -1
+          yval(0,j) = Y(j);
    }
 
-   for(j=1;j<=nxpoints;j++) {
-          xval(1,j) = X(j);
+   for(j=0;j<nxpoints;j++) { // EIGEN_UPDATE: index j shifted by -1
+          xval(0,j) = X(j);
    }
 
-   for (i=1;i<=nxpoints;i++) {
+   for (i=0;i<nxpoints;i++) {   // EIGEN_UPDATE: indices i,j shifted by -1
 
-       for(j=1;j<=nypoints;j++) {
-          Arow(1,j) = Z(i,j);
+       for(j=0;j<nypoints;j++) {
+          Arow(0,j) = Z(i,j);
        }
 
-       spline_interpolation( &zval[i-1], y, yval.GetPr(), Arow.GetPr(), nypoints, workspace);
+       spline_interpolation( &zval[i], y, yval.GetPr(), Arow.GetPr(), nypoints, workspace);
 
    }
 
@@ -453,7 +456,7 @@ void spline_2d_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMa
 
 }
 
-void smooth_bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMatrix& Y, DMatrix& Z)
+void smooth_bilinear_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, MatrixXd& Y, MatrixXd& Z)
 {
 //    Spline 2d interpolation
 //    Output: z: a pointer to a single adouble variable. z must point to a valid address on entry to the function
@@ -465,13 +468,11 @@ void smooth_bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& 
 //    Each element Z(i,j) corresponds to the pair ( X(i), Y(j) )
 //    Method: Cubic spline 2D interpolation
 //    The function does not deal with sparse data.
-   int i,j, jx, jy;
-   bool jxdone = false;
-   bool jydone = false;
-   int nxpoints = length(X);
-   int nypoints = length(Y);
-   int nrowsZ   = Z.GetNoRows();
-   int ncolsZ   = Z.GetNoCols();
+   int i,j;
+   long nxpoints = length(X);
+   long nypoints = length(Y);
+   long nrowsZ   = Z.rows();
+   long ncolsZ   = Z.cols();
 
    if ( nrowsZ != nxpoints ) {
        error_message("Number of rows of matrix Z must be equal to the length of vector X in call to bilinear_interpolation()");
@@ -480,28 +481,28 @@ void smooth_bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& 
          error_message("Number of columns of matrix Z must be equal to the length of vector Y in call to bilinear_interpolation()");
    }
 
-   ADMatrix Arow(1,nypoints);
-   ADMatrix yval(1,nypoints);
-   ADMatrix xval(1,nxpoints);
-   ADMatrix Zval(1,nxpoints);
+   AutoDiffMatrix Arow(1,nypoints);
+   AutoDiffMatrix yval(1,nypoints);
+   AutoDiffMatrix xval(1,nxpoints);
+   AutoDiffMatrix Zval(1,nxpoints);
 
    adouble *zval = Zval.GetPr();
 
-   for(j=1;j<=nypoints;j++) {
-          yval(1,j) = Y(j);
+   for(j=0;j<nypoints;j++) {  // EIGEN_UPDATE: index j shifted by -1
+          yval(0,j) = Y(j);
    }
 
-   for(j=1;j<=nxpoints;j++) {
-          xval(1,j) = X(j);
+   for(j=0;j<nxpoints;j++) {  // EIGEN_UPDATE: index j shifted by -1
+          xval(0,j) = X(j);
    }
 
-   for (i=1;i<=nxpoints;i++) {
+   for (i=0;i<nxpoints;i++) {  // EIGEN_UPDATE: indices i,j shifted by -1
 
-       for(j=1;j<=nypoints;j++) {
-          Arow(1,j) = Z(i,j);
+       for(j=0;j<nypoints;j++) {
+          Arow(0,j) = Z(i,j);
        }
 
-       smooth_linear_interpolation( &zval[i-1], y, yval.GetPr(), Arow.GetPr(), nypoints);
+       smooth_linear_interpolation( &zval[i], y, yval.GetPr(), Arow.GetPr(), nypoints);
 
    }
 
@@ -510,7 +511,7 @@ void smooth_bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& 
 }
 
 
-void bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMatrix& Y, DMatrix& Z)
+void bilinear_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, MatrixXd& Y, MatrixXd& Z)
 {
 //    Linear 2d interpolation
 //    Output: z: a pointer to a single adouble variable. z must point to a valid address on entry to the function
@@ -525,13 +526,13 @@ void bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMat
 //    The function does not deal with sparse data.
 
 
-   int i,jx, jy;
+   long i,jx, jy;
    bool jxdone = false;
    bool jydone = false;
-   int nxpoints = length(X);
-   int nypoints = length(Y);
-   int nrowsZ   = Z.GetNoRows();
-   int ncolsZ   = Z.GetNoCols();
+   long nxpoints = length(X);
+   long nypoints = length(Y);
+   long nrowsZ   = Z.rows();
+   long ncolsZ   = Z.cols();
    double x1,x2,y1,y2;
    double z11,z12,z21,z22;
 
@@ -542,18 +543,18 @@ void bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMat
          error_message("Number of columns of matrix Z must be equal to the length of vector Y in call to bilinear_interpolation()");
    }
 
-   if( x.value() < X(1) )
+   if( x.value() < X(0) )  // EIGEN_UPDATE
    {
-      jx = 1;
+      jx = 0;
       jxdone = true;
 
 //      error_message("Extrapolation not allowed in function bilinear_interpolation()");
    }
 
 
-  if ( x.value() > X(nxpoints) )
+  if ( x.value() > X(nxpoints-1) ) // EIGEN_UPDATE
    {
-      jx=nxpoints-1;
+      jx=nxpoints-2;
       jxdone = true;
 
 //      error_message("Extrapolation not allowed in function bilinear_interpolation()");
@@ -561,7 +562,7 @@ void bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMat
    }
 
   if (!jxdone) {
-     for(i=1;i<nxpoints;i++) {
+     for(i=0;i<nxpoints-1;i++) {  // EIGEN_UPDATE: index i shifted by -1
        if( x.value() >= X(i) && x <=X(i+1) )
        {
          jx=i;
@@ -570,24 +571,24 @@ void bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMat
      }
   }
 
-  if( y.value() < Y(1) )
+  if( y.value() < Y(0) ) // EIGEN_UPDATE
    {
-      jy = 1;
+      jy = 0;
       jydone = true;
 //      error_message("Extrapolation not allowed in function bilinear_interpolation()");
    }
 
 
 
-  if ( x.value() > Y(nypoints) )
+  if ( x.value() > Y(nypoints-1) )
    {
-      jy=nypoints-1;
+      jy=nypoints-2;
       jydone = true;
 //      error_message("Extrapolation not allowed in function bilinear_interpolation()");
    }
 
   if (!jydone) {
-     for(i=1;i<nypoints;i++) {
+     for(i=0;i<nypoints-1;i++) {
        if( y.value() >= Y(i) && y <=Y(i+1) )
        {
          jy=i;
@@ -631,21 +632,21 @@ void spline_second_derivative(adouble* x, adouble* y, int n,  adouble* d2y, Work
       z[0]  = 0.0;
 
       for(i=1; i<n-1;i++) {
-	 him1 = x[i]-x[i-1];
-	 hi   = x[i+1]-x[i];
-	 alphai = 3.0/hi*(y[i+1]-y[i])-3.0/him1*(y[i]-y[i-1]);
-	 li = 2*(x[i+1]-x[i-1])-him1*mu[i-1];
-	 mu[i] = hi/li;
-	 z[i] = (alphai-him1*z[i-1])/li;
+	 		him1 = x[i]-x[i-1];
+	 		hi   = x[i+1]-x[i];
+	 		alphai = 3.0/hi*(y[i+1]-y[i])-3.0/him1*(y[i]-y[i-1]);
+	 		li = 2*(x[i+1]-x[i-1])-him1*mu[i-1];
+	 		mu[i] = hi/li;
+	 		z[i] = (alphai-him1*z[i-1])/li;
       }
 
       c[n-1] = 0.0;
 
       for(j=n-2;j>=0;j--) {
-	  c[j] = z[j]-mu[j]*c[j+1];
+	  		c[j] = z[j]-mu[j]*c[j+1];
       }
       for(j=1;j<n-1;j++) {
-                c[j] = 2*c[j];
+         c[j] = 2*c[j];
       }
 
 
@@ -654,7 +655,7 @@ void spline_second_derivative(adouble* x, adouble* y, int n,  adouble* d2y, Work
 
 
 
-void spline_second_derivative(DMatrix& xdata, DMatrix& ydata, int n,  DMatrix& d2y)
+void spline_second_derivative(MatrixXd& xdata, MatrixXd& ydata, int n,  MatrixXd& d2y)
 // Given arrays x[] and y[] that contain a tabulated function, y[i] = f(x[i]), with
 // i=0,...n-1, and  x[j+1]>x[j],  this function returns an array d2y[] that contains
 // the second derivatives of the interpolating cubic polynomial at the points x[i].
@@ -663,39 +664,45 @@ void spline_second_derivative(DMatrix& xdata, DMatrix& ydata, int n,  DMatrix& d
 {
       int i,j;
 
-      double *c = d2y.GetPr();
+//      double *c = d2y.GetPr(); // EIGEN_UPDATE
+      double *c = &d2y(0);
       double hi;
       double him1;
       double alphai;
       double li = 0;
-      double *x=xdata.GetPr();
-      double *y=ydata.GetPr();
+//      double *x=xdata.GetPr();
+      double *x=&xdata(0);
 
-      DMatrix MU(1,n);
-      DMatrix Z(1,n);
+//      double *y=ydata.GetPr();
+      double *y=&ydata(0);
 
-      double* mu= MU.GetPr();
-      double*  z= Z.GetPr();
+      MatrixXd MU(1,n);
+      MatrixXd Z(1,n);
+
+//      double* mu= MU.GetPr();
+      double* mu = &MU(0);
+//      double*  z= Z.GetPr();
+      double* z  = &Z(0);
 
       mu[0] = 0.0;
       z[0]  = 0.0;
 
       for(i=1; i<n-1;i++) {
-	 him1 = x[i]-x[i-1];
-	 hi   = x[i+1]-x[i];
-	 alphai = 3.0/hi*(y[i+1]-y[i])-3.0/him1*(y[i]-y[i-1]);
-	 li = 2*(x[i+1]-x[i-1])-him1*mu[i-1];
-	 mu[i] = hi/li;
-	 z[i] = (alphai-him1*z[i-1])/li;
+	      him1 = x[i]-x[i-1];
+	      hi   = x[i+1]-x[i];
+	      alphai = 3.0/hi*(y[i+1]-y[i])-3.0/him1*(y[i]-y[i-1]);
+	      li = 2*(x[i+1]-x[i-1])-him1*mu[i-1];
+	      mu[i] = hi/li;
+	      z[i] = (alphai-him1*z[i-1])/li;
       }
 
       c[n-1] = 0.0;
 
       for(j=n-2;j>=0;j--) {
-	  c[j] = z[j]-mu[j]*c[j+1];
+	       c[j] = z[j]-mu[j]*c[j+1];
       }
       for(j=1;j<n-1;j++) {
-                c[j] = 2*c[j];
+          c[j] = 2*c[j];
       }
 
 
@@ -733,7 +740,7 @@ void spline_interpolation(adouble* y, adouble& x, adouble* xdata, adouble* ydata
    *y=A*ydata[kleft-1]+B*ydata[kright-1]+C*d2y[kleft-1]+D*d2y[kright-1];
 }
 
-void spline_interpolation(adouble* y, adouble& x, DMatrix& Xdata, DMatrix& Ydata, int n)
+void spline_interpolation(adouble* y, adouble& x, MatrixXd& Xdata, MatrixXd& Ydata, int n)
 //   Given the arrays xdata[i] and ydata[i], i = 0,...n-1, which tabulate a function, with xdata[i] < xdata[i+1],
 //   and given the array d2y[i], which is the output from function spline_second_derivative(),
 //   and given a value of x, this function returns the interpolated value y using (natural) cubic-spline interpolation
@@ -743,11 +750,13 @@ void spline_interpolation(adouble* y, adouble& x, DMatrix& Xdata, DMatrix& Ydata
 
    int kleft,kright,k;
    adouble h,A,B,C,D;
-   DMatrix D2Y(1,n);
-   double* d2y = D2Y.GetPr();
-   double *xdata = Xdata.GetPr();
-   double *ydata = Ydata.GetPr();
-
+   MatrixXd D2Y(1,n);
+//   double* d2y = D2Y.GetPr();
+   double* d2y = &D2Y(0);
+//   double *xdata = Xdata.GetPr();
+   double *xdata = &Xdata(0);
+//   double *ydata = Ydata.GetPr();
+   double *ydata = &Ydata(0);
    kleft=1;
 
    spline_second_derivative(Xdata, Ydata, n, D2Y );
@@ -773,7 +782,7 @@ void spline_interpolation(adouble* y, adouble& x, DMatrix& Xdata, DMatrix& Ydata
 
 
 
-void spline_interpolation(DMatrix& Y, DMatrix& X, DMatrix& Xdata, DMatrix& Ydata, int n)
+void spline_interpolation(MatrixXd& Y, MatrixXd& X, MatrixXd& Xdata, MatrixXd& Ydata, int n)
 //   Given the arrays xdata[i] and ydata[i], i = 0,...n-1, which tabulate a function, with xdata[i] < xdata[i+1],
 //   and given the array d2y[i], which is the output from function spline_second_derivative(),
 //   and given a vector of independent varaibles X, this function returns a vector of interpolated values Y
@@ -783,18 +792,21 @@ void spline_interpolation(DMatrix& Y, DMatrix& X, DMatrix& Xdata, DMatrix& Ydata
 {
 
 
-   double *xdata = Xdata.GetPr();
-   double *ydata = Ydata.GetPr();
+//   double *xdata = Xdata.GetPr();
+     double *xdata = &Xdata(0);
+//   double *ydata = Ydata.GetPr();
+     double *ydata = &Ydata(0);
    int kleft,kright,k;
    double h,A,B,C,D;
-   DMatrix D2Y(1,n);
-   double* d2y = D2Y.GetPr();
+   MatrixXd D2Y(1,n);
+//   double* d2y = D2Y.GetPr();
+   double* d2y = &D2Y(0);
    int i;
 
    spline_second_derivative(Xdata, Ydata, n, D2Y );
 
 
-   for(i=1;i<= length(X); i++) {
+   for(i=0;i< length(X); i++) { // EIGEN_UPDATE
       kleft=1;
       kright=n;
       while (kright-kleft > 1) {
@@ -851,7 +863,7 @@ void spline_interpolation_with_second_derivative(adouble* y, adouble& x, adouble
 }
 
 
-void resample_trajectory(DMatrix& Y,  DMatrix& X, DMatrix& Ydata, DMatrix& Xdata )
+void resample_trajectory(MatrixXd& Y,  MatrixXd& X, MatrixXd& Ydata, MatrixXd& Xdata )
 {
 //  This function resamples a trajectory (Xdata,Ydata) given new values of the time vector Xdata using
 //   natural cubic spline interpolation. The interpolated values are returned in Y.
@@ -862,26 +874,28 @@ void resample_trajectory(DMatrix& Y,  DMatrix& X, DMatrix& Ydata, DMatrix& Xdata
 //   Xdata and X should be monotonically increasing vectors.
     int i;
 
-    int ny = Ydata.GetNoRows();
+    long ny = Ydata.rows();
 
-    int lx = length(X);
+    long lx = length(X);
 
-    int n = length(Xdata);
+    long n = length(Xdata);
 
-    DMatrix Yi, Yidata;
+    MatrixXd Yi, Yidata;
 
-    if ( (X(1) < Xdata(1)) || X("end") > Xdata("end") ) {
+    if ( (X(0) < Xdata(0)) || X(length(X)) > Xdata(length(Xdata)) ) {                   // EIGEN_UPDATE
          error_message("No extrapolation is allowed in function resample_trajectory()");
     }
 
-    Y.Resize(ny,lx);
-    Yi.Resize(1,lx);
-    Yidata.Resize(1,n);
+    Y.resize(ny,lx);
+    Yi.resize(1,lx);
+    Yidata.resize(1,n);
 
-    for(i=1;i<=ny;i++) {
-        Yidata = Ydata(i,colon());
+    for(i=0;i<ny;i++) {
+//        Yidata = Ydata(i,colon());
+         Yidata = Ydata.row(i);
       	spline_interpolation( Yi, X, Xdata, Yidata, n);
-        Y(i,colon()) = Yi;
+//        Y(i,colon()) = Yi;
+         Y.row(i) = Yi;
     }
 }
 
