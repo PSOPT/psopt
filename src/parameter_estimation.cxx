@@ -49,13 +49,13 @@ adouble endpoint_cost_for_parameter_estimation(adouble* initial_states, adouble*
 
    int k, j;
 
-   DMatrix& observations = problem.phases(iphase).observations;
+   MatrixXd& observations = problem.phases(iphase).observations;
 
-   DMatrix& observation_nodes = problem.phases(iphase).observation_nodes;
+   MatrixXd& observation_nodes = problem.phases(iphase).observation_nodes;
 
-   DMatrix& covariance = problem.phases(iphase).covariance;
+   // MatrixXd& covariance = problem.phases(iphase).covariance;
 
-   DMatrix& residual_weights = problem.phases(iphase).residual_weights;
+   MatrixXd& residual_weights = problem.phases(iphase).residual_weights;
 
    adouble* interpolated_state = workspace->interp_states_pe[iphase-1];
 
@@ -65,42 +65,42 @@ adouble endpoint_cost_for_parameter_estimation(adouble* initial_states, adouble*
 
    adouble* resid = workspace->observed_residual[iphase-1];
 
-   adouble* lam_resid = workspace->lam_resid[iphase-1];
+   // adouble* lam_resid = workspace->lam_resid[iphase-1];
 
 
-//   DMatrix  Lambda; //  = Sqrt( inv( covariance ) );
+//   MatrixXd  Lambda; //  = Sqrt( inv( covariance ) );
 
    // Note, the covariance matrix needs to be symmetric and positive definite.
 
-//   DMatrix inv_cov= inv(covariance);
+//   MatrixXd inv_cov= inv(covariance);
 
-//   DMatrix V( inv_cov.GetNoRows(), 2*inv_cov.GetNoCols());
+//   MatrixXd V( inv_cov.GetNoRows(), 2*inv_cov.GetNoCols());
 
-//   DMatrix E = eig( inv_cov, & V );
+//   MatrixXd E = eig( inv_cov, & V );
 
 //   E = E.sub_matrix(1,E.GetNoRows(),1,1);
 
 //   V = V.sub_matrix(1,V.GetNoRows(),1,V.GetNoCols()/2);
-//   DMatrix D = diag(E);
+//   MatrixXd D = diag(E);
 
 
 //   Lambda = V*Sqrt(D)*tra(V);  // Lambda is the square root of the covariance matrix.
 
 
-   for(k=1; k<=nsamples;k++) {
+   for(k=0; k<nsamples;k++) {   // EIGEN_UPDATE: k index shifted by -1
 
         time_k = observation_nodes(k);
 
        // Interpolate states and controls to find values at measurement instants
         for (j=0; j<problem.phases(iphase).nstates; j++) {
 
-   	            get_interpolated_state(&interpolated_state[j], j+1,  iphase, time_k, xad, workspace);
+   	            get_interpolated_state(&interpolated_state[j], j,  iphase, time_k, xad, workspace); // EIGEN_UPDATE
 
    	    }
 
         for (j=0; j<problem.phases(iphase).ncontrols; j++) {
 
-   	            get_interpolated_control(&interpolated_control[j], j+1,  iphase, time_k, xad, workspace);
+   	            get_interpolated_control(&interpolated_control[j], j,  iphase, time_k, xad, workspace); // EIGEN_UPDATE
 
    	    }
 
@@ -113,7 +113,7 @@ adouble endpoint_cost_for_parameter_estimation(adouble* initial_states, adouble*
              // Compute the residual at sample k;
 
              for (j=0;j<nobserved;j++) {
-                  resid[j] = residual_weights(j+1,k)*( observed_variable[j] - observations(j+1, k) );
+                  resid[j] = residual_weights(j,k)*( observed_variable[j] - observations(j, k) ); // EIGEN_UPDATE
              }
 
              if (algorithm.parameter_estimation_norm==2) {
@@ -167,22 +167,24 @@ adouble endpoint_cost_for_parameter_estimation(adouble* initial_states, adouble*
 
 
 
-void auto_split_observations(Prob& problem, DMatrix& observation_nodes, DMatrix& observations )
+void auto_split_observations(Prob& problem, MatrixXd& observation_nodes, MatrixXd& observations )
 {
     int i, kstart, kend;
-    int nobs = problem.phases(1).nobserved;
+    // int nobs = problem.phases(1).nobserved;
 
-    DMatrix& tobs = observation_nodes;
-    DMatrix& xobs = observations;
+    MatrixXd& tobs = observation_nodes;
+    MatrixXd& xobs = observations;
 
     kstart = 0;
     kend   = 0;
 
     for (i=1; i<=problem.nphases; i++ ) {
-            if (i>1) kstart = kend; else kstart = 1;
+            if (i>1) kstart = kend; else kstart = 0;
             kend   = kstart + problem.phases(i).nsamples-1;
-	    problem.phases(i).observation_nodes      = tobs(1, colon(kstart,kend) );
-	    problem.phases(i).observations           = xobs(colon(), colon(kstart,kend) );
+//	    problem.phases(i).observation_nodes      = tobs(1, colon(kstart,kend) ); // EIGEN_UPDATE
+       problem.phases(i).observation_nodes      = tobs.block(0,kstart,1,problem.phases(i).nsamples); 
+//	    problem.phases(i).observations           = xobs(colon(), colon(kstart,kend) ); // EIGEN_UPDATA
+       problem.phases(i).observations           = xobs.block(0,kstart,xobs.rows(), problem.phases(i).nsamples ); 
 	    problem.phases(i).residual_weights       = problem.phases(1).residual_weights;
 	    problem.phases(i).covariance             = problem.phases(1).covariance;
 	    problem.phases(i).regularization_factor  = problem.phases(1).regularization_factor;
@@ -204,36 +206,39 @@ void load_parameter_estimation_data(Prob& problem, int iphase, const char* filen
     // The dimensions of the matrix in the data file is  problem.phases(iphase).nsamples x 2*problem.phases(iphase).nobserved + 1
     //
 
-     DMatrix data, tm, ym, w;
+     MatrixXd data, tm, ym, w;
 
      int nsamples = problem.phases(iphase).nsamples;
 
      int nobserved = problem.phases(iphase).nobserved;
 
-     data.Resize(nsamples,nobserved*2 + 1);
+     data.resize(nsamples,nobserved*2 + 1);
 
-     data.Load(filename);
+     data = load_data(filename, nsamples, nobserved);
 
-     tm = data(colon(),1);
+//     tm = data(colon(),1); // EIGEN_UPDATE
+     tm = data.block(0,0, data.rows(),1);
 
-     ym.Resize(nsamples, nobserved);
-     w.Resize(nsamples,nobserved);
+     ym.resize(nsamples, nobserved);
+     w.resize(nsamples,nobserved);
 
-     for (int i=1;i<=nobserved;i++) {
-          ym(colon(), i) = data(colon(), 2+(i-1)*2);
-          w (colon(), i) = data(colon(), 3+(i-1)*2);
+     for (int i=0;i<nobserved;i++) {   // EIGEN_UPDATE index i shifted by -1
+//          ym(colon(), i) = data(colon(), 2+(i-1)*2);
+            ym.block(0,i,ym.rows(),1) =  data.block(0, 2+i*2, ym.rows(), 1);
+//          w (colon(), i) = data(colon(), 3+(i-1)*2);
+            w.block(0,i,w.rows(),1)   =  data.block(0, 3+i*2, w.rows(), 1);
      }
 
-     problem.phases(iphase).observation_nodes   = tra(tm);
-     problem.phases(iphase).observations        = tra(ym);
-     problem.phases(iphase).residual_weights    = tra(w);
+     problem.phases(iphase).observation_nodes   = tm.transpose(); // tra(tm);
+     problem.phases(iphase).observations        = ym.transpose(); // tra(ym);
+     problem.phases(iphase).residual_weights    = w.transpose();  // tra(w);
 
 
 }
 
 
 
-void compute_residual_vector_in_phase(DMatrix& residual_vector, adouble* xad, int iphase, Workspace* workspace)
+void compute_residual_vector_in_phase(MatrixXd& residual_vector, adouble* xad, int iphase, Workspace* workspace)
 {
 
 
@@ -247,11 +252,11 @@ void compute_residual_vector_in_phase(DMatrix& residual_vector, adouble* xad, in
 
    int k, j;
 
-   DMatrix& observations = problem.phases(iphase).observations;
+   MatrixXd& observations = problem.phases(iphase).observations;
 
-   DMatrix& observation_nodes = problem.phases(iphase).observation_nodes;
+   MatrixXd& observation_nodes = problem.phases(iphase).observation_nodes;
 
-   DMatrix& residual_weights = problem.phases(iphase).residual_weights;
+   MatrixXd& residual_weights = problem.phases(iphase).residual_weights;
 
    adouble* interpolated_state = workspace->interp_states_pe[iphase-1];
 
@@ -261,7 +266,7 @@ void compute_residual_vector_in_phase(DMatrix& residual_vector, adouble* xad, in
 
    adouble* resid = workspace->observed_residual[iphase-1];
 
-   residual_vector.Resize( nsamples*nobserved, 1);
+   residual_vector.resize( nsamples*nobserved, 1);
 
    adouble* parameters;
 
@@ -269,20 +274,20 @@ void compute_residual_vector_in_phase(DMatrix& residual_vector, adouble* xad, in
 
    get_parameters(parameters, xad, iphase, workspace);
 
-   for(k=1; k<=nsamples;k++) {
+   for(k=0; k<nsamples;k++) { // EIGEN_UPDATE: k index shifted by -1
 
         time_k = observation_nodes(k);
 
        // Interpolate states and controls to find values at measurement instants
         for (j=0; j<problem.phases(iphase).nstates; j++) {
 
-   	            get_interpolated_state(&interpolated_state[j], j+1,  iphase, time_k, xad, workspace);
+   	            get_interpolated_state(&interpolated_state[j], j,  iphase, time_k, xad, workspace); // EIGEN_UPDATE
 
    	    }
 
         for (j=0; j<problem.phases(iphase).ncontrols; j++) {
 
-   	            get_interpolated_control(&interpolated_control[j], j+1,  iphase, time_k, xad, workspace);
+   	            get_interpolated_control(&interpolated_control[j], j,  iphase, time_k, xad, workspace); // EIGEN_UPDATE
 
    	    }
 
@@ -295,9 +300,9 @@ void compute_residual_vector_in_phase(DMatrix& residual_vector, adouble* xad, in
              // Compute the residual at sample k;
 
              for (j=0;j<nobserved;j++) {
-                resid[j] = residual_weights(j+1,k)*( observed_variable[j] - observations(j+1, k) );
+                resid[j] = residual_weights(j,k)*( observed_variable[j] - observations(j, k) ); // EIGEN_UPDATE
 
-		residual_vector( (k-1)*nobserved+j+1  ) = resid[j].value();
+		residual_vector( (k)*nobserved+j  ) = resid[j].value(); // EIGEN_UPDATE
 
              }
 
@@ -314,27 +319,27 @@ void compute_residual_vector_in_phase(DMatrix& residual_vector, adouble* xad, in
 
 
 
-void rr_num(DMatrix& X, DMatrix* residual_vector, Workspace* workspace)
+void rr_num(MatrixXd& X, MatrixXd* residual_vector, Workspace* workspace)
 {
 
 
 
    adouble time_k;
 
-   int index, iphase, dindex, j,  k;
+   int index, iphase, dindex, j;
 
    Prob & problem = *(workspace->problem);
 
-   adouble* parameters;
+//   adouble* parameters;
 
-   DMatrix residual_vector_in_phase;
+   MatrixXd residual_vector_in_phase;
 
    adouble* xad = workspace->xad;
 
    int nvars = get_number_nlp_vars(problem, workspace);
 
    for(j=0;j<nvars;j++) {
-      xad[j] = X(j+1);
+      xad[j] = X(j); // EIGEN_UPDATE
    }
 
    index = 0;
@@ -345,17 +350,18 @@ void rr_num(DMatrix& X, DMatrix* residual_vector, Workspace* workspace)
        index = index+ dindex;
    }
 
-   residual_vector->Resize( index, 1);
+   residual_vector->resize( index, 1);
 
    index = 0;
 
    for(iphase=1; iphase<=problem.nphases;iphase++)
    {
-       parameters    = workspace->parameters[iphase-1];
+//       parameters    = workspace->parameters[iphase-1];
        dindex = problem.phases(iphase).nobserved*problem.phases(iphase).nsamples;
-       residual_vector_in_phase.Resize( dindex, 1);
+       residual_vector_in_phase.resize( dindex, 1);
        compute_residual_vector_in_phase( residual_vector_in_phase, xad, iphase, workspace);
-       (*residual_vector)( colon(index+1, index + dindex), 1) = residual_vector_in_phase;
+//       (*residual_vector)( colon(index+1, index + dindex), 1) = residual_vector_in_phase; // EIGEN_UPDATE
+       (*residual_vector).block(index, 0, dindex, 1) = residual_vector_in_phase;
        index = index+ dindex;
    }
 
@@ -364,11 +370,7 @@ void rr_num(DMatrix& X, DMatrix* residual_vector, Workspace* workspace)
 }
 
 
-
-
-
-
-void get_scaled_decision_variables_and_bounds(DMatrix& x, DMatrix xlb, DMatrix xub, Workspace* workspace)
+void get_scaled_decision_variables_and_bounds(MatrixXd& x, MatrixXd xlb, MatrixXd xub, Workspace* workspace)
 {
 
     int i;
@@ -380,8 +382,8 @@ void get_scaled_decision_variables_and_bounds(DMatrix& x, DMatrix xlb, DMatrix x
 
     int nvar = get_number_nlp_vars(problem, workspace);
 
-    for(i=1;i<=nvar;i++){
-      x(i) = xad[i-1].value();
+    for(i=0;i<nvar;i++){  // EIGEN_UPDATE: index i shifted by -1
+      x(i) = xad[i].value();
       xlb(i)= (*workspace->xlb)(i);
       xub(i)= (*workspace->xub)(i);
     }
@@ -390,11 +392,11 @@ void get_scaled_decision_variables_and_bounds(DMatrix& x, DMatrix xlb, DMatrix x
 
 
 
-void extract_parameter_covariance(DMatrix& Cp, DMatrix& C, Workspace* workspace)
+void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspace)
 {
      int i, j, ii;
      Prob & problem = *(workspace->problem);
-     DMatrix Ip;
+     RowVectorXi Ip;
      int pcount = 0;
 
      for(i=0;i< problem.nphases; i++)
@@ -402,30 +404,37 @@ void extract_parameter_covariance(DMatrix& Cp, DMatrix& C, Workspace* workspace)
          pcount+= problem.phase[i].nparameters;
      }
 
-     Ip.Resize(pcount,1);
+     Ip.resize(pcount,1);
 
      pcount=0;
 
      for(i=0;i< problem.nphases; i++)
      {
-	int norder    = problem.phase[i].current_number_of_intervals;
-	int nstates   = problem.phase[i].nstates;
+	     int norder    = problem.phase[i].current_number_of_intervals;
+     	  int nstates   = problem.phase[i].nstates;
         int ncontrols = problem.phase[i].ncontrols;
         int nparam    = problem.phase[i].nparameters;
-	int offset;
-        int iphase_offset = get_iphase_offset(problem,i+1, workspace);
-	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
-        int offset1 = (norder+1)*ncontrols;
+//	     int offset;
+        int iphase_offset = get_iphase_offset(problem,i+1, workspace); // CAREFUL HERE: CHECK THIS FUNCTION'S SECOND PARAM
+//	     int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
+//        int offset1 = (norder+1)*ncontrols;
         int offset2 = (norder+1)*(ncontrols+nstates);
 
-	for (ii=1;ii<=nparam;ii++) {
+	      for (ii=0;ii<nparam;ii++) { // EIGEN_UPDATE: index ii shifted by -1
                         j = iphase_offset+offset2+ii;
-			pcount++;
-                        Ip(pcount,1)=(double) j;
-	}
+//                      pcount++                                 // EIGEN_UPDATE
+//                        Ip(pcount,0)=(double) j;
+                        Ip(pcount) = j;
+                        pcount++;
+	      }
      }
 
-     Cp = C( Ip, Ip );
+//     Cp = C( Ip, Ip ); // EIGEN_UPDATE
+     for (i=0; i< Ip.size(); i++) {
+         for (j=0; j< Ip.size(); j++) {
+              Cp(i,j) = C(Ip(i), Ip(j));
+         }
+      }
 
 }
 
@@ -433,11 +442,11 @@ void extract_parameter_covariance(DMatrix& Cp, DMatrix& C, Workspace* workspace)
 
 
 
-bool compute_parameter_statistics(DMatrix& Cp, DMatrix& p, DMatrix& plow, DMatrix& phigh, DMatrix& r, Workspace* workspace)
+bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, MatrixXd& phigh, MatrixXd& r, Workspace* workspace)
 {
-      DMatrix Jr, Jc;
+      MatrixXd Jr, Jc;
 
-      DMatrix X, XL, XU;
+      MatrixXd X, XL, XU;
 
       Prob & problem = *(workspace->problem);
 
@@ -465,32 +474,32 @@ bool compute_parameter_statistics(DMatrix& Cp, DMatrix& p, DMatrix& plow, DMatri
 
       int total_number_of_parameters = pcount;
 
-      DMatrix parameters_full(pcount,1);
+      MatrixXd parameters_full(pcount,1);
 
       pcount = 0;
 
       for(i=0;i< problem.nphases; i++)
       {
 
-	 int iphase = i+1;
-	 int npar = problem.phase[i].nparameters;
+	       int iphase = i+1;
+	       int npar = problem.phase[i].nparameters;
 
-	 parameters    = workspace->parameters[iphase-1];
+	       parameters    = workspace->parameters[iphase-1];
 
-	 get_parameters( parameters, xad, iphase, workspace );
+	       get_parameters( parameters, xad, iphase, workspace );
 
-	 for(j=0; j< npar; j++) {
-	   parameters_full(pcount+j+1) = parameters[j].value();
-	 }
+	       for(j=0; j< npar; j++) {
+	            parameters_full(pcount+j) = parameters[j].value();  // EIGEN_UPDATE
+	       }
 
-         pcount+= problem.phase[i].nparameters;
+          pcount+= problem.phase[i].nparameters;
       }
 
       int nvar = get_number_nlp_vars(problem, workspace);
 
-      X .Resize(nvar,1);
-      XL.Resize(nvar,1);
-      XU.Resize(nvar,1);
+      X .resize(nvar,1);
+      XL.resize(nvar,1);
+      XU.resize(nvar,1);
 
 
       get_scaled_decision_variables_and_bounds(X, XL, XU, workspace);
@@ -503,60 +512,74 @@ bool compute_parameter_statistics(DMatrix& Cp, DMatrix& p, DMatrix& plow, DMatri
 
 	  p = parameters_full;
 
-      DMatrix JcT(Jc.GetNoCols(),Jc.GetNoRows());
+//      MatrixXd JcT(Jc.GetNoCols(),Jc.GetNoRows()); // EIGEN_UPDATE
+     MatrixXd JcT(Jc.cols(),Jc.rows());
 
-      for(i=1;i<=Jc.GetNoRows();i++) {
-          for(j=1;j<=Jc.GetNoCols();j++) {
+      for(i=0;i<Jc.rows();i++) {      // EIGEN_UPDATE
+          for(j=0;j<Jc.cols();j++) {
              JcT(j,i) = Jc(i,j);
           }
       }
 
-      integer M= JcT.GetNoRows();
-      integer N= JcT.GetNoCols();
-      double* A = JcT.GetPr();
-      integer LDA = M;
-      double* TAU = new double[MIN(M,N)];
-      integer LWORK = 6*MAX(1,N);
-      double* WORK= new double[MAX(1,LWORK)];
-      integer INFO;
+      long M= JcT.rows();
+      long N= JcT.cols();
+//      double* A = &JcT(0);
+//      integer LDA = M;
+//      double* TAU = new double[MIN(M,N)];
+//      integer LWORK = 6*MAX(1,N);
+//      double* WORK= new double[MAX(1,LWORK)];
+//      integer INFO;
 
       if ((M-N)<=0) return false;
 
-      dgeqrf_( &M, &N, A, &LDA, TAU, WORK, &LWORK, &INFO );
+//      dgeqrf_( &M, &N, A, &LDA, TAU, WORK, &LWORK, &INFO );
 
-      DMatrix I2 = ( zeros(N,M-N) && eye(M-N) );
+       MatrixXd Q = JcT.fullPivHouseholderQr().matrixQ();
 
-      double *C = I2.GetPr();
-      integer LDC = MAX(1,M);
+      // MatrixXd I2 = ( zeros(N,M-N) && eye(M-N) ); // EIGEN_UPDATE
+      
+      MatrixXd I2( N+(M-N) , (M-N) );
+      
+      I2 << zeros(N,M-N),
+            eye(M-N);
+            
+       MatrixXd Z = Q*I2;            
+            
+            
+//      double *C = &I2.(0);
+//      integer LDC = MAX(1,M);
 
-      char SIDE = 'L';
-      char TRANS = 'N';
+//      char SIDE = 'L';
+//      char TRANS = 'N';
 
-      integer N2 = M-N;
-      integer K  = MIN(M,N);
+//      integer N2 = M-N;
+//      integer K  = MIN(M,N);
 
 
 
-      dormqr_( &SIDE, &TRANS, &M, &N2, &K, A, &LDA, TAU, C, &LDC, WORK, &LWORK, &INFO, 1, 1);
+//      dormqr_( &SIDE, &TRANS, &M, &N2, &K, A, &LDA, TAU, C, &LDC, WORK, &LWORK, &INFO, 1, 1);
 
       // Calculation of covariance matrix w.r.t all decision variables.
       // See the paper:
       // Kostina et al (2003) "Computation of covariance matrices for constrained parameter estimation
       // problems using LSQR".
 
-      DMatrix& Z = I2;
+//      MatrixXd& Z = I2;
 
-      DMatrix& J1 = Jr;
-      DMatrix CC;
+      MatrixXd& J1 = Jr;
+      MatrixXd CC;
 
-      DMatrix F;
+      MatrixXd F;
 
-      F = (TProductT(Z,J1)*(J1*Z));
+//      F = (TProductT(Z,J1)*(J1*Z));   // EIGEN_UPDATE
+      F = Z.transpose()*J1.transpose()*J1*Z;
 
-      F = pinv(F);
+//      F = pinv(F);  // EIGEN_UPDATE
+      F.completeOrthogonalDecomposition().pseudoInverse();
 //      F = inv(F);
 
-      CC = Z*F*tra(Z);
+//      CC = Z*F*tra(Z);  // EIGEN_UPDATE
+        CC = Z*F*Z.transpose();
 
       extract_parameter_covariance(Cp, CC, workspace);
 
@@ -566,8 +589,8 @@ bool compute_parameter_statistics(DMatrix& Cp, DMatrix& p, DMatrix& plow, DMatri
 
       pcount=0;
 
-      plow.Resize( total_number_of_parameters, 1);
-      phigh.Resize(total_number_of_parameters,1);
+      plow.resize( total_number_of_parameters, 1);
+      phigh.resize(total_number_of_parameters,1);
 
       int NN=0;
 
@@ -589,7 +612,8 @@ bool compute_parameter_statistics(DMatrix& Cp, DMatrix& p, DMatrix& plow, DMatri
 
 	  for(i=0;i< problem.phases(iphase).nparameters;i++) {
 
-	    j= pcount+i+1;
+//	    j= pcount+i+1;
+       j= pcount+i; // EIGEN_UPDATE
 
 	    plow(j,1)   = parameters_full(j) - tt*sqrt( Cp(j,j) );
 	    phigh(j,1)  = parameters_full(j) + tt*sqrt( Cp(j,j) );
@@ -607,4 +631,5 @@ bool compute_parameter_statistics(DMatrix& Cp, DMatrix& p, DMatrix& plow, DMatri
 
 
 }
+
 
