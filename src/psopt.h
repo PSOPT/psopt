@@ -29,7 +29,20 @@ e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
 
-#include "../RELEASE_NUMBER"
+#include "../../RELEASE_NUMBER"
+
+#include <Eigen/Dense>
+
+// using namespace Eigen;
+using Eigen::MatrixXd;
+using Eigen::RowVectorXi;
+
+
+
+// typedef Eigen::SparseMatrix<double> SpMat; // declares a column-major sparse matrix type of double
+
+
+#define DMatrix MatrixXd
 
 
 /* Define to the C type corresponding to Fortran INTEGER */
@@ -51,13 +64,13 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 #define MIN(a, b) ( (a)<(b)?  (a):(b) )
 #endif
 
+#define MC_EPSILON 2.221e-16
+
 
 #undef max
 #undef min
 #undef abs
 
-
-#define ADOLC_VERSION_2
 
 #define FREE_ARG char*
 
@@ -74,91 +87,59 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 using namespace std;
 
 
-#ifdef WIN32
-
-#ifdef ADOLC_VERSION_1
-#include "drivers.h"
-#include "interfaces.h"
-#include "adalloc.h"
-#include "adouble.h"
-#include "sparse.h"
-#endif
-
-#ifdef ADOLC_VERSION_2
-
 #include <adolc/drivers/drivers.h>
 #include <adolc/interfaces.h>
 #include <adolc/adalloc.h>
 #include <adolc/adouble.h>
 #include <adolc/sparse/sparsedrivers.h>
 #include <adolc/taping.h>
-#endif
 
 
 
-#else
 
-
-
-#ifdef ADOLC_VERSION_1
-#include <adolc/drivers/drivers.h>
-#include <adolc/interfaces.h>
-#include <adolc/adalloc.h>
-#include <adolc/adouble.h>
-#include <adolc/sparse/sparse.h>
-#endif
-
-#ifdef ADOLC_VERSION_2
-#include <adolc/drivers/drivers.h>
-#include <adolc/interfaces.h>
-#include <adolc/adalloc.h>
-#include <adolc/adouble.h>
-#include <adolc/sparse/sparsedrivers.h>
-#include <adolc/taping.h>
-#endif
-
-#endif
 
 #include <string>
 using std::string;
 
+class TripletSparseMatrix;
 
-class ADMatrix {
+class AutoDiffMatrix {
   adouble* a;
   int n;
   int m;
   public:
   // Constructor
-  ADMatrix( int n, int m);
-  ADMatrix( int n );
-  ADMatrix();
+  AutoDiffMatrix( int n, int m);
+  AutoDiffMatrix( int n );
+  AutoDiffMatrix();
   // Destructor
-  ~ADMatrix();
+  ~AutoDiffMatrix();
   adouble elem(int i, int j) const;
   adouble operator()(int i, int j) const;
   adouble operator()(int i) const;
   adouble& elem(int i, int j);
   adouble& operator()(int i, int j);
   adouble& operator()(int i);
-  int GetNoRows() const { return n;}
-  int GetNoCols() const { return m;}
+  int rows() const { return n;}
+  int cols() const { return m;}
   adouble* GetPr() { return a;}
   adouble* GetConstPr() const { return a;}
   void Print(const char* text) const;
-  void Resize(int nn, int mm);
-  void FillWithZeros();
+  void resize(int nn, int mm);
+  void setZero();
+  void setOne();
 
 };
 
 
 class dual_str {
 public:
-  DMatrix* Hamiltonian;
-  DMatrix* costates;
-  DMatrix* path;
-  DMatrix* events;
-  DMatrix* linkages;
-  
+  MatrixXd* Hamiltonian;
+  MatrixXd* costates;
+  MatrixXd* path;
+  MatrixXd* events;
+  MatrixXd* linkages;
+
   dual_str()
   {
     Hamiltonian = NULL;
@@ -200,10 +181,10 @@ string  method;
 
 
 struct guess_str {
-  DMatrix controls;
-  DMatrix states;
-  DMatrix parameters;
-  DMatrix time;
+  MatrixXd controls;
+  MatrixXd states;
+  MatrixXd parameters;
+  MatrixXd time;
 };
 
 typedef struct guess_str Guess;
@@ -249,11 +230,11 @@ typedef struct alg_str Alg;
 
 struct ulbounds_str {
 
-    DMatrix events;
-    DMatrix path;
-    DMatrix states;
-    DMatrix controls;
-    DMatrix parameters;
+    MatrixXd events;
+    MatrixXd path;
+    MatrixXd states;
+    MatrixXd controls;
+    MatrixXd parameters;
 
     double StartTime;
     double EndTime;
@@ -296,19 +277,19 @@ typedef struct bounds_str Bounds;
 
 
 struct scaling_str {
-   DMatrix  controls;
-   DMatrix  states;
-   DMatrix  parameters;
-   DMatrix  defects;
-   DMatrix  path;
-   DMatrix  events;
+   MatrixXd  controls;
+   MatrixXd  states;
+   MatrixXd  parameters;
+   MatrixXd  defects;
+   MatrixXd  path;
+   MatrixXd  events;
    double    time;
 };
 
 typedef struct scaling_str Scaling;
 
 struct prob_scaling_str {
-   DMatrix   linkages;
+   MatrixXd   linkages;
    double    objective;
 };
 
@@ -337,19 +318,19 @@ struct phases_str {
 
    Guess  guess;
 
-   DMatrix nodes;
+   RowVectorXi nodes;
 
    Scaling scale;
 
    bool zero_cost_integrand;
 
-   DMatrix observations;
+   MatrixXd observations;
 
-   DMatrix covariance;
+   MatrixXd covariance;
 
-   DMatrix residual_weights;
+   MatrixXd residual_weights;
 
-   DMatrix observation_nodes;
+   MatrixXd observation_nodes;
 
    double  regularization_factor;
 
@@ -363,8 +344,8 @@ typedef struct phases_str Phases;
 
 
 struct prob_ul_bounds {
-     DMatrix linkage;
-     DMatrix times;
+     MatrixXd linkage;
+     MatrixXd times;
 };
 
 typedef prob_ul_bounds ProbULBounds;
@@ -382,7 +363,7 @@ typedef class work_str Workspace;
 
 class prob_str {
 public:
-    
+
    prob_str()
    {
        phase = NULL;
@@ -463,13 +444,15 @@ public:
       if (this->integrated_cost) delete [] this->integrated_cost;
       if (this->mesh_stats) delete [] this->mesh_stats;
    }
-   DMatrix *states;
-   DMatrix *controls;
-   DMatrix *nodes;
-   DMatrix *parameters;
-   DMatrix *relative_errors;
+   MatrixXd *states;
+
+   MatrixXd *controls;
+   MatrixXd *nodes;
+   MatrixXd *parameters;
+   MatrixXd *relative_errors;
+   MatrixXd *integrand_cost;
    Dual     dual;
-   DMatrix *integrand_cost;
+
    double  *endpoint_cost;
    double  *integrated_cost;
    double   cost;
@@ -483,16 +466,16 @@ public:
    string   start_date_and_time;
    string   end_date_and_time;
    Prob* problem;
-   DMatrix& get_states_in_phase(int iphase);
-   DMatrix& get_controls_in_phase(int iphase);
-   DMatrix& get_time_in_phase(int iphase);
-   DMatrix& get_parameters_in_phase(int iphase);
-   DMatrix& get_dual_costates_in_phase(int iphase);
-   DMatrix& get_dual_hamiltonian_in_phase(int iphase);
-   DMatrix& get_dual_path_in_phase(int iphase);
-   DMatrix& get_dual_events_in_phase(int iphase);
-   DMatrix& get_dual_linkages();
-   DMatrix& get_relative_local_error_in_phase(int iphase);
+   MatrixXd& get_states_in_phase(int iphase);
+   MatrixXd& get_controls_in_phase(int iphase);
+   MatrixXd& get_time_in_phase(int iphase);
+   MatrixXd& get_parameters_in_phase(int iphase);
+   MatrixXd& get_dual_costates_in_phase(int iphase);
+   MatrixXd& get_dual_hamiltonian_in_phase(int iphase);
+   MatrixXd& get_dual_path_in_phase(int iphase);
+   MatrixXd& get_dual_events_in_phase(int iphase);
+   MatrixXd& get_dual_linkages();
+   MatrixXd& get_relative_local_error_in_phase(int iphase);
    double   get_cost() { return cost; }
 };
 
@@ -502,11 +485,11 @@ typedef class sol_str Sol;
 
 
 typedef struct {
-    DMatrix* dfdx_j;
-    DMatrix* F1;
-    DMatrix* F2;
-    DMatrix* F3;
-    DMatrix* F4;
+    MatrixXd* dfdx_j;
+    MatrixXd* F1;
+    MatrixXd* F2;
+    MatrixXd* F3;
+    MatrixXd* F4;
     double*  x;
     double*  g;
     adouble* xad;
@@ -525,7 +508,7 @@ typedef struct {
   int nobserved;
   int nsamples;
   bool continuous_controls;
-  DMatrix nodes;
+  RowVectorXi nodes;
 } MSdata;
 
 
@@ -545,61 +528,61 @@ public:
    Sol*      solution;
    Prob*     problem;
    Alg*      algorithm;
-   DMatrix*  P;
-   DMatrix*  sindex;
-   DMatrix*  w;
-   DMatrix*  D;
-   DMatrix*  D2;
-   DMatrix*  snodes;
-   DMatrix*  old_snodes;
-   DMatrix*  xlb;
-   DMatrix*  xub;
-   DMatrix*  x0;
-   DMatrix*  lambda;
-   DMatrix*  dual_costates;
-   DMatrix*  dual_path;
-   DMatrix*  dual_events;
-   DMatrix*  Xsnopt;
-   DMatrix*  gsnopt;
-   DMatrix*  DerivResid;
-   DMatrix*  h;
-   DMatrix*  Xdotgg;
-   DMatrix*  e;
-   DMatrix*  hgg;
-   DMatrix*  Xip;
-   DMatrix*  JacRow;
-   DMatrix*  Gip;
-   DMatrix*  GFip;
-   SparseMatrix*  Ax;
-   SparseMatrix*  As;
-   SparseMatrix*  Gsp;
-   DMatrix*  control_scaling;
-   DMatrix*  control_shift;
-   DMatrix*  state_scaling;
-   DMatrix*  parameter_scaling;
-   DMatrix*  state_shift;
-   DMatrix*  deriv_scaling;
-   DMatrix*  path_scaling;
-   DMatrix*  event_scaling;
-   DMatrix*  constraint_scaling;
-   DMatrix*  linkage;
-   DMatrix*  prev_states;
-   DMatrix*  prev_costates;
-   DMatrix*  prev_controls;
-   DMatrix*  prev_param;
-   DMatrix*  prev_path;
-   DMatrix*  prev_nodes;
-   DMatrix*  prev_t0;
-   DMatrix*  prev_tf;
-   DMatrix*  Xdot;
-   DMatrix*  JacCol1;
-   DMatrix*  JacCol2;
-   DMatrix*  JacCol3;
-   DMatrix*  xp;
-   DMatrix*  emax_history;
-   DMatrix*  order_reduction;
-   DMatrix*  old_relative_errors;
-   DMatrix*  error_scaling_weights;
+   MatrixXd*  P;
+   RowVectorXi*  sindex;
+   MatrixXd*  w;
+   MatrixXd*  D;
+   MatrixXd*  D2;
+   MatrixXd*  snodes;
+   MatrixXd*  old_snodes;
+   MatrixXd*  xlb;
+   MatrixXd*  xub;
+   MatrixXd*  x0;
+   MatrixXd*  lambda;
+   MatrixXd*  dual_costates;
+   MatrixXd*  dual_path;
+   MatrixXd*  dual_events;
+   MatrixXd*  Xsnopt;
+   MatrixXd*  gsnopt;
+   MatrixXd*  DerivResid;
+   MatrixXd*  h;
+   MatrixXd*  Xdotgg;
+   MatrixXd*  e;
+   MatrixXd*  hgg;
+   MatrixXd*  Xip;
+   MatrixXd*  JacRow;
+   MatrixXd*  Gip;
+   MatrixXd*  GFip;
+   TripletSparseMatrix*  Ax;
+   TripletSparseMatrix*  As;
+   TripletSparseMatrix*  Gsp;
+   MatrixXd*  control_scaling;
+   MatrixXd*  control_shift;
+   MatrixXd*  state_scaling;
+   MatrixXd*  parameter_scaling;
+   MatrixXd*  state_shift;
+   MatrixXd*  deriv_scaling;
+   MatrixXd*  path_scaling;
+   MatrixXd*  event_scaling;
+   MatrixXd*  constraint_scaling;
+   MatrixXd*  linkage;
+   MatrixXd*  prev_states;
+   MatrixXd*  prev_costates;
+   MatrixXd*  prev_controls;
+   MatrixXd*  prev_param;
+   MatrixXd*  prev_path;
+   MatrixXd*  prev_nodes;
+   MatrixXd*  prev_t0;
+   MatrixXd*  prev_tf;
+   MatrixXd*  Xdot;
+   MatrixXd*  JacCol1;
+   MatrixXd*  JacCol2;
+   MatrixXd*  JacCol3;
+   MatrixXd*  xp;
+   MatrixXd*  emax_history;
+   MatrixXd*  order_reduction;
+   MatrixXd*  old_relative_errors;
+   MatrixXd*  error_scaling_weights;
 
 
    double    obj_scaling;
@@ -707,14 +690,14 @@ typedef xad_str XAD;
 
 // Function prototypes
 
-void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), DMatrix& x, DMatrix* grad, bool* flag, int itag, Workspace* workspace );
+void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), MatrixXd& x, MatrixXd* grad, bool* flag, int itag, Workspace* workspace );
 
-void EfficientlyComputeJacobianNonZeros( void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x,
+void EfficientlyComputeJacobianNonZeros( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x,
                 int nf, double *nzvalue, int nnz, int* iArow, int* jAcol, IGroup* igroup, GRWORK* grw, Workspace* workspace );
 
-void compute_jacobian_of_constraints_with_respect_to_variables(DMatrix& Jc, DMatrix& X, DMatrix& XL, DMatrix& XU, Workspace* workspace);
+void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, MatrixXd& X, MatrixXd& XL, MatrixXd& XU, Workspace* workspace);
 
-void compute_jacobian_of_residual_vector_with_respect_to_variables(DMatrix& Jr, DMatrix& X, DMatrix& XL, DMatrix& XU, Workspace* workspace);
+void compute_jacobian_of_residual_vector_with_respect_to_variables(MatrixXd& Jr, MatrixXd& X, MatrixXd& XL, MatrixXd& XU, Workspace* workspace);
 
 void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, int* jAcol, Workspace* workspace);
 
@@ -728,47 +711,47 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm);
 
 void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace);
 
-void lglnodes(int N, DMatrix& x, DMatrix& w, DMatrix& P, DMatrix& D, Workspace* workspace);
+void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspace* workspace);
 
-void cglnodes(int N, DMatrix& x, DMatrix& w,  DMatrix& D, Workspace* workspace);
+void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspace);
 
-void copy_decision_variables(Sol& solution, DMatrix& x, Prob& problem, Alg& algorithm, Workspace* workspace);
+void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& algorithm, Workspace* workspace);
 
-double ff( DMatrix& x );
+double ff( MatrixXd& x );
 
-void gg( DMatrix& x, DMatrix* g );
+void gg( MatrixXd& x, MatrixXd* g );
 
-void  define_initial_nlp_guess(DMatrix& x0, DMatrix& lambda, Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace);
+void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace);
 
 void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& algorithm);
 
-void determine_objective_scaling(DMatrix& X,Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace );
+void determine_objective_scaling(MatrixXd& X,Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace );
 
-void determine_constraint_scaling_factors(DMatrix & X, Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace);
+void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace);
 
-void  define_nlp_bounds(DMatrix& xlb,DMatrix&  xub,Prob& problem, Alg& algorithm, Workspace* workspace);
+void  define_nlp_bounds(MatrixXd& xlb,MatrixXd&  xub,Prob& problem, Alg& algorithm, Workspace* workspace);
 
 double convert_to_original_time(double tbar,double t0,double tf);
 
 void resize_solution(Sol& solution, Prob& problem, Alg& algorithm);
 
-void hot_start_nlp_guess(DMatrix& x0,DMatrix& lambda, Sol& solution,Prob& problem,Alg& algorithm, DMatrix* prev_states, DMatrix* prev_controls, DMatrix* prev_costates, DMatrix* prev_path, DMatrix* prev_nodes, DMatrix* prev_param, DMatrix& prev_t0, DMatrix& prev_tf, Workspace* workspace );
+void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& problem,Alg& algorithm, MatrixXd* prev_states, MatrixXd* prev_controls, MatrixXd* prev_costates, MatrixXd* prev_path, MatrixXd* prev_nodes, MatrixXd* prev_param, MatrixXd& prev_t0, MatrixXd& prev_tf, Workspace* workspace );
 
-void lagrange_interpolation(DMatrix& y, DMatrix& x, DMatrix& pointx, DMatrix& pointy);
+void lagrange_interpolation(MatrixXd& y, MatrixXd& x, MatrixXd& pointx, MatrixXd& pointy);
 
 double smooth_fabs(double x, double eps);
 
 adouble smooth_fabs(adouble x, double eps);
 
-void Jacobian( void fun(DMatrix& x, DMatrix* f ), DMatrix& x, DMatrix* grad, GRWORK* grw );
+void Jacobian( void fun(MatrixXd& x, MatrixXd* f ), MatrixXd& x, MatrixXd* grad, GRWORK* grw );
 
-void JacobianRow( void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x, int iRow, int nf,
-                  DMatrix* JacRow, GRWORK* grw, Workspace* workspace );
+void JacobianRow( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, int iRow, int nf,
+                  MatrixXd* JacRow, GRWORK* grw, Workspace* workspace );
 
-void JacobianColumn( void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x, DMatrix& xlb, DMatrix& xub, int jCol,
-                DMatrix* JacColumn, GRWORK* grw, Workspace* workspace );
+void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, MatrixXd& xlb, MatrixXd& xub, int jCol,
+                MatrixXd* JacColumn, GRWORK* grw, Workspace* workspace );
 
-void evaluate_matrix_of_integrated_errors_in_phase(DMatrix& eta, int iphase, adouble* xad, int nsteps, Workspace* workspace);
+void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, adouble* xad, int nsteps, Workspace* workspace);
 
 void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* workspace);
 
@@ -788,11 +771,11 @@ bool use_local_collocation(Alg & algorithm);
 
 bool use_global_collocation(Alg & algorithm);
 
-void bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMatrix& Y, DMatrix& Z);
+void bilinear_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, MatrixXd& Y, MatrixXd& Z);
 
-void spline_2d_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMatrix& Y, DMatrix& Z, Workspace* workspace);
+void spline_2d_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, MatrixXd& Y, MatrixXd& Z, Workspace* workspace);
 
-void smooth_bilinear_interpolation(adouble* z, adouble& x, adouble& y, DMatrix& X, DMatrix& Y, DMatrix& Z);
+void smooth_bilinear_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, MatrixXd& Y, MatrixXd& Z);
 
 void smooth_linear_interpolation(adouble* y, adouble& x, adouble* Xdata, adouble* Ydata, int n);
 
@@ -802,9 +785,9 @@ void get_states(adouble* states, adouble* xad, int iphase, int k, Workspace* wor
 
 void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Workspace* workspace);
 
-void rr_num(DMatrix& X, DMatrix* residual_vector, Workspace* workspace);
+void rr_num(MatrixXd& X, MatrixXd* residual_vector, Workspace* workspace);
 
-void extract_parameter_covariance(DMatrix& Cp, DMatrix& C, Workspace* workspace);
+void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspace);
 
 
 
@@ -815,14 +798,14 @@ static const double pi = 3.141592653589793;
 
 int NLP_interface(
          Alg& algorithm,
-         DMatrix* x0,
-         double (*f)(DMatrix&, Workspace*),
-	 void (*g)(DMatrix&,DMatrix*,Workspace*),
+         MatrixXd* x0,
+         double (*f)(MatrixXd&, Workspace*),
+	 void (*g)(MatrixXd&,MatrixXd*,Workspace*),
 	 int m          = 0,
 	 int neqcstr    = 0,
-	 DMatrix* xlb   = NULL,
-	 DMatrix* xub   = NULL,
-         DMatrix* lambda= NULL,
+	 MatrixXd* xlb   = NULL,
+	 MatrixXd* xub   = NULL,
+         MatrixXd* lambda= NULL,
          int hotflag    = 0,
          int iprint     = 1,
          Workspace* workspace=NULL,
@@ -830,17 +813,17 @@ int NLP_interface(
 
 
 
-void ScalarGradient( double (*fun)(DMatrix& x, Workspace*), DMatrix& x,DMatrix* grad, GRWORK* grw, Workspace* workspace );
+void ScalarGradient( double (*fun)(MatrixXd& x, Workspace*), MatrixXd& x,MatrixXd* grad, GRWORK* grw, Workspace* workspace );
 
-void DetectJacobianSparsity(void fun(DMatrix& x, DMatrix* f, Workspace* ), DMatrix& x, int nf,
+void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, int nf,
                            int* nnzA, int* iArow, int* jAcol, double* Aij,
                            int* nnzG, int* jGrow, int* jGcol,
                            GRWORK* grw, Workspace* workspace);
 
-void ComputeJacobianNonZeros( void fun(DMatrix& x, DMatrix* f ), DMatrix& x, int nf, double *nzvalue, int nnz, int* iArow, int* jAcol, GRWORK* grw, Workspace* workspace );
+void ComputeJacobianNonZeros( void fun(MatrixXd& x, MatrixXd* f ), MatrixXd& x, int nf, double *nzvalue, int nnz, int* iArow, int* jAcol, GRWORK* grw, Workspace* workspace );
 
-void Jacobian( void fun(DMatrix& x, DMatrix* f ), DMatrix& x,
-                DMatrix* grad, GRWORK* grw );
+void Jacobian( void fun(MatrixXd& x, MatrixXd* f ), MatrixXd& x,
+                MatrixXd* grad, GRWORK* grw );
 
 void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
@@ -914,19 +897,19 @@ void lagrange_interpolation_ad(adouble* y, adouble& x, adouble* pointx, adouble*
 
 void linear_interpolation(adouble* y, adouble& x, adouble* pointx, adouble* pointy, int npoints);
 
-void linear_interpolation(DMatrix& y, double x, DMatrix& pointx, DMatrix& pointy, int npoints);
+void linear_interpolation(MatrixXd& y, double x, MatrixXd& pointx, MatrixXd& pointy, int npoints);
 
-void linear_interpolation(DMatrix& y, DMatrix& x, DMatrix& pointx, DMatrix& pointy, int npoints);
+void linear_interpolation(MatrixXd& y, MatrixXd& x, MatrixXd& pointx, MatrixXd& pointy, int npoints);
 
-void linear_interpolation(adouble* y, adouble x, DMatrix& pointx, DMatrix& pointy, int npoints);
+void linear_interpolation(adouble* y, adouble x, MatrixXd& pointx, MatrixXd& pointy, int npoints);
 
-void smooth_linear_interpolation(adouble* y, adouble& x, DMatrix& Xdata, DMatrix& Ydata, int n);
+void smooth_linear_interpolation(adouble* y, adouble& x, MatrixXd& Xdata, MatrixXd& Ydata, int n);
 
 void spline_interpolation(adouble* y, adouble& x, adouble* pointx, adouble* pointy, int npoints, Workspace* workspace);
 
-void spline_interpolation(adouble* y, adouble& x, DMatrix& Xdata, DMatrix& Ydata, int n);
+void spline_interpolation(adouble* y, adouble& x, MatrixXd& Xdata, MatrixXd& Ydata, int n);
 
-void zoh_interpolation(adouble* y, adouble x, DMatrix& pointx, DMatrix& pointy, int npoints);
+void zoh_interpolation(adouble* y, adouble x, MatrixXd& pointx, MatrixXd& pointy, int npoints);
 
 
 adouble get_initial_time(adouble* xad, int iphase, Workspace* workspace);
@@ -939,13 +922,13 @@ bool useAutomaticDifferentiation(Alg& algorithm);
 
 void gg_ad( adouble* xad, adouble* gad, Workspace* workspace );
 
-double ff_num(DMatrix& x, Workspace* workspace);
+double ff_num(MatrixXd& x, Workspace* workspace);
 
-void gg_num( DMatrix& x, DMatrix* g, Workspace* workspace );
+void gg_num( MatrixXd& x, MatrixXd* g, Workspace* workspace );
 
 void fg_ad( adouble* x, adouble* fg, Workspace* workspace);
 
-void compute_derivatives_trajectory( DMatrix& Xdot, Prob& problem, Sol& solution,  int i, Workspace* workspace );
+void compute_derivatives_trajectory( MatrixXd& Xdot, Prob& problem, Sol& solution,  int i, Workspace* workspace );
 
 adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adouble*,int, Workspace* workspace), adouble* xad, int i, Workspace* workspace );
 
@@ -953,31 +936,31 @@ void auto_link(adouble* linkages, int* index, adouble* xad, int iphase_a, int ip
 
 void auto_link_2(adouble* linkages, int* index, adouble* xad, int iphase_a, int iphase_b, Workspace* workspace);
 
-void plot(DMatrix& x, DMatrix& y,const string& title,
+void plot(MatrixXd& x, MatrixXd& y,const string& title,
           const char* xlabel, const char* ylabel, const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void plot(DMatrix& x1, DMatrix& y1, DMatrix& x2, DMatrix& y2, const string& title,
+void plot(MatrixXd& x1, MatrixXd& y1, MatrixXd& x2, MatrixXd& y2, const string& title,
           const char* xlabel, const char* ylabel, const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void plot(DMatrix& x1, DMatrix& y1, DMatrix& x2, DMatrix& y2, DMatrix& x3, DMatrix& y3,
+void plot(MatrixXd& x1, MatrixXd& y1, MatrixXd& x2, MatrixXd& y2, MatrixXd& x3, MatrixXd& y3,
           const string& title, const char* xlabel, const char* ylabel, const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void multiplot(DMatrix& x, DMatrix& y, const string& title, const char* xlabel, const char* ylabel, const char* legend, int nrows=0, int ncols=0, const char* terminal=NULL, const char* output=NULL ) ;
+void multiplot(MatrixXd& x, MatrixXd& y, const string& title, const char* xlabel, const char* ylabel, const char* legend, int nrows=0, int ncols=0, const char* terminal=NULL, const char* output=NULL ) ;
 
-void spplot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal=NULL, const char* output=NULL);
+void spplot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal=NULL, const char* output=NULL);
 
-void polar(DMatrix& theta, DMatrix& r, const string& title,
+void polar(MatrixXd& theta, MatrixXd& r, const string& title,
            const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void polar(DMatrix& theta, DMatrix& r, DMatrix& theta2, DMatrix& r2, const string& title,
+void polar(MatrixXd& theta, MatrixXd& r, MatrixXd& theta2, MatrixXd& r2, const string& title,
             const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void polar(DMatrix& theta, DMatrix& r, DMatrix& theta2, DMatrix& r2,  DMatrix& theta3, DMatrix& r3, const string& title,
+void polar(MatrixXd& theta, MatrixXd& r, MatrixXd& theta2, MatrixXd& r2,  MatrixXd& theta3, MatrixXd& r3, const string& title,
             const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void surf(DMatrix& x, DMatrix& y, DMatrix& z, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal=NULL, const char* output=NULL, const char* view=NULL);
+void surf(MatrixXd& x, MatrixXd& y, MatrixXd& z, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal=NULL, const char* output=NULL, const char* view=NULL);
 
-void plot3(DMatrix& x, DMatrix& y, DMatrix& z, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal=NULL, const char* output=NULL, const char* view=NULL);
+void plot3(MatrixXd& x, MatrixXd& y, MatrixXd& z, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal=NULL, const char* output=NULL, const char* view=NULL);
 
 void psopt_error_message(const char *error_text);
 
@@ -995,7 +978,7 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
 
 void psopt_main(Sol& solution, Prob& problem, Alg& algorithm);
 
-void clip_vector_given_bounds(DMatrix& xp, DMatrix& xlb, DMatrix& xub);
+void clip_vector_given_bounds(MatrixXd& xp, MatrixXd& xlb, MatrixXd& xub);
 
 void psopt_print(Workspace* workspace, const char* msg);
 
@@ -1005,17 +988,17 @@ void multi_segment_setup(Prob& problem, Alg& algorithm, MSdata& msdata);
 
 int auto_link2_count(Prob& problem, int nstates, int ncontrols);
 
-void auto_phase_setup(Prob& problem, int n_final_events,DMatrix& nodes);
+void auto_phase_setup(Prob& problem, int n_final_events,RowVectorXi& nodes);
 
 void  auto_phase_bounds(Prob& problem);
 
-void  auto_phase_guess(Prob& problem,DMatrix& controls, DMatrix& states, DMatrix& param, DMatrix& time);
+void  auto_phase_guess(Prob& problem,MatrixXd& controls, MatrixXd& states, MatrixXd& param, MatrixXd& time);
 
 void auto_link_multiple(adouble* linkages, adouble* xad,int nphases, Workspace* workspace);
 
 void auto_link2_multiple(adouble* linkages, adouble* xad,int nphases, Workspace* workspace);
 
-void product_ad(const DMatrix& A, const adouble* x, int nx, adouble* y);
+void product_ad(const MatrixXd& A, const adouble* x, int nx, adouble* y);
 
 void sum_ad(const adouble* a, const adouble*b, int n, adouble* c);
 
@@ -1027,13 +1010,13 @@ void product_ad(adouble* Apr,adouble* Bpr, int na, int ma, int nb, int mb, adoub
 
 bool need_midpoint_controls(Alg& algorithm, Workspace* workspace);
 
-void inverse_ad(const ADMatrix& minput, ADMatrix* minv);
+void inverse_ad(const AutoDiffMatrix& minput, AutoDiffMatrix* minv);
 
-void product_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AB);
+void product_ad(const AutoDiffMatrix& A,const AutoDiffMatrix& B, AutoDiffMatrix* AB);
 
-void sum_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AB);
+void sum_ad(const AutoDiffMatrix& A,const AutoDiffMatrix& B, AutoDiffMatrix* AB);
 
-void subtract_ad(const ADMatrix& A,const ADMatrix& B, ADMatrix* AB);
+void subtract_ad(const AutoDiffMatrix& A,const AutoDiffMatrix& B, AutoDiffMatrix* AB);
 
 void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace);
 
@@ -1057,11 +1040,11 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution,Workspa
 
 void transpose_ad(adouble* Apr, int na, int ma,  adouble* Atpr);
 
-void resample_trajectory(DMatrix& Y, DMatrix& X, DMatrix& Ydata, DMatrix& Xdata);
+void resample_trajectory(MatrixXd& Y, MatrixXd& X, MatrixXd& Ydata, MatrixXd& Xdata);
 
 void load_parameter_estimation_data(Prob& problem, int iphase, const char* filename);
 
-bool compute_parameter_statistics(DMatrix& Qp, DMatrix& p, DMatrix& plow, DMatrix& phigh, DMatrix& r, Workspace* workspace);
+bool compute_parameter_statistics(MatrixXd& Qp, MatrixXd& p, MatrixXd& plow, MatrixXd& phigh, MatrixXd& r, Workspace* workspace);
 
 double inverse_twotailed_t_cdf(double A, int ndf);
 
@@ -1075,46 +1058,155 @@ adouble ff_ad(adouble* xad, Workspace* workspace);
 void rk4_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* states,
          adouble* controls, adouble* parameters, adouble& time,
         adouble* xad, int iphase, Workspace* workspace),
-        DMatrix& control_trajectory,
-        DMatrix& time_vector,
-        DMatrix& initial_state,
-	DMatrix& parameters,
+        MatrixXd& control_trajectory,
+        MatrixXd& time_vector,
+        MatrixXd& initial_state,
+	MatrixXd& parameters,
         Prob & problem,
         int iphase,
-        DMatrix& state_trajectory, Workspace* workspace);
+        MatrixXd& state_trajectory, Workspace* workspace);
 
 void rkf_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* states,
          adouble* controls, adouble* parameters, adouble& time,
         adouble* xad, int iphase, Workspace* workspace),
-        DMatrix& control_trajectory,
-        DMatrix& time_vector,
-        DMatrix& initial_state,
-	DMatrix& parameters,
+        MatrixXd& control_trajectory,
+        MatrixXd& time_vector,
+        MatrixXd& initial_state,
+	MatrixXd& parameters,
         double tolerance,
         double hmin,
 	double hmax,
         Prob & problem,
         int iphase,
-        DMatrix& state_trajectory,
-        DMatrix& new_time_vector,
-	DMatrix& new_control_trajectory, Workspace* workspace);
+        MatrixXd& state_trajectory,
+        MatrixXd& new_time_vector,
+	MatrixXd& new_control_trajectory, Workspace* workspace);
 
 
-void auto_split_observations(Prob& problem, DMatrix& observation_nodes, DMatrix& observations);
+void auto_split_observations(Prob& problem, MatrixXd& observation_nodes, MatrixXd& observations);
 
 adouble endpoint_cost_for_parameter_estimation(adouble* initial_states, adouble* final_states, adouble* parameters,adouble& t0, adouble& tf, adouble* xad, int iphase, Workspace* workspace);
 
 
-extern "C" {
-   int dgeqrf_(integer *m, integer *n, doublereal *a, integer *
-	lda, doublereal *tau, doublereal *work, integer *lwork, integer *info);
-int dormqr_(char *side, char *trans, integer *m, integer *n,
-        integer *k, doublereal *a, integer *lda, doublereal *tau, doublereal *
-        c__, integer *ldc, doublereal *work, integer *lwork, integer *info,
-        ftnlen side_len, ftnlen trans_len);
+//extern "C" {
+//   int dgeqrf_(integer *m, integer *n, doublereal *a, integer *
+//	lda, doublereal *tau, doublereal *work, integer *lwork, integer *info);
+//int dormqr_(char *side, char *trans, integer *m, integer *n,
+//        integer *k, doublereal *a, integer *lda, doublereal *tau, doublereal *
+//        c__, integer *ldc, doublereal *work, integer *lwork, integer *info,
+//        ftnlen side_len, ftnlen trans_len);
+//
+//}
 
-}
 
+
+//! ErrorHandler class
+/**
+   This is a C++ class intended to handle error conditions.
+*/
+class ErrorHandler
+{
+    public:
+        //! A string of characters which contains the error message
+        string error_message;
+        //! A constructor which takes the error message as an argument and assigns it to error_message
+        /**
+          \param m is the error message string.
+          \sa function error_message().
+        */
+        ErrorHandler(const string m);
+};
+
+
+#ifdef WIN32
+#define DEC_THREAD __declspec( thread )
+#else
+#define DEC_THREAD __thread
+#endif
+
+
+class PSOPT_extras {
+
+//! Flag to indicate error condition
+   static DEC_THREAD int      errorFlag;
+//! Print level flag,  1: output sent to sderr, 0: no output sent
+   static DEC_THREAD int      print_level;
+//! variable to store start time after tic() call.
+   static DEC_THREAD time_t  start_time;
+ //! clock_t variable
+   static DEC_THREAD clock_t start_clock;
+
+public:
+
+  //! Sets the print level
+  /**
+      \param  plevel desired print level
+      \return void
+  */
+  
+   static void     tic(void);
+
+   static double   toc(void);
+
+   static clock_t GetStartTicks(void) { return start_clock; }
+
+   static void SetStartTicks(clock_t st) { start_clock=st; }
+
+   static double GetEPS() { return MC_EPSILON ; }
+
+   static void SetPrintLevel( int plevel );
+
+   static int PrintLevel();
+   
+   static void   RiseErrorFlag()   { errorFlag = true; }
+
+   friend void error_message(const char *input_text);
+  //! This function, which is to be used in conjunction with function toc(), starts counting elapsed CPU time.
+   friend void tic(void);
+  //! This function, which is to be used in conjunction with function tic(), stops counting CPU time, and it prints and returns the elapsed time in seconds since the function tic() was called.
+  /**
+      \return the elapsed time in seconds.
+  */
+   friend double toc();
+
+
+
+};
+
+void error_message(const char *input_text);
+void tic(void);
+double toc();
+
+// Functions to be implemented.
+void sort_vector(MatrixXd& A, RowVectorXi& sindex); // careful with passing object as reference to be modified. See documentation.
+void sort(MatrixXd& m);
+void rearrange_vector(MatrixXd& A, RowVectorXi& sindex); // careful with passing object as reference. See documentation.
+void Save(const MatrixXd& m, const char* filename);
+MatrixXd linspace(double X1, double X2, long N);
+MatrixXd reshape(MatrixXd& A, int n, int m);
+MatrixXd zeros(long nrows, long ncols);
+MatrixXd eye(long nrows);
+MatrixXd ones(long nrows, long ncols);
+MatrixXd elemProduct(const MatrixXd& m1,const MatrixXd& m2);
+MatrixXd elemDivision(const MatrixXd& m1,const MatrixXd& m2);
+MatrixXd load_data(const char* filename, long nrows, long ncols);
+MatrixXd Abs(const MatrixXd& m);
+MatrixXd tra(const MatrixXd& m);
+MatrixXd stack_columns(const MatrixXd& m);
+MatrixXd sum_columns(const MatrixXd& A);
+long length(const MatrixXd& m);
+double Max(const MatrixXd& m);
+double Max(const MatrixXd& m, long* i);
+double Min(const MatrixXd& m);
+double Min(const MatrixXd& m, long* i);
+double mean(const MatrixXd& m);
+double MaxAbs(const MatrixXd& m);
+double sum(MatrixXd& A);
+bool any(const MatrixXd& m);
+
+
+bool isEmpty(const MatrixXd& m);     
+bool isSymmetric(const MatrixXd& m); 
 
 
 #ifdef USE_SNOPT
@@ -1162,5 +1254,301 @@ extern Workspace* tempsnoptworkspace;
 using namespace Ipopt;
 
 #endif
+
+
+
+//! TripletSparseMatrix class
+/**
+    A C++ class for sparse numerical linear algebra with interfaces to
+    a number of CXSparse and LUSOL functions
+*/
+class TripletSparseMatrix {
+protected:
+//! Array to store matrix elements
+   double *a;
+//! Number of matrix rows
+   int n;
+//! Number of matrix columns
+   int m;
+//! Number of allocated elements in a
+   int asize;
+//! Number of non-zero elements
+   int nz;
+//! Array of nonzero row indices
+   int *RowIndx;
+//! Array of nonzero column indices
+   int *ColIndx;
+
+public:
+
+   // Interface functions
+  //! Gets the number of rows from the calling object
+  /**
+      \return integer value with the number of rows.
+  */
+   int rows() const  { return n; }
+  //! Gets the number of columns from the calling object
+  /**
+      \return integer value with the number of columns.
+  */
+   int cols() const { return m; }
+  //! Gets the number of non-zero elements from the calling object
+  /**
+      \return integer value with the number of non-zero elements.
+  */
+   int GetNonZero() const {return nz;}
+  //! Returns a int pointer to the start of an array of row indices for the non-zero elements
+  /**
+      \return int pointer to the start of the array
+  */
+   int* GetRowIndx_C_Array() const {return RowIndx;}
+  //! Returns a int pointer to the start of an array of column indices for the non-zero elements
+  /**
+      \return int pointer to the start of the array
+  */
+   int* GetColIndx_C_Array() const {return ColIndx;}
+  //! Returns a double pointer to the start of an array where the non-zero elements are stored
+  /**
+      \return double pointer to the start of the array
+  */
+   double *GetPr()  const  { return a; }
+  //! Inserts a non-zero value at a specified location of the sparse matrix. The function re-allocates storage as required.
+  /**
+      \param i row index (starting from 1)
+      \param j column index (starting from 1)
+      \param val non-zero double value to be inserted.
+      \return void
+  */
+   void InsertNonZero(int i, int j, double val);
+  //! Saves a sparse matrix in triplet form. The first row of the saved file contains the number of rows, number of columns and the number of non-zeros of the matrix. Each subsequent row contains the row index, the column index and the corresponding nonzero value.
+  /**
+      \param fname name of the file to be created
+      \return void
+  */
+   void Save(const char* fname) const;
+  //! Saves a sparse sparsity pattern for the sparse matrix, such that the saved matrix contains only zeros and asterisks.
+  /**
+      \param fname name of the file to be created
+      \return void
+  */
+   void SaveSparsityPattern(const char* fname) const;
+  //! Loads a sparse matrix in triplet form. The first row of the specified file must contain the number of rows, number of columns and the number of non-zeros of the matrix. Each subsequent row must contain the row index, the column index and the corresponding nonzero value, separated by spaces. An error is thrown is the file cannot be opened.
+  /**
+      \param fname name of the file to be read
+      \return void
+  */
+   void Load(const char* fname);
+  //! This function transposes a sparse matrix and returns the transposed sparse matrix.
+  /**
+      \param  A  sparse matrix to be transposed
+      \return a temporary TripletSparseMatrix object with the result of the operation
+  */
+   friend TripletSparseMatrix& tra(const TripletSparseMatrix& A);
+
+  //! Extracts a specified column from a sparse matrix and returns a MatrixXd object.
+  /**
+      \param  j: column index
+      \return Temporary MatrixXd object with the specified column
+  */
+   MatrixXd col(int j) const;
+  //! Extracts a specified row from a sparse matrix and returns a MatrixXd object.
+  /**
+      \param  i: row index
+      \return Temporary MatrixXd object with the specified row
+  */
+   MatrixXd row(int i) const;
+
+   // Display functions
+  //! Prints a sparse matrix in triplet format.
+  /**
+      \param  text: label to identify the sparse matrix to be printed
+      \return void
+  */
+   void Print(const char* text);
+
+   // Constructors
+  //! Default constructor. Creates an empty sparse matrix with zero rows and columns.
+   TripletSparseMatrix(void); // Default constructor
+  //! Constructor using triplet arrays.
+  /**
+      \param  aa: array with double non-zero elements
+      \param  nn: number of rows
+      \param  mm: number of columns
+      \param  nnz: number of non-zero elements
+      \param  RowIndxArg: array of int values with the row indices of the nonzero elements (indices start from 1).
+      \param  ColIndxArg: array of int values with the column indices of the nonzero elements (indices start from 1).
+  */
+   TripletSparseMatrix(double* aa, int nn, int mm, int nnz, int* RowIndxArg, int* ColIndxArg); // Constructor using arrays
+
+
+  //! Copy constructor. Creates a copy of the argument.
+  /**
+        \param  A: TripletSparseMatrix object
+  */
+   TripletSparseMatrix( const TripletSparseMatrix& A); // copy constructor
+  //! Constructor without element asignment. Creates a TripletSparseMatrix object with storage for a specified number of non-zero values.
+  /**
+        \param  nn: number of rows.
+        \param  mm: number of columns.
+        \param  nnz: number of non-zero values.
+  */
+   TripletSparseMatrix( int nn, int mm, int nnz); // Constructor without element assignment
+
+   // Destructor
+  //! Desctructor.
+   ~TripletSparseMatrix();
+
+   // Other functions
+  //! Resizes a TripletSparseMatrix object
+  /**
+      \param  nnew: new number of rows.
+      \param  mnew: new number of columns.
+      \param  nznew: new number of non-zero values.
+      \return void
+  */
+   void resize(int nnew, int mnew, int nznew);
+
+
+  //! Transposes a TripletSparseMatrix object.
+  /**
+      \return void
+  */
+   void Transpose();
+  
+   //!  This function computes and returns the element-wise product of two sparse matrices of the same dimensions. If the dimensions of the two input matrices are not the same, an error is thrown.
+  /**
+      \param  A is a TripletSparseMatrix object.
+      \param B is a TripletSparseMatrix object.
+      \return a temporary TripletSparseMatrix object with the result of the operation
+  */
+   friend TripletSparseMatrix& elemProduct(const TripletSparseMatrix A, const TripletSparseMatrix& B);
+  
+  //! Creates a sparse identity matrix of specified dimension.
+  /**
+      \param  n: number of rows and columns of the sparse matrix to be created.
+      \return A temporary TripletSparseMatrix object with the result of the operation
+  */
+   friend TripletSparseMatrix& speye(int n);
+
+  
+   friend double enorm(const TripletSparseMatrix& A);
+
+
+   //!  This function computes and returns the element-wise absolute value of a sparse matrix A.
+  /**
+      \param  A is a TripletSparseMatrix object.
+      \return a reference to a temporary TripletSparseMatrix object with the result of the operation.
+  */
+   friend TripletSparseMatrix& Abs(const TripletSparseMatrix& A);
+ 
+
+   //! This function eliminates zero elements from a sparse matrix and deletes unnecessary storage.
+  /**
+      \return void
+  */
+   void Compress();
+
+   // Operators
+  //! Sparse matrix addition and substitution operator. The sizes of the matrices being added must be the same, otherwise an error is thrown.The left hand side object is replaced with the result of the operation.
+  /**
+      \param rval:  TripletSparseMatrix object located right hand side of the operator.
+      \return Reference to the calling TripletSparseMatrix object
+  */
+   TripletSparseMatrix& operator += (const TripletSparseMatrix &rval);
+  //! Sparse matrix subtraction and substitution operator. The sizes of the matrices being subtracted must be the same, otherwise an error is thrown. The left hand side object is replaced with the result of the operation.
+  /**
+      \param rval:  TripletSparseMatrix object located right hand side of the operator.
+      \return Reference to the calling TripletSparseMatrix object
+  */
+   TripletSparseMatrix& operator -= (const TripletSparseMatrix &rval);
+  
+  //! Computes the product of a sparse matrix (left hand side of the operator) times a real scalar (right hand side value) and replaces the left hand side object with the result of the operation.
+  /**
+      \param Arg: double value that will multiply each non-zero element of the sparse matrix.
+      \return Reference the calling TripletSparseMatrix object
+  */
+   TripletSparseMatrix& operator*= (double Arg);
+  //! Computes the division of a sparse matrix (left hand side of the operator) by a real scalar (right hand side value) and replaces the left hand side object with the result of the operation.
+  /**
+      \param Arg: double value that will divide each non-zero element of the sparse matrix.
+      \return Reference the calling TripletSparseMatrix object
+  */
+   TripletSparseMatrix& operator/= (double Arg);
+  //! Sparse matrix addition operator. The row and column sizes of the matrices being added must be the same, otherwise an error is thrown.
+  /**
+      \param rval:  sparse matrix located at the right hand side of the operator.
+      \return Reference to a temporary TripletSparseMatrix object with the result of the operation
+  */
+   TripletSparseMatrix& operator+ (const TripletSparseMatrix& rval) const;
+  //! Sparse matrix subtraction operator. The row and column sizes of the matrices being subtracted must be the same, otherwise an error is thrown.
+  /**
+      \param rval:  sparse matrix located at the right hand side of the operator.
+      \return Reference to a temporary TripletSparseMatrix object with the result of the operation
+  */
+   TripletSparseMatrix& operator - (const TripletSparseMatrix& rval) const;
+  
+  //! Computes the product of a sparse matrix (left hand side of the operator) times a real scalar (right hand side value).
+  /**
+      \param Arg: double value that will multiply each non-zero element of the sparse matrix.
+      \return Reference to a temporary object with the result of the operation.
+  */
+   TripletSparseMatrix& operator* (double Arg) const;
+  //! Computes the product of a real value (left hand side of the operator) by a sparse matrix (right hand side of the operator).
+  /**
+      \param Arg: double value that will multiply each non-zero element of the sparse matrix.
+      \param A:  TripletSparseMatrix object to be multiplied by a real value.
+      \return Reference to a temporary object with the result of the operation.
+  */
+   friend TripletSparseMatrix& operator *(double Arg, const TripletSparseMatrix& A);
+  //! Computes the division of a sparse matrix (left hand side of the operator) by a real scalar (right hand side value).
+  /**
+      \param Arg: double value that will divide each non-zero element of the sparse matrix.
+      \return Reference to a temporary object with the result of the operation.
+  */
+   TripletSparseMatrix& operator/ (double Arg) const;
+
+  //! Sparse matrix assignment. The size of the left hand side object is modified if necessary, and the values of all non-zero real elements of the right hand side object and copied to the left hand side object.
+  /**
+      \param rval: TripletSparseMatrix object at the right hand side of the operator
+      \return Reference to the calling TripletSparseMatrix object
+  */
+   TripletSparseMatrix& operator= (const TripletSparseMatrix& rval);
+
+  //! Matrix indexing. Returns a reference to the matrix element located at the position indicated by the row and column indices. Indices start from 1. If the row and column indices refer to a zero (non-allocated) element, a new element with zero value is allocated so that it can be returned as a reference.
+  /**
+      \param row: Row index starting from 1.
+      \param col: Column index starting from 1.
+      \return Reference to the indexed matrix element.
+  */
+   double& operator() (int row,int col);
+  //! Matrix indexing. Returns the value of the matrix element located at the position indicated by the row and column indices. Indices start from 1.
+  /**
+      \param row: Row index starting from 1.
+      \param col: Column index starting from 1.
+      \return double value of the element at the indicated position.
+  */
+   double operator() (int row,int col) const;
+  //! Computes the left division of a sparse matrix (left hand side of the operator) by another sparse matrix (right hand side value). This is conceptually equivalent to multiplying the inverse of the left object by the right hand side object but it is computed in a more efficient way. The dimensions of the matrices must be consistent, otherwise an error is returned. The left hand side object must be a square matrix.
+  /**
+      \param B: TripletSparseMatrix object at the right hand side of the operator.
+      \return Reference to a temporary TripletSparseMatrix object with the result of the operation
+   */
+
+   friend void sp_error_message(const char *error_text);
+
+
+};
+
+// Declaration of all friend functions of TripletSparseMatrix class
+
+
+void sp_error_message(const char *error_text);
+TripletSparseMatrix& elemProduct(const TripletSparseMatrix A, const TripletSparseMatrix& B);
+TripletSparseMatrix& tra(const TripletSparseMatrix& A);
+TripletSparseMatrix& speye(int n);
+double enorm(const TripletSparseMatrix& A);
+TripletSparseMatrix& Abs(const TripletSparseMatrix& A);
+TripletSparseMatrix& operator *(double Arg, const TripletSparseMatrix& A);
+
 
 
