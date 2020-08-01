@@ -31,6 +31,7 @@ e-mail:    v.m.becerra@ieee.org
 #include "psopt.h"
 
 
+
 void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
 {
 
@@ -42,61 +43,62 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 
   int max_nodes = get_max_nodes_in_all_phases(problem, algorithm);
 
-  workspace->P         = new DMatrix[nphases];
-  workspace->sindex    = new DMatrix[nphases];
-  workspace->w         = new DMatrix[nphases];
-  workspace->D         = new DMatrix[nphases];
-  workspace->snodes    = new DMatrix[nphases];
-  workspace->old_snodes= new DMatrix[nphases];
-  workspace->xlb       = new DMatrix;
-  workspace->xub       = new DMatrix;
-  workspace->x0        = new DMatrix;
-  workspace->lambda    = new DMatrix;
-  workspace->dual_costates = new DMatrix[nphases];
-  workspace->dual_events   = new DMatrix[nphases];
-  workspace->dual_path     = new DMatrix[nphases];
-  workspace->linkage    = new DMatrix;
-  workspace->constraint_scaling = new DMatrix;
-  workspace->prev_states  = new DMatrix[nphases];
-  workspace->prev_costates= new DMatrix[nphases];
-  workspace->prev_controls= new DMatrix[nphases];
-  workspace->prev_path    = new DMatrix[nphases];
-  workspace->prev_param   = new DMatrix[nphases];
-  workspace->prev_nodes   = new DMatrix[nphases];
-  workspace->Ax           = new SparseMatrix;
-  workspace->Gsp          = new SparseMatrix;
-  workspace->Xsnopt       = new DMatrix;
-  workspace->gsnopt       = new DMatrix;
-  workspace->Xip          = new DMatrix;
-  workspace->JacRow       = new DMatrix;
-  workspace->Gip          = new DMatrix;
-  workspace->GFip         = new DMatrix;
-  workspace->Xdot         = new DMatrix[nphases];
-  workspace->DerivResid   = new DMatrix[nphases];
-  workspace->Xdotgg       = new DMatrix[nphases];
-  workspace->e            = new DMatrix[nphases];
-  workspace->hgg          = new DMatrix[nphases];
-  workspace->prev_t0      = new DMatrix(nphases,1);
-  workspace->prev_tf      = new DMatrix(nphases,1);
-  workspace->JacCol1      = new DMatrix;
-  workspace->JacCol2      = new DMatrix;
-  workspace->JacCol3      = new DMatrix;
-  workspace->xp           = new DMatrix;
-  workspace->emax_history = new DMatrix[nphases];
-  workspace->order_reduction=new DMatrix[nphases];
-  workspace->old_relative_errors = new DMatrix[nphases];
-  workspace->error_scaling_weights = new DMatrix[nphases];
+  workspace->P         = new MatrixXd[nphases];
+  workspace->sindex    = new RowVectorXi[nphases];
+  workspace->w         = new MatrixXd[nphases];
+  workspace->D         = new MatrixXd[nphases];
+  workspace->snodes    = new MatrixXd[nphases];
+  workspace->old_snodes= new MatrixXd[nphases];
+  workspace->xlb       = new MatrixXd;
+  workspace->xub       = new MatrixXd;
+  workspace->x0        = new MatrixXd;
+  workspace->lambda    = new MatrixXd;
+  workspace->dual_costates = new MatrixXd[nphases];
+  workspace->dual_events   = new MatrixXd[nphases];
+  workspace->dual_path     = new MatrixXd[nphases];
+  workspace->linkage    = new MatrixXd;
+  workspace->constraint_scaling = new MatrixXd;
+  workspace->prev_states  = new MatrixXd[nphases];
+  workspace->prev_costates= new MatrixXd[nphases];
+  workspace->prev_controls= new MatrixXd[nphases];
+  workspace->prev_path    = new MatrixXd[nphases];
+  workspace->prev_param   = new MatrixXd[nphases];
+  workspace->prev_nodes   = new MatrixXd[nphases];
+  workspace->Ax           = new TripletSparseMatrix;
+  workspace->Gsp          = new TripletSparseMatrix;
+  workspace->As           = new TripletSparseMatrix;
+  workspace->Xsnopt       = new MatrixXd;
+  workspace->gsnopt       = new MatrixXd;
+  workspace->Xip          = new MatrixXd;
+  workspace->JacRow       = new MatrixXd;
+  workspace->Gip          = new MatrixXd;
+  workspace->GFip         = new MatrixXd;
+  workspace->Xdot         = new MatrixXd[nphases];
+  workspace->DerivResid   = new MatrixXd[nphases];
+  workspace->Xdotgg       = new MatrixXd[nphases];
+  workspace->e            = new MatrixXd[nphases];
+  workspace->hgg          = new MatrixXd[nphases];
+  workspace->prev_t0      = new MatrixXd(nphases,1);
+  workspace->prev_tf      = new MatrixXd(nphases,1);
+  workspace->JacCol1      = new MatrixXd;
+  workspace->JacCol2      = new MatrixXd;
+  workspace->JacCol3      = new MatrixXd;
+  workspace->xp           = new MatrixXd;
+  workspace->emax_history = new MatrixXd[nphases];
+  workspace->order_reduction=new MatrixXd[nphases];
+  workspace->old_relative_errors = new MatrixXd[nphases];
+  workspace->error_scaling_weights = new MatrixXd[nphases];
 
 
-  (*workspace->linkage).Resize(problem.nlinkages,1);
+  (*workspace->linkage).resize(problem.nlinkages,1);
 
   workspace->grw = new GRWORK;
 
-  workspace->grw->dfdx_j= new DMatrix;
-  workspace->grw->F1    = new DMatrix;
-  workspace->grw->F2    = new DMatrix;
-  workspace->grw->F3    = new DMatrix;
-  workspace->grw->F4    = new DMatrix;
+  workspace->grw->dfdx_j= new MatrixXd;
+  workspace->grw->F1    = new MatrixXd;
+  workspace->grw->F2    = new MatrixXd;
+  workspace->grw->F3    = new MatrixXd;
+  workspace->grw->F4    = new MatrixXd;
 
 
 
@@ -112,14 +114,19 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 		workspace->hess_jc   = new unsigned int[(int) (algorithm.hess_sparsity_ratio*max_nvars*max_nvars)];
 		workspace->lambda_d  = new double [max_ncons];
 	}
+	else{
+      workspace->hess_ir   = NULL;
+		workspace->hess_jc   = NULL;
+		workspace->lambda_d  = NULL;
+	}
   }
   else {
     workspace->iArow     = NULL;
-	workspace->jAcol     = NULL;
-	workspace->iGrow     = NULL;
-	workspace->jGcol     = NULL;
-	workspace->jac_Aij   = NULL;
-	workspace->jac_Gij   = NULL;
+	 workspace->jAcol     = NULL;
+	 workspace->iGrow     = NULL;
+	 workspace->jGcol     = NULL;
+	 workspace->jac_Aij   = NULL;
+	 workspace->jac_Gij   = NULL;
     workspace->hess_ir   = NULL;
     workspace->hess_jc   = NULL;
     workspace->lambda_d  = NULL;
@@ -197,17 +204,17 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
         int nparam    = problem.phase[i].nparameters;
         int nstates   = problem.phase[i].nstates;
         int ncontrols = problem.phase[i].ncontrols;
-	    int nobserved = problem.phase[i].nobserved;
+	     int nobserved = problem.phase[i].nobserved;
 
         int max_nodes = get_max_nodes(problem,i+1, &algorithm);
 
 
-        workspace->dual_events[i].Resize(nevents,1);
+        workspace->dual_events[i].resize(nevents,1);
 
-        workspace->e[i].Resize(nevents,1);
+        workspace->e[i].resize(nevents,1);
 
         if (nparam>=1) {
-          workspace->prev_param[i].Resize(nparam,1);
+          workspace->prev_param[i].resize(nparam,1);
         }
 
         workspace->states[i]= new adouble[nstates];
@@ -232,15 +239,16 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 
         workspace->path_bar[i]        = new adouble[npath];
 
-   	workspace->observed_variable[i] = new adouble[nobserved];
-	workspace->observed_residual[i] = new adouble[nobserved];
-  	workspace->lam_resid[i]              = new adouble[nobserved];
+   	  workspace->observed_variable[i] = new adouble[nobserved];
+	     workspace->observed_residual[i] = new adouble[nobserved];
+  	     workspace->lam_resid[i]              = new adouble[nobserved];
 
-   	workspace->interp_states_pe[i]   = new adouble[nstates];
-	workspace->interp_controls_pe[i] = new adouble[ncontrols];
+   	  workspace->interp_states_pe[i]   = new adouble[nstates];
+	     workspace->interp_controls_pe[i] = new adouble[ncontrols];
 
         workspace->states_traj[i]= new adouble[problem.phase[i].nstates*(max_nodes +1)];
         workspace->derivs_traj[i]= new adouble[problem.phase[i].nstates*(max_nodes +1)];
+        workspace->order_reduction[i].resize(1,max_nodes+1);
 
 
   }
@@ -266,7 +274,7 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   if (workspace->mesh_statistics_tex == NULL) error_message("Error opening \"mesh_statistics.tex\" file");
 
   for(i=0;i<problem.nphases;i++) {
-     workspace->emax_history[i].Resize(50,2);
+     workspace->emax_history[i].resize(50,2);
   }
 
   workspace->enable_nlp_counters = false;
@@ -292,34 +300,34 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
   int nlp_ncons = get_number_nlp_constraints(problem, workspace );
   int nvars     = get_number_nlp_vars(problem, workspace);
 
-  workspace->Xsnopt->Resize(nvars, 1);
-  workspace->gsnopt->Resize(nlp_ncons, 1);
+  workspace->Xsnopt->resize(nvars, 1);
+  workspace->gsnopt->resize(nlp_ncons, 1);
 
-  workspace->Xip->Resize(nvars,1);
-  workspace->JacRow->Resize(1,nvars);
-  workspace->Gip->Resize(nlp_ncons,1);
-  workspace->GFip->Resize(nvars,1);
+  workspace->Xip->resize(nvars,1);
+  workspace->JacRow->resize(1,nvars);
+  workspace->Gip->resize(nlp_ncons,1);
+  workspace->GFip->resize(nvars,1);
 
-  (*workspace->grw->dfdx_j).Resize( nlp_ncons,1 );
-  (*workspace->grw->F1).Resize( nlp_ncons, 1 );
-  (*workspace->grw->F2).Resize( nlp_ncons, 1 );
-  (*workspace->grw->F3).Resize( nlp_ncons, 1 );
-  (*workspace->grw->F4).Resize( nlp_ncons, 1 );
+  (*workspace->grw->dfdx_j).resize( nlp_ncons,1 );
+  (*workspace->grw->F1).resize( nlp_ncons, 1 );
+  (*workspace->grw->F2).resize( nlp_ncons, 1 );
+  (*workspace->grw->F3).resize( nlp_ncons, 1 );
+  (*workspace->grw->F4).resize( nlp_ncons, 1 );
 
-  workspace->JacCol1->Resize(nlp_ncons,1);
-  workspace->JacCol2->Resize(nlp_ncons,1);
-  workspace->JacCol3->Resize(nlp_ncons,1);
-  workspace->xp->Resize(nvars,1);
-  workspace->constraint_scaling->Resize(nlp_ncons,1);
+  workspace->JacCol1->resize(nlp_ncons,1);
+  workspace->JacCol2->resize(nlp_ncons,1);
+  workspace->JacCol3->resize(nlp_ncons,1);
+  workspace->xp->resize(nvars,1);
+  workspace->constraint_scaling->resize(nlp_ncons,1);
 
 
   solution.xad = workspace->xad;
 
-  workspace->x0->Resize(nvars,1);
-  workspace->lambda->Resize(nlp_ncons,1);
+  workspace->x0->resize(nvars,1);
+  workspace->lambda->resize(nlp_ncons,1);
 
-  workspace->xlb->Resize(nvars,1);
-  workspace->xub->Resize(nvars,1);
+  workspace->xlb->resize(nvars,1);
+  workspace->xub->resize(nvars,1);
   
   workspace->nphases = problem.nphases;
 
@@ -329,27 +337,28 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
         int npath     = problem.phase[i].npath;
         int norder    = problem.phase[i].current_number_of_intervals;
 
-        workspace->w[i].Resize(norder+1,1);
+        workspace->w[i].resize(norder+1,1);
 
         if ( algorithm.collocation_method == "Legendre") {
-	        workspace->P[i].Resize(norder+1,norder+1);
+	        workspace->P[i].resize(norder+1,norder+1);
 	}
 	if ( use_global_collocation(algorithm) ) {
-                workspace->D[i].Resize(norder+1,norder+1);
+                workspace->D[i].resize(norder+1,norder+1);
 	}
 
-        workspace->snodes[i].Resize(1,norder+1);
+        workspace->snodes[i].resize(1,norder+1);
+        workspace->sindex[i].resize(norder+1);
 
 
 
-        workspace->dual_costates[i].Resize(nstates,norder+1);
-        workspace->dual_path[i].Resize(npath,norder+1);
-        workspace->DerivResid[i].Resize(nstates,norder+1);
-        workspace->Xdot[i].Resize(nstates,norder+1);
-        workspace->DerivResid[i].Resize(nstates,norder+1);
-        workspace->Xdotgg[i].Resize(nstates,norder+1);
-        workspace->hgg[i].Resize(npath,norder+1);
-	workspace->order_reduction[i].Resize(1,norder);
+        workspace->dual_costates[i].resize(nstates,norder+1);
+        workspace->dual_path[i].resize(npath,norder+1);
+        workspace->DerivResid[i].resize(nstates,norder+1);
+        workspace->Xdot[i].resize(nstates,norder+1);
+        workspace->DerivResid[i].resize(nstates,norder+1);
+        workspace->Xdotgg[i].resize(nstates,norder+1);
+        workspace->hgg[i].resize(npath,norder+1);
+	     workspace->order_reduction[i].resize(1,norder);
 
   }
 
@@ -476,6 +485,7 @@ work_str::~work_str()
   delete [] this->prev_param;
   delete [] this->prev_nodes;
   delete    this->Ax;
+  delete    this->As;
   delete    this->Gsp;
   delete    this->Xsnopt;
   delete    this->gsnopt;
