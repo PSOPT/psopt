@@ -53,8 +53,6 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 
     Sol& solution = *workspace->solution;
 
-    bool use_simpson_quadrature = false;
-
 
     int i,k, iph;
 
@@ -67,7 +65,7 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
     for(i=0;i<problem.nphases;i++)
     {
         int iphase = i+1;
-	DMatrix& w = workspace->w[i];
+	MatrixXd& w = workspace->w[i];
 
         int norder    = problem.phase[i].current_number_of_intervals;
 
@@ -98,7 +96,7 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 
 	      if ( !use_local_collocation(algorithm) ) {
 
-		for(k=1; k<=norder+1; k++)
+		for(k=0; k<norder+1; k++)  // EIGEN_UPDATE: k index shifted by -1
 		{
 
 		    get_controls(controls, xad, iphase, k, workspace);
@@ -127,9 +125,9 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 
 	    else {
 
-		  for (k=1; k<=norder;k++) {
+		  for (k=0; k<norder;k++) { // EIGEN_UPDATE: k index shifted by -1
 		      // Uses trapezoidal integration to integrate the cost
-		      int j, l;
+		      int l;
 
 
 		      adouble interval_cost = 0.0;
@@ -156,7 +154,7 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 
 		      interval_cost += integrand;
 
-              if(k==norder) {
+              if(k==norder-1) {
                    (solution.integrand_cost[i])(k+1) = integrand.value();
               }
 
@@ -197,9 +195,9 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 
         solution.integrated_cost[i] = phase_sum_cost.value();
 
-        get_states(initial_states, xad, iphase, 1, workspace);
+        get_states(initial_states, xad, iphase, 0, workspace); // EIGEN_UPDATE 1 changed to 0
 
-        get_states(states, xad, iphase, norder+1, workspace);
+        get_states(states, xad, iphase, norder, workspace);  // EIGEN_UPDATE norder+1 changed to norder.
 
         endpoint_cost = problem.endpoint_cost(initial_states,states,parameters,t0,tf,xad,iphase, workspace);
 
@@ -227,7 +225,7 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 
 
 
-double ff_num(DMatrix& x, Workspace* workspace)
+double ff_num(MatrixXd& x, Workspace* workspace)
 {
    // This function implements the NLP cost function for numerical differentiation
 
@@ -240,7 +238,7 @@ double ff_num(DMatrix& x, Workspace* workspace)
 
    for(j=0; j<workspace->nvars; j++)
    {
-        xad[j] = x(j+1);
+        xad[j] = x(j); //EIGEN_UPDATE
    }
 
    retval = ff_ad( xad, workspace );
@@ -248,3 +246,4 @@ double ff_num(DMatrix& x, Workspace* workspace)
    return (retval.value());
 
 }
+
