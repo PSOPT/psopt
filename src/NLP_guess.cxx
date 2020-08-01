@@ -32,7 +32,10 @@ e-mail:    v.m.becerra@ieee.org
 #include "psopt.h"
 
 
-void  define_initial_nlp_guess(DMatrix& x0, DMatrix& lambda, Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace)
+using namespace Eigen;
+
+
+void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace)
 {
    // This function determines the initial guess for the NLP decision vector x0
 
@@ -42,9 +45,9 @@ void  define_initial_nlp_guess(DMatrix& x0, DMatrix& lambda, Sol& solution, Prob
    for(i=0; i<problem.nphases; i++)
    {
 
-	DMatrix& control_scaling = problem.phase[i].scale.controls;
-	DMatrix& state_scaling   = problem.phase[i].scale.states;
-        DMatrix& param_scaling   = problem.phase[i].scale.parameters;
+	MatrixXd& control_scaling = problem.phase[i].scale.controls;
+	MatrixXd& state_scaling   = problem.phase[i].scale.states;
+        MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
         double&   time_scaling   = problem.phase[i].scale.time;
 
 	int norder    = problem.phase[i].current_number_of_intervals;
@@ -56,17 +59,17 @@ void  define_initial_nlp_guess(DMatrix& x0, DMatrix& lambda, Sol& solution, Prob
 	int k;
 	double t00, tf0;
 
-	DMatrix umean, xmean;
-	DMatrix Xdot(nstates,norder+1);
-	DMatrix up, xp, un, xn;
-	DMatrix time_guess;
-	//   DMatrix w, P, D;
+	MatrixXd umean, xmean;
+	MatrixXd Xdot(nstates,norder+1);
+	MatrixXd up, xp, un, xn;
+	MatrixXd time_guess;
+	//   MatrixXd w, P, D;
 
 	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
 
-	if ( !problem.phase[i].guess.time.isEmpty() ) {
-	  t00 = problem.phase[i].guess.time(1);
-	  tf0 = problem.phase[i].guess.time("end");
+	if ( !isEmpty(problem.phase[i].guess.time) ) {
+	  t00 = problem.phase[i].guess.time(0);    // EIGEN_UPDATE
+	  tf0 = problem.phase[i].guess.time( length(problem.phase[i].guess.time) -1 ); //EIGEN_UPDATE
 	}
 	else {
 		t00 = (problem.phase[i].bounds.lower.StartTime + problem.phase[i].bounds.upper.StartTime)/2.0;
@@ -74,7 +77,7 @@ void  define_initial_nlp_guess(DMatrix& x0, DMatrix& lambda, Sol& solution, Prob
 	}
 
         if (nparam > 0) {
-               if( !problem.phase[i].guess.parameters.isEmpty() )  {
+               if( !isEmpty(problem.phase[i].guess.parameters) )  {
                   solution.parameters[i] = problem.phase[i].guess.parameters;
                }
                else {
@@ -83,54 +86,60 @@ void  define_initial_nlp_guess(DMatrix& x0, DMatrix& lambda, Sol& solution, Prob
         }
 
 
-	if ( !problem.phase[i].guess.time.isEmpty()) {
+	if ( !isEmpty(problem.phase[i].guess.time)) {
 		time_guess = problem.phase[i].guess.time;
 	} else {
 		time_guess = linspace(t00,tf0,norder+1);
 	}
 
-	for (k=1; k<=norder+1; k++) {
-		(solution.nodes[i])(1,k)  =  convert_to_original_time( (workspace->snodes[i])(k), t00, tf0 );
+	for (k=0; k<norder+1; k++) { //EIGEN_UPDATE
+		(solution.nodes[i])(0,k)  =  convert_to_original_time( (workspace->snodes[i])(k), t00, tf0 );
 	}
 
 
-	if ( !problem.phase[i].guess.controls.isEmpty() ) {
+	if ( !isEmpty(problem.phase[i].guess.controls) ) {
 
-		for (k=1;k<=ncontrols;k++) {
-			up = problem.phase[i].guess.controls(k,colon());
+		for (k=0;k<ncontrols;k++) { // EIGEN_UPDATE
+//			up = problem.phase[i].guess.controls(k,colon());
+         up = problem.phase[i].guess.controls.row(k);
 //			lagrange_interpolation(un,solution.nodes[i],time_guess, up);
 			linear_interpolation(un,solution.nodes[i],time_guess, up, length(up) );
 
-			(solution.controls[i])(k,colon())  = un;
+//			(solution.controls[i])(k,colon())  = un;
+         (solution.controls[i]).row(k)  = un;
 		}
 
 
 	}
 	else {
 		umean = ((problem.phase[i].bounds.lower.controls)+(problem.phase[i].bounds.upper.controls))/2.0;
-	for(k=1;k<=norder+1;k++)
+	for(k=0;k<norder+1;k++) // EIGEN_UPDATE
 	{
-		(solution.controls[i])(colon(),k) = umean;
+//		(solution.controls[i])(colon(),k) = umean;
+      (solution.controls[i]).row(k) = umean;
 	}
 	}
 
 
-	if ( !problem.phase[i].guess.states.isEmpty() ) {
-		for (k=1;k<=nstates;k++) {
-			xp = problem.phase[i].guess.states(k,colon());
+	if ( !isEmpty(problem.phase[i].guess.states) ) {
+		for (k=0;k<nstates;k++) { // EIGEN_UPDATE
+//			xp = problem.phase[i].guess.states(k,colon());
+         xp = problem.phase[i].guess.states.row(k);
 //			lagrange_interpolation(xn,solution.nodes[i],time_guess, xp);
             linear_interpolation(xn,solution.nodes[i],time_guess, xp, length(xp));
-			(solution.states[i])(k,colon())  = xn;
+//			(solution.states[i])(k,colon())  = xn;
+         (solution.states[i]).row(k)  = xn;
 		}
 
 	}
 
 	// Set initial states at mean of feasible region for the moment...
 
-	if ( problem.phase[i].guess.states.isEmpty() )
+	if ( isEmpty(problem.phase[i].guess.states) )
 	{
 		xmean = ((problem.phase[i].bounds.lower.states)+(problem.phase[i].bounds.upper.states))/2.0;
-		(solution.states[i])(colon(),1)= xmean;
+//		(solution.states[i])(colon(),1)= xmean;
+      (solution.states[i]).col(0) = xmean;
 	}
 
 	// Define the nodes in original time scale:
@@ -142,10 +151,11 @@ void  define_initial_nlp_guess(DMatrix& x0, DMatrix& lambda, Sol& solution, Prob
 
 	// Take the state trajectory as constant and equal to the initial values found above.
 
-	if ( problem.phase[i].guess.states.isEmpty() ) {
-		for (k=1;k<=norder;k++)
+	if ( isEmpty(problem.phase[i].guess.states) ) {
+		for (k=0;k<norder;k++) // EIGEN_UPDATE
 		{
-			(solution.states[i])(colon(),k+1)=(solution.states[i])(colon(),1);
+//			(solution.states[i])(colon(),k+1)=(solution.states[i])(colon(),1);
+         (solution.states[i]).col(k+1)=(solution.states[i]).col(0);
 		}
 	}
 
@@ -155,25 +165,29 @@ void  define_initial_nlp_guess(DMatrix& x0, DMatrix& lambda, Sol& solution, Prob
 
 	// Now assign the (scaled) variables to the initial sqp decision vector:
 
-	x0(x_phase_offset+nvars_phase_i-1) = t00*time_scaling;
-	x0(x_phase_offset+nvars_phase_i)   = tf0*time_scaling;
+	x0(x_phase_offset+nvars_phase_i-2)   = t00*time_scaling;  //EIGEN_UPDATE
+	x0(x_phase_offset+nvars_phase_i-1)   = tf0*time_scaling;  // EIGEN_UPDATE
 
 
-	for (k=1; k<=norder+1; k++) {
+	for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
            if (ncontrols>0) {
-	        x0(colon(x_phase_offset+(k-1)*ncontrols+1, x_phase_offset+k*ncontrols) ) = elemProduct((solution.controls[i])(colon(),k), control_scaling);
+//	          x0(colon(x_phase_offset+(k-1)*ncontrols+1, x_phase_offset+k*ncontrols) ) = elemProduct((solution.controls[i])(colon(),k), control_scaling);
+             x0.block(x_phase_offset+(k)*ncontrols, 0, ncontrols,1) = elemProduct((solution.controls[i]).col(k), control_scaling);
            }
-	   x0(colon(x_phase_offset+(k-1)*nstates+1+offset1,x_phase_offset+ k*nstates+offset1))=elemProduct((solution.states[i])(colon(),k), state_scaling);
+//	        x0(colon(x_phase_offset+(k-1)*nstates+1+offset1,x_phase_offset+ k*nstates+offset1))=elemProduct((solution.states[i])(colon(),k), state_scaling);
+           x0.block(x_phase_offset+(k)*nstates+offset1,0, nstates,1)=elemProduct((solution.states[i]).col(k), state_scaling);
 	}
 
         if (nparam >= 1) {
-           x0(colon(x_phase_offset+offset2 +1, x_phase_offset+offset2+nparam))=elemProduct(solution.parameters[i],param_scaling);
+//           x0(colon(x_phase_offset+offset2 +1, x_phase_offset+offset2+nparam))=elemProduct(solution.parameters[i],param_scaling);
+             x0.block(x_phase_offset+offset2, 0, nparam , 1)=elemProduct(solution.parameters[i],param_scaling);
         }
 
        if (need_midpoint_controls(*workspace->algorithm, workspace)) {
-	  for (k=1; k<=norder; k++) {
+	  for (k=0; k<norder; k++) {  // EIGEN_UPDATE
             if (ncontrols>0) {
-	          x0(colon(x_phase_offset+offset2+nparam+(k-1)*ncontrols+1, x_phase_offset+offset2+nparam+k*ncontrols) ) = elemProduct((solution.controls[i])(colon(),k), control_scaling);
+//	          x0(colon(x_phase_offset+offset2+nparam+(k-1)*ncontrols+1, x_phase_offset+offset2+nparam+k*ncontrols) ) = elemProduct((solution.controls[i])(colon(),k), control_scaling);
+             x0.block( x_phase_offset+offset2+nparam+(k)*ncontrols, 0, ncontrols , 1) = elemProduct((solution.controls[i]).col(k), control_scaling);
             }
 
 	  }
@@ -189,15 +203,15 @@ void  define_initial_nlp_guess(DMatrix& x0, DMatrix& lambda, Sol& solution, Prob
 
   // Assign zeros to the vector of lagrange multipliers:
 
-  lambda.Resize(workspace->ncons, 1);
-  lambda.FillWithZeros();
+  lambda.resize(workspace->ncons, 1);
+  lambda.setZero();
 
 
 }
 
 
 
-void hot_start_nlp_guess(DMatrix& x0,DMatrix& lambda, Sol& solution,Prob& problem,Alg& algorithm, DMatrix* prev_states, DMatrix* prev_controls, DMatrix* prev_costates, DMatrix* prev_path, DMatrix* prev_nodes, DMatrix* prev_param, DMatrix& prev_t0, DMatrix& prev_tf, Workspace* workspace )
+void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& problem,Alg& algorithm, MatrixXd* prev_states, MatrixXd* prev_controls, MatrixXd* prev_costates, MatrixXd* prev_path, MatrixXd* prev_nodes, MatrixXd* prev_param, MatrixXd& prev_t0, MatrixXd& prev_tf, Workspace* workspace )
 {
 
      int i, k;
@@ -209,22 +223,22 @@ void hot_start_nlp_guess(DMatrix& x0,DMatrix& lambda, Sol& solution,Prob& proble
      sprintf(workspace->text,"\nHot starting solution\n");
      psopt_print(workspace,workspace->text);
 
-     x0.Resize(workspace->nvars,1);
+     x0.resize(workspace->nvars,1);
 
-     x0.FillWithZeros();
+     x0.setZero();
 
-     lambda.Resize(workspace->ncons,1);
+     lambda.resize(workspace->ncons,1);
 
-     lambda.FillWithZeros();
+     lambda.setZero();
 
 
      for(i=0; i<problem.nphases;i++)
      {
 
-	DMatrix& control_scaling = problem.phase[i].scale.controls;
-	DMatrix& state_scaling   = problem.phase[i].scale.states;
-        DMatrix& param_scaling   = problem.phase[i].scale.parameters;
-        double   time_scaling    =  problem.phase[i].scale.time;
+	MatrixXd& control_scaling = problem.phase[i].scale.controls;
+	MatrixXd& state_scaling   = problem.phase[i].scale.states;
+   MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
+   double   time_scaling    =  problem.phase[i].scale.time;
 
 
 	int norder    = problem.phase[i].current_number_of_intervals;
@@ -237,107 +251,123 @@ void hot_start_nlp_guess(DMatrix& x0,DMatrix& lambda, Sol& solution,Prob& proble
         int offset2   = (ncontrols+nstates)*(norder+1);
 	int k;
 	int offset;
-	DMatrix xn, xp;
-	DMatrix un, up;
-	DMatrix pn, pp;
+	MatrixXd xn, xp;
+	MatrixXd un, up;
+	MatrixXd pn, pp;
 
 	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
 
-        int ncons_phase_i = get_ncons_phase_i(problem,i, workspace);
+   int ncons_phase_i = get_ncons_phase_i(problem,i, workspace);
 
 
 	//     prev_nodes.Save("prev_nodes.dat");
 
-	for (k=1; k<=norder+1; k++) {
-		(solution.nodes[i])(1,k)  =  convert_to_original_time( (workspace->snodes[i])(k), prev_t0(i+1), prev_tf(i+1) );
+	for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
+		(solution.nodes[i])(0,k)  =  convert_to_original_time( (workspace->snodes[i])(k), prev_t0(i), prev_tf(i) );
 	}
 
 
 	// Interpolate states into new nodes
-	for (k=1;k<=nstates;k++) {
+	for (k=0;k<nstates;k++) {  // EIGEN_UPDATE
 
-		xp = (prev_states[i])(k,colon());
+//		xp = (prev_states[i])(k,colon());
+      xp = (prev_states[i]).row(k);
 		if (!use_local_collocation(algorithm) ) {
 		    lagrange_interpolation(xn,solution.nodes[i],prev_nodes[i], xp);
 		}
 		else {
 		    linear_interpolation(xn,solution.nodes[i],prev_nodes[i], xp, length(xp));
 		}
-		(solution.states[i])(k,colon())  = xn;
+//		(solution.states[i])(k,colon())  = xn;
+      (solution.states[i]).row(k)  = xn;
 	}
 
 	// Interpolate costates into new nodes
-	(workspace->dual_costates[i]).Resize(nstates,norder+1);
-	for (k=1;k<=nstates;k++) {
-		xp = (prev_costates[i])(k,colon());
+	(workspace->dual_costates[i]).resize(nstates,norder+1);
+	for (k=0;k<nstates;k++) { // EIGEN_UPDATE
+//		xp = (prev_costates[i])(k,colon());
+      xp = (prev_costates[i]).row(k);
 		if (!use_local_collocation(algorithm)) {
 		    lagrange_interpolation(xn,solution.nodes[i],prev_nodes[i], xp);
 		}
 		else {
 		    linear_interpolation(xn,solution.nodes[i],prev_nodes[i], xp, length(xp));
 		}
-		(workspace->dual_costates[i])(k,colon())  = xn;
+//		(workspace->dual_costates[i])(k,colon())  = xn;
+      (workspace->dual_costates[i]).row(k)  = xn;
 	}
 
 	// Interpolate controls into new nodes
-	for (k=1;k<=ncontrols;k++) {
-		up = (prev_controls[i])(k,colon());
+	for (k=0;k<ncontrols;k++) { // EIGEN_UPDATE
+//		up = (prev_controls[i])(k,colon());
+      up = (prev_controls[i]).row(k);
 		linear_interpolation(un,solution.nodes[i],prev_nodes[i], up, length(up) );
-		(solution.controls[i])(k,colon())  = un;
+//		(solution.controls[i])(k,colon())  = un;
+      (solution.controls[i]).row(k)  = un;
 	}
 
 	// Interpolate path constraint multipliers into new nodes
 	if (npath) {
-		(workspace->dual_path[i]).Resize(npath,norder+1);
-		for (k=1;k<=npath;k++) {
-			pp = (prev_path[i])(k,colon());
+		(workspace->dual_path[i]).resize(npath,norder+1);
+		for (k=0;k<npath;k++) { // EIGEN_UPDATE
+//			pp = (prev_path[i])(k,colon());
+         pp = (prev_path[i]).row(k);
 			if (!use_local_collocation(algorithm)) {
 			    lagrange_interpolation(pn,solution.nodes[i],prev_nodes[i], pp);
 			}
 			else {
 			    linear_interpolation(pn,solution.nodes[i],prev_nodes[i], pp, length(pp));
 			}
-			(workspace->dual_path[i])(k,colon())  = pn;
+//			(workspace->dual_path[i])(k,colon())  = pn;
+         (workspace->dual_path[i]).row(k)  = pn;
 		}
 	}
 
 	// Now copy relevant variables into the decision vector
 
-	for (k=1; k<=norder+1; k++) {
+	for (k=0; k<norder+1; k++) {  // EIGEN_UPDATE
           if(ncontrols>0) {
-	     x0(colon(x_phase_offset+(k-1)*ncontrols+1,x_phase_offset+k*ncontrols) ) = elemProduct( (solution.controls[i])(colon(),k), control_scaling);
+//	     x0(colon(x_phase_offset+(k-1)*ncontrols+1,x_phase_offset+k*ncontrols) ) = elemProduct( (solution.controls[i])(colon(),k), control_scaling);
+        x0.block(x_phase_offset+(k)*ncontrols,0,ncontrols,1) = elemProduct( (solution.controls[i]).col(k), control_scaling);
           }
-	  x0(colon(x_phase_offset+(k-1)*nstates+1+offset1, x_phase_offset+k*nstates+offset1))=elemProduct((solution.states[i])(colon(),k), state_scaling);
+//	     x0(colon(x_phase_offset+(k-1)*nstates+1+offset1, x_phase_offset+k*nstates+offset1))=elemProduct((solution.states[i])(colon(),k), state_scaling);
+        x0.block(x_phase_offset+(k)*nstates+offset1,0,nstates,1)=elemProduct((solution.states[i]).col(k), state_scaling);
 	}
 
         if (nparam>0) {
-           x0( colon(x_phase_offset+offset2+1, x_phase_offset+offset2+nparam) ) = elemProduct(prev_param[i], param_scaling);
+//         x0( colon(x_phase_offset+offset2+1, x_phase_offset+offset2+nparam) ) = elemProduct(prev_param[i], param_scaling);
+           x0.block(x_phase_offset+offset2, 0, nparam, 1 ) = elemProduct(prev_param[i], param_scaling);
         }
 
         if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
 
-	  for (k=1; k<=norder; k++) {
+	  for (k=0; k<norder; k++) { // EIGEN_UPDATE
              if(ncontrols>0) {
-	       x0(colon(x_phase_offset+offset2+nparam+(k-1)*ncontrols+1,x_phase_offset+offset2+nparam+k*ncontrols) ) =   elemProduct( (solution.controls[i])(colon(),k), control_scaling);
+//	            x0(colon(x_phase_offset+offset2+nparam+(k-1)*ncontrols+1,x_phase_offset+offset2+nparam+k*ncontrols) ) =   elemProduct( (solution.controls[i])(colon(),k), control_scaling);
+	            x0.block(x_phase_offset+offset2+nparam+(k)*ncontrols,0,ncontrols,1) =   elemProduct( (solution.controls[i]).col(k), control_scaling);
              }
 	  }
-        }
+   }
 
-	x0(x_phase_offset+ nvars_phase_i-1) = prev_t0(i+1)*time_scaling;
-	x0(x_phase_offset+ nvars_phase_i)   = prev_tf(i+1)*time_scaling;
+	x0(x_phase_offset+ nvars_phase_i-2) = prev_t0(i)*time_scaling;
+	x0(x_phase_offset+ nvars_phase_i-1) = prev_tf(i)*time_scaling;
 
 
 	// And finally copy the lagrange multiplier variables into vector lambda
-	lambda(colon(lam_phase_offset+1,lam_phase_offset+nstates*(norder+1)) ) = (*workspace->dual_costates)(colon(1, nstates*(norder+1)));
+//	lambda(colon(lam_phase_offset+1,lam_phase_offset+nstates*(norder+1)) ) = (*workspace->dual_costates)(colon(1, nstates*(norder+1)));
+   lambda.block(lam_phase_offset,0, nstates*(norder+1), 1) = (*workspace->dual_costates).block(0,0, nstates*(norder+1),1);
 	offset = lam_phase_offset+nstates*(norder+1);
 
 	if (nevents>0)
         {
-               lambda(colon(offset+1,offset+nevents)) = (workspace->dual_events[i]);
+//               lambda(colon(offset+1,offset+nevents)) = (workspace->dual_events[i]);
+                 lambda.block(offset,0,nevents,1) = (workspace->dual_events[i]);
 	       offset = offset + nevents;
         }
-	if (npath>0) lambda(colon(offset+1, offset+npath*(norder+1))) = (workspace->dual_path[i])(colon(1, npath*(norder+1)));
-
+	if (npath>0) {
+//		lambda(colon(offset+1, offset+npath*(norder+1))) = (workspace->dual_path[i])(colon(1, npath*(norder+1)));
+      lambda.block(offset,0, npath*(norder+1),1) = (workspace->dual_path[i]).block(0,0, npath*(norder+1), 1);    
+   }
         x_phase_offset += nvars_phase_i;
         lam_phase_offset += ncons_phase_i;
   }
@@ -346,7 +376,7 @@ void hot_start_nlp_guess(DMatrix& x0,DMatrix& lambda, Sol& solution,Prob& proble
 
   if (problem.nlinkages)
   {
-     for(k=1; k<=problem.nlinkages; k++)
+     for(k=0; k<problem.nlinkages; k++) // EIGEN_UPDATE
      {
           lambda(lam_phase_offset + k) = -(*solution.dual.linkages)(k);
      }
