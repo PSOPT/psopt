@@ -36,7 +36,7 @@ int get_number_of_mesh_refinement_iterations(Prob& problem, Alg& algorithm)
   int number_of_mesh_refinement_iterations;
 
   if (algorithm.mesh_refinement == "manual") {
-        number_of_mesh_refinement_iterations = problem.phases(1).nodes.GetNoCols();
+        number_of_mesh_refinement_iterations = (int) problem.phases(1).nodes.size();
   }
   else
   {
@@ -145,12 +145,14 @@ int get_max_nodes(Prob& problem,int iphase, Alg* algorithm)
     int retval, i;
 
     if (algorithm->mesh_refinement == "manual") {
-         retval = problem.phase[iphase-1].nodes("end");
+         long length_nodes = problem.phase[iphase-1].nodes.size(); // EIGEN_UPDATE
+         retval = problem.phase[iphase-1].nodes(length_nodes-1);
     }
 
     else if (algorithm->mesh_refinement == "automatic" && !use_local_collocation(*algorithm) ) {
-         int max_increment = algorithm->mr_max_increment_factor*(problem.phase[iphase-1].current_number_of_intervals+1);
-         retval = problem.phase[iphase-1].nodes(1) + (algorithm->mr_min_extrapolation_points-1)*(algorithm->mr_initial_increment);
+//         int max_increment = (int) algorithm->mr_max_increment_factor*(problem.phase[iphase-1].current_number_of_intervals+1);
+//         retval = problem.phase[iphase-1].nodes(1) + (algorithm->mr_min_extrapolation_points-1)*(algorithm->mr_initial_increment);  //EIGEN_UPDATE
+         retval = problem.phase[iphase-1].nodes(0) + (algorithm->mr_min_extrapolation_points-1)*(algorithm->mr_initial_increment);
          int count = retval;
          for (i=1;i<=(algorithm->mr_max_iterations-2);i++) {
 //                int increment = algorithm->mr_max_increment_factor*count;
@@ -158,17 +160,18 @@ int get_max_nodes(Prob& problem,int iphase, Alg* algorithm)
 // The above two lines have been deleted has they led to inconsistent mesh refinement iterations with different maximum number of mesh refinement iterations.
 // Thanks to Emmanuel Schneider for pointing out this issue.             
             count += (int) algorithm->mr_max_increment_factor * count; 
-	 }
-	 retval += count;
+	      }
+	      retval += count;
     }
 
     else if (algorithm->mesh_refinement == "automatic" && use_local_collocation(*algorithm) ) {
-         int M = problem.phase[iphase-1].nodes(1);
-	 int mcount = M;
-	 for (int i=1; i<= algorithm->mr_max_iterations;i++) {
-	    mcount = mcount + algorithm->mr_max_increment_factor*(mcount-1);
-	 }
-	 retval = mcount;
+//         int M = problem.phase[iphase-1].nodes(1);  // EIGEN_UPDATE
+         int M = problem.phase[iphase-1].nodes(0);
+	      int mcount = M;
+	      for (i=1; i<= algorithm->mr_max_iterations;i++) {
+	         mcount += (int) mcount*algorithm->mr_max_increment_factor;
+	      }
+	      retval = mcount;
     }
 
     return retval;
@@ -216,9 +219,7 @@ int get_nvars_phase_i(Prob& problem, int i, Workspace* workspace)
 int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
 {
 	int norder    = problem.phase[i].current_number_of_intervals;
-	int ncontrols = problem.phase[i].ncontrols;
 	int nstates   = problem.phase[i].nstates;
-        int nparam    = problem.phase[i].nparameters;
         int nevents   = problem.phase[i].nevents;
         int npath     = problem.phase[i].npath;
 
