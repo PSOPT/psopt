@@ -32,6 +32,8 @@ e-mail:    v.m.becerra@ieee.org
 #include "psopt.h"
 
 
+using namespace Eigen;
+
 void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& algorithm)
 {
      // Scaling factors  for variables computed automatically given the bound information
@@ -39,10 +41,10 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
      // If, however, any of the variable bounds is 'inf' in magnitude, then the scaled range
      // will be [-1, inf], [-inf,1],  or [-1, 1]
 
-     int i;
+   int i;
 
-     for(i=0; i<problem.nphases; i++)
-     {
+   for(i=0; i<problem.nphases; i++)
+   {
 
 	int norder    = problem.phase[i].current_number_of_intervals;
 	int ncontrols = problem.phase[i].ncontrols;
@@ -51,19 +53,18 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 	int nevents   = problem.phase[i].nevents;
         int nparam    = problem.phase[i].nparameters;
 
-	DMatrix& control_scaling = problem.phase[i].scale.controls;
-	DMatrix& state_scaling   = problem.phase[i].scale.states;
+	MatrixXd& control_scaling = problem.phase[i].scale.controls;
+	MatrixXd& state_scaling   = problem.phase[i].scale.states;
+   MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
 
-        DMatrix& param_scaling   = problem.phase[i].scale.parameters;
 
-
-	DMatrix PathJac(npath, nstates+ncontrols);
-	DMatrix h1(npath,norder+1);
-	DMatrix h2(npath,norder+1);
-	DMatrix e1(nevents,1);
-	DMatrix e2(nevents,2);
-	DMatrix EventJac1(nevents, nstates+ncontrols);
-	DMatrix EventJac2(nevents, nstates+ncontrols);
+	MatrixXd PathJac(npath, nstates+ncontrols);
+	MatrixXd h1(npath,norder+1);
+	MatrixXd h2(npath,norder+1);
+	MatrixXd e1(nevents,1);
+	MatrixXd e2(nevents,2);
+	MatrixXd EventJac1(nevents, nstates+ncontrols);
+	MatrixXd EventJac2(nevents, nstates+ncontrols);
 
 	double zlower;
 	double zupper;
@@ -71,14 +72,13 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 	int ii;
 
 
-
 	// Control scaling:
 
 	if ( algorithm.scaling=="automatic" || algorithm.scaling!="user" )
 	{
-	   control_scaling = ones(ncontrols,1);
+	   control_scaling = ones(ncontrols,1); // EIGEN_UPDATE
 
-	   for(ii=1;ii<=ncontrols;ii++)
+	   for(ii=0;ii<ncontrols;ii++)
 	   {
 		zlower = (problem.phase[i].bounds.lower.controls)(ii);
 		zupper = (problem.phase[i].bounds.upper.controls)(ii);
@@ -103,7 +103,7 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 
 		state_scaling = ones(nstates,1);
 
-		for(ii=1;ii<=nstates;ii++)
+		for(ii=0;ii<nstates;ii++) // EIGEN_UPDATE
 		{
 			zlower = (problem.phase[i].bounds.lower.states)(ii);
 			zupper = (problem.phase[i].bounds.upper.states)(ii);
@@ -126,7 +126,7 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 	{
 		param_scaling = ones(nparam,1);
 
-		for(ii=1;ii<=nparam;ii++)
+		for(ii=0;ii<nparam;ii++)  // EIGEN_UPDATE
 		{
 			zlower = (problem.phase[i].bounds.lower.parameters)(ii);
 			zupper = (problem.phase[i].bounds.upper.parameters)(ii);
@@ -139,11 +139,8 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 			else if (zupper==INF && zlower!=-INF && zlower!=0.0)
 				param_scaling(ii) = 1.0/fabs(zlower);
 
-
 		}
 	}
-
-
 
 
 	// Time scaling
@@ -170,37 +167,39 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 
 }
 
-void determine_objective_scaling(DMatrix& X,Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace )
+void determine_objective_scaling(MatrixXd& X,Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace )
 {
 
   // The scaling factor for the objective function is computed such that the
   // scaled gradient at the initial guess has an Euclidean norm of 1.0.
 
   double nrm_g;
-  DMatrix& GF = *workspace->GFip;
-  GF.Resize(get_number_nlp_vars(problem, workspace), 1);
+  MatrixXd& GF = *workspace->GFip;
+  GF.resize(get_number_nlp_vars(problem, workspace), 1);
 
 
   if ( algorithm.scaling=="automatic" || algorithm.scaling!="user" )
   {
 
 	if ( (algorithm.derivatives=="automatic") ) {
-	    int      n = length(X);
+	    long      n = length(X);
 	    int i, itag=workspace->tag_f;
 	    double  yp = 0.0;
 	    adouble *xad = workspace->xad;
 	    adouble  yad;
-	    DMatrix&  GF = *workspace->GFip;
+	    MatrixXd&  GF = *workspace->GFip;
 	    problem.scale.objective = -1.0;
 	    trace_on(itag);
 	    for(i=0;i<n;i++) {
-			xad[i] <<= (X.GetPr())[i];
+//			xad[i] <<= (X.GetPr())[i];
+         xad[i] <<= (&X(0))[i];
 	    }
 	    yad = ff_ad(xad, workspace);
 	    yad >>= yp;
 	    trace_off();
 
-	    gradient(itag,n,X.GetPr(),GF.GetPr());
+//	    gradient(itag,n,X.GetPr(),GF.GetPr());
+       gradient(itag,n,&X(0),&GF(0));
 
 	}
 
@@ -209,9 +208,9 @@ void determine_objective_scaling(DMatrix& X,Sol& solution, Prob& problem, Alg& a
 	  ScalarGradient( ff_num, X, &GF , workspace->grw, workspace );
 	}
 
-        nrm_g = enorm(GF);
+        nrm_g = (GF).norm();
 
-        if ( nrm_g != 0.0 && nrm_g < INF)
+   if ( nrm_g != 0.0 && nrm_g < INF)
 	      problem.scale.objective = 1/nrm_g;
 	else
 	      problem.scale.objective = 1.0;
@@ -224,7 +223,7 @@ void determine_objective_scaling(DMatrix& X,Sol& solution, Prob& problem, Alg& a
 
 
 
-void determine_constraint_scaling_factors(DMatrix & X, Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace)
+void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace)
 {
 // For the differential defect constraints there are two options: The default is to use the
 // same scaling factors as those used for the corresponding state. Alternatively, the user
@@ -242,118 +241,95 @@ void determine_constraint_scaling_factors(DMatrix & X, Sol& solution, Prob& prob
 
     int ncons = get_number_nlp_constraints(problem, workspace);
 
-    DMatrix& JacCol1 = *workspace->JacCol1;
-    DMatrix& xlb     = *workspace->xlb;
-    DMatrix& xub     = *workspace->xub;
-    DMatrix& xp      = *workspace->xp;
-    DMatrix& jac_row_norm = *workspace->JacCol2;
-    DMatrix jtemp;
+    MatrixXd& JacCol1 = *workspace->JacCol1;
+//    MatrixXd& xlb     = *workspace->xlb;
+//    MatrixXd& xub     = *workspace->xub;
+    MatrixXd& xp      = *workspace->xp;
+    MatrixXd& jac_row_norm = *workspace->JacCol2;
+    MatrixXd jtemp;
 
     workspace->use_constraint_scaling = 0;
 
-    jac_row_norm.Resize(ncons,1);
+    jac_row_norm.resize(ncons,1);
 
 
      xp = X;
 //     clip_vector_given_bounds( xp, xlb, xub);
 
      if ( useAutomaticDifferentiation(algorithm) && algorithm.constraint_scaling=="automatic") {
-        // NOTE, THIS OPTION HAD BEEN DESACTIVATED AS MATTEO CERIOTTI REPORTED A PROBLEM WITH A CASE
-        // WITH RELEASE 2.
-        // ACTIVATED AGAIN ON 27.11.2012
         // EXTRA PARAMETER .constraint_scaling ADDED TO ALGORITHM STRUCTURE 27.11.2012.
 
-        jac_row_norm.FillWithZeros();
+//        jac_row_norm.FillWithZeros();
 
-
-    unsigned int *jac_rind  = NULL;
-	unsigned int *jac_cind  = NULL;
-	double       *jac_values = NULL;
-	int           nnz;
-
-	adouble *xad = workspace->xad;
-	adouble *gad = workspace->gad;
-	double  *g   = workspace->fg;
-	double  *x   = xp.GetPr();
-
-	/* Tracing of function gg() */
-	trace_on(workspace->tag_gc);
-	for(i=0;i<nvars;i++)
-		xad[i] <<= x[i];
-
-	gg_ad(xad, gad, workspace);
-
-	for(i=0;i<ncons;i++)
-		gad[i] >>= g[i];
-	trace_off();
-
-#ifdef ADOLC_VERSION_1
-	sparse_jac(workspace->tag_gc, ncons, nvars, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values);
-#endif
-
-#ifdef ADOLC_VERSION_2
-    int options[4];
-    options[0]=0; options[1]=0; options[2]=0;options[3]=0;
-	sparse_jac(workspace->tag_gc, ncons, nvars, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values, options);
-#endif
-
-	for (i=0;i<nnz;i++) {
-	    jac_row_norm( jac_rind[i] + 1  ) += pow( jac_values[i], 2.0);
-	}
+		   jac_row_norm.setZero();
+		
+		   unsigned int *jac_rind  = NULL;
+			unsigned int *jac_cind  = NULL;
+			double       *jac_values = NULL;
+			int           nnz;
+		
+			adouble *xad = workspace->xad;
+			adouble *gad = workspace->gad;
+			double  *g   = workspace->fg;
+		//	double  *x   = xp.GetPr();
+		   double  *x   = &xp(0);
+		
+			/* Tracing of function gg() */
+			trace_on(workspace->tag_gc);
+			for(i=0;i<nvars;i++)
+				xad[i] <<= x[i];
+		
+			gg_ad(xad, gad, workspace);
+		
+			for(i=0;i<ncons;i++)
+				gad[i] >>= g[i];
+			trace_off();
+		
+		
+		    int options[4];
+		    options[0]=0; options[1]=0; options[2]=0;options[3]=0;
+			sparse_jac(workspace->tag_gc, ncons, nvars, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values, options);
+		
+			for (i=0;i<nnz;i++) {
+		//	    jac_row_norm( jac_rind[i] + 1  ) += pow( jac_values[i], 2.0);
+		       jac_row_norm( jac_rind[i]      ) += pow( jac_values[i], 2.0);
+			}
 
 
      }
      else {
 
-        jac_row_norm.FillWithZeros();
-	DMatrix& xlb = *(workspace->xlb);
-	DMatrix& xub = *(workspace->xub);
-	for(j=1;j<=nvars;j++) {
-	    JacobianColumn( gg_num, xp, xlb, xub,j, &JacCol1, workspace->grw, workspace);
-	    jac_row_norm+= (JacCol1^2);
-	}
+	      jac_row_norm.setZero();
+	      MatrixXd& xlb = *(workspace->xlb);
+		   MatrixXd& xub = *(workspace->xub);
+			for(j=0;j<nvars;j++) {  // EIGEN_UPDATE
+			    JacobianColumn( gg_num, xp, xlb, xub,j, &JacCol1, workspace->grw, workspace);
+			    jac_row_norm+= elemProduct(JacCol1, JacCol1);
+			}
 
      } // end if-else
 
 
-     jac_row_norm = Sqrt(jac_row_norm);
+     jac_row_norm = (jac_row_norm.cwiseSqrt());
 
 
 
- for (i=1;i<=ncons;i++)
-     {
-        double sqeps = sqrt(DMatrix::GetEPS());
- //	if (jac_row_norm(i) != 0.0 && jac_row_norm(i) < 1.e7 ) {
-        if ( jac_row_norm(i) < 1.e7 ) {
- //	  (*workspace->constraint_scaling)(i) = 1.0/jac_row_norm(i);
-	  (*workspace->constraint_scaling)(i) = 1.0/(jac_row_norm(i)+sqeps);
+		 for (i=0;i<ncons;i++) // EIGEN_UPDATE
+		 {
+		        double sqeps = sqrt(PSOPT_extras::GetEPS());
 
-	}
-	else  {
-//                fprintf(stderr,"\n>>>>> jac_row_norm(%i)=%e", i, jac_row_norm(i) );
-                if ( jac_row_norm(i) > 1.e7 ) {
-    		      (*workspace->constraint_scaling)(i) = 1.0/1.e7;
-                }
-//                if ( jac_row_norm(i) == 0.0 ) {
-//    		      (*workspace->constraint_scaling)(i) = 1.0;
-//                }
-
-	}
-   }
-//////////////////////////////////////////////////////////
-
-// RELEASE 1 CODE BELOW
-//     for (i=1;i<=ncons;i++)
-//     {
-//        if (jac_row_norm(i) != 0.0) {
-//           (*workspace->constraint_scaling)(i) = 1.0/jac_row_norm(i);
-//        }
-//        else {
-//            (*workspace->constraint_scaling)(i) = 1.0;
-//        }
-//    }
-
-//////////////////////////////////////////////////////
+		        if ( jac_row_norm(i) < 1.e7 ) {
+		 //	     (*workspace->constraint_scaling)(i) = 1.0/jac_row_norm(i);
+			        (*workspace->constraint_scaling)(i) = 1.0/(jac_row_norm(i)+sqeps);
+		
+			     }
+			     else  {
+		                if ( jac_row_norm(i) > 1.e7 ) {
+		    		          (*workspace->constraint_scaling)(i) = 1.0/1.e7;
+		                }
+		
+			    }
+       }
 
      workspace->use_constraint_scaling = 1;
 
@@ -369,32 +345,29 @@ void determine_constraint_scaling_factors(DMatrix & X, Sol& solution, Prob& prob
  
      for(i=0; i< problem.nphases; i++) {
 
-        DMatrix& state_scaling = (problem.phase[i].scale.states);
+        MatrixXd& state_scaling = (problem.phase[i].scale.states);
 
-     	int norder    = problem.phase[i].current_number_of_intervals;
+     	  int norder    = problem.phase[i].current_number_of_intervals;
 
-	    int nstates   = problem.phase[i].nstates;
+	     int nstates   = problem.phase[i].nstates;
 
-	    int nevents   = problem.phase[i].nevents;
-
-        int npath     = problem.phase[i].npath;
     
 
 
         int ncons_phase_i = get_ncons_phase_i(problem,i, workspace);
 
 
-        for (k=1;k<=norder+1;k++) {
+        for (k=0;k<norder+1;k++) { // EIGEN_UPDATE
 
-  		    for( j=1;j<=nstates;j++) {
+  		    for( j=0;j<nstates;j++) {  // EIGEN_UPDATE
 
-                	l = offset + (k-1)*nstates+j;
+                	l = offset + (k)*nstates+j;
 
-        		(*workspace->constraint_scaling)(l) = state_scaling(j);
+        		      (*workspace->constraint_scaling)(l) = state_scaling(j);
 
-        	}
+        	 }
 
-   	    }
+   	  }
 
         offset += ncons_phase_i;
 
@@ -403,7 +376,4 @@ void determine_constraint_scaling_factors(DMatrix & X, Sol& solution, Prob& prob
   }
 
 
-
-
 }
-
