@@ -34,12 +34,15 @@ e-mail:    v.m.becerra@ieee.org
 
 
 
+
+
+
 #ifdef USE_IPOPT
 
 // constructor
 IPOPT_PSOPT::IPOPT_PSOPT(Workspace *pr, void *user_data)
 {
-    workspace    = pr;
+    workspace       = pr;
     _user_data      = user_data;
 }
 
@@ -112,8 +115,9 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
   // Number of constraints in g(x)
   m = workspace->ncons;
 
-  DMatrix *X0 = workspace->x0;
-  double  *x  = X0->GetPr();
+  MatrixXd *X0 = workspace->x0;
+//  double  *x  = X0->GetPr();
+  double  *x  = &(*X0)(0);
 
   if( !useAutomaticDifferentiation(*workspace->algorithm) ) {
 
@@ -169,16 +173,12 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
 	/* Entries in row-compressed format using sparse_jac: */
 
-#ifdef ADOLC_VERSION_1
-	sparse_jac(workspace->tag_g, m, n, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values);
-#endif
 
-
-#ifdef ADOLC_VERSION_2
+// ASSUMING ADOL-C - VERSION 2.X.X
     int options[4];
     options[0]=0; options[1]=0; options[2]=0;options[3]=0;
     sparse_jac(workspace->tag_g, m, n, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values, options);
-#endif
+
 
 
 	for(i=0;i<nnz;i++)
@@ -215,9 +215,10 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 	adouble *xad = workspace->xad;
 	adouble Lad;
 	double  obj_factor = 1.0;
-	double *lambda = workspace->lambda->GetPr();
+//	double *lambda = workspace->lambda->GetPr();
+   double *lambda = &(*workspace->lambda)(0);
 	double  L;
-        int nnz_hess;
+   int nnz_hess;
 	/* Tracing of function Lagrangian_ad() */
 	trace_on(workspace->tag_hess);
 	for(i=0;i<n;i++)
@@ -232,20 +233,18 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
 //       sparse_hess(workspace->tag_hess, n,0,x,&nnz_hess,&workspace->hess_ir, &workspace->hess_jc,&hess_values);
 
-#ifdef ADOLC_VERSION_1
-	sparse_hess(workspace->tag_hess, n,0,x,&nnz_hess,&hess_ir, &hess_jc,&hess_values);
-#endif
 
-#ifdef ADOLC_VERSION_2
+
+// ASSUMING ADOL-C - VERSION 2.X.X
     int options[2];
     options[0]=1; options[1]=0;
     sparse_hess(workspace->tag_hess, n,0,x,&nnz_hess,&hess_ir, &hess_jc,&hess_values, options);
-#endif
 
-       for (i=0; i< nnz_hess; i++) {
+
+    for (i=0; i< nnz_hess; i++) {
 		workspace->hess_ir[i] = hess_ir[i];
 		workspace->hess_jc[i] = hess_jc[i];
-       }
+    }
 
        sprintf(workspace->text,"\nHessian sparsity detected using ADOLC:");
        psopt_print(workspace,workspace->text);
@@ -293,8 +292,10 @@ bool IPOPT_PSOPT::get_bounds_info(Index n, Number* x_l, Number* x_u,
   assert(n == workspace->nvars);
   assert(m == workspace->ncons);
 
-  double *xlb = (workspace->xlb)->GetPr();
-  double *xub = (workspace->xub)->GetPr();
+//  double *xlb = (workspace->xlb)->GetPr();
+    double *xlb = &(*workspace->xlb)(0);
+//  double *xub = (workspace->xub)->GetPr();
+    double *xub = &(*workspace->xub)(0);
 
 
   int  j;
@@ -330,7 +331,8 @@ bool IPOPT_PSOPT::get_starting_point(Index n, bool init_x, Number* x,
 
   Index i;
 
-  double *x0 = (workspace->x0)->GetPr();
+//double *x0 = (workspace->x0)->GetPr();
+  double *x0 = &(*workspace->x0)(0);
 
   // initialize to the given starting point
 
@@ -351,9 +353,10 @@ bool IPOPT_PSOPT::eval_f(Index n, const Number* x, bool new_x, Number& obj_value
 {
   assert(n == workspace->nvars);
 
-  DMatrix& X = *workspace->Xip;
+  MatrixXd& X = *workspace->Xip;
 
-  memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
+//  memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
+  memcpy( &X(0), x, workspace->nvars*sizeof(double) );
 
   obj_value = ff_num(X, workspace);
 
@@ -365,19 +368,20 @@ bool IPOPT_PSOPT::eval_grad_f(Index n, const Number* x, bool new_x, Number* grad
 {
   assert(n == workspace->nvars);
 
-  DMatrix& X = *workspace->Xip;
+  MatrixXd& X = *workspace->Xip;
 
-  DMatrix& GF = *workspace->GFip;
+  MatrixXd& GF = *workspace->GFip;
 
-  memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
+//  memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
+  memcpy( &X(0), x, workspace->nvars*sizeof(double) );
 
   if(!useAutomaticDifferentiation(*workspace->algorithm))
      ScalarGradient( ff_num, X, &GF , workspace->grw, workspace );
   else
      ScalarGradientAD( ff_ad, X, &GF, &workspace->trace_f_done, workspace->tag_f, workspace );
 
-  memcpy( grad_f, GF.GetPr(), workspace->nvars*sizeof(double));
-
+//  memcpy( grad_f, GF.GetPr(), workspace->nvars*sizeof(double));
+  memcpy( grad_f, &GF(0), workspace->nvars*sizeof(double));
 
   return true;
 }
@@ -388,15 +392,17 @@ bool IPOPT_PSOPT::eval_g(Index n, const Number* x, bool new_x, Index m, Number* 
   assert(n == workspace->nvars);
   assert(m == workspace->ncons);
 
-  DMatrix& X = *workspace->Xip;
+  MatrixXd& X = *workspace->Xip;
 
-  DMatrix& G  = *workspace->Gip;
+  MatrixXd& G  = *workspace->Gip;
 
-  memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
+//  memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
+  memcpy( &X(0), x, workspace->nvars*sizeof(double) );
 
   gg_num(X, &G, workspace);
 
-  memcpy( g, G.GetPr(), workspace->ncons*sizeof(double) );
+//  memcpy( g, G.GetPr(), workspace->ncons*sizeof(double) );
+    memcpy( g, &G(0), workspace->ncons*sizeof(double) );
 
   return true;
 }
@@ -422,7 +428,7 @@ void save_jacobian_sparsity_pattern(Index* rindex, Index* cindex, long nvars, lo
     fprintf(jac_file,"% li %li  %f", ncols, nvars, zero );
 
     for (int i = 1; i< nnz; i++ ) {
-        fprintf(jac_file,"\n%li %li  %f", rindex[i]+1, cindex[i]+1, one );
+        fprintf(jac_file,"\n%li %li  %f", rindex[i]+1, cindex[i]+1, one ); // SPARSITY PATTERN SAVED USING 1-BASED INDICES (MATLAB-STYLE)
     }
 
     fclose(jac_file);
@@ -432,16 +438,17 @@ void save_jacobian_sparsity_pattern(Index* rindex, Index* cindex, long nvars, lo
 }
 
 
-
+// THE UPDATE OF THIS FUNCTION NEEDS TO BE FINALISED - EIGEN_UPDATE.
 
 // return the structure or values of the jacobian
 bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
                            Index m, Index nele_jac, Index* iRow, Index *jCol,
                            Number* values)
 {
-  DMatrix& X = *workspace->Xip;
+  MatrixXd& X = *workspace->Xip;
 
-  double *xpr = workspace->xp->GetPr();
+//  double *xpr = workspace->xp->GetPr();
+  double *xpr = &(*workspace->xp)(0); 
 
   int nnzA, nnzG, i;
 
@@ -453,37 +460,38 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
     {
 
 
-        nnzA = workspace->jac_nnzA;
-        nnzG = workspace->jac_nnzG;
+        	nnzA = workspace->jac_nnzA;
+        	nnzG = workspace->jac_nnzG;
 
 
-        getIndexGroups( workspace->igroup, m, n, nnzG, workspace->iGrow, workspace->jGcol, workspace);
+        	getIndexGroups( workspace->igroup, m, n, nnzG, workspace->iGrow, workspace->jGcol, workspace);
 
-	for (i=0;i<nnzG;i++)
-	{
-		iRow[i] = workspace->iGrow[i]-1;
-		jCol[i] = workspace->jGcol[i]-1;
-	}
+	     	for (i=0;i<nnzG;i++)
+      	{
+				iRow[i] = workspace->iGrow[i]; // EIGEN_UPDATE
+				jCol[i] = workspace->jGcol[i]; // EIGEN_UPDATE
+			}
 
-	for (i=0;i<nnzA;i++)
-	{
-		iRow[i+nnzG] =workspace->iArow[i]-1;
-		jCol[i+nnzG] =workspace->jAcol[i]-1;
-	}
+			for (i=0;i<nnzA;i++)
+			{
+				iRow[i+nnzG] =workspace->iArow[i]; // EIGEN_UPDATE
+				jCol[i+nnzG] =workspace->jAcol[i]; // EIGEN_UPDATE
+			}
 
-     }
+    }
 
 
     if (useAutomaticDifferentiation(*workspace->algorithm)) {
 
 
-	for(i=0;i<nele_jac;i++)
-	{
-		iRow[i] = workspace->iGrow[i];
-		jCol[i] = workspace->jGcol[i];
-	}
+			for(i=0;i<nele_jac;i++)
+			{
+				iRow[i] = workspace->iGrow[i];
+				jCol[i] = workspace->jGcol[i];
+			}
 
     } // End if (autoderiv)
+    
   }
   else {
     // return the values of the jacobian of the constraints
@@ -491,7 +499,9 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
 
 
 
-          memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
+//          memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
+          memcpy( &X(0), x, workspace->nvars*sizeof(double) );
+          
 //          ComputeJacobianNonZeros(gg_num, X, m, values, nele_jac, workspace->ir, workspace->jc, workspace->grw );
 
 
@@ -516,32 +526,29 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
 
 
 
-	for (i=0;i<n;i++) {
-		xpr[i] = x[i];
-	}
+	   for (i=0;i<n;i++) {
+		   xpr[i] = x[i];
+	   }
 
-        double* jac_values = NULL;
+      double* jac_values = NULL;
 
 
-#ifdef ADOLC_VERSION_1
-	sparse_jac(workspace->tag_g, m, n, 0, xpr, &nnz, &jac_rind, &jac_cind, &jac_values);
-#endif
 
-#ifdef ADOLC_VERSION_2
-    int options[4];
-    options[0]=0; options[1]=0; options[2]=0; options[3]=0;
-	sparse_jac(workspace->tag_g, m, n, 0, xpr, &nnz, &jac_rind, &jac_cind, &jac_values, options);
-#endif
+// ASSUMING ADOL-C - VERSION 2.X.X
+       int options[4];
+       options[0]=0; options[1]=0; options[2]=0; options[3]=0;
+	    sparse_jac(workspace->tag_g, m, n, 0, xpr, &nnz, &jac_rind, &jac_cind, &jac_values, options);
 
-	for(i=0;i<nnz;i++) {
+
+   	 for(i=0;i<nnz;i++) {
 
                 values[i] = jac_values[i];
-	}
+	    }
 
     }
 
     if (workspace->enable_nlp_counters) {
-      workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_jacobian_evals++;
+        workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_jacobian_evals++;
     }
 
   }
@@ -566,9 +573,11 @@ void IPOPT_PSOPT::finalize_solution(SolverReturn status,
 
   Sol* solution = workspace->solution;
 
-  memcpy( (workspace->x0)->GetPr(), x, n*sizeof(double) );
+//  memcpy( (workspace->x0)->GetPr(), x, n*sizeof(double) );
+    memcpy( &(*workspace->x0)(0), x, n*sizeof(double) );
 
-  memcpy( (workspace->lambda)->GetPr(), lambda, m*sizeof(double) );
+//  memcpy( (workspace->lambda)->GetPr(), lambda, m*sizeof(double) );
+    memcpy( &(*workspace->lambda)(0), lambda, m*sizeof(double) );
 
   for(int ii=0;ii<n;ii++) solution->xad[ii]=x[ii];
 
@@ -608,7 +617,8 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
     // return the values of the Hessian
 
     if (useAutomaticDifferentiation(*workspace->algorithm) && nele_hess>0) {
-    	double *xpr = workspace->Xsnopt->GetPr();
+//    	double *xpr = workspace->Xsnopt->GetPr();
+       double *xpr = &(*workspace->Xsnopt)(0);
 
 
 // *******************************************************************
@@ -640,15 +650,13 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
 
         double* hess_values = NULL;
 
-#ifdef ADOLC_VERSION_1
- 	sparse_hess(workspace->tag_hess, n, 0, xpr, &nele_hess, &hess_ir, &hess_jc, &hess_values);
-#endif
 
-#ifdef ADOLC_VERSION_2
+
+// ASSUMING ADOL-C - VERSION 2.X.X
     int options[2];
     options[0]=1; options[1]=0;
     sparse_hess(workspace->tag_hess, n, 0, xpr, &nele_hess, &hess_ir, &hess_jc, &hess_values, options);
-#endif
+
 
         for(i=0;i<nele_hess;i++) {
              values[i] = hess_values[i];
