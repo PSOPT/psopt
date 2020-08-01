@@ -31,9 +31,10 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+using namespace Eigen;
 
 
-void evaluate_differential_error_in_phase(DMatrix& state_error, int iphase, adouble time, adouble* xad, Workspace* workspace)
+void evaluate_differential_error_in_phase(MatrixXd& state_error, int iphase, adouble time, adouble* xad, Workspace* workspace)
 {
      //   Computes  the differential error epsilon(t) = (xdot(t)-f(x,u,p,t)) within a phase
 
@@ -65,12 +66,12 @@ void evaluate_differential_error_in_phase(DMatrix& state_error, int iphase, adou
      derivatives   = workspace->derivatives[i];
 
      for (j=0;j<nstates;j++) {
-          get_interpolated_state(&state_j, j+1, iphase, time, xad, workspace);
+          get_interpolated_state(&state_j, j, iphase, time, xad, workspace);    // EIGEN_UPDATE
           states[j]       = state_j;
      }
 
      for (j=0;j<ncontrols;j++) {
-          get_interpolated_control(&control_j, j+1, iphase, time, xad, workspace);
+          get_interpolated_control(&control_j, j, iphase, time, xad, workspace); // EIGEN_UPDATE
           controls[j]       = control_j;
      }
 
@@ -78,8 +79,8 @@ void evaluate_differential_error_in_phase(DMatrix& state_error, int iphase, adou
      problem->dae(derivatives, path, states, controls, parameters, time, xad, iphase, workspace);
 
      for (j=0;j<nstates;j++) {
-          get_state_derivative(&dot_state_j,j+1,iphase,time,xad, workspace);
-          state_error(j+1) = dot_state_j.value() - derivatives[j].value();
+          get_state_derivative(&dot_state_j,j,iphase,time,xad, workspace);  // EIGEN_UPDATE
+          state_error(j) = dot_state_j.value() - derivatives[j].value();
      }
 
 }
@@ -87,37 +88,42 @@ void evaluate_differential_error_in_phase(DMatrix& state_error, int iphase, adou
 
 
 
-void evaluate_integral_of_differential_error(DMatrix& eta, int iphase, adouble t1, adouble t2, adouble* xad, int n, Workspace* workspace)
+void evaluate_integral_of_differential_error(MatrixXd& eta, int iphase, adouble t1, adouble t2, adouble* xad, int n, Workspace* workspace)
 {
 // This function evaluates integral[t1,t2]{ |xdot-f(x,u,p,t)| } dt
 // by using composite Simpson intergration with n steps.
 
-     	Prob* problem = workspace->problem;
-     	int nstates   = problem->phase[iphase-1].nstates;
+   Prob* problem = workspace->problem;
+   int nstates   = problem->phase[iphase-1].nstates;
 	double h = (t2.value()-t1.value())/n;
-	int i, j;
+	int j;
 
-	DMatrix R1(nstates,1);
-	DMatrix state_error1(nstates,1);
-	DMatrix state_error2(nstates,1);
+	MatrixXd R1(nstates,1);
+	MatrixXd state_error1(nstates,1);
+	MatrixXd state_error2(nstates,1);
 
-        evaluate_differential_error_in_phase( state_error1, iphase, t1, xad, workspace );
-        evaluate_differential_error_in_phase( state_error2, iphase, t2, xad, workspace );
+   evaluate_differential_error_in_phase( state_error1, iphase, t1, xad, workspace );
+   evaluate_differential_error_in_phase( state_error2, iphase, t2, xad, workspace );
 
-	R1(colon(),1) = ( Abs(state_error1) + Abs(state_error2) );
+//	R1(colon(),1) = ( Abs(state_error1) + Abs(state_error2) );  // EIGEN_UPDATE
 
-        int nover2 = (int) n/2;
+   R1 = state_error1.cwiseAbs() + state_error2.cwiseAbs() ;
+
+   int nover2 = (int) n/2;
 
 	for (j=1; j<=nover2-1; j++) {
 
 			evaluate_differential_error_in_phase( state_error1, iphase, t1 +2*j*h, xad, workspace );
-			R1 += 2.0*Abs( state_error1 );
+//			R1 += 2.0*Abs( state_error1 );
+         R1+= 2.0*state_error1.cwiseAbs();
+
 	}
 
 	for (j=1; j<=nover2; j++) {
 
 			evaluate_differential_error_in_phase( state_error1, iphase, t1 +(2*j-1)*h, xad, workspace );
-			R1 += 4.0*Abs( state_error1 );
+//			R1 += 4.0*Abs( state_error1 );
+         R1 += 4.0*state_error1.cwiseAbs();
 	}
 
 
@@ -125,7 +131,7 @@ void evaluate_integral_of_differential_error(DMatrix& eta, int iphase, adouble t
 }
 
 
-void evaluate_integral_of_differential_error_L2(DMatrix& eta, int iphase, adouble t1, adouble t2, adouble* xad, int n, Workspace* workspace)
+void evaluate_integral_of_differential_error_L2(MatrixXd& eta, int iphase, adouble t1, adouble t2, adouble* xad, int n, Workspace* workspace)
 {
 // This function evaluates the L2 norm SQRT[ integral[t1,t2]{ |xdot-f(x,u,p,t)|^2 } dt ]
 // by using composite Simpson intergration with n steps.
@@ -134,37 +140,42 @@ void evaluate_integral_of_differential_error_L2(DMatrix& eta, int iphase, adoubl
      	int nstates   = problem->phase[iphase-1].nstates;
 
 	double h = (t2.value()-t1.value())/n;
-	int i, j;
+	int j;
 
-	DMatrix R1(nstates,1);
-	DMatrix state_error1(nstates,1);
-	DMatrix state_error2(nstates,1);
+	MatrixXd R1(nstates,1);
+	MatrixXd state_error1(nstates,1);
+	MatrixXd state_error2(nstates,1);
 
         evaluate_differential_error_in_phase( state_error1, iphase, t1, xad, workspace );
         evaluate_differential_error_in_phase( state_error2, iphase, t2, xad, workspace );
 
-	R1(colon(),1) = ( (state_error1^2) + (state_error2^2) );
+//	R1(colon(),1) = ( (state_error1^2) + (state_error2^2) );
+   R1 =  state_error1.cwiseAbs2() + state_error2.cwiseAbs2() ;
 
         int nover2 = (int) n/2;
 
 	for (j=1; j<=nover2-1; j++) {
 
 			evaluate_differential_error_in_phase( state_error1, iphase, t1 +2*j*h, xad, workspace );
-			R1 += 2.0*( state_error1^2 );
+//			R1 += 2.0*( state_error1^2 );
+         R1 += 2.0*( state_error1.cwiseAbs2() );
+
 	}
 
 	for (j=1; j<=nover2; j++) {
 
 			evaluate_differential_error_in_phase( state_error1, iphase, t1 +(2*j-1)*h, xad, workspace );
-			R1 += 4.0*( state_error1^2 );
+//			R1 += 4.0*( state_error1^2 );
+         R1 += 4.0*( state_error1.cwiseAbs2() );
 	}
 
 
-	eta = Sqrt( (h/3.0)*R1 );
+//	eta = Sqrt( (h/3.0)*R1 );
+   eta = ((h/3.0)*R1).cwiseSqrt();
 }
 
 
-void evaluate_matrix_of_integrated_errors_in_phase(DMatrix& eta, int iphase, adouble* xad, int n, Workspace* workspace)
+void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, adouble* xad, int n, Workspace* workspace)
 {
 //	This function computes a matrix of integrated absolute differential errors, where element (i,j)
 //	corresponds to state i and interval j within the phase.
@@ -175,15 +186,16 @@ void evaluate_matrix_of_integrated_errors_in_phase(DMatrix& eta, int iphase, ado
         int norder    = problem->phase[iphase-1].current_number_of_intervals;
         int nnodes    = norder + 1;
      	int nstates   = problem->phase[iphase-1].nstates;
-	DMatrix eta_k(nstates,1);
+	MatrixXd eta_k(nstates,1);
         get_times(&t0, &tf, xad, iphase, workspace );
 
-	for (k=1;k< nnodes;k++){
+	for (k=0;k< nnodes-1;k++){  // EIGEN_UPDATE: k index shifted by -1
 		t1 = convert_to_original_time_ad( (workspace->snodes[iphase-1])(k), t0, tf );
 		t2 = convert_to_original_time_ad( (workspace->snodes[iphase-1])(k+1), t0, tf );;
 
-        	evaluate_integral_of_differential_error(eta_k,iphase,t1,t2,xad,n, workspace);
-		eta(colon(),k) = eta_k;
+      evaluate_integral_of_differential_error(eta_k,iphase,t1,t2,xad,n, workspace);
+//		eta(colon(),k) = eta_k;
+      eta.col(k) = eta_k;
 	}
 }
 
@@ -200,47 +212,54 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 	int iphase;
 	int n = algorithm.nsteps_error_integration;
 	adouble* xad = workspace->xad;
-	DMatrix eta;
+	MatrixXd eta;
 	char msg[100];
 
-	DMatrix states;
-	DMatrix Xdot;
-	DMatrix w;
-	DMatrix states_i;
-	DMatrix Xdot_i;
-	DMatrix eta_i;
+	MatrixXd states;
+	MatrixXd Xdot;
+	MatrixXd w;
+	MatrixXd states_i;
+	MatrixXd Xdot_i;
+	MatrixXd eta_i;
 	int i;
 	psopt_print(workspace,"\n>>> Evaluating the discretization (ODE) error...\n\n");
         for(iphase=1;iphase<=nphases;iphase++) {
-	        DMatrix& epsilon = solution.relative_errors[iphase-1];
+	        MatrixXd& epsilon = solution.relative_errors[iphase-1];
 		// store previous relative errors before calculating the new ones
 		workspace->old_relative_errors[iphase-1] = epsilon;
-		DMatrix& w = workspace->error_scaling_weights[iphase-1];
+		MatrixXd& w = workspace->error_scaling_weights[iphase-1];
 		int norder = problem.phase[iphase-1].current_number_of_intervals;
 		int nstates = problem.phase[iphase-1].nstates;
 		if (workspace->current_mesh_refinement_iteration==1) {
 			states = solution.get_states_in_phase(iphase);
 			Xdot   = workspace->Xdot[iphase-1];
-			w.Resize(nstates,1);
-			for (i=1; i<=nstates;i++ ) {
-				states_i = states(i,colon());
-				Xdot_i   = Xdot(i,colon() );
-				w(i) = MAX(  MaxAbs( states_i ), MaxAbs( Xdot_i ) ) + 1.0;
+			w.resize(nstates,1);
+			for (i=0; i<nstates;i++ ) { // EIGEN_UPDATE: i index shifted by -1
+//				states_i = states(i,colon());
+            states_i = states.row(i);
+//				Xdot_i   = Xdot(i,colon() );
+            Xdot_i   = Xdot.row(i);
+//				w(i) = MAX(  MaxAbs( states_i ), MaxAbs( Xdot_i ) ) + 1.0;
+            w(i) = max(  states_i.lpNorm<Infinity>() , Xdot_i.lpNorm<Infinity>() ) + 1.0;
 			}
 		}
-		eta.Resize(nstates,norder);
+		eta.resize(nstates,norder);
     		evaluate_matrix_of_integrated_errors_in_phase(eta,iphase,xad,n, workspace);
-		for(i=1;i<=norder;i++) {
-			eta(colon(),i) = elemDivision( eta(colon(),i), w );
-			eta_i = eta(colon(),i);
-			epsilon(1,i)   = Max( eta_i );
+		for(i=0;i<norder;i++) { // EIGEN_UPDATE: index i shifted by -1
+//			eta(colon(),i) = elemDivision( eta(colon(),i), w );
+         eta.col(i) = eta.col(i).cwiseQuotient(w);
+//			eta_i = eta(colon(),i);
+         eta_i = eta.col(i);
+
+//			epsilon(1,i)   = Max( eta_i );
+         epsilon(0,i)   = eta_i.maxCoeff();
 		}
 
 	}
 
 	// Now print statistics to file
 
-	DMatrix mv(1,1);
+	double mv;
 
 	psopt_print(workspace,"\n*******************************************************************************");
         sprintf(msg,"\n                 Evaluation of mesh refinement iteration %i                     \n", workspace->current_mesh_refinement_iteration );
@@ -250,7 +269,7 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 	sprintf(msg,"\nPhase\t\tNodes\t\tMax ODE Error\tMin ODE error\tMean ODE Error", workspace->current_mesh_refinement_iteration );
 	psopt_print(workspace,msg);
 
-        solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = 0;
+   solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = 0;
 	solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].nnodes = 0;
 
 	if (use_local_collocation(algorithm) && workspace->differential_defects=="trapezoidal") {
@@ -282,18 +301,24 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 
 	for(iphase=1;iphase<=nphases;iphase++) {
 
-	  	DMatrix& emax_history = workspace->emax_history[iphase-1];
-  		mv = mean(tra(solution.relative_errors[iphase-1]));
-		emax_history( workspace->current_mesh_refinement_iteration, 1) = length(solution.nodes[iphase-1]);
-		emax_history( workspace->current_mesh_refinement_iteration, 2) = Max(solution.relative_errors[iphase-1]);
-		sprintf(msg,"\n%i\t\t%i\t\t%e\t%e\t%e", iphase, length(solution.nodes[iphase-1]), Max(solution.relative_errors[iphase-1]),  Min(solution.relative_errors[iphase-1]), mv(1,1) );
+	  	MatrixXd& emax_history = workspace->emax_history[iphase-1];
+//  		mv = mean(tra(solution.relative_errors[iphase-1]));
+	   mv = solution.relative_errors[iphase-1].transpose().mean();
+//		emax_history( workspace->current_mesh_refinement_iteration, 1) = length(solution.nodes[iphase-1]);
+		emax_history( workspace->current_mesh_refinement_iteration-1, 0) = (double) solution.nodes[iphase-1].size();
+//		emax_history( workspace->current_mesh_refinement_iteration, 2) = Max(solution.relative_errors[iphase-1]);
+		emax_history( workspace->current_mesh_refinement_iteration-1, 1) = solution.relative_errors[iphase-1].maxCoeff();
+		sprintf(msg,"\n%i\t\t%li\t\t%e\t%e\t%e", iphase, length(solution.nodes[iphase-1]), Max(solution.relative_errors[iphase-1]),  Min(solution.relative_errors[iphase-1]), mv );
 		psopt_print(workspace,msg);
 
-		if ( emax_history( workspace->current_mesh_refinement_iteration, 2)>solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max )
+//		if ( emax_history( workspace->current_mesh_refinement_iteration, 2)>solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max )
+      if ( emax_history( workspace->current_mesh_refinement_iteration-1, 1)>solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max )
 		{
-		  solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = emax_history( workspace->current_mesh_refinement_iteration, 2);
+//		  solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = emax_history( workspace->current_mesh_refinement_iteration, 2);
+        solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = emax_history( workspace->current_mesh_refinement_iteration-1, 1);
 		}
-		solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].nnodes += length(solution.nodes[iphase-1]);
+//		solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].nnodes += length(solution.nodes[iphase-1]);
+      solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].nnodes += (int) solution.nodes[iphase-1].size();
 	}
 
 	solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].nvars = get_number_nlp_vars(problem, workspace);
@@ -322,3 +347,4 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
         psopt_print(workspace,"\n*******************************************************************************\n\n");
 
 }
+
