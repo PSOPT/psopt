@@ -50,10 +50,10 @@ void snPSOPTusrf_(int    *Status, int *n,    double x[],
 
   Alg& algorithm    = *workspace->algorithm;
 
-  DMatrix&        X = *workspace->Xsnopt;
-  DMatrix&        g = *workspace->gsnopt;
-  SparseMatrix&  Ax = *workspace->Ax;
-  SparseMatrix&  As = *workspace->As;
+  MatrixXd&        X = *workspace->Xsnopt;
+  MatrixXd&        g = *workspace->gsnopt;
+  TripletSparseMatrix&  Ax = *workspace->Ax;
+  TripletSparseMatrix&  As = *workspace->As;
 
   int i;
 
@@ -86,7 +86,7 @@ void snPSOPTusrf_(int    *Status, int *n,    double x[],
   		// that SNOPT can handle separately the linear constraints.
 
   		for(i=0; i<(*neF);i++) {
-         		F[i] -= Ax(i+1,1);
+         		F[i] -= Ax(i,1); // EIGEN_UPDATE
    		}
 
 
@@ -105,20 +105,17 @@ void snPSOPTusrf_(int    *Status, int *n,    double x[],
 
         int k;
 
-        double *xvars = X.GetPr();
+        double *xvars = &X(0);
 
-#ifdef ADOLC_VERSION_1
-	sparse_jac(workspace->tag_fg, nF, nvars, 0, xvars, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2);
-#endif
 
-#ifdef ADOLC_VERSION_2
-    int options[4];
-    options[0]=0; options[1]=0; options[2]=0;options[3]=0;
-	sparse_jac(workspace->tag_fg, nF, nvars, 0, xvars, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
 
-#endif
+       int options[4];
+       options[0]=0; options[1]=0; options[2]=0;options[3]=0;
+	    sparse_jac(workspace->tag_fg, nF, nvars, 0, xvars, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
 
-        SparseMatrix GS2(workspace->G2, nF, nvars, workspace->F_nnz, (int*) workspace->iGfun1, (int*) workspace->jGvar1);
+
+
+        TripletSparseMatrix GS2(workspace->G2, nF, nvars, workspace->F_nnz, (int*) workspace->iGfun1, (int*) workspace->jGvar1);
 
 
         // Copy the result into G[] using the right indices to send it back to SNOPT.
