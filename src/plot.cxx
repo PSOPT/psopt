@@ -40,18 +40,10 @@ e-mail:    v.m.becerra@ieee.org
 #endif
 //
 
-#include "dmatrixv.h"
 
 #undef max
 #undef min
 #undef abs
-
-#ifdef UNIX
-
-
-
-#endif
-
 
 
 #ifndef WIN32
@@ -71,35 +63,40 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 #include <assert.h>
 
 
-#define FREE_ARG char*
-
 using namespace std;
+using namespace Eigen;
 
 
-void plot(DMatrix& xa, DMatrix& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
+void plot(MatrixXd& xa, MatrixXd& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
 
-         DMatrix x = xa;
+         MatrixXd x = xa;
 
-	 DMatrix y = ya;
+	      MatrixXd y = ya;
 
          FILE *gscript;
 
          double range_min = 0.001;
 
-	 char legend_i[100];
+	      char legend_i[100];
 
-         DMatrix XY;
+         MatrixXd XY;
 
-         if ( y.GetNoRows() < y.GetNoCols() )
+         if ( y.rows() < y.cols() )
          {
-                 XY = tra(x) || tra(y);
+//                 XY = tra(x) || tra(y);
+
+                   x = x.transpose().eval();
+                   y = y.transpose().eval();
+                   XY.resize(x.rows(), x.cols()+y.cols());
+                   XY << x, y;
          }
          else {
-                 XY = x || y;
+//                 XY = x || y;
+                   XY << x, y;
          }
 
-         int ny = MIN( y.GetNoRows(), y.GetNoCols() );
+         int ny = MIN( y.rows(), y.cols() );
 
          int pos = 0;
 
@@ -115,7 +112,7 @@ void plot(DMatrix& xa, DMatrix& ya, const string& title, const char* xlabel, con
 
          if (fabs(MinY-MaxY)< range_min) MaxY=MinY+range_min;
 
-         XY.Save("XY.dat");
+         Save(XY, "XY.dat");
 
          gscript = fopen("gnuplot.scp","w");
 
@@ -174,38 +171,42 @@ void plot(DMatrix& xa, DMatrix& ya, const string& title, const char* xlabel, con
 }
 
 
-void multiplot(DMatrix& xa, DMatrix& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, int nrows, int ncols, const char* terminal,  const char* output )
+void multiplot(MatrixXd& xa, MatrixXd& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, int nrows, int ncols, const char* terminal,  const char* output )
 {
-         DMatrix x = xa;
+         MatrixXd x = xa;
 
-	 DMatrix y = ya;
+	      MatrixXd y = ya;
 
          FILE *gscript;
 
          double range_min = 0.001;
 
-	     char legend_i[100];
-   	     char ylabel_i[100];
+	      char legend_i[100];
+   	   char ylabel_i[100];
 
-         DMatrix XY, xcopy, ycopy;
+         MatrixXd XY, xcopy, ycopy;
 
          xcopy = x;
 
          ycopy = y;
 
-         if ( y.GetNoRows() < y.GetNoCols() )
+         if ( y.rows() < y.cols() )
          {
-                 XY = tra(x) || tra(y);
-
-                 xcopy = tra(x);
-
-                 ycopy = tra(y);
+//                 XY = tra(x) || tra(y);
+                   x = x.transpose().eval();
+                   y = y.transpose().eval();
+                   XY.resize(x.rows(), x.cols()+y.cols());
+                   XY<< x, y;
+                   xcopy = x;
+                   ycopy = y;
          }
          else {
-                 XY = x || y;
+//                 XY = x || y;
+
+                   XY << x, y;
          }
 
-         int ny = MIN( y.GetNoRows(), y.GetNoCols() );
+         int ny = MIN( y.rows(), y.cols() );
 
          int pos = 0;
          int pos_y = 0;
@@ -220,7 +221,7 @@ void multiplot(DMatrix& xa, DMatrix& ya, const string& title, const char* xlabel
              error_message("multiplot() error: number of independent variables to plot must correspond with the grid size nrows*ncols");
 
 
-         XY.Save("XY.dat");
+         Save(XY, "XY.dat");
 
          gscript = fopen("gnuplot.scp","w");
 
@@ -242,7 +243,9 @@ void multiplot(DMatrix& xa, DMatrix& ya, const string& title, const char* xlabel
 
          for(int i=2;i<=ny+1;i++) {
 
-                 DMatrix yi = ycopy(colon(), i-1);
+//                 MatrixXd yi = ycopy(colon(), i-1); // EIGEN_UPDATE
+
+            MatrixXd yi = ycopy.col(i-2);
 
 	         double MinY = Min( yi ) - 0.05*fabs(Min( yi ));
 
@@ -307,34 +310,36 @@ void multiplot(DMatrix& xa, DMatrix& ya, const string& title, const char* xlabel
 
 }
 
-
-
-
-void plot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
+void plot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
 
-         DMatrix x1 = x1a;
-	 DMatrix y1 = y1a;
-	 DMatrix x2 = x2a;
-	 DMatrix y2 = y2a;
+         MatrixXd x1 = x1a;
+	 		MatrixXd y1 = y1a;
+	 		MatrixXd x2 = x2a;
+	 		MatrixXd y2 = y2a;
 
          FILE *gscript;
 
          double range_min = 0.001;
 
-	 char legend_i[100];
+	 		char legend_i[100];
 
-         DMatrix XY;
+         MatrixXd XY;
 
-         if ( y1.GetNoRows() < y1.GetNoCols() )
+         if ( y1.rows() < y1.cols() )
          {
-                XY = tra(x1) || tra(y1);
+//                XY = tra(x1) || tra(y1);
+                   x1 = x1.transpose().eval();
+                   y1 = y1.transpose().eval();
+                   XY.resize(x1.rows(), x1.cols()+y1.cols());
+                   XY << x1,y1;
          }
          else {
-                XY = x1 || y1;
+//                XY = x1 || y1;
+                  XY << x1, x2;
          }
 
-         int ny = MIN( y1.GetNoRows(), y1.GetNoCols() );
+         int ny = MIN( y1.rows(), y1.cols() );
 
          int pos = 0;
 
@@ -351,7 +356,7 @@ void plot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, const string& 
              MaxY =  range_min;
          }
 
-         XY.Save("XY1.dat");
+         Save(XY, "XY1.dat");
 
          gscript = fopen("gnuplot.scp","w");
 
@@ -399,20 +404,26 @@ void plot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, const string& 
 
          }
 
-         if ( y2.GetNoRows() < y2.GetNoCols() )
+         if ( y2.rows() < y2.cols() )
          {
-               XY = tra(x2) || tra(y2);
+//               XY = tra(x2) || tra(y2);
+                   x2 = x2.transpose().eval();
+                   y2 = y2.transpose().eval();
+                   XY.resize(x2.rows(), x2.cols()+y2.cols());
+                   XY<< x2, y2;
          }
          else {
-               XY = x2 || y2;
+//               XY = x2 || y2;
+                 XY << x2 , y2;
+
          }
 
-         ny = MIN( y2.GetNoRows(), y2.GetNoCols());
+         ny = MIN( y2.rows(), y2.cols());
 
 //         pos = 0;
 
 
-         XY.Save("XY2.dat");
+         Save(XY, "XY2.dat");
 
          for(int i=2;i<=ny+1;i++) {
 
@@ -450,31 +461,36 @@ void plot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, const string& 
 }
 
 
-void spplot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
+void spplot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
 
-         DMatrix x1 = x1a;
-	     DMatrix y1 = y1a;
-	     DMatrix x2 = x2a;
-	     DMatrix y2 = y2a;
+         MatrixXd x1 = x1a;
+	     	MatrixXd y1 = y1a;
+	     	MatrixXd x2 = x2a;
+	     	MatrixXd y2 = y2a;
 
          FILE *gscript;
 
          double range_min = 0.001;
 
-	     char legend_i[100];
+	     	char legend_i[100];
 
-         DMatrix XY;
+         MatrixXd XY;
 
-         if ( y1.GetNoRows() < y1.GetNoCols() )
+         if ( y1.rows() < y1.cols() )
          {
-                XY = tra(x1) || tra(y1);
+//                XY = tra(x1) || tra(y1);
+                   x1 = x1.transpose().eval();
+                   y1 = y1.transpose().eval();
+                   XY.resize(x1.rows(), x1.cols()+y1.cols());
+                   XY<< x1,y1 ;
          }
          else {
-                XY = x1 || y1;
+//                XY = x1 || y1;
+                  XY << x1, y1;
          }
 
-         int ny = MIN( y1.GetNoRows(), y1.GetNoCols() );
+         int ny = MIN( y1.rows(), y1.cols() );
 
          int pos = 0;
 
@@ -491,7 +507,7 @@ void spplot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, const string
              MaxY =  range_min;
          }
 
-         XY.Save("XY1.dat");
+         Save(XY, "XY1.dat");
 
          gscript = fopen("gnuplot.scp","w");
 
@@ -539,20 +555,25 @@ void spplot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, const string
 
          }
 
-         if ( y2.GetNoRows() < y2.GetNoCols() )
+         if ( y2.rows() < y2.cols() )
          {
-               XY = tra(x2) || tra(y2);
+//               XY = tra(x2) || tra(y2);
+                   x2 = x2.transpose().eval();
+                   y2 = y2.transpose().eval();
+                   XY.resize(x2.rows(), x2.cols()+y2.cols());
+                   XY << x2, y2;
          }
          else {
-               XY = x2 || y2;
+//               XY = x2 || y2;
+                 XY << x2, y2;
          }
 
-         ny = MIN( y2.GetNoRows(), y2.GetNoCols());
+         ny = MIN( y2.rows(), y2.cols());
 
 //         pos = 0;
 
 
-         XY.Save("XY2.dat");
+         Save(XY, "XY2.dat");
 
          for(int i=2;i<=ny+1;i++) {
 
@@ -591,35 +612,38 @@ void spplot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, const string
 
 
 
-
-
-void plot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, DMatrix& x3a, DMatrix& y3a,
+void plot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, MatrixXd& x3a, MatrixXd& y3a,
           const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
-         DMatrix x1 = x1a;
-	 DMatrix y1 = y1a;
-	 DMatrix x2 = x2a;
-	 DMatrix y2 = y2a;
-	 DMatrix x3 = x3a;
-	 DMatrix y3 = y3a;
+         MatrixXd x1 = x1a;
+	      MatrixXd y1 = y1a;
+	      MatrixXd x2 = x2a;
+	      MatrixXd y2 = y2a;
+	      MatrixXd x3 = x3a;
+	      MatrixXd y3 = y3a;
 
          FILE *gscript;
 
          double range_min = 0.001;
 
-	 char legend_i[100];
+	      char legend_i[100];
 
-         DMatrix XY;
+         MatrixXd XY;
 
-         if ( y1.GetNoRows() < y1.GetNoCols() )
+         if ( y1.rows() < y1.cols() )
          {
-                XY = tra(x1) || tra(y1);
+//                XY = tra(x1) || tra(y1);
+                   x1 = x1.transpose().eval();
+                   y1 = y1.transpose().eval();
+                   XY.resize(x1.rows(), x1.cols()+y1.cols());
+                   XY<< x1,y1 ;
          }
          else {
-                XY = x1 || y1;
+//                XY = x1 || y1;
+                XY << x1 , y1;
          }
 
-         int ny = MIN( y1.GetNoRows(), y1.GetNoCols() );
+         int ny = MIN( y1.rows(), y1.cols() );
 
          int pos = 0;
 
@@ -636,7 +660,7 @@ void plot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, DMatrix& x3a, 
              MaxY =  range_min;
          }
 
-         XY.Save("XY1.dat");
+         Save(XY,"XY1.dat");
 
          gscript = fopen("gnuplot.scp","w");
 
@@ -684,20 +708,25 @@ void plot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, DMatrix& x3a, 
 
          }
 
-         if ( y2.GetNoRows() < y2.GetNoCols() )
+         if ( y2.rows() < y2.cols() )
          {
-               XY = tra(x2) || tra(y2);
+//               XY = tra(x2) || tra(y2);
+                   x2 = x2.transpose().eval();
+                   y2 = y2.transpose().eval();
+                   XY.resize(x2.rows(), x2.cols()+y2.cols());
+                   XY<< x1,y1 ;
          }
          else {
-               XY = x2 || y2;
+//               XY = x2 || y2;
+                 XY << x2 , y2;
          }
 
-         ny = MIN( y2.GetNoRows(), y2.GetNoCols());
+         ny = MIN( y2.rows(), y2.cols());
 
 //         pos = 0;
 
 
-         XY.Save("XY2.dat");
+         Save(XY,"XY2.dat");
 
          for(int i=2;i<=ny+1;i++) {
 
@@ -723,20 +752,25 @@ void plot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, DMatrix& x3a, 
          }
 
 
-         if ( y3.GetNoRows() < y3.GetNoCols() )
+         if ( y3.rows() < y3.cols() )
          {
-               XY = tra(x3) || tra(y3);
+//               XY = tra(x3) || tra(y3);
+                   x3 = x3.transpose().eval();
+                   y3 = y3.transpose().eval();
+                   XY.resize(x3.rows(), x3.cols()+y3.cols());
+                   XY<< x3,y3 ;
          }
          else {
-               XY = x3 || y3;
+//               XY = x3 || y3;
+               XY << x3, y3;
          }
 
-         ny = MIN( y3.GetNoRows(), y3.GetNoCols());
+         ny = MIN( y3.rows(), y3.cols());
 
 //         pos = 0;
 
 
-         XY.Save("XY3.dat");
+         Save(XY,"XY3.dat");
 
          for(int i=2;i<=ny+1;i++) {
 
@@ -774,32 +808,37 @@ void plot(DMatrix& x1a, DMatrix& y1a, DMatrix& x2a, DMatrix& y2a, DMatrix& x3a, 
 }
 
 
-void polar(DMatrix& theta_a, DMatrix& r_a, const string& title,  const char* legend, const char* terminal, const char* output)
+void polar(MatrixXd& theta_a, MatrixXd& r_a, const string& title,  const char* legend, const char* terminal, const char* output)
 {
-         DMatrix theta = theta_a;
-	 DMatrix r = r_a;
+         MatrixXd theta = theta_a;
+	 		MatrixXd r = r_a;
 
          FILE *gscript;
 
          double range_min = 0.001;
 
-	 char legend_i[100];
+	 		char legend_i[100];
 
-         DMatrix & x = theta;
+         MatrixXd & x = theta;
 
-         DMatrix & y = r;
+         MatrixXd & y = r;
 
-         DMatrix XY;
+         MatrixXd XY;
 
-         if ( y.GetNoRows() < y.GetNoCols() )
+         if ( y.rows() < y.cols() )
          {
-                 XY = tra(x) || tra(y);
+//                 XY = tra(x) || tra(y);
+                   x = x.transpose().eval();
+                   y = y.transpose().eval();
+                   XY.resize(x.rows(), x.cols()+y.cols());
+                   XY<< x,y ;
          }
          else {
-                 XY = x || y;
+//                 XY = x || y;
+                   XY << x,y;
          }
 
-         int ny = MIN( y.GetNoRows(), y.GetNoCols() );
+         int ny = MIN( y.rows(), y.cols() );
 
          int pos = 0;
 
@@ -816,7 +855,7 @@ void polar(DMatrix& theta_a, DMatrix& r_a, const string& title,  const char* leg
              MaxY =  range_min;
          }
 
-         XY.Save("XY.dat");
+         Save(XY,"XY.dat");
 
          gscript = fopen("gnuplot.scp","w");
 
@@ -870,36 +909,39 @@ void polar(DMatrix& theta_a, DMatrix& r_a, const string& title,  const char* leg
 }
 
 
-void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, const string& title,  const char* legend, const char* terminal, const char* output)
+void polar(MatrixXd& theta_a, MatrixXd& r_a, MatrixXd& theta2_a, MatrixXd& r2_a, const string& title,  const char* legend, const char* terminal, const char* output)
 {
-         DMatrix theta = theta_a;
-
-	 DMatrix r = r_a;
-
-	 DMatrix theta2 = theta2_a;
-	 DMatrix r2 = r2_a;
+         MatrixXd theta = theta_a;
+	 		MatrixXd r = r_a;
+	 		MatrixXd theta2 = theta2_a;
+	 		MatrixXd r2 = r2_a;
 
          FILE *gscript;
 
          double range_min = 0.001;
 
-	 char legend_i[100];
+	   	char legend_i[100];
 
-         DMatrix  x = theta;
+         MatrixXd  x = theta;
 
-         DMatrix  y = r;
+         MatrixXd  y = r;
 
-         DMatrix XY;
+         MatrixXd XY;
 
-         if ( y.GetNoRows() < y.GetNoCols() )
+         if ( y.rows() < y.cols() )
          {
-                 XY = tra(x) || tra(y);
+//                 XY = tra(x) || tra(y);
+                   x = x.transpose().eval();
+                   y = y.transpose().eval();
+                   XY.resize(x.rows(), x.cols()+y.cols());
+                   XY<< x,y ;
          }
          else {
-                 XY = x || y;
+//                 XY = x || y;
+                 XY << x,y;
          }
 
-         int ny = MIN( y.GetNoRows(), y.GetNoCols() );
+         int ny = MIN( y.rows(), y.cols() );
 
          int pos = 0;
 
@@ -913,7 +955,7 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, con
              MaxY =  range_min;
          }
 
-         XY.Save("XY.dat");
+         Save(XY,"XY.dat");
 
          gscript = fopen("gnuplot.scp","w");
 
@@ -960,15 +1002,20 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, con
          y = r2;
 
 
-         if ( y.GetNoRows() < y.GetNoCols() )
+         if ( y.rows() < y.cols() )
          {
-                 XY = tra(x) || tra(y);
+//                 XY = tra(x) || tra(y);
+                   x = x.transpose().eval();
+                   y = y.transpose().eval();
+                   XY.resize(x.rows(), x.cols()+y.cols());
+                   XY<< x,y ;
          }
          else {
-                 XY = x || y;
+//                 XY = x || y;
+                 XY << x,y;
          }
 
-         ny = MIN( y.GetNoRows(), y.GetNoCols() );
+         ny = MIN( y.rows(), y.cols() );
 
          pos = 0;
 
@@ -982,7 +1029,7 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, con
              MaxY =  range_min;
          }
 
-         XY.Save("XY2.dat");
+         Save(XY,"XY2.dat");
 
 //         fprintf(gscript,"\nplot [ ] ");
 
@@ -1020,39 +1067,44 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, con
 }
 
 
-void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, DMatrix& theta3_a, DMatrix& r3_a, const string& title,  const char* legend, const char* terminal, const char* output)
+void polar(MatrixXd& theta_a, MatrixXd& r_a, MatrixXd& theta2_a, MatrixXd& r2_a, MatrixXd& theta3_a, MatrixXd& r3_a, const string& title,  const char* legend, const char* terminal, const char* output)
 {
 
-         DMatrix theta = theta_a;
-	 DMatrix r = r_a;
+         MatrixXd theta = theta_a;
+	 		MatrixXd r = r_a;
 
-	 DMatrix theta2 = theta2_a;
-	 DMatrix r2 = r2_a;
+	 		MatrixXd theta2 = theta2_a;
+	 		MatrixXd r2 = r2_a;
 
-	 DMatrix theta3 = theta3_a;
-	 DMatrix r3 = r3_a;
+	 		MatrixXd theta3 = theta3_a;
+	 		MatrixXd r3 = r3_a;
 
          FILE *gscript;
 
          double range_min = 0.001;
 
-	 char legend_i[100];
+	 		char legend_i[100];
 
-         DMatrix  x = theta;
+         MatrixXd  x = theta;
 
-         DMatrix  y = r;
+         MatrixXd  y = r;
 
-         DMatrix XY;
+         MatrixXd XY;
 
-         if ( y.GetNoRows() < y.GetNoCols() )
+         if ( y.rows() < y.cols() )
          {
-                 XY = tra(x) || tra(y);
+//                 XY = tra(x) || tra(y);
+                   x = x.transpose().eval();
+                   y = y.transpose().eval();
+                   XY.resize(x.rows(), x.cols()+y.cols());
+                   XY<< x,y ;
          }
          else {
-                 XY = x || y;
+//                 XY = x || y;
+                 XY << x,y;
          }
 
-         int ny = MIN( y.GetNoRows(), y.GetNoCols() );
+         int ny = MIN( y.rows(), y.cols() );
 
          int pos = 0;
 
@@ -1066,7 +1118,7 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, DMa
              MaxY =  range_min;
          }
 
-         XY.Save("XY.dat");
+         Save(XY,"XY.dat");
 
          gscript = fopen("gnuplot.scp","w");
 
@@ -1113,16 +1165,20 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, DMa
          y = r2;
 
 
-         if ( y.GetNoRows() < y.GetNoCols() )
-
+         if ( y.rows() < y.cols() )
          {
-                 XY = tra(x) || tra(y);
+//                 XY = tra(x) || tra(y);
+                   x = x.transpose().eval();
+                   y = y.transpose().eval();
+                   XY.resize(x.rows(), x.cols()+y.cols());
+                   XY<< x,y ;
          }
          else {
-                 XY = x || y;
+//                 XY = x || y;
+                 XY << x,y;
          }
 
-         ny = MIN( y.GetNoRows(), y.GetNoCols() );
+         ny = MIN( y.rows(), y.cols() );
 
          pos = 0;
 
@@ -1136,7 +1192,7 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, DMa
              MaxY =  range_min;
          }
 
-         XY.Save("XY2.dat");
+         Save(XY,"XY2.dat");
 
 //         fprintf(gscript,"\nplot [ ] ");
 
@@ -1168,15 +1224,20 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, DMa
          y = r3;
 
 
-         if ( y.GetNoRows() < y.GetNoCols() )
+         if ( y.rows() < y.cols() )
          {
-                 XY = tra(x) || tra(y);
+//                 XY = tra(x) || tra(y);
+                   x = x.transpose().eval();
+                   y = y.transpose().eval();
+                   XY.resize(x.rows(), x.cols()+y.cols());
+                   XY<< x,y ;
          }
          else {
-                 XY = x || y;
+//                 XY = x || y;
+                 XY << x,y;
          }
 
-         ny = MIN( y.GetNoRows(), y.GetNoCols() );
+         ny = MIN( y.rows(), y.cols() );
 
          pos = 0;
 
@@ -1190,7 +1251,7 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, DMa
              MaxY =  range_min;
          }
 
-         XY.Save("XY3.dat");
+         Save(XY,"XY3.dat");
 
 //         fprintf(gscript,"\nplot [ ] ");
 
@@ -1232,13 +1293,13 @@ void polar(DMatrix& theta_a, DMatrix& r_a, DMatrix& theta2_a, DMatrix& r2_a, DMa
 
 
 
-void surf(DMatrix& xa, DMatrix& ya, DMatrix& za, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal, const char* output, const char* view)
+void surf(MatrixXd& xa, MatrixXd& ya, MatrixXd& za, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal, const char* output, const char* view)
 {
 	 // This function creates surface plots given the co-ordinate values (x,y) and the height matrix z.
 
-	 DMatrix x = xa;
-	 DMatrix y = ya;
-	 DMatrix z = za;
+	 		MatrixXd x = xa;
+	 		MatrixXd y = ya;
+			MatrixXd z = za;
 
          FILE *gscript, *datafile;
 
@@ -1246,21 +1307,23 @@ void surf(DMatrix& xa, DMatrix& ya, DMatrix& za, const string& title, const char
 
          int i,j;
 
-         DMatrix X, Y;
+         MatrixXd X, Y;
 
-         if (x.GetNoRows()>1 && x.GetNoCols()>1) error_message("surf(): DMatrix object x must be a vector");
+         if (x.rows()>1 && x.cols()>1) error_message("surf(): MatrixXd object x must be a vector");
 
-         if (y.GetNoRows()>1 && y.GetNoCols()>1) error_message("surf(): DMatrix object y must be a vector");
+         if (y.rows()>1 && y.cols()>1) error_message("surf(): MatrixXd object y must be a vector");
 
-         X = x(colon());
+//         X = x(colon());
+           X = stack_columns(x);
 
-         Y = y(colon());
+//         Y = y(colon());
+           Y = stack_columns(y);
 
-         if ( z.GetNoRows()*z.GetNoCols() != length(X)*length(y) ) {
-		error_message("surf(): input DMatrix object z has inconsistent dimensions with length(x) and length(y)");
+         if ( z.rows()*z.cols() != length(X)*length(y) ) {
+				error_message("surf(): input MatrixXd object z has inconsistent dimensions with length(x) and length(y)");
          }
 
-         int nz = MIN( z.GetNoRows(), z.GetNoCols() );
+         int nz = MIN( z.rows(), z.cols() );
 
          int pos = 0;
 
@@ -1278,12 +1341,12 @@ void surf(DMatrix& xa, DMatrix& ya, DMatrix& za, const string& title, const char
 
          if (datafile==NULL) error_message("surf(): error creating gnuplot data file");
 
-         for (i=1; i<=length(X); i++) {
-		for(j=1;j<=length(Y);j++) {
+         for (i=0; i<length(X); i++) {
+				for(j=0;j<length(Y);j++) {
                     fprintf(datafile,"%f  %f  %f\n",X(i),Y(j), z(i,j) );
-	        }
-		fprintf(datafile,"\n");
-	 }
+	         } 
+		      fprintf(datafile,"\n");
+	      }
 
          fclose(datafile);
 
@@ -1327,13 +1390,13 @@ void surf(DMatrix& xa, DMatrix& ya, DMatrix& za, const string& title, const char
 
 }
 
-void plot3(DMatrix& xa, DMatrix& ya, DMatrix& za, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal, const char* output, const char* view)
+void plot3(MatrixXd& xa, MatrixXd& ya, MatrixXd& za, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal, const char* output, const char* view)
 {
 	 // This function creates 3d plots given the co-ordinate values (x,y) and the height vector z.
 
-	 DMatrix x = xa;
-	 DMatrix y = ya;
-	 DMatrix z = za;
+	 		MatrixXd x = xa;
+	 		MatrixXd y = ya;
+	 		MatrixXd z = za;
 
          FILE *gscript, *datafile;
 
@@ -1341,25 +1404,28 @@ void plot3(DMatrix& xa, DMatrix& ya, DMatrix& za, const string& title, const cha
 
          int i,j;
 
-         DMatrix X, Y, Z;
+         MatrixXd X, Y, Z;
 
-         if (x.GetNoRows()>1 && x.GetNoCols()>1) error_message("plot3(): DMatrix object x must be a vector");
+         if (x.rows()>1 && x.cols()>1) error_message("plot3(): MatrixXd object x must be a vector");
 
-         if (y.GetNoRows()>1 && y.GetNoCols()>1) error_message("plot3(): DMatrix object y must be a vector");
+         if (y.rows()>1 && y.cols()>1) error_message("plot3(): MatrixXd object y must be a vector");
 
-         if (z.GetNoRows()>1 && z.GetNoCols()>1) error_message("plot3(): DMatrix object z must be a vector");
+         if (z.rows()>1 && z.cols()>1) error_message("plot3(): MatrixXd object z must be a vector");
 
-         X = x(colon());
+//         X = x(colon());
+         X = stack_columns(x); 
 
-         Y = y(colon());
+//         Y = y(colon());
+         Y = stack_columns(y);
 
-         Z = z(colon());
+//         Z = z(colon());
+         Z = stack_columns(z);
 
          if ( length(X) != length(Y) || length(x)!=length(Z) ) {
 		error_message("plot3(): inconsistent array lengths");
          }
 
-         int nz = MIN( z.GetNoRows(), z.GetNoCols() );
+         int nz = MIN( z.rows(), z.cols() );
 
          int pos = 0;
 
@@ -1377,11 +1443,11 @@ void plot3(DMatrix& xa, DMatrix& ya, DMatrix& za, const string& title, const cha
 
          if (datafile==NULL) error_message("surf(): error creating gnuplot data file");
 
-         for (i=1; i<=length(X); i++) {
+         for (i=0; i<length(X); i++) {
 
                fprintf(datafile,"%f  %f  %f\n",X(i),Y(i), Z(i) );
 
-	 }
+	      }
 
          fclose(datafile);
 
@@ -1405,9 +1471,9 @@ void plot3(DMatrix& xa, DMatrix& ya, DMatrix& za, const string& title, const cha
 
          fprintf(gscript,"\nset hidden3d");
 
-	 if (view != NULL) {
+      	if (view != NULL) {
              fprintf(gscript,"\nset view %s", view);
-	 }
+	      }
 
          fprintf(gscript,"\nset grid");
 
@@ -1420,4 +1486,9 @@ void plot3(DMatrix& xa, DMatrix& ya, DMatrix& za, const string& title, const cha
          system("gnuplot -persist gnuplot.scp ");
 
 }
+
+
+
+
+
 
