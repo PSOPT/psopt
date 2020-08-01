@@ -41,10 +41,11 @@ void get_individual_control_trajectory(adouble *control_traj, int control_index,
     int ncontrols = problem.phase[i].ncontrols;
     int norder    = problem.phase[i].current_number_of_intervals;
     int iphase_offset = get_iphase_offset(problem,iphase, workspace);
-    DMatrix& control_scaling = problem.phase[i].scale.controls;
+    MatrixXd& control_scaling = problem.phase[i].scale.controls;
 
-    for(k=1;k<=norder+1;k++) {
-	  control_traj[k-1] = xad[iphase_offset+(k-1)*ncontrols+control_index-1]/control_scaling(control_index);
+    for(k=0;k<norder+1;k++) { // EIGEN_UPDATE: k index shifted by -1
+//	  control_traj[k-1] = xad[iphase_offset+(k-1)*ncontrols+control_index-1]/control_scaling(control_index); // EIGEN_UPDATE
+          control_traj[k] = xad[iphase_offset+(k)*ncontrols+control_index]/control_scaling(control_index);
     }
 
 }
@@ -59,10 +60,11 @@ void get_individual_state_trajectory(adouble *state_traj, int state_index, int i
     int norder    = problem.phase[i].current_number_of_intervals;
     int iphase_offset = get_iphase_offset(problem,iphase, workspace);
     int offset1   = ncontrols*(norder+1);
-    DMatrix& state_scaling = problem.phase[i].scale.states;
+    MatrixXd& state_scaling = problem.phase[i].scale.states;
 
-    for(k=1;k<=norder+1;k++) {
-	  state_traj[k-1] = xad[iphase_offset+offset1+(k-1)*nstates+state_index-1]/state_scaling(state_index);
+    for(k=0;k<norder+1;k++) { // EIGEN_UPDATE: k index shifted by -1
+//	  state_traj[k-1] = xad[iphase_offset+offset1+(k-1)*nstates+state_index-1]/state_scaling(state_index); // EIGEN_UPDATE
+          state_traj[k] = xad[iphase_offset+offset1+(k)*nstates+state_index]/state_scaling(state_index); 
     }
 
 }
@@ -70,7 +72,7 @@ void get_individual_state_trajectory(adouble *state_traj, int state_index, int i
 
 
 
-void compute_derivatives_trajectory( DMatrix& Xdot, Prob& problem, Sol& solution,  int iphase, Workspace* workspace )
+void compute_derivatives_trajectory( MatrixXd& Xdot, Prob& problem, Sol& solution,  int iphase, Workspace* workspace )
 {
 
 	adouble *derivatives;
@@ -108,14 +110,14 @@ void compute_derivatives_trajectory( DMatrix& Xdot, Prob& problem, Sol& solution
         int nparam    = problem.phase[i].nparameters;
 
 
-        for(l=1;l<=nparam;  l++) parameters[l-1]  = (solution.parameters[i])(l);
+        for(l=0;l<nparam;  l++) parameters[l]  = (solution.parameters[i])(l); // EIGEN_UPDATE: Index l shifted by -1
 
-	for(k=1; k<=norder+1; k++)
+	for(k=0; k<norder+1; k++)  // EIGEN_UPDATE: Index k shifted by -1
         {
 
-            for(l=1;l<=ncontrols;l++) controls[l-1] = (solution.controls[i])(l,k);
+            for(l=0;l<ncontrols;l++) controls[l-1] = (solution.controls[i])(l,k); // EIGEN_UPDATE: Index l shifted by -1
 
-            for(l=1;l<=nstates;  l++) states[l-1]   = (solution.states[i])(l,k);
+            for(l=0;l<nstates;  l++) states[l-1]   = (solution.states[i])(l,k);   // EIGEN_UPDATE: Index l shifted by -1
 
 
             time = (solution.nodes[i])(k);
@@ -123,8 +125,8 @@ void compute_derivatives_trajectory( DMatrix& Xdot, Prob& problem, Sol& solution
              problem.dae(derivatives, path,  states, controls, parameters, time, solution.xad, iphase,workspace);
 
 
-            for(j=1; j<= nstates; j++) {
-                 Xdot(j,k) = derivatives[j-1].value();
+            for(j=0; j< nstates; j++) {  // EIGEN_UPDATE: j index shifted by -1
+                 Xdot(j,k) = derivatives[j].value();
             }
 
         }
