@@ -46,8 +46,8 @@ void get_delayed_control(adouble* delayed_control, int control_index, int iphase
  adouble* single_control_traj = workspace->single_trajectory_tmp;
  get_individual_control_trajectory(single_control_traj, control_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
- for (k=1; k<=norder+1; k++) {
-	time_array[k-1]  =  convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
+ for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
+	time_array[k]  =  convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
  }
  if ( time-delay>t0 ) // Careful because this if-then statement may not be differentiable
         delayed_time= time-delay;
@@ -73,9 +73,9 @@ void get_delayed_state(adouble* delayed_state, int state_index, int iphase, adou
  adouble* single_state_traj =  workspace->single_trajectory_tmp;
  get_individual_state_trajectory(single_state_traj, state_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
- for (k=1; k<=norder+1; k++) {
+ for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
         ts = (workspace->snodes[i])(k);
-	time_array[k-1]  =  convert_to_original_time_ad( ts, t0, tf );
+	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
  }
  if ( time-delay>t0 )
         delayed_time= time-delay;
@@ -85,7 +85,7 @@ void get_delayed_state(adouble* delayed_state, int state_index, int iphase, adou
  if ( use_global_collocation(algorithm) &&  norder<100  ) {
  	lagrange_interpolation_ad( delayed_state, delayed_time, time_array, single_state_traj, norder+1, workspace);
  }
- else if ( workspace->differential_defects == "Hermite-Simpson" || workspace->differential_defects == "trapezoidal" ) {
+ else  {
 	spline_interpolation( delayed_state, delayed_time, time_array, single_state_traj, norder+1, workspace);
  }
 
@@ -106,9 +106,9 @@ void get_interpolated_state(adouble* interp_state, int state_index, int iphase, 
  adouble* single_state_traj =  workspace->single_trajectory_tmp;
  get_individual_state_trajectory(single_state_traj, state_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
- for (k=1; k<=norder+1; k++) {
+ for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
         ts = (workspace->snodes[i])(k);
-	time_array[k-1]  =  convert_to_original_time_ad( ts, t0, tf );
+	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
  }
 
  if (  use_global_collocation(algorithm) && norder<100 ) {
@@ -135,9 +135,9 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
  adouble* single_control_traj =  workspace->single_trajectory_tmp;
  get_individual_control_trajectory(single_control_traj, control_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
- for (k=1; k<=norder+1; k++) {
+ for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
         ts = (workspace->snodes[i])(k);
-	time_array[k-1]  =  convert_to_original_time_ad( ts, t0, tf );
+	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
  }
 
  spline_interpolation( interp_control, time, time_array, single_control_traj, norder+1, workspace);
@@ -155,10 +155,10 @@ void get_control_derivative(adouble* control_derivative, int control_index, int 
 
      get_times(&t0, &tf, xad, iphase, workspace);
 
-     double h = sqrt(DMatrix::GetEPS());
+     double h = sqrt(PSOPT_extras::GetEPS());
 
      if ( time == tf ) {
-	 h = -h;
+	     h = -h;
      }
 
      ptime = time + h;
@@ -173,7 +173,7 @@ void get_control_derivative(adouble* control_derivative, int control_index, int 
 
 void get_state_derivative(adouble* state_derivative, int state_index, int iphase, adouble& time, adouble* xad, Workspace* workspace)
 {
-// This function computes an approximation to the time derivative of a specified control variable, based
+// This function computes an approximation to the time derivative of a specified state variable, based
 // on an interpolated finite difference.
      adouble t0, tf;
      adouble pstate;
@@ -182,10 +182,10 @@ void get_state_derivative(adouble* state_derivative, int state_index, int iphase
 
      get_times(&t0, &tf, xad, iphase, workspace);
 
-     double h = sqrt(DMatrix::GetEPS());
+     double h = sqrt(PSOPT_extras::GetEPS());
 
      if ( time == tf ) {
-	 h = -h;
+	     h = -h;
      }
 
      ptime = time + h;
