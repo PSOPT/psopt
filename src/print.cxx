@@ -29,7 +29,8 @@ e-mail:    v.m.becerra@ieee.org
 **********************************************************************************************/
 
 #include "psopt.h"
-#include <IpIpoptApplication.hpp>
+
+using namespace Eigen;
 
 void psopt_print(Workspace* workspace, const char* msg)
 {
@@ -43,8 +44,6 @@ void psopt_print(Workspace* workspace, const char* msg)
 void print_iterations_summary(Prob& problem,Alg& algorithm,Sol& solution, Workspace* workspace)
 {
 
-	int nphases = problem.nphases;
-	int iphase;
 	FILE* outfile  = workspace->psopt_solution_summary_file;
         FILE* outfile2 = workspace->mesh_statistics;
 	int jj;
@@ -57,15 +56,15 @@ void print_iterations_summary(Prob& problem,Alg& algorithm,Sol& solution, Worksp
 	double sum_CPU_time        = 0.0;
 
 
-        fprintf(outfile,"\n\n*****************************************************************************************************************");
-        fprintf(outfile,"\n************************************* Mesh Refinement Statistics ************************************************");
+   fprintf(outfile,"\n\n*****************************************************************************************************************");
+   fprintf(outfile,"\n************************************* Mesh Refinement Statistics ************************************************");
 	fprintf(outfile,"\n*****************************************************************************************************************");
 
 	fprintf(outfile,"\n\nIter\tMethod\tNodes\tNV\tNC\tOEval\tCEval\tJEval\tHEval\tODE RHS\tODE Error\tNLP CPU(sec)");
 
 	for (jj=0;jj< workspace->current_mesh_refinement_iteration;jj++) {
 
-	  fprintf(outfile,"\n%i\t%s\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%e\t%e", jj+1, solution.mesh_stats[jj].method.c_str(), solution.mesh_stats[jj].nnodes, solution.mesh_stats[jj].nvars,
+	   fprintf(outfile,"\n%i\t%s\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%i\t%e\t%e", jj+1, solution.mesh_stats[jj].method.c_str(), solution.mesh_stats[jj].nnodes, solution.mesh_stats[jj].nvars,
 		solution.mesh_stats[jj].ncons, solution.mesh_stats[jj].n_obj_evals, solution.mesh_stats[jj].n_con_evals,
 		solution.mesh_stats[jj].n_jacobian_evals, solution.mesh_stats[jj].n_hessian_evals,
 		solution.mesh_stats[jj].n_ode_rhs_evals, solution.mesh_stats[jj].epsilon_max,
@@ -81,9 +80,9 @@ void print_iterations_summary(Prob& problem,Alg& algorithm,Sol& solution, Worksp
 
         fprintf(outfile,"\n__________________________________________________________________________________________________________________\n\n");
 
-	double diff_CPU_time = solution.cpu_time - sum_CPU_time;
+	   double diff_CPU_time = solution.cpu_time - sum_CPU_time;
 
-	        fprintf(outfile,"\nAdditional CPU time (sec)\t\t\t\t\t\t\t\t\t%e",
+	   fprintf(outfile,"\nAdditional CPU time (sec)\t\t\t\t\t\t\t\t\t%e",
 		diff_CPU_time);
 
 		fprintf(outfile,"\nTotals\t-\t-\t-\t-\t%i\t%i\t%i\t%i\t%i\t-\t\t%e",
@@ -92,10 +91,10 @@ void print_iterations_summary(Prob& problem,Alg& algorithm,Sol& solution, Worksp
 		sum_n_ode_rhs_evals,
 		solution.cpu_time);
 
-        fprintf(outfile,"\n__________________________________________________________________________________________________________________\n\n");
+      fprintf(outfile,"\n__________________________________________________________________________________________________________________\n\n");
 
 
-	fclose(outfile);
+	   fclose(outfile);
 
 
 	fprintf(outfile2,"\n\n*****************************************************************************************************************");
@@ -111,12 +110,6 @@ void print_iterations_summary(Prob& problem,Alg& algorithm,Sol& solution, Worksp
 		solution.mesh_stats[jj].n_jacobian_evals, solution.mesh_stats[jj].n_hessian_evals,
 		solution.mesh_stats[jj].n_ode_rhs_evals, solution.mesh_stats[jj].epsilon_max,
 		solution.mesh_stats[jj].CPU_time);
-
-
-
-
-
-
 
 
 
@@ -146,8 +139,7 @@ void print_iterations_summary(Prob& problem,Alg& algorithm,Sol& solution, Worksp
 void print_iterations_summary_tex(Prob& problem,Alg& algorithm,Sol& solution, Workspace* workspace)
 {
 
-	int nphases = problem.nphases;
-	int iphase;
+
 	FILE* outfile = workspace->mesh_statistics_tex;
 	int jj;
 
@@ -185,7 +177,7 @@ void print_iterations_summary_tex(Prob& problem,Alg& algorithm,Sol& solution, Wo
 
 	fprintf(outfile,"%s","\n\\renewcommand{\\tabcolsep}{0.15cm}");
 
-        fprintf(outfile,"\n\\tiny");
+        fprintf(outfile,"\n\\small");
 
         fprintf(outfile,"\n\\begin{tabular}{llllllllllll}");
 
@@ -209,7 +201,7 @@ void print_iterations_summary_tex(Prob& problem,Alg& algorithm,Sol& solution, Wo
 
 	double diff_CPU_time = solution.cpu_time - sum_CPU_time;
 
-        fprintf(outfile,"\n\\hline");
+      fprintf(outfile,"\n\\hline");
 		fprintf(outfile,"\nCPU$_\\mathrm{b}$ &-&-&-&-&-&-&-&-&-&-&%.3e\\\\",
 		diff_CPU_time);
 
@@ -219,13 +211,13 @@ void print_iterations_summary_tex(Prob& problem,Alg& algorithm,Sol& solution, Wo
 		sum_n_ode_rhs_evals,
 		solution.cpu_time);
 
-        fprintf(outfile,"\n\\end{tabular}");
+      fprintf(outfile,"\n\\end{tabular}");
 
-	fprintf(outfile,"%s",table_key.c_str());
+	   fprintf(outfile,"%s",table_key.c_str());
 
-        fprintf(outfile,"\n\\normalsize");
+      fprintf(outfile,"\n\\normalsize");
 
-        fprintf(outfile,"\n\\end{table}");
+      fprintf(outfile,"\n\\end{table}");
 
 	fclose(outfile);
 
@@ -240,7 +232,7 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
     string filename;
     string mesh_stats_file = "mesh_statistics.txt";
     int i;
-    DMatrix mv(1);
+
 
     if ( !algorithm.print_level ) return;
 
@@ -260,14 +252,14 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
     fprintf(outfile,"\nDate and time of this run: \t\t\t%s", solution.end_date_and_time.c_str() );
 
     if ( algorithm.nlp_method == "IPOPT") {
-        if (solution.nlp_return_code  == (int) Ipopt::ApplicationReturnStatus::Solve_Succeeded) {
+        if (solution.nlp_return_code  == (int) Solve_Succeeded) {
             fprintf(outfile,"\nOptimal (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {
-		mv = mean(tra(solution.relative_errors[i]));
+
             	fprintf(outfile,"\nPhase %i endpoint cost function value:\t\t%e",i+1, solution.endpoint_cost[i]);
             	fprintf(outfile,"\nPhase %i integrated part of the cost: \t\t%e", i+1, solution.integrated_cost[i]);
-            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(1));
-                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])("end"));
+            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(0));  // EIGEN_UPDATE
+                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])(length(solution.nodes[i])-1));
 		fprintf(outfile,"\nPhase %i maximum relative local error:\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
@@ -277,11 +269,11 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
            auxstr = "*** The problem FAILED! - see screen output";
            fprintf(outfile,"\nReturned (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {
-		mv = mean(tra(solution.relative_errors[i]));
+
             	fprintf(outfile,"\nPhase %i endpoint cost function value: \t\t%e",i+1, solution.endpoint_cost[i]);
             	fprintf(outfile,"\nPhase %i integrated part of the cost: \t\t%e", i+1, solution.integrated_cost[i]);
-            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(1));
-                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])("end"));
+            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(0));
+                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])(length(solution.nodes[i])-1));
 		fprintf(outfile,"\nPhase %i maximum relative local error\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
@@ -292,11 +284,11 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
         if (solution.nlp_return_code  == 0) {
             fprintf(outfile,"\nOptimal (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {
-		mv = mean(tra(solution.relative_errors[i]));
+
             	fprintf(outfile,"\nPhase %i endpoint cost function value:\t\t%e",i+1, solution.endpoint_cost[i]);
             	fprintf(outfile,"\nPhase %i integrated part of the cost: \t\t%e", i+1, solution.integrated_cost[i]);
-            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(1));
-                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])("end"));
+            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(0));
+                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])(length(solution.nodes[i])-1));
 		fprintf(outfile,"\nPhase %i maximum relative local error\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
@@ -306,11 +298,11 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
            auxstr = "*** The problem FAILED! - see screen output";
            fprintf(outfile,"\nReturned (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {
-		mv = mean(tra(solution.relative_errors[i]));
+
             	fprintf(outfile,"\nPhase %i endpoint cost function value: \t\t%e",i+1, solution.endpoint_cost[i]);
             	fprintf(outfile,"\nPhase %i integrated part of the cost: \t\t%e", i+1, solution.integrated_cost[i]);
-            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(1));
-                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])("end"));
+            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(0));
+                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])(length(solution.nodes[i])-1));
 		fprintf(outfile,"\nPhase %i maximum relative local error\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
@@ -419,26 +411,26 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
     int i,j,k;
 
     string auxstr;
-    DMatrix mv(1);
+
 
     fprintf(outfile,"\n*********************************************************************************************************");
     fprintf(outfile,"\n*****************************************  SOLUTION SUMMARY *********************************************");
     fprintf(outfile,"\n*********************************************************************************************************\n");
 
 
-    DMatrix Cp, plow, phigh, p, r;
+    MatrixXd Cp, plow, phigh, p, r;
 
 
     fprintf(outfile,"\nTotal CPU time (seconds):\t\t\t%e", solution.cpu_time);
 
     if ( algorithm.nlp_method == "IPOPT") {
-        if (solution.nlp_return_code  == (int) Ipopt::ApplicationReturnStatus::Solve_Succeeded) {
+        if (solution.nlp_return_code  == (int) Solve_Succeeded) {
             fprintf(outfile,"\nOptimal (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {
             	fprintf(outfile,"\nPhase %i endpoint cost function value:\t\t%e",i+1, solution.endpoint_cost[i]);
             	fprintf(outfile,"\nPhase %i integrated part of the cost: \t\t%e", i+1, solution.integrated_cost[i]);
-            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(1));
-                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])("end"));
+            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(0));
+                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])(length(solution.nodes[i])-1));
 		fprintf(outfile,"\nPhase %i maximum relative local error:\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
@@ -450,8 +442,8 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
             for (i=0;i < problem.nphases; i++) {
             	fprintf(outfile,"\nPhase %i endpoint cost function value: \t\t%e",i+1, solution.endpoint_cost[i]);
             	fprintf(outfile,"\nPhase %i integrated part of the cost: \t\t%e", i+1, solution.integrated_cost[i]);
-            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(1));
-                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])("end"));
+            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(0));
+                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])(length(solution.nodes[i])-1));
 		fprintf(outfile,"\nPhase %i maximum relative local error\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
@@ -464,8 +456,8 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
             for (i=0;i < problem.nphases; i++) {
             	fprintf(outfile,"\nPhase %i endpoint cost function value:\t\t%e",i+1, solution.endpoint_cost[i]);
             	fprintf(outfile,"\nPhase %i integrated part of the cost: \t\t%e", i+1, solution.integrated_cost[i]);
-            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(1));
-                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])("end"));
+            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(0));
+                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])(length(solution.nodes[i])-1));
 		fprintf(outfile,"\nPhase %i maximum relative local error\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
@@ -477,8 +469,8 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
             for (i=0;i < problem.nphases; i++) {
             	fprintf(outfile,"\nPhase %i endpoint cost function value: \t\t%e",i+1, solution.endpoint_cost[i]);
             	fprintf(outfile,"\nPhase %i integrated part of the cost: \t\t%e", i+1, solution.integrated_cost[i]);
-            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(1));
-                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])("end"));
+            	fprintf(outfile,"\nPhase %i initial time:\t\t\t\t%e",i+1, (solution.nodes[i])(0));
+                fprintf(outfile,"\nPhase %i final time:\t\t\t\t%e",i+1, (solution.nodes[i])(length(solution.nodes[i])-1));
 		fprintf(outfile,"\nPhase %i maximum relative local error\t\t%e", i+1, Max(solution.relative_errors[i]) );
 
 	    }
@@ -495,7 +487,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
     fprintf(outfile,"\n*****************************************  PHASE %i GRID POINTS (TIME) ***********************************", i);
 
-      for (k=1; k<= problem.phases(i).current_number_of_intervals+1;k++) {
+      for (k=0; k< problem.phases(i).current_number_of_intervals+1;k++) { // EIGEN_UPDATE
 
 	    fprintf(outfile,"\n%e", solution.nodes[i-1](k));
 
@@ -508,9 +500,9 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
     fprintf(outfile,"\n*****************************************  PHASE %i CONTROLS *******************************************", i);
 
-      for (k=1; k<= problem.phases(i).current_number_of_intervals+1;k++) {
+      for (k=0; k< problem.phases(i).current_number_of_intervals+1;k++) { // EIGEN_UPDATE
 	  fprintf(outfile,"\n");
-	  for(j=1;j<=problem.phases(i).ncontrols;j++) {
+	  for(j=0;j<problem.phases(i).ncontrols;j++) {
 	    fprintf(outfile,"%e\t", solution.controls[i-1](j,k));
 	  }
 
@@ -523,9 +515,9 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
     fprintf(outfile,"\n*****************************************  PHASE %i STATES *******************************************", i);
 
-      for (k=1; k<= problem.phases(i).current_number_of_intervals+1;k++) {
+      for (k=0; k< problem.phases(i).current_number_of_intervals+1;k++) {  // EIGEN_UPDATE
 	  fprintf(outfile,"\n");
-	  for(j=1;j<=problem.phases(i).nstates;j++) {
+	  for(j=0;j<problem.phases(i).nstates;j++) {
 	    fprintf(outfile,"%e\t", solution.states[i-1](j,k));
 	  }
 
@@ -537,7 +529,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
 
     fprintf(outfile,"\n");
-    for(j=1;j<=problem.phases(i).nparameters;j++) {
+    for(j=0;j<problem.phases(i).nparameters;j++) {  // EIGEN_UPDATE
 	    fprintf(outfile,"\n%e", solution.parameters[i-1](j));
     }
 
@@ -561,18 +553,19 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
       fprintf(outfile,"\n>>>>> Parameter covariance matrix (all phases) ");
 
-      for(i=1; i<=Cp.GetNoRows();i++) {
+      for(i=0; i<Cp.rows();i++) { // EIGEN_UPDATE
         fprintf(outfile,"\n");
-        for(j=1; j<=Cp.GetNoCols();j++) {
+        for(j=0; j<Cp.cols();j++) {
              fprintf(outfile,"%e\t\t",Cp(i,j));
         }
       }
 
-#ifdef UNIX
-     fprintf(outfile,"\n\n>>>>> Rank of parameter covariance matrix: %i ", rank_matrix(Cp));
-#endif
-      fprintf(outfile,"\n\n>>> 95 percent statistical confidence limits on estimated parameters ");
-      fprintf(outfile,"\nPhase\tParameter\t(Low Confidence Limit) \t(Value) \t\t(High Confidence Limit)");
+     FullPivLU<MatrixXd> lu_decomp(Cp);  
+        
+     fprintf(outfile,"\n\n>>>>> Rank of parameter covariance matrix: %li ", lu_decomp.rank() );
+
+     fprintf(outfile,"\n\n>>> 95 percent statistical confidence limits on estimated parameters ");
+     fprintf(outfile,"\nPhase\tParameter\t(Low Confidence Limit) \t(Value) \t\t(High Confidence Limit)");
 
 
       for (int iphase=1; iphase<=problem.nphases; iphase++)
@@ -581,7 +574,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
           for(i=0;i< problem.phases(iphase).nparameters;i++) {
 
-            j= pcount+i+1;
+            j= pcount+i; // EIGEN_UPDATE
 
             fprintf(outfile,"\n%i\t%i\t\t%e\t\t%e\t\t%e", iphase, i+1, plow(j), p(j), phigh(j));
 
@@ -611,11 +604,11 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
           for(i=0;i< problem.phases(iphase).nsamples;i++) {
 
-                  fprintf(outfile,"\n%i\t%e", iphase, problem.phases(iphase).observation_nodes(i+1) );
+                  fprintf(outfile,"\n%i\t%e", iphase, problem.phases(iphase).observation_nodes(i) ); // EIGEN_UPDATE
 
               for(j=0;j< problem.phases(iphase).nobserved; j++ ) {
 
-                  k= pcount+i*problem.phases(iphase).nobserved+j+1;
+                  k= pcount+i*problem.phases(iphase).nobserved+j;
 
                   fprintf(outfile,"\t%e", r(k));
 
@@ -644,15 +637,15 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
     FILE* outfile = workspace->psopt_solution_summary_file;
 
 
-    DMatrix& X = *workspace->Xip;
+    MatrixXd& X = *workspace->Xip;
 
-    DMatrix& G  = *workspace->Gip;
+    MatrixXd& G  = *workspace->Gip;
 
-    DMatrix& xlb    = *workspace->xlb;
+    MatrixXd& xlb    = *workspace->xlb;
 
-    DMatrix& xub    = *workspace->xub;
+    MatrixXd& xub    = *workspace->xub;
 
-    DMatrix& cs = *workspace->constraint_scaling;
+    MatrixXd& cs = *workspace->constraint_scaling;
 
     int nvars = get_number_nlp_vars(problem, workspace);
 
@@ -664,8 +657,8 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
     double tol    = (workspace->algorithm)->nlp_tolerance;
 
 
-    for(i=1;i<=nvars;i++) {
-       X(i) = solution.xad[i-1].value();
+    for(i=0;i<nvars;i++) {  // EIGEN_UPDATE
+       X(i) = solution.xad[i].value();
     }
 
     gg_num(X, &G, workspace);
@@ -686,32 +679,32 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 	int nevents   = problem.phase[i].nevents;
 	int npath     = problem.phase[i].npath;
 	int offset;
-        int path_offset = phase_offset+nstates*(norder+1)+nevents;
+   int path_offset = phase_offset+nstates*(norder+1)+nevents;
 	int ncons_phase_i = get_ncons_phase_i(problem,i, workspace);
 
        fprintf(outfile,"\n******************************* PHASE %i SCALED DIFFERENTIAL DEFECT CONSTRAINTS **************************", i+1);
        fprintf(outfile,"\nLOWER\t\tG(X)\t\tUPPER\t\tSCALING\t\tDESCRIPTION");
 
-       for(k=1; k<=norder+1; k++)
+       for(k=0; k<norder+1; k++)  // EIGEN_UPDATE
        {
                 for (j=0; j<problem.phase[i].nstates; j++) {
-	   	     l = phase_offset+(k-1)*nstates+j;
-		     fprintf(outfile,"\n%e\t%e\t%e\t%e\tDEFECT FOR STATE DERIV. %i NODE %i", g_l[l], G(l+1), g_u[l], cs(l+1), j+1, k);
-		     if ( g_l[l]-tol>G(l+1) || G(l+1)>g_u[l]+tol ) fprintf(outfile," **BOUND VIOLATED");
-       		     if ( (g_l[l]-tol<G(l+1) && G(l+1)<g_l[l]+tol) || (g_u[l]-tol<G(l+1) && G(l+1)<g_u[l]+tol) ) fprintf(outfile," **AT BOUND");
+	   	     l = phase_offset+(k)*nstates+j;
+		     fprintf(outfile,"\n%e\t%e\t%e\t%e\tDEFECT FOR STATE DERIV. %i NODE %i", g_l[l], G(l), g_u[l], cs(l), j, k);
+		     if ( g_l[l]-tol>G(l) || G(l)>g_u[l]+tol ) fprintf(outfile," **BOUND VIOLATED");
+       		     if ( (g_l[l]-tol<G(l) && G(l)<g_l[l]+tol) || (g_u[l]-tol<G(l) && G(l)<g_u[l]+tol) ) fprintf(outfile," **AT BOUND");
 
 		}
        }
        fprintf(outfile,"\n************************************* PHASE %i SCALED PATH CONSTRAINTS ************************************", i+1);
        fprintf(outfile,"\nLOWER\t\tG(X)\t\tUPPER\t\tSCALING\t\tDESCRIPTION");
-       for(k=1; k<=norder+1; k++)
+       for(k=0; k<norder+1; k++) // EIGEN_UPDATE
        {
 	        for (j=0; j<npath; j++)
 	        {
-		     l = path_offset + (k-1)*npath + j;
-		     fprintf(outfile,"\n%e\t%e\t%e\t%e\tPATH CONSTRAINT %i NODE %i", g_l[l], G(l+1), g_u[l], cs(l+1),j+1,k);
-		     if ( g_l[l]-tol>G(l+1) || G(l+1)>g_u[l]+tol ) fprintf(outfile," **BOUND VIOLATED");
-     		     if ( (g_l[l]-tol<G(l+1) && G(l+1)<g_l[l]+tol) || (g_u[l]-tol<G(l+1) && G(l+1)<g_u[l]+tol) ) fprintf(outfile," **AT BOUND");
+		     l = path_offset + (k)*npath + j;
+		     fprintf(outfile,"\n%e\t%e\t%e\t%e\tPATH CONSTRAINT %i NODE %i", g_l[l], G(l), g_u[l], cs(l),j,k);
+		     if ( g_l[l]-tol>G(l) || G(l)>g_u[l]+tol ) fprintf(outfile," **BOUND VIOLATED");
+     		     if ( (g_l[l]-tol<G(l) && G(l)<g_l[l]+tol) || (g_u[l]-tol<G(l) && G(l)<g_u[l]+tol) ) fprintf(outfile," **AT BOUND");
 
                 }
        }
@@ -722,8 +715,8 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 	for (k=0; k<nevents;k++) {
 		j = offset + k;
 		fprintf(outfile,"\n%e\t%e\t%e\t%e\tEVENT CONSTRAINT %i", g_l[j], G(j+1), g_u[j], cs(j+1),k+1);
-	        if ( g_l[j]-tol>G(j+1) || G(j+1)>g_u[j]+tol ) fprintf(outfile," **BOUND VIOLATED");
-		if ( (g_l[j]-tol<G(j+1) && G(j+1)<g_l[j]+tol) || (g_u[j]-tol<G(j+1) && G(j+1)<g_u[j]+tol)) fprintf(outfile," **AT BOUND");
+	        if ( g_l[j]-tol>G(j) || G(j)>g_u[j]+tol ) fprintf(outfile," **BOUND VIOLATED");
+		if ( (g_l[j]-tol<G(j) && G(j)<g_l[j]+tol) || (g_u[j]-tol<G(j) && G(j)<g_u[j]+tol)) fprintf(outfile," **AT BOUND");
 
   	}
 	// Add tf >= t0 constraint [ t0MIN-tfMAX <= t0-tf <= 0 ]
@@ -731,10 +724,10 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
        fprintf(outfile,"\n*********************************** PHASE %i SCALED tf >= t0 CONSTRAINT ***********************************",i+1);
        fprintf(outfile,"\nLOWER\t\tG(X)\t\tUPPER\t\tSCALING");
        j = phase_offset + ncons_phase_i - 1;
-       fprintf(outfile,"\n%e\t%e\t%e\t%e", g_l[j], G(j+1), g_u[j], cs(j+1));
+       fprintf(outfile,"\n%e\t%e\t%e\t%e", g_l[j], G(j), g_u[j], cs(j));
 
-       if ( g_l[j]-tol>G(j+1) || G(j+1)>g_u[j]+tol ) fprintf(outfile," **BOUND VIOLATED");
-       if ( (g_l[j]-tol<G(j+1) && G(j+1)<g_l[j]+tol) || (g_u[j]-tol<G(j+1) && G(j+1)<g_u[j]+tol)) fprintf(outfile," **AT BOUND");
+       if ( g_l[j]-tol>G(j) || G(j)>g_u[j]+tol ) fprintf(outfile," **BOUND VIOLATED");
+       if ( (g_l[j]-tol<G(j) && G(j)<g_l[j]+tol) || (g_u[j]-tol<G(j) && G(j)<g_u[j]+tol)) fprintf(outfile," **AT BOUND");
 
        phase_offset += ncons_phase_i;
     }
@@ -745,17 +738,14 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
     for(j=0;j<problem.nlinkages;j++)
     {
      	int l = phase_offset+j;
-	fprintf(outfile,"\n%e\t%e\t%e\t%e\tLINKAGE CONSTRAINT %i", g_l[l], G(l+1), g_u[l], cs(l+1),j+1);
-	if ( g_l[l]-tol>G(l+1) || G(l+1)>g_u[l]+tol ) fprintf(outfile," **BOUND VIOLATED");
-        if ( (g_l[l]-tol<G(l+1) && G(l+1)<g_l[l]+tol) || (g_u[l]-tol<G(l+1) && G(l+1)<g_u[l]+tol) ) fprintf(outfile," **AT BOUND");
+	   fprintf(outfile,"\n%e\t%e\t%e\t%e\tLINKAGE CONSTRAINT %i", g_l[l], G(l), g_u[l], cs(l),j);
+	   if ( g_l[l]-tol>G(l) || G(l)>g_u[l]+tol ) fprintf(outfile," **BOUND VIOLATED");
+        if ( (g_l[l]-tol<G(l) && G(l)<g_l[l]+tol) || (g_u[l]-tol<G(l) && G(l)<g_u[l]+tol) ) fprintf(outfile," **AT BOUND");
 
     }
 
 
-    DMatrix& control_scaling = problem.phase[i].scale.controls;
-    DMatrix& state_scaling   = problem.phase[i].scale.states;
-    DMatrix& param_scaling   = problem.phase[i].scale.parameters;
-    double time_scaling      =  problem.phase[i].scale.time;
+
 
       fprintf(outfile,"\n**************************************UNSCALED NLP DECISION VARIABLES *************************************");
       fprintf(outfile,"\nJ\tLOWER\t\tX(J)\t\tUPPER\t\tSCALING\t\tDESCRIPTION");
@@ -766,25 +756,24 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
     for(i=0;i< problem.nphases; i++)
     {
 
-        DMatrix& control_scaling = problem.phase[i].scale.controls;
-	DMatrix& state_scaling   = problem.phase[i].scale.states;
-	DMatrix& param_scaling   = problem.phase[i].scale.parameters;
-	double time_scaling      =  problem.phase[i].scale.time;
-	int norder    = problem.phase[i].current_number_of_intervals;
-	int nstates   = problem.phase[i].nstates;
-        int ncontrols = problem.phase[i].ncontrols;
-        int nparam    = problem.phase[i].nparameters;
-	int offset;
-        int iphase_offset = get_iphase_offset(problem,i+1, workspace);
-	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
-        int offset1 = (norder+1)*ncontrols;
-        int offset2 = (norder+1)*(ncontrols+nstates);
+        	MatrixXd& control_scaling = problem.phase[i].scale.controls;
+			MatrixXd& state_scaling   = problem.phase[i].scale.states;
+			MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
+			double time_scaling      =  problem.phase[i].scale.time;
+			int norder    = problem.phase[i].current_number_of_intervals;
+			int nstates   = problem.phase[i].nstates;
+        	int ncontrols = problem.phase[i].ncontrols;
+        	int nparam    = problem.phase[i].nparameters;
+        	int iphase_offset = get_iphase_offset(problem,i+1, workspace);
+			int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
+        	int offset1 = (norder+1)*ncontrols;
+        	int offset2 = (norder+1)*(ncontrols+nstates);
 
 
-	for (k=1; k<=norder+1; k++) {
+	for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
 
-                for (ii=1;ii<=ncontrols;ii++) {
-                        j = iphase_offset+(k-1)*ncontrols+ii;
+                for (ii=0;ii<ncontrols;ii++) {  //EIGEN_UPDATE
+                        j = iphase_offset+(k)*ncontrols+ii;
 			fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tCONTROL %i NODE %i PHASE %i", j, xlb(j)/control_scaling(ii),
 				  X(j)/control_scaling(ii), xub(j)/control_scaling(ii),  control_scaling(ii), ii, k, i+1);
 			if ( xlb(j)-tol>X(j) || X(j)>xub(j)+tol ) fprintf(outfile," **BOUND VIOLATED");
@@ -794,11 +783,11 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 
 	}
 
-	for (k=1; k<=norder+1; k++) {
+	for (k=0; k<norder+1; k++) {  // EIGEN_UPDATE
 
 
-                for (ii=1;ii<=nstates;ii++) {
-                        j = iphase_offset+(k-1)*nstates+offset1+ii;
+                for (ii=0;ii<nstates;ii++) {
+                        j = iphase_offset+(k)*nstates+offset1+ii;
 			fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tSTATE %i NODE %i PHASE %i", j, xlb(j)/state_scaling(ii),
 				X(j)/state_scaling(ii), xub(j)/state_scaling(ii), state_scaling(ii), ii, k, i+1);
 			if ( xlb(j)-tol>X(j) || X(j)>xub(j)+tol ) fprintf(outfile," **BOUND VIOLATED");
@@ -809,7 +798,7 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 
 	}
 
-        for (ii=1;ii<=nparam;ii++) {
+        for (ii=0;ii<nparam;ii++) {  // EIGEN_UPDATE
                         j = iphase_offset+offset2+ii;
 			fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tPARAMETER %i PHASE %i", j, xlb(j)/param_scaling(ii),
 				X(j)/param_scaling(ii), xub(j)/param_scaling(ii), param_scaling(ii), ii, i+1);
@@ -820,10 +809,10 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 
         if (need_midpoint_controls(*workspace->algorithm, workspace)) {
 
-		for (k=1; k<=norder+1; k++) {
+		for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
 
-			for (ii=1;ii<=ncontrols;ii++) {
-				j = iphase_offset+offset2+nparam+(k-1)*ncontrols+ii;
+			for (ii=0;ii<ncontrols;ii++) {
+				j = iphase_offset+offset2+nparam+(k)*ncontrols+ii;
 				fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tMIDPOINT CONTROL %i NODE %i PHASE %i", j,
 					 xlb(j)/control_scaling(ii), X(j)/control_scaling(ii), xub(j)/control_scaling(ii),
 					control_scaling(ii), ii, k, i+1);
@@ -835,7 +824,7 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 		}
 	}
 
-        j = iphase_offset + nvars_phase_i-1;
+        j = iphase_offset + nvars_phase_i-2;
 
 	fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tt0 PHASE %i", j, xlb(j)/time_scaling, X(j)/time_scaling,
 		                                                xub(j)/time_scaling, time_scaling, i+1);
@@ -843,7 +832,7 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
         if ( (xlb(j)-tol<X(j) && X(j)<xlb(j)+tol) || (xub(j)-tol<X(j) && X(j)<xub(j)+tol) ) fprintf(outfile," **AT BOUND");
 
 
-        j = iphase_offset + nvars_phase_i;
+        j = iphase_offset + nvars_phase_i-1;
 
 	fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\ttf PHASE %i", j, xlb(j)/time_scaling, X(j)/time_scaling,
 		                                                xub(j)/time_scaling, time_scaling, i+1);
