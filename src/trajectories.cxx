@@ -115,9 +115,9 @@ void compute_derivatives_trajectory( MatrixXd& Xdot, Prob& problem, Sol& solutio
 	for(k=0; k<norder+1; k++)  // EIGEN_UPDATE: Index k shifted by -1
         {
 
-            for(l=0;l<ncontrols;l++) controls[l-1] = (solution.controls[i])(l,k); // EIGEN_UPDATE: Index l shifted by -1
+            for(l=0;l<ncontrols;l++) controls[l] = (solution.controls[i])(l,k); // EIGEN_UPDATE: Index l shifted by -1
 
-            for(l=0;l<nstates;  l++) states[l-1]   = (solution.states[i])(l,k);   // EIGEN_UPDATE: Index l shifted by -1
+            for(l=0;l<nstates;  l++) states[l]   = (solution.states[i])(l,k);   // EIGEN_UPDATE: Index l shifted by -1
 
 
             time = (solution.nodes[i])(k);

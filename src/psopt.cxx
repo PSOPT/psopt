@@ -792,8 +792,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 //	solution.dual.Hamiltonian[i] = (solution.integrand_cost[i]) + sum( (solution.dual.costates[i]) & workspace->Xdot[i] );
        solution.dual.Hamiltonian[i] = (solution.integrand_cost[i]);
        MatrixXd Temp1 =  solution.dual.costates[i].cwiseProduct(workspace->Xdot[i]);
-       Temp1 = sum_columns(Temp1);
-       solution.dual.Hamiltonian[i]+= Temp1;
+       MatrixXd Temp2 = sum_columns(Temp1);
+       solution.dual.Hamiltonian[i]+= Temp2;
 
 
 
