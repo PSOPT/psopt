@@ -30,6 +30,7 @@ e-mail:    v.m.becerra@ieee.org
 
 
 #include "psopt.h"
+
 using namespace Eigen;
 
 double delta(long l, long N)
@@ -248,7 +249,8 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
   long l,i,j;
 
   MatrixXd xold, X, Xdiff, L;
-  x.resize(1,N1);
+  // x.resize(1,N1);
+  x.resize(N1,1);
   for (i=0; i<N+1; i++) {
     x(i) = cos((pi*i)/N);   
   }
@@ -259,7 +261,8 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
 //  P = zeros(N1,N1);
 //  w = zeros(N1,1);
   P.resize(N1,N1);
-  w.resize(1,N1);
+//  w.resize(1,N1);
+  w.resize(N1,1);
   P.setZero();
   w.setZero();
 // Compute P_(N) using the recursion relation
@@ -277,13 +280,15 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
        {
 	          double kd = (double) k;
 //           P(colon(),k+1) = ( elemProduct((2*kd-1)*x,P(colon(),k)) - (kd-1)*P(colon(),k-1) )/kd;
-             P.col(k+1) = ( elemProduct((2*kd-1)*x,P.col(k)) - (kd-1)*P.col(k-1) )/kd;
+             P.col(k+1) = ( elemProduct((2*kd+1)*x,P.col(k)) - (kd)*P.col(k-1) )/(kd+1);
+//         for(j=0;j<N1;j++) P(j,k+1)= ((2*kd+1)*x(j)*P(j,k)-(kd)*P(j,k-1.0))/(kd+1);
 
        }
 
        double N1d = (double) N1;
 //       x = xold-elemDivision(  elemProduct(x,P(colon(),N1))-P(colon(),N) , N1d*P(colon(),N1) );
        x = xold-elemDivision(  elemProduct(x,P.col(N1-1))-P.col(N-1) , N1d*P.col(N1-1) );
+//       for(j=0;j<N1;j++)  x(j)=xold(j)-(x(j)*P(j,N1-1)-P(j,N-1))/(N1d*P(j,N1-1));
 
   }
 
@@ -321,7 +326,7 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
 	for(k=0;k<N1;k++) // EIGEN_UPDATE
 	{
 //   	L(colon(),k) =  P(colon(),N1);
-      L.col(k) =  P.col(N1);
+      L.col(k) =  P.col(N1-1);
 	}
 
 	for (k=0;k<N1*N1;k=k+N1+1) // EIGEN_UPDATE
@@ -543,4 +548,3 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
   return;
 
 }
-
