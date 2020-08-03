@@ -381,5 +381,3 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 	
 }
 
-
-}
