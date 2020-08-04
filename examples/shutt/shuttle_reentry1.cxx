@@ -23,15 +23,15 @@
 //////////////////////////////////////////////////////////////////////////
 
 
-#define H_INDX   	1
-#define PHI_INDX 	2
-#define THETA_INDX 	3
-#define V_INDX		4
-#define GAMMA_INDX	5
-#define PSI_INDX	6
+#define H_INDX   	      0
+#define PHI_INDX 	      1
+#define THETA_INDX      2
+#define V_INDX		      3
+#define GAMMA_INDX      4
+#define PSI_INDX	      5
 
-#define ALPHA_INDX   	1
-#define BETA_INDX	2
+#define ALPHA_INDX   	0
+#define BETA_INDX	      1
 
 #define DEG2RAD(x)  (3.141592653589793*(x)/180.0)
 
@@ -44,7 +44,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
                       adouble* parameters,adouble& t0, adouble& tf,
                       adouble* xad, int iphase, Workspace* workspace)
 {
-    adouble theta = final_states[THETA_INDX-1];
+    adouble theta = final_states[THETA_INDX];
 
     return (-theta*180/3.141592653589793);
 }
@@ -73,16 +73,16 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 	adouble alpha, beta;
 
 
-	adouble alt    = states[H_INDX-1];
-	adouble lon    = states[PHI_INDX-1];
-	adouble lat    = states[THETA_INDX-1];
-	adouble vel    = states[V_INDX-1];
-	adouble gamma  = states[GAMMA_INDX-1];
-	adouble azi    = states[PSI_INDX-1];
+	adouble alt    = states[H_INDX];
+	adouble lon    = states[PHI_INDX];
+	adouble lat    = states[THETA_INDX];
+	adouble vel    = states[V_INDX];
+	adouble gamma  = states[GAMMA_INDX];
+	adouble azi    = states[PSI_INDX];
 
 
-	alpha = controls[ALPHA_INDX-1];
-	beta  = controls[BETA_INDX-1];
+	alpha = controls[ALPHA_INDX];
+	beta  = controls[BETA_INDX];
 
 
 	double pi      = 3.141592653589793;
@@ -131,22 +131,14 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 	adouble d_azi_dt   = ((lift*sbeta)/((mass*vel)*cgamma))
                               + ((vel*cgamma)*(sazi*slat)/(radius*clat));
 
-	derivatives[H_INDX-1] 	= d_alt_dt      ;
-	derivatives[PHI_INDX-1] 	= d_lon_dt      ;
-	derivatives[THETA_INDX-1] 	= d_lat_dt      ;
-	derivatives[V_INDX-1] 	= d_vel_dt      ;
-	derivatives[GAMMA_INDX-1] 	= d_gamma_dt    ;
-	derivatives[PSI_INDX-1] 	= d_azi_dt      ;
+	derivatives[H_INDX] 	= d_alt_dt      ;
+	derivatives[PHI_INDX] 	= d_lon_dt      ;
+	derivatives[THETA_INDX] 	= d_lat_dt      ;
+	derivatives[V_INDX] 	= d_vel_dt      ;
+	derivatives[GAMMA_INDX] 	= d_gamma_dt    ;
+	derivatives[PSI_INDX] 	= d_azi_dt      ;
 
-//    adouble alpha_hat = 180.0*alpha/pi;
 
-//    adouble qa  = c0  + c1*alpha_hat + c2*pow(alpha_hat,2) + c3*pow(alpha_hat,3);
-
-//    adouble qr = (17700.0*sqrt(rhodns))*pow(0.0001*v,3.07);
-
-//    adouble q = qa*qr;
-
-//    path[0] = q;
 
 
 }
@@ -159,23 +151,23 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
             int iphase, Workspace* workspace)
 {
-   adouble h0 		= initial_states[H_INDX-1];
-   adouble phi0 	= initial_states[PHI_INDX-1];
-   adouble theta0 	= initial_states[THETA_INDX-1];
-   adouble v0 		= initial_states[V_INDX-1];
-   adouble gamma0 	= initial_states[GAMMA_INDX-1];
-   adouble psi0         = initial_states[PSI_INDX-1];
+   adouble h0 		      = initial_states[H_INDX];
+   adouble phi0 	      = initial_states[PHI_INDX];
+   adouble theta0 	   = initial_states[THETA_INDX];
+   adouble v0 		      = initial_states[V_INDX];
+   adouble gamma0 	   = initial_states[GAMMA_INDX];
+   adouble psi0         = initial_states[PSI_INDX];
 
-   adouble hf           = final_states[H_INDX-1];
-   adouble vf           = final_states[V_INDX-1];
-   adouble gammaf       = final_states[GAMMA_INDX-1];
+   adouble hf           = final_states[H_INDX];
+   adouble vf           = final_states[V_INDX];
+   adouble gammaf       = final_states[GAMMA_INDX];
 
-   e[H_INDX-1] 		= h0;
-   e[PHI_INDX-1] 	= phi0;
-   e[THETA_INDX-1]	= theta0;
-   e[V_INDX-1] 		= v0;
-   e[GAMMA_INDX-1]	= gamma0;
-   e[PSI_INDX-1] 	= psi0;
+   e[H_INDX] 		= h0;
+   e[PHI_INDX] 	= phi0;
+   e[THETA_INDX]	= theta0;
+   e[V_INDX] 		= v0;
+   e[GAMMA_INDX]	= gamma0;
+   e[PSI_INDX] 	= psi0;
 
    e[6] 		= hf;
    e[7] 		= vf;
@@ -219,8 +211,8 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   			                  = 1;
+    problem.nlinkages                           = 0;
 
     psopt_level1_setup(problem);
 
@@ -228,21 +220,21 @@ int main(void)
 /////////   Define phase related information & do level 2 setup /////////////
 /////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).nstates   		= 6;
-    problem.phases(1).ncontrols 		= 2;
-    problem.phases(1).nevents   		= 9;
-    problem.phases(1).npath    		        = 0;
-    problem.phases(1).nodes                     = "[60 80]";
+    problem.phases(1).nstates   		            = 6;
+    problem.phases(1).ncontrols 		            = 2;
+    problem.phases(1).nevents   		            = 9;
+    problem.phases(1).npath    		            = 0;
+    problem.phases(1).nodes                     << 60, 80;
     problem.phases(1).zero_cost_integrand       = true;
 
     psopt_level2_setup(problem, algorithm);
 
 
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare DMatrix objects to store results //////////////
+///////////////////  Declare MatrixXd objects to store results //////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, t;
+    MatrixXd x, u, t;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter problem bounds information //////////////////////
@@ -285,58 +277,58 @@ int main(void)
     double pi = 3.141592653589793;
 
 
-    problem.phases(1).bounds.lower.states(H_INDX) 	= hL;
-    problem.phases(1).bounds.lower.states(PHI_INDX) 	= phiL;
-    problem.phases(1).bounds.lower.states(THETA_INDX) 	= thetaL;
-    problem.phases(1).bounds.lower.states(V_INDX) 	= vL;
+    problem.phases(1).bounds.lower.states(H_INDX) 	     	= hL;
+    problem.phases(1).bounds.lower.states(PHI_INDX) 	  	= phiL;
+    problem.phases(1).bounds.lower.states(THETA_INDX)   	= thetaL;
+    problem.phases(1).bounds.lower.states(V_INDX) 			= vL;
     problem.phases(1).bounds.lower.states(GAMMA_INDX) 	= gammaL;
-    problem.phases(1).bounds.lower.states(PSI_INDX) 	= psiL;
+    problem.phases(1).bounds.lower.states(PSI_INDX) 		= psiL;
 
 
-    problem.phases(1).bounds.upper.states(H_INDX) = hU;
-    problem.phases(1).bounds.upper.states(PHI_INDX) = phiU;
-    problem.phases(1).bounds.upper.states(THETA_INDX) = thetaU;
-    problem.phases(1).bounds.upper.states(V_INDX) = vU;
-    problem.phases(1).bounds.upper.states(GAMMA_INDX) = gammaU;
-    problem.phases(1).bounds.upper.states(PSI_INDX) = psiU;
+    problem.phases(1).bounds.upper.states(H_INDX) 			= hU;
+    problem.phases(1).bounds.upper.states(PHI_INDX) 		= phiU;
+    problem.phases(1).bounds.upper.states(THETA_INDX) 	= thetaU;
+    problem.phases(1).bounds.upper.states(V_INDX) 			= vU;
+    problem.phases(1).bounds.upper.states(GAMMA_INDX) 	= gammaU;
+    problem.phases(1).bounds.upper.states(PSI_INDX) 		= psiU;
 
-    problem.phases(1).bounds.lower.controls(ALPHA_INDX) = alphaL;
-    problem.phases(1).bounds.upper.controls(ALPHA_INDX) = alphaU;
-    problem.phases(1).bounds.lower.controls(BETA_INDX) = betaL;
-    problem.phases(1).bounds.upper.controls(BETA_INDX) = betaU;
+    problem.phases(1).bounds.lower.controls(ALPHA_INDX) 	= alphaL;
+    problem.phases(1).bounds.upper.controls(ALPHA_INDX) 	= alphaU;
+    problem.phases(1).bounds.lower.controls(BETA_INDX) 	= betaL;
+    problem.phases(1).bounds.upper.controls(BETA_INDX) 	= betaU;
 
 
-    problem.phases(1).bounds.lower.events(H_INDX) 	= h0;
-    problem.phases(1).bounds.lower.events(PHI_INDX) 	= phi0;
+    problem.phases(1).bounds.lower.events(H_INDX) 			= h0;
+    problem.phases(1).bounds.lower.events(PHI_INDX) 		= phi0;
     problem.phases(1).bounds.lower.events(THETA_INDX) 	= theta0;
-    problem.phases(1).bounds.lower.events(V_INDX) 	= v0;
+    problem.phases(1).bounds.lower.events(V_INDX) 			= v0;
     problem.phases(1).bounds.lower.events(GAMMA_INDX) 	= gamma0;
-    problem.phases(1).bounds.lower.events(PSI_INDX) 	= psi0;
-    problem.phases(1).bounds.lower.events(7) 		= hf;
-    problem.phases(1).bounds.lower.events(8) 		= vf;
-    problem.phases(1).bounds.lower.events(9) 		= gammaf;
+    problem.phases(1).bounds.lower.events(PSI_INDX) 		= psi0;
+    problem.phases(1).bounds.lower.events(6) 				= hf;
+    problem.phases(1).bounds.lower.events(7) 				= vf;
+    problem.phases(1).bounds.lower.events(8) 				= gammaf;
 
 
-    problem.phases(1).bounds.upper.events(H_INDX) 	= h0;
-    problem.phases(1).bounds.upper.events(PHI_INDX) 	= phi0;
+    problem.phases(1).bounds.upper.events(H_INDX) 			= h0;
+    problem.phases(1).bounds.upper.events(PHI_INDX) 		= phi0;
     problem.phases(1).bounds.upper.events(THETA_INDX) 	= theta0;
-    problem.phases(1).bounds.upper.events(V_INDX) 	= v0;
+    problem.phases(1).bounds.upper.events(V_INDX) 			= v0;
     problem.phases(1).bounds.upper.events(GAMMA_INDX) 	= gamma0;
-    problem.phases(1).bounds.upper.events(PSI_INDX) 	= psi0;
-    problem.phases(1).bounds.upper.events(7) 		= hf;
-    problem.phases(1).bounds.upper.events(8) 		= vf;
-    problem.phases(1).bounds.upper.events(9) 		= gammaf;
+    problem.phases(1).bounds.upper.events(PSI_INDX) 		= psi0;
+    problem.phases(1).bounds.upper.events(6) 				= hf;
+    problem.phases(1).bounds.upper.events(7) 				= vf;
+    problem.phases(1).bounds.upper.events(8) 				= gammaf;
 
 
-    problem.phases(1).bounds.lower.path(1)              = qL;
-    problem.phases(1).bounds.upper.path(1) 		= qU;
+//    problem.phases(1).bounds.lower.path(0)               = qL;
+//    problem.phases(1).bounds.upper.path(0) 					= qU;
 
 
-    problem.phases(1).bounds.lower.StartTime    = 0.0;
-    problem.phases(1).bounds.upper.StartTime    = 0.0;
+    problem.phases(1).bounds.lower.StartTime             = 0.0;
+    problem.phases(1).bounds.upper.StartTime             = 0.0;
 
-    problem.phases(1).bounds.lower.EndTime      = 100.0;
-    problem.phases(1).bounds.upper.EndTime      = 4000.0;
+    problem.phases(1).bounds.lower.EndTime               = 100.0;
+    problem.phases(1).bounds.upper.EndTime               = 4000.0;
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -355,20 +347,25 @@ int main(void)
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nodes = (int) problem.phases(1).nodes(1);
+    int nodes = (int) problem.phases(1).nodes(0);
 
-    DMatrix u_guess =  ( zeros(1,nodes+1) && (DEG2RAD(1.0)*ones(1,nodes+1) ) );
-    DMatrix x_guess = zeros(6,nodes+1);
-    DMatrix time_guess;
+    MatrixXd u_guess(2,nodes+1);
 
-    x_guess(H_INDX,colon()) 	= linspace(h0, hf, nodes+1);
-    x_guess(PHI_INDX,colon()) 	= -0.5*DEG2RAD(90.0)*ones(1,nodes+1);
-    x_guess(THETA_INDX,colon()) = DEG2RAD(-89.0)*ones(1,nodes+1);
-    x_guess(V_INDX,colon()) 	= linspace(v0,vf, nodes+1);
-    x_guess(GAMMA_INDX,colon()) = linspace(gamma0, gammaf, nodes+1);
-    x_guess(PSI_INDX,colon()) 	= linspace(pi/2, -pi/2, nodes+1);
+    u_guess <<   zeros(1,nodes+1),
+                 DEG2RAD(1.0)*ones(1,nodes+1);
+                          
+    MatrixXd x_guess =  zeros(6,nodes+1);
 
-    time_guess = linspace(0.0, 1000.0, nodes+1);
+    MatrixXd time_guess;
+
+    x_guess.row(H_INDX) 	  = linspace(h0, hf, nodes+1);
+    x_guess.row(PHI_INDX) 	  = -0.5*DEG2RAD(90.0)*ones(1,nodes+1);
+    x_guess.row(THETA_INDX)  = DEG2RAD(-89.0)*ones(1,nodes+1);
+    x_guess.row(V_INDX) 	  = linspace(v0,vf, nodes+1);
+    x_guess.row(GAMMA_INDX)  = linspace(gamma0, gammaf, nodes+1);
+    x_guess.row(PSI_INDX) 	  = linspace(pi/2, -pi/2, nodes+1);
+
+    time_guess               = linspace(0.0, 1000.0, nodes+1);
 
     problem.phases(1).guess.controls = u_guess;
     problem.phases(1).guess.states   = x_guess;
@@ -386,7 +383,7 @@ int main(void)
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 5e-6;
     algorithm.scaling                     = "automatic";
-    algorithm.derivatives 	          = "automatic";
+    algorithm.derivatives 	               = "automatic";
     algorithm.collocation_method          = "trapezoidal";
     algorithm.mesh_refinement             = "automatic";
 
@@ -408,29 +405,30 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix h     = x(1,colon());
-    DMatrix phi   = x(2,colon());
-    DMatrix theta = x(3,colon());
-    DMatrix v     = x(4,colon());
-    DMatrix gamma = x(5,colon());
-    DMatrix psi   = x(6,colon());
-    DMatrix alpha = u(1,colon());
-    DMatrix beta  = u(2,colon());
+    MatrixXd h     = x.row(H_INDX);
+    MatrixXd phi   = x.row(PHI_INDX);
+    MatrixXd theta = x.row(THETA_INDX);
+    MatrixXd v     = x.row(V_INDX);
+    MatrixXd gamma = x.row(GAMMA_INDX);
+    MatrixXd psi   = x.row(PSI_INDX);
+    MatrixXd alpha = u.row(ALPHA_INDX);
+    MatrixXd beta  = u.row(BETA_INDX);
+    
 
 
-    plot(t,x(1,colon()),problem.name, "time (s)", "x1","altitude");
+    plot(t,h,problem.name, "time (s)", "x1","altitude");
 
-    plot(t,u(1,colon()),problem.name,"time (s)", "alpha");
+    plot(t,alpha,problem.name,"time (s)", "alpha");
 
-    plot(t,u(2,colon()),problem.name,"time (s)", "beta");
+    plot(t,beta,problem.name,"time (s)", "beta");
 
     plot(t,h, problem.name+": altitude", "time (s)", "h (ft)",
             "altitude","pdf", "shutt_alt.pdf" );
@@ -441,7 +439,7 @@ int main(void)
     plot(t,theta, problem.name+": latitude", "time (s)", "theta (rad)",
             "latitude","pdf", "shutt_lat.pdf" );
 
-    plot(t,v, problem.name+": velocity", "time (s)", "v (ft/s)",
+    plot(t,v,problem.name+": velocity", "time (s)", "v (ft/s)",
             "velocity","pdf", "shutt_vel.pdf" );
 
     plot(t,gamma, problem.name+": flight path angle", "time (s)", "gamma (rad)",

@@ -26,7 +26,7 @@
 
 
 struct Constants {
-	DMatrix J;
+	MatrixXd J;
 	double n;
 	double Kp;
 	double Kd;
@@ -41,18 +41,18 @@ static Constants_ CONSTANTS;
 void Tfun( adouble T[][3], adouble *q )
 {
 
-adouble q1 = q[CINDEX(1)];
-adouble q2 = q[CINDEX(2)];
-adouble q3 = q[CINDEX(3)];
-adouble q4 = q[CINDEX(4)];
+adouble q1 = q[0];
+adouble q2 = q[1];
+adouble q3 = q[2];
+adouble q4 = q[3];
 
-T[CINDEX(1)][CINDEX(1)] = -q2 ; T[CINDEX(1)][CINDEX(2)] = -q3; T[CINDEX(1)][CINDEX(3)] = -q4;
+T[0][0] = -q2 ; T[0][1] = -q3; T[0][2] = -q4;
 
-T[CINDEX(2)][CINDEX(1)] =  q1 ; T[CINDEX(2)][CINDEX(2)] = -q4; T[CINDEX(2)][CINDEX(3)] =  q3;
+T[1][0] =  q1 ; T[1][1] = -q4; T[1][2] =  q3;
 
-T[CINDEX(3)][CINDEX(1)] =  q4 ; T[CINDEX(3)][CINDEX(2)] =  q1; T[CINDEX(3)][CINDEX(3)] = -q2;
+T[2][0] =  q4 ; T[2][1] =  q1; T[2][2] = -q2;
 
-T[CINDEX(4)][CINDEX(1)] = -q3;  T[CINDEX(4)][CINDEX(2)] =  q2; T[CINDEX(4)][CINDEX(3)] =  q1;
+T[3][0] = -q3;  T[3][1] =  q2; T[3][2] =  q1;
 
 }
 
@@ -64,14 +64,14 @@ void compute_omega0(adouble* omega0, adouble* q)
 	double n = CONSTANTS.n;
 	adouble C2[3];
 
-        adouble q1 = q[CINDEX(1)];
-        adouble q2 = q[CINDEX(2)];
-        adouble q3 = q[CINDEX(3)];
-        adouble q4 = q[CINDEX(4)];
+   adouble q1 = q[0];
+   adouble q2 = q[1];
+   adouble q3 = q[2];
+   adouble q4 = q[3];
 
-	C2[ CINDEX(1) ] = 2*(q2*q3 + q1*q4);
-	C2[ CINDEX(2) ] = 1.0-2.0*(q2*q2+q4*q4);
-	C2[ CINDEX(3) ] = 2*(q3*q4-q1*q2);
+	C2[ 0 ] = 2*(q2*q3 + q1*q4);
+	C2[ 1 ] = 1.0-2.0*(q2*q2+q4*q4);
+	C2[ 2 ] = 2*(q3*q4-q1*q2);
 
 	for (i=0;i<3;i++)   omega0[i] = -n*C2[i];
 
@@ -89,7 +89,7 @@ double n  = CONSTANTS.n;  // Orbital rotation rate [rad/s]
 
 int i, j;
 
-DMatrix& J = CONSTANTS.J;
+MatrixXd& J = CONSTANTS.J;
 
 
 adouble T[4][3];
@@ -132,25 +132,25 @@ product_ad( J, uaux, 3, u );
 
 }
 
-void quarternion2Euler( DMatrix& phi, DMatrix& theta, DMatrix& psi, DMatrix& q)
+void quarternion2Euler( MatrixXd& phi, MatrixXd& theta, MatrixXd& psi, MatrixXd& q)
 {
 // This function finds the Euler angles given the quarternion vector
 //
-	long N = q.GetNoCols();
-	DMatrix q0 = q(1,colon());
- 	DMatrix q1 = q(2,colon());
- 	DMatrix q2 = q(3,colon());
-	DMatrix q3 = q(4,colon());
+	long N = q.cols();
+	MatrixXd q0; q0 = q.row(0);
+ 	MatrixXd q1; q1 = q.row(1);
+ 	MatrixXd q2; q2 = q.row(2);
+	MatrixXd q3; q3 = q.row(3);
 
-	phi.Resize(1,N);
-	theta.Resize(1,N);
-	psi.Resize(1,N);
+	phi.resize(1,N);
+	theta.resize(1,N);
+	psi.resize(1,N);
 
-   	for(int i=1;i<=N;i++) {
-		phi(i)=atan2( 2*(q0(i)*q1(i) + q2(i)*q3(i)), 1.0-2.0*(q1(i)*q1(i)+q2(i)*q2(i)) );
-                theta(i)=asin( 2*(q0(i)*q2(i)-q3(i)*q1(i)) );
-                psi(i) = atan2( 2*(q0(i)*q3(i)+q1(i)*q2(i)), 1.0-2.0*(q2(i)*q2(i)+q3(i)*q3(i)) );
-	}
+   	for(int i=0;i<N;i++) {
+   	      phi(i)=atan2( 2*(q0(i)*q1(i) + q2(i)*q3(i)), 1.0-2.0*(q1(i)*q1(i)+q2(i)*q2(i)) );
+            theta(i)=asin( 2*(q0(i)*q2(i)-q3(i)*q1(i)) );
+            psi(i) = atan2( 2*(q0(i)*q3(i)+q1(i)*q2(i)), 1.0-2.0*(q2(i)*q2(i)+q3(i)*q3(i)) );
+	   }
 }
 
 
@@ -164,8 +164,8 @@ void compute_aerodynamic_torque(adouble* tau_aero, adouble& time )
 //
 
 	double alpha1[3] = {1.0, 4.0, 1.0};
-        double alpha2[3] = {1.0, 2.0, 1.0};
-        double alpha3[3] = {0.5, 0.5, 0.5};
+   double alpha2[3] = {1.0, 2.0, 1.0};
+   double alpha3[3] = {0.5, 0.5, 0.5};
 	adouble t = time;
 
 	double phi1 = 0.0;
@@ -192,7 +192,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
 
 	double end_point_weight = 0.1;
 
-       	adouble gamma     = parameters[ CINDEX(1) ];
+   adouble gamma     = parameters[ 0 ];
 
 	return (end_point_weight*gamma);
 
@@ -210,24 +210,24 @@ adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
 		adouble q[4]; // quarternion vector
 		adouble u[3]; // control torque
 
-		q[CINDEX(1)] = states[ CINDEX(1) ];
-		q[CINDEX(2)] = states[ CINDEX(2) ];
-		q[CINDEX(3)] = states[ CINDEX(3) ];
-		q[CINDEX(4)] = states[ CINDEX(4) ];
+		q[0] = states[ 0 ];
+		q[1] = states[ 1 ];
+		q[2] = states[ 2 ];
+		q[3] = states[ 3 ];
 
 		adouble omega[3]; // angular rate vector
 
-		omega[CINDEX(1)] = states[ CINDEX(5) ];
-		omega[CINDEX(2)] = states[ CINDEX(6) ];
-		omega[CINDEX(3)] = states[ CINDEX(7) ];
+		omega[0] = states[ 4 ];
+		omega[1] = states[ 5 ];
+		omega[2] = states[ 6 ];
 
 
 		adouble qc[4]; // control vector
 
-		qc[CINDEX(1)] = controls[ CINDEX(1) ];
-		qc[CINDEX(2)] = controls[ CINDEX(2) ];
-		qc[CINDEX(3)] = controls[ CINDEX(3) ];
-		qc[CINDEX(4)] = controls[ CINDEX(4) ];
+		qc[0] = controls[ 0 ];
+		qc[1] = controls[ 1 ];
+		qc[2] = controls[ 2 ];
+		qc[3] = controls[ 3 ];
 
 		compute_control_torque(u,q,qc,omega);
 
@@ -250,29 +250,29 @@ double n = CONSTANTS.n; // Orbital rotation rate [rad/s]
 
 adouble q[4]; // quarternion vector
 
-q[CINDEX(1)] = states[ CINDEX(1) ];
-q[CINDEX(2)] = states[ CINDEX(2) ];
-q[CINDEX(3)] = states[ CINDEX(3) ];
-q[CINDEX(4)] = states[ CINDEX(4) ];
+q[0] = states[ 0 ];
+q[1] = states[ 1 ];
+q[2] = states[ 2 ];
+q[3] = states[ 3 ];
 
 adouble omega[3]; // angular rate vector
 
-omega[CINDEX(1)] = states[ CINDEX(5) ];
-omega[CINDEX(2)] = states[ CINDEX(6) ];
-omega[CINDEX(3)] = states[ CINDEX(7) ];
+omega[0] = states[ 4 ];
+omega[1] = states[ 5 ];
+omega[2] = states[ 6 ];
 
 adouble h[3]; // momentum vector
 
-h[CINDEX(1)] = states[ CINDEX(8) ];
-h[CINDEX(2)] = states[ CINDEX(9) ];
-h[CINDEX(3)] = states[ CINDEX(10) ];
+h[0] = states[ 7 ];
+h[1] = states[ 8 ];
+h[2] = states[ 9 ];
 
 adouble qc[4]; // control vector
 
-qc[CINDEX(1)] = controls[ CINDEX(1) ];
-qc[CINDEX(2)] = controls[ CINDEX(2) ];
-qc[CINDEX(3)] = controls[ CINDEX(3) ];
-qc[CINDEX(4)] = controls[ CINDEX(4) ];
+qc[0] = controls[ 0 ];
+qc[1] = controls[ 1 ];
+qc[2] = controls[ 2 ];
+qc[3] = controls[ 3 ];
 
 adouble C2[3], C3[3];
 
@@ -281,23 +281,23 @@ adouble u[3];
 adouble gamma;
 
 
-gamma = parameters[ CINDEX(1) ];
+gamma = parameters[ 0 ];
 
 
 // Inertia matrix in slug-ft^2
 
-DMatrix& J = CONSTANTS.J;
+MatrixXd& J = CONSTANTS.J;
 
-DMatrix Jinv; Jinv = inv(J);
+MatrixXd Jinv; Jinv = J.inverse();
 
-adouble q1 = q[CINDEX(1)];
-adouble q2 = q[CINDEX(2)];
-adouble q3 = q[CINDEX(3)];
-adouble q4 = q[CINDEX(4)];
+adouble q1 = q[0];
+adouble q2 = q[1];
+adouble q3 = q[2];
+adouble q4 = q[3];
 
-C3[ CINDEX(1) ] = 2*(q2*q4 - q1*q3);
-C3[ CINDEX(2) ] = 2*(q3*q4 + q1*q2);
-C3[ CINDEX(3) ] = 1.0-2.0*(q2*q2 + q3*q3);
+C3[ 0 ] = 2*(q2*q4 - q1*q3);
+C3[ 1 ] = 2*(q3*q4 + q1*q2);
+C3[ 2 ] = 1.0-2.0*(q2*q2 + q3*q3);
 
 
 
@@ -397,22 +397,22 @@ for(i=0; i<3; i++) {
 
 
 
-derivatives[CINDEX(1)] =       qdot[ CINDEX(1) ];
-derivatives[CINDEX(2)] =       qdot[ CINDEX(2) ];
-derivatives[CINDEX(3)] =       qdot[ CINDEX(3) ];
-derivatives[CINDEX(4)] =       qdot[ CINDEX(4) ];
-derivatives[CINDEX(5)] =       omega_dot[ CINDEX(1) ];
-derivatives[CINDEX(6)] =       omega_dot[ CINDEX(2) ];
-derivatives[CINDEX(7)] =       omega_dot[ CINDEX(3) ];
-derivatives[CINDEX(8)] =       hdot[ CINDEX(1) ];
-derivatives[CINDEX(9)] =       hdot[ CINDEX(2) ];
-derivatives[CINDEX(10)]=       hdot[ CINDEX(3) ];
+derivatives[0] =       qdot[ 0 ];
+derivatives[1] =       qdot[ 1 ];
+derivatives[2] =       qdot[ 2 ];
+derivatives[3] =       qdot[ 3 ];
+derivatives[4] =       omega_dot[ 0 ];
+derivatives[5] =       omega_dot[ 1 ];
+derivatives[6] =       omega_dot[ 2 ];
+derivatives[7] =       hdot[ 0 ];
+derivatives[8] =       hdot[ 1 ];
+derivatives[9]=        hdot[ 2 ];
 
 
-path[ CINDEX(1) ] =   dot( q,  q,  4);
-path[ CINDEX(2) ] =   dot( qc, qc, 4);
-path[ CINDEX(3) ] =   dot( h, h, 3 ) - gamma;   //  <= 0
-path[ CINDEX(4) ] =   dot( hdot, hdot,3); // <= hdotmax^2,
+path[ 0 ] =   dot( q,  q,  4);
+path[ 1 ] =   dot( qc, qc, 4);
+path[ 2 ] =   dot( h, h, 3 ) - gamma;   //  <= 0
+path[ 3 ] =   dot( hdot, hdot,3); // <= hdotmax^2,
 
 }
 
@@ -432,53 +432,53 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
 
 {
 
-adouble q1_i        = initial_states[CINDEX(1)];
-adouble q2_i        = initial_states[CINDEX(2)];
-adouble q3_i        = initial_states[CINDEX(3)];
-adouble q4_i        = initial_states[CINDEX(4)];
-adouble omega1_i    = initial_states[CINDEX(5)];
-adouble omega2_i    = initial_states[CINDEX(6)];
-adouble omega3_i    = initial_states[CINDEX(7)];
-adouble h1_i        = initial_states[CINDEX(8)];
-adouble h2_i        = initial_states[CINDEX(9)];
-adouble h3_i        = initial_states[CINDEX(10)];
+adouble q1_i        = initial_states[0];
+adouble q2_i        = initial_states[1];
+adouble q3_i        = initial_states[2];
+adouble q4_i        = initial_states[3];
+adouble omega1_i    = initial_states[4];
+adouble omega2_i    = initial_states[5];
+adouble omega3_i    = initial_states[6];
+adouble h1_i        = initial_states[7];
+adouble h2_i        = initial_states[8];
+adouble h3_i        = initial_states[9];
 
-adouble q1_f        = final_states[CINDEX(1)];
-adouble q2_f        = final_states[CINDEX(2)];
-adouble q3_f        = final_states[CINDEX(3)];
-adouble q4_f        = final_states[CINDEX(4)];
-adouble omega1_f    = final_states[CINDEX(5)];
-adouble omega2_f    = final_states[CINDEX(6)];
-adouble omega3_f    = final_states[CINDEX(7)];
-adouble h1_f        = final_states[CINDEX(8)];
-adouble h2_f        = final_states[CINDEX(9)];
-adouble h3_f        = final_states[CINDEX(10)];
+adouble q1_f        = final_states[0];
+adouble q2_f        = final_states[1];
+adouble q3_f        = final_states[2];
+adouble q4_f        = final_states[3];
+adouble omega1_f    = final_states[4];
+adouble omega2_f    = final_states[5];
+adouble omega3_f    = final_states[6];
+adouble h1_f        = final_states[7];
+adouble h2_f        = final_states[8];
+adouble h3_f        = final_states[9];
 
 // Initial conditions
 
-e[ CINDEX(1) ] = q1_i;
-e[ CINDEX(2) ] = q2_i;
-e[ CINDEX(3) ] = q3_i;
-e[ CINDEX(4) ] = q4_i;
-e[ CINDEX(5) ] = omega1_i;
-e[ CINDEX(6) ] = omega2_i;
-e[ CINDEX(7) ] = omega3_i;
-e[ CINDEX(8) ] = h1_i;
-e[ CINDEX(9) ] = h2_i;
-e[ CINDEX(10)] = h3_i;
+e[ 0 ] = q1_i;
+e[ 1 ] = q2_i;
+e[ 2 ] = q3_i;
+e[ 3 ] = q4_i;
+e[ 4 ] = omega1_i;
+e[ 5 ] = omega2_i;
+e[ 6 ] = omega3_i;
+e[ 7 ] = h1_i;
+e[ 8 ] = h2_i;
+e[ 9 ] = h3_i;
 
 // Final conditions
 
- e[ CINDEX(11) ] = q1_f;
- e[ CINDEX(12) ] = q2_f;
- e[ CINDEX(13) ] = q3_f;
- e[ CINDEX(14) ] = q4_f;
- e[ CINDEX(15) ] = omega1_f;
- e[ CINDEX(16) ] = omega2_f;
- e[ CINDEX(17) ] = omega3_f;
- e[ CINDEX(18) ] = h1_f;
- e[ CINDEX(19) ] = h2_f;
- e[ CINDEX(20) ] = h3_f;
+ e[ 10 ] = q1_f;
+ e[ 11 ] = q2_f;
+ e[ 12 ] = q3_f;
+ e[ 13 ] = q4_f;
+ e[ 14 ] = omega1_f;
+ e[ 15 ] = omega2_f;
+ e[ 16 ] = omega3_f;
+ e[ 17 ] = h1_f;
+ e[ 18 ] = h2_f;
+ e[ 19 ] = h3_f;
 
 
 }
@@ -528,24 +528,24 @@ int main(void)
 	hmax = 3*3600.0; // 3 CMG's
    }
 
-   CONSTANTS.hmax = hmax;
+CONSTANTS.hmax = hmax;
 
-   DMatrix& J = CONSTANTS.J;
+   MatrixXd& J = CONSTANTS.J;
 
-   J.Resize(3,3);
+   J.resize(3,3);
 
    // Inertia matrix in slug-ft^2
 
    if (CASE==1) {
-	J(1,1) = 17834580.0 ; J(1,2)= 2787992.0;  J(1,3)= 2873636.0;
-	J(2,1) = 2787992.0  ; J(2,2)= 2773815.0; J(2,3)= -863810.0;
-	J(3,1) = 28736361.0  ; J(3,2)= -863810.0; J(3,3)=  38030467.0;
+	J(0,0) = 17834580.0 ; J(0,1)= 2787992.0; J(0,2)= 2873636.0;
+	J(1,0) = 2787992.0  ; J(1,1)= 2773815.0; J(1,2)= -863810.0;
+	J(2,0) = 28736361.0 ; J(2,1)= -863810.0; J(2,2)=  38030467.0;
    }
 
    else if (CASE==2) {
-	J(1,1) = 18836544.0 ; J(1,2)= 3666370.0;  J(1,3)= 2965301.0;
-	J(2,1) = 3666370.0  ; J(2,2)= 27984088.0; J(2,3)= -1129004.0;
-	J(3,1) = 2965301.0  ; J(3,2)= -1129004.0; J(3,3)=  39442649.0;
+	J(0,0) = 18836544.0 ; J(0,1)= 3666370.0;  J(0,2)= 2965301.0;
+	J(1,0) = 3666370.0  ; J(1,1)= 27984088.0; J(1,2)= -1129004.0;
+	J(2,0) = 2965301.0  ; J(2,1)= -1129004.0; J(2,2)=  39442649.0;
    }
 
 
@@ -561,24 +561,24 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   							= 1;
+    problem.nlinkages                   	= 0;
 
     psopt_level1_setup(problem);
-
+    
 /////////////////////////////////////////////////////////////////////////////
 /////////   Define phase related information & do level 2 setup  ////////////
 /////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).nstates   		= 10;
-    problem.phases(1).ncontrols 		= 4;
-    problem.phases(1).nevents   	        = 20;
-    problem.phases(1).npath     		= 4;
-    problem.phases(1).nodes                     =  "[20, 30, 40, 50, 60]";
+    problem.phases(1).nstates   				= 10;
+    problem.phases(1).ncontrols 				= 4;
+    problem.phases(1).nevents   	        	= 20;
+    problem.phases(1).npath     				= 4;
+    problem.phases(1).nodes               <<  20, 30, 40, 50, 60;
 
 
-    problem.phases(1).nparameters               = 1;
+    problem.phases(1).nparameters         = 1;
 
 
     psopt_level2_setup(problem, algorithm);
@@ -589,194 +589,188 @@ int main(void)
 
    // Control bounds
 
+    problem.phases(1).bounds.lower.controls(0) =  -1.0;
     problem.phases(1).bounds.lower.controls(1) =  -1.0;
     problem.phases(1).bounds.lower.controls(2) =  -1.0;
     problem.phases(1).bounds.lower.controls(3) =  -1.0;
-    problem.phases(1).bounds.lower.controls(4) =  -1.0;
 
 
+    problem.phases(1).bounds.upper.controls(0) =   1.0;
     problem.phases(1).bounds.upper.controls(1) =   1.0;
     problem.phases(1).bounds.upper.controls(2) =   1.0;
     problem.phases(1).bounds.upper.controls(3) =   1.0;
-    problem.phases(1).bounds.upper.controls(4) =   1.0;
 
     // state bounds
 
-    problem.phases(1).bounds.lower.states(1) =  -1.0;
+    problem.phases(1).bounds.lower.states(0) =  -1.0;
+    problem.phases(1).bounds.lower.states(1) =  -0.2;
     problem.phases(1).bounds.lower.states(2) =  -0.2;
-    problem.phases(1).bounds.lower.states(3) =  -0.2;
-    problem.phases(1).bounds.lower.states(4) =  -1.0;
+    problem.phases(1).bounds.lower.states(3) =  -1.0;
+    problem.phases(1).bounds.lower.states(4) =  -1.E-2;
     problem.phases(1).bounds.lower.states(5) =  -1.E-2;
     problem.phases(1).bounds.lower.states(6) =  -1.E-2;
-    problem.phases(1).bounds.lower.states(7) =  -1.E-2;
+    problem.phases(1).bounds.lower.states(7) =  -8000.0;
     problem.phases(1).bounds.lower.states(8) =  -8000.0;
     problem.phases(1).bounds.lower.states(9) =  -8000.0;
-    problem.phases(1).bounds.lower.states(10)=  -8000.0;
 
-    problem.phases(1).bounds.upper.states(1) =  1.0;
+    problem.phases(1).bounds.upper.states(0) =  1.0;
+    problem.phases(1).bounds.upper.states(1) =  0.2;
     problem.phases(1).bounds.upper.states(2) =  0.2;
-    problem.phases(1).bounds.upper.states(3) =  0.2;
-    problem.phases(1).bounds.upper.states(4) =  1.0;
+    problem.phases(1).bounds.upper.states(3) =  1.0;
+    problem.phases(1).bounds.upper.states(4) =  1.E-2;
     problem.phases(1).bounds.upper.states(5) =  1.E-2;
     problem.phases(1).bounds.upper.states(6) =  1.E-2;
-    problem.phases(1).bounds.upper.states(7) =  1.E-2;
+    problem.phases(1).bounds.upper.states(7) =  8000.0;
     problem.phases(1).bounds.upper.states(8) =  8000.0;
     problem.phases(1).bounds.upper.states(9) =  8000.0;
-    problem.phases(1).bounds.upper.states(10)=  8000.0;
 
    // Parameter bound
 
 
-    problem.phases(1).bounds.lower.parameters(1) =  0.0;
-    problem.phases(1).bounds.upper.parameters(1) =  hmax*hmax;
+    problem.phases(1).bounds.lower.parameters(0) =  0.0;
+    problem.phases(1).bounds.upper.parameters(0) =  hmax*hmax;
 
 
     // Event bounds
 
     // Initial / Final  condition values:
-    DMatrix q_i(4,1),  q_f(4,1), omega_i(3,1), omega_f(3,1), h_i(3,1), h_f(3,1);
+    MatrixXd q_i(4,1),  q_f(4,1), omega_i(3,1), omega_f(3,1), h_i(3,1), h_f(3,1);
 
     adouble q_ad[4], omega_ad[3];
 
-   // Initial conditions
+// Initial conditions
     if (CASE==1) {
-    	q_i(1) =  0.98966;
-    	q_i(2) =  0.02690;
-    	q_i(3) = -0.08246;
-    	q_i(4) =  0.11425;
+    	q_i(0) =  0.98966;
+    	q_i(1) =  0.02690;
+    	q_i(2) = -0.08246;
+    	q_i(3) =  0.11425;
 
-        q_ad[ CINDEX(1) ]=q_i(1);
-        q_ad[ CINDEX(2) ]=q_i(2);
-        q_ad[ CINDEX(3) ]=q_i(3);
-        q_ad[ CINDEX(4) ]=q_i(4);
+        q_ad[ 0 ]=q_i(0);
+        q_ad[ 1 ]=q_i(1);
+        q_ad[ 2 ]=q_i(2);
+        q_ad[ 3 ]=q_i(3);
         compute_omega0( omega_ad, q_ad);
-        omega_i(1) = omega_ad[ CINDEX(1) ].value();
-        omega_i(2) = omega_ad[ CINDEX(2) ].value();
-        omega_i(3) = omega_ad[ CINDEX(3) ].value();
+        omega_i(0) = omega_ad[ 0 ].value();
+        omega_i(1) = omega_ad[ 1 ].value();
+        omega_i(2) = omega_ad[ 2 ].value();
 
  //   	omega_i(1) = -2.5410E-4;
  //   	omega_i(2) = -1.1145E-3;
  //   	omega_i(3) =  8.2609E-5;
 
-    	h_i(1) =  -496.0;
-    	h_i(2) =  -175.0;
-    	h_i(3) = -3892.0;
+    	h_i(0) =  -496.0;
+    	h_i(1) =  -175.0;
+    	h_i(2) = -3892.0;
     }
 
     else if (CASE==2) {
-	q_i(1) =  0.98996;
-    	q_i(2) =  0.02650;
-    	q_i(3) = -0.07891;
-    	q_i(4) =  0.11422;
-        q_ad[ CINDEX(1) ]=q_i(1);
-        q_ad[ CINDEX(2) ]=q_i(2);
-        q_ad[ CINDEX(3) ]=q_i(3);
-        q_ad[ CINDEX(4) ]=q_i(4);
+	   q_i(0) =  0.98996;
+    	q_i(1) =  0.02650;
+    	q_i(2) = -0.07891;
+    	q_i(3) =  0.11422;
+        q_ad[ 0 ]=q_i(0);
+        q_ad[ 1 ]=q_i(1);
+        q_ad[ 2 ]=q_i(2);
+        q_ad[ 3 ]=q_i(3);
         compute_omega0( omega_ad, q_ad);
-        omega_i(1) = omega_ad[ CINDEX(1) ].value();
-        omega_i(2) = omega_ad[ CINDEX(2) ].value();
-        omega_i(3) = omega_ad[ CINDEX(3) ].value();
+        omega_i(0) = omega_ad[ 0 ].value();
+        omega_i(1) = omega_ad[ 1 ].value();
+        omega_i(2) = omega_ad[ 2 ].value();
 
- //   	omega_i(1) = -2.5470E-4;
- //   	omega_i(2) = -1.1159E-3;
- //   	omega_i(3) =  8.0882E-5;
-
-    	h_i(1) =  1000.0;
-    	h_i(2) =  -500.0;
-    	h_i(3) = -4200.0;
+    	h_i(0) =  1000.0;
+    	h_i(1) =  -500.0;
+    	h_i(2) = -4200.0;
     }
 
     // Final conditions
-    q_f(1) = 0.70531;
-    q_f(2) = -0.06201;
-    q_f(3) = -0.03518;
-    q_f(4) = -0.70531;
+    q_f(0) =  0.70531;
+    q_f(1) = -0.06201;
+    q_f(2) = -0.03518;
+    q_f(3) = -0.70531;
 
-    q_ad[ CINDEX(1) ]=q_f(1);
-    q_ad[ CINDEX(2) ]=q_f(2);
-    q_ad[ CINDEX(3) ]=q_f(3);
-    q_ad[ CINDEX(4) ]=q_f(4);
+    q_ad[ 0 ]=q_f(0);
+    q_ad[ 1 ]=q_f(1);
+    q_ad[ 2 ]=q_f(2);
+    q_ad[ 3 ]=q_f(3);
     compute_omega0( omega_ad, q_ad);
-    omega_f(1) = omega_ad[ CINDEX(1) ].value();
-    omega_f(2) = omega_ad[ CINDEX(2) ].value();
-    omega_f(3) = omega_ad[ CINDEX(3) ].value();
+    omega_f(0) = omega_ad[ 0 ].value();
+    omega_f(1) = omega_ad[ 1 ].value();
+    omega_f(2) = omega_ad[ 2 ].value();
 
 //    omega_f(1) = 1.1353E-3;
 //    omega_f(2) = 3.0062E-6;
 //    omega_f(3) = -1.5713E-4;
 
-    h_f(1) = -9.0;
-    h_f(2) = -3557.0;
-    h_f(3) =  -135.0;
+    h_f(0) = -9.0;
+    h_f(1) = -3557.0;
+    h_f(2) =  -135.0;
 
     double DQ = 0.0001;
     double DWF = 0.0;
     double DHF = 0.0;
-
-    problem.phases(1).bounds.lower.events(1) = q_i(1)-DQ;
-    problem.phases(1).bounds.lower.events(2) = q_i(2)-DQ;
-    problem.phases(1).bounds.lower.events(3) = q_i(3)-DQ;
-    problem.phases(1).bounds.lower.events(4) = q_i(4)-DQ;
-    problem.phases(1).bounds.lower.events(5) = omega_i(1);
-    problem.phases(1).bounds.lower.events(6) = omega_i(2);
-    problem.phases(1).bounds.lower.events(7) = omega_i(3);
-    problem.phases(1).bounds.lower.events(8) = h_i(1);
-    problem.phases(1).bounds.lower.events(9) = h_i(2);
-    problem.phases(1).bounds.lower.events(10)= h_i(3);
+    
+    problem.phases(1).bounds.lower.events(0)  = q_i(0)-DQ;
+    problem.phases(1).bounds.lower.events(1)  = q_i(1)-DQ;
+    problem.phases(1).bounds.lower.events(2)  = q_i(2)-DQ;
+    problem.phases(1).bounds.lower.events(3)  = q_i(3)-DQ;
+    problem.phases(1).bounds.lower.events(4)  = omega_i(0);
+    problem.phases(1).bounds.lower.events(5)  = omega_i(1);
+    problem.phases(1).bounds.lower.events(6)  = omega_i(2);
+    problem.phases(1).bounds.lower.events(7)  = h_i(0);
+    problem.phases(1).bounds.lower.events(8)  = h_i(1);
+    problem.phases(1).bounds.lower.events(9)  = h_i(2);
+    problem.phases(1).bounds.lower.events(10) = q_f(0)-DQ;
     problem.phases(1).bounds.lower.events(11) = q_f(1)-DQ;
     problem.phases(1).bounds.lower.events(12) = q_f(2)-DQ;
     problem.phases(1).bounds.lower.events(13) = q_f(3)-DQ;
-    problem.phases(1).bounds.lower.events(14) = q_f(4)-DQ;
+    problem.phases(1).bounds.lower.events(14) = omega_f(0)-DWF;
     problem.phases(1).bounds.lower.events(15) = omega_f(1)-DWF;
     problem.phases(1).bounds.lower.events(16) = omega_f(2)-DWF;
-    problem.phases(1).bounds.lower.events(17) = omega_f(3)-DWF;
+    problem.phases(1).bounds.lower.events(17) = h_f(0)-DHF;
     problem.phases(1).bounds.lower.events(18) = h_f(1)-DHF;
     problem.phases(1).bounds.lower.events(19) = h_f(2)-DHF;
-    problem.phases(1).bounds.lower.events(20)= h_f(3)-DHF;
 
 
-    problem.phases(1).bounds.upper.events(1) = q_i(1)+DQ;
-    problem.phases(1).bounds.upper.events(2) = q_i(2)+DQ;
-    problem.phases(1).bounds.upper.events(3) = q_i(3)+DQ;
-    problem.phases(1).bounds.upper.events(4) = q_i(4)+DQ;
-    problem.phases(1).bounds.upper.events(5) = omega_i(1);
-    problem.phases(1).bounds.upper.events(6) = omega_i(2);
-    problem.phases(1).bounds.upper.events(7) = omega_i(3);
-    problem.phases(1).bounds.upper.events(8) = h_i(1);
-    problem.phases(1).bounds.upper.events(9) = h_i(2);
-    problem.phases(1).bounds.upper.events(10)= h_i(3);
+    problem.phases(1).bounds.upper.events(0)  = q_i(0)+DQ;
+    problem.phases(1).bounds.upper.events(1)  = q_i(1)+DQ;
+    problem.phases(1).bounds.upper.events(2)  = q_i(2)+DQ;
+    problem.phases(1).bounds.upper.events(3)  = q_i(3)+DQ;
+    problem.phases(1).bounds.upper.events(4)  = omega_i(0);
+    problem.phases(1).bounds.upper.events(5)  = omega_i(1);
+    problem.phases(1).bounds.upper.events(6)  = omega_i(2);
+    problem.phases(1).bounds.upper.events(7)  = h_i(0);
+    problem.phases(1).bounds.upper.events(8)  = h_i(1);
+    problem.phases(1).bounds.upper.events(9)  = h_i(2);
+    problem.phases(1).bounds.upper.events(10) = q_f(0)+DQ;
     problem.phases(1).bounds.upper.events(11) = q_f(1)+DQ;
     problem.phases(1).bounds.upper.events(12) = q_f(2)+DQ;
     problem.phases(1).bounds.upper.events(13) = q_f(3)+DQ;
-    problem.phases(1).bounds.upper.events(14) = q_f(4)+DQ;
+    problem.phases(1).bounds.upper.events(14) = omega_f(0)+DWF;
     problem.phases(1).bounds.upper.events(15) = omega_f(1)+DWF;
     problem.phases(1).bounds.upper.events(16) = omega_f(2)+DWF;
-    problem.phases(1).bounds.upper.events(17) = omega_f(3)+DWF;
+    problem.phases(1).bounds.upper.events(17) = h_f(0)+DHF;
     problem.phases(1).bounds.upper.events(18) = h_f(1)+DHF;
     problem.phases(1).bounds.upper.events(19) = h_f(2)+DHF;
-    problem.phases(1).bounds.upper.events(20)=  h_f(3)+DHF;
 
-
-
-    // Path bounds
+// Path bounds
 
     double hdotmax = 200.0; // [ ft-lbf ]
 
     double EQ_TOL = 0.0002;
 
+    problem.phases(1).bounds.lower.path(0) = 1.0-EQ_TOL;
+    problem.phases(1).bounds.upper.path(0) = 1.0+EQ_TOL;
+
     problem.phases(1).bounds.lower.path(1) = 1.0-EQ_TOL;
     problem.phases(1).bounds.upper.path(1) = 1.0+EQ_TOL;
 
-    problem.phases(1).bounds.lower.path(2) = 1.0-EQ_TOL;
-    problem.phases(1).bounds.upper.path(2) = 1.0+EQ_TOL;
+
+    problem.phases(1).bounds.lower.path(2) = -hmax*hmax;
+    problem.phases(1).bounds.upper.path(2) =  0.0;
 
 
-    problem.phases(1).bounds.lower.path(3) = -hmax*hmax;
-    problem.phases(1).bounds.upper.path(3) =  0.0;
-
-
-    problem.phases(1).bounds.lower.path(4) = 0.0;
-    problem.phases(1).bounds.upper.path(4) = hdotmax*hdotmax;
+    problem.phases(1).bounds.lower.path(3) = 0.0;
+    problem.phases(1).bounds.upper.path(3) = hdotmax*hdotmax;
 
     // Time bounds
 
@@ -795,53 +789,50 @@ int main(void)
     problem.phases(1).bounds.lower.EndTime      = TFINAL;
     problem.phases(1).bounds.upper.EndTime      = TFINAL;
 
-
-
-
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Register problem functions  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost      = &integrand_cost;
+    problem.endpoint_cost 	     = &endpoint_cost;
+    problem.dae             	  = &dae;
+    problem.events 		        = &events;
+    problem.linkages		        = &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-   DMatrix time_guess = linspace(0.0, TFINAL, 50 );
-   DMatrix state_guess = zeros(10,50);
-   DMatrix control_guess = zeros(4,50);
-   DMatrix parameter_guess = hmax*hmax*ones(1,1);
+   MatrixXd time_guess;      time_guess      = linspace(0.0, TFINAL, 50 );
+   MatrixXd state_guess;     state_guess     = zeros(10,50);
+   MatrixXd control_guess;   control_guess   = zeros(4,50);
+   MatrixXd parameter_guess; parameter_guess = hmax*hmax*ones(1,1);
 
-   control_guess(1, colon() ) = linspace( q_i(1), q_i(1), 50 );
-   control_guess(2, colon() ) = linspace( q_i(2), q_i(2), 50 );
-   control_guess(3, colon() ) = linspace( q_i(3), q_i(3), 50 );
-   control_guess(4, colon() ) = linspace( q_i(4), q_i(4), 50 );
+   control_guess.row(0) = linspace( q_i(0), q_i(0), 50 );
+   control_guess.row(1) = linspace( q_i(1), q_i(1), 50 );
+   control_guess.row(2) = linspace( q_i(2), q_i(2), 50 );
+   control_guess.row(3) = linspace( q_i(3), q_i(3), 50 );
 
-   state_guess(1, colon() ) = linspace( q_i(1), q_i(1), 50);
-   state_guess(2, colon() ) = linspace( q_i(2), q_i(2), 50);
-   state_guess(3, colon() ) = linspace( q_i(3), q_i(3), 50);
-   state_guess(4, colon() ) = linspace( q_i(4), q_i(4), 50);
+   state_guess.row(0) = linspace( q_i(0), q_i(0), 50);
+   state_guess.row(1) = linspace( q_i(1), q_i(1), 50);
+   state_guess.row(2) = linspace( q_i(2), q_i(2), 50);
+   state_guess.row(3) = linspace( q_i(3), q_i(3), 50);
 
-   state_guess(5, colon() ) = linspace( omega_i(1), omega_f(1), 50);
-   state_guess(6, colon() ) = linspace( omega_i(2), omega_f(2), 50);
-   state_guess(7, colon() ) = linspace( omega_i(3), omega_f(3), 50);
+   state_guess.row(4) = linspace( omega_i(0), omega_f(0), 50);
+   state_guess.row(5) = linspace( omega_i(1), omega_f(1), 50);
+   state_guess.row(6) = linspace( omega_i(2), omega_f(2), 50);
 
-   state_guess(8, colon() ) = linspace( h_i(1), h_f(1), 50);
-   state_guess(9, colon() ) = linspace( h_i(2), h_f(2), 50);
-   state_guess(10, colon()) = linspace( h_i(3), h_f(3), 50);
+   state_guess.row(7) = linspace( h_i(0), h_f(0), 50);
+   state_guess.row(8) = linspace( h_i(1), h_f(1), 50);
+   state_guess.row(9) = linspace( h_i(2), h_f(2), 50);
 
 
 
-   problem.phases(1).guess.controls = control_guess;
-   problem.phases(1).guess.states   = state_guess;
-   problem.phases(1).guess.time     = time_guess;
-   problem.phases(1).guess.parameters=parameter_guess;
+   problem.phases(1).guess.controls    = control_guess;
+   problem.phases(1).guess.states      = state_guess;
+   problem.phases(1).guess.time        = time_guess;
+   problem.phases(1).guess.parameters  = parameter_guess;
 
 
 
@@ -857,11 +848,10 @@ int main(void)
     algorithm.derivatives                 = "automatic";
     algorithm.defect_scaling              = "jacobian-based";
     algorithm.jac_sparsity_ratio          = 0.104;
+    
 
-
-
-
-
+    
+    
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   //////////////////
 ////////////////////////////////////////////////////////////////////////////
@@ -873,7 +863,7 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix states, controls, t;
+    MatrixXd states, controls, t;
 
     states      = solution.get_states_in_phase(1);
     controls    = solution.get_controls_in_phase(1);
@@ -884,48 +874,54 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    states.Save("states.dat");
-    controls.Save("controls.dat");
-    t.Save("t.dat");
+    Save(states,"states.dat");
+    Save(controls,"controls.dat");
+    Save(t,"t.dat");
 
-    DMatrix omega, h, q, phi, theta, psi, qc, euler_angles;
+    MatrixXd omega, h, q, phi, theta, psi, qc, euler_angles;
 
-    q      = states( colon(1,4), colon() );
-    omega  = states( colon(5,7), colon() );
-    h      = states( colon(8,10),colon() );
+    q      = states.block(0,0,4,length(t)); 
+    omega  = states.block(4,0,3,length(t)); 
+    h      = states.block(7,0,3,length(t)); 
     qc     = controls;
 
     quarternion2Euler(phi, theta, psi,  q);
 
-    euler_angles = phi && theta && psi;
+
+    euler_angles.resize(3,length(t));
+
+    euler_angles << phi , 
+                    theta , 
+                    psi;
 
     adouble  qc_ad[4], u_ad[3];
 
-    DMatrix u(3,length(t));
-    DMatrix hnorm(1,length(t));
-    DMatrix hi;
-    DMatrix hm = hmax*ones(1,length(t));
+    MatrixXd u(3,length(t));
+    MatrixXd hnorm(1,length(t));
+    MatrixXd hi;
+    MatrixXd hm = hmax*ones(1,length(t));
+
 
     int i,j;
 
-    for (i=1; i<= length(t); i++ ) {
-	for(j=1;j<=3;j++) {
-	   omega_ad[j-1] = omega(j,i);
+  for (i=0; i< length(t); i++ ) {
+	for(j=0;j<3;j++) {
+	   omega_ad[j] = omega(j,i);
         }
-	for(j=1;j<=4;j++) {
-	   q_ad[j-1] = q(j,i);
-           qc_ad[j-1]= qc(j,i);
+	for(j=0;j<4;j++) {
+	   q_ad[j] = q(j,i);
+           qc_ad[j]= qc(j,i);
         }
 
 	compute_control_torque(u_ad, q_ad, qc_ad, omega_ad );
 
-	for(j=1;j<=3;j++) {
-	   u(j,i) = u_ad[j-1].value();
-        }
+	for(j=0;j<3;j++) {
+	   u(j,i) = u_ad[j].value();
+   }
 
-        hi = h(colon(),i);
+   hi = h.col(i);  
 
-	hnorm(1,i) = enorm(hi);
+	hnorm(0,i) = hi.norm();
 
     }
 
@@ -934,11 +930,11 @@ int main(void)
     phi = phi*180.0/pi; theta=theta*180.0/pi; psi=psi*180.0/pi;
 
 
-    u.Save("u.dat");
+    Save(u,"u.dat");
 
-    euler_angles.Save("euler_angles.dat");
-
-
+    Save(euler_angles,"euler_angles.dat");
+    
+   
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
@@ -955,27 +951,25 @@ int main(void)
 
     plot(t,psi,problem.name+" Euler angle: psi",       "time (s)", "psi (deg)", "psi");
 
-    plot(t,omega(1,colon()),problem.name+": omega 1","time (s)", "omega1", "omega1");
+    plot(t,omega.row(0),problem.name+": omega 1","time (s)", "omega1", "omega1");
 
-    plot(t,omega(2,colon()),problem.name+": omega 2","time (s)", "omega2", "omega2");
+    plot(t,omega.row(1),problem.name+": omega 2","time (s)", "omega2", "omega2");
 
-    plot(t,omega(3,colon()),problem.name+": omega 3","time (s)", "omega3", "omega3");
+    plot(t,omega.row(2),problem.name+": omega 3","time (s)", "omega3", "omega3");
 
-    plot(t,h(1,colon()),problem.name+": momentum 1","time (s)", "h1", "h1");
+    plot(t,h.row(0),problem.name+": momentum 1","time (s)", "h1", "h1");
 
-    plot(t,h(2,colon()),problem.name+": momentum 2","time (s)", "h2", "h2");
+    plot(t,h.row(1),problem.name+": momentum 2","time (s)", "h2", "h2");
 
-    plot(t,h(3,colon()),problem.name+": momentum 3","time (s)", "h3", "h3");
+    plot(t,h.row(2),problem.name+": momentum 3","time (s)", "h3", "h3");
 
-    plot(t,u(1,colon()),problem.name+": control torque 1","time (s)", "u1", "u1");
+    plot(t,u.row(0),problem.name+": control torque 1","time (s)", "u1", "u1");
 
-    plot(t,u(2,colon()),problem.name+": control torque 2","time (s)", "u2", "u2");
+    plot(t,u.row(1),problem.name+": control torque 2","time (s)", "u2", "u2");
 
-    plot(t,u(3,colon()),problem.name+": control torque 3","time (s)", "u3", "u3");
+    plot(t,u.row(2),problem.name+": control torque 3","time (s)", "u3", "u3");
 
     plot(t,hnorm,t,hm,problem.name+": momentum norm", "time (s)", "h", "h hmax");
-
-
 
 
     plot(t,phi,problem.name+" Euler angles: phi",     "time (s)", "angles (deg)", "phi",
@@ -987,40 +981,39 @@ int main(void)
     plot(t,psi,problem.name+" Euler angle: psi",       "time (s)", "psi (deg)", "psi",
 	       "pdf", "zpm_psi.pdf");
 
-    plot(t,omega(1,colon()),problem.name+": omega 1","time (s)", "omega1", "omega1",
+    plot(t,omega.row(0),problem.name+": omega 1","time (s)", "omega1", "omega1",
 	       "pdf", "zpm_omega1.pdf");
 
-    plot(t,omega(2,colon()),problem.name+": omega 2","time (s)", "omega2", "omega2",
+    plot(t,omega.row(1),problem.name+": omega 2","time (s)", "omega2", "omega2",
 	       "pdf", "zpm_omega2.pdf");
 
-    plot(t,omega(3,colon()),problem.name+": omega 3","time (s)", "omega3", "omega3",
+    plot(t,omega.row(2),problem.name+": omega 3","time (s)", "omega3", "omega3",
 	       "pdf", "zpm_omega3.pdf");
 
-    plot(t,h(1,colon()),problem.name+": momentum 1","time (s)", "h1", "h1",
+    plot(t,h.row(0),problem.name+": momentum 1","time (s)", "h1", "h1",
               "pdf", "zpm_h1.pdf");
 
-    plot(t,h(2,colon()),problem.name+": momentum 2","time (s)", "h2", "h2",
+    plot(t,h.row(1),problem.name+": momentum 2","time (s)", "h2", "h2",
 	      "pdf", "zpm_h2.pdf");
 
-    plot(t,h(3,colon()),problem.name+": momentum 3","time (s)", "h3", "h3",
+    plot(t,h.row(2),problem.name+": momentum 3","time (s)", "h3", "h3",
 	      "pdf", "zpm_h3.pdf");
 
-    plot(t,u(1,colon()),problem.name+": control torque 1","time (s)", "u1", "u1",
+    plot(t,u.row(0),problem.name+": control torque 1","time (s)", "u1", "u1",
 	      "pdf", "zpm_u1.pdf");
 
-    plot(t,u(2,colon()),problem.name+": control torque 2","time (s)", "u2", "u2",
+    plot(t,u.row(1),problem.name+": control torque 2","time (s)", "u2", "u2",
 	      "pdf", "zpm_u2.pdf");
 
-    plot(t,u(3,colon()),problem.name+": control torque 3","time (s)", "u3", "u3",
+    plot(t,u.row(2),problem.name+": control torque 3","time (s)", "u3", "u3",
 	      "pdf", "zpm_u3.pdf");
 
     plot(t,hnorm,t,hm,problem.name+": momentum norm", "time (s)", "h (ft-lbf-sec)", "h hmax",
 	      "pdf", "zpm_hnorm.pdf");
 
     plot(t,u,problem.name+": control torques","time (s)", "u (ft-lbf)", "u1 u2 u3",
-	      "pdf", "zpm_controls.pdf");
-
-
+	      "pdf", "zpm_controls.pdf");    
+    
 }
 
 ////////////////////////////////////////////////////////////////////////////

@@ -133,7 +133,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 3;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes                     = 40;
+    problem.phases(1).nodes                     << 40;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -149,22 +149,22 @@ int main(void)
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).bounds.lower.states(1) = 0.9;
-    problem.phases(1).bounds.lower.states(2) = 0.0;
+    problem.phases(1).bounds.lower.states(0) = 0.9;
+    problem.phases(1).bounds.lower.states(1) = 0.0;
 
-    problem.phases(1).bounds.upper.states(1) = 1.0;
-    problem.phases(1).bounds.upper.states(2) = 0.1;
+    problem.phases(1).bounds.upper.states(0) = 1.0;
+    problem.phases(1).bounds.upper.states(1) = 0.1;
 
-    problem.phases(1).bounds.lower.controls(1) = 0.0;
-    problem.phases(1).bounds.upper.controls(1) = 1.0;
+    problem.phases(1).bounds.lower.controls(0) = 0.0;
+    problem.phases(1).bounds.upper.controls(0) = 1.0;
 
-    problem.phases(1).bounds.lower.events(1) = 1.0;
+    problem.phases(1).bounds.lower.events(0) = 1.0;
+    problem.phases(1).bounds.lower.events(1) = 0.0;
     problem.phases(1).bounds.lower.events(2) = 0.0;
-    problem.phases(1).bounds.lower.events(3) = 0.0;
 
-    problem.phases(1).bounds.upper.events(1) = 1.0;
-    problem.phases(1).bounds.upper.events(2) = 0.0;
-    problem.phases(1).bounds.upper.events(3) = 0.95;
+    problem.phases(1).bounds.upper.events(0) = 1.0;
+    problem.phases(1).bounds.upper.events(1) = 0.0;
+    problem.phases(1).bounds.upper.events(2) = 0.95;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -192,15 +192,15 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix u0(1,40);
-    DMatrix x0(3,40);
+    MatrixXd u0(1,40);
+    MatrixXd x0(3,40);
 
 
 
-    DMatrix t0    =  linspace(0.0, 1.0, 40);
+    MatrixXd t0    =  linspace(0.0, 1.0, 40);
 
-    x0(1,colon()) = ones(1,40) - 0.085*t0;
-    x0(2,colon()) = 0.05*t0;
+    x0.row(0) =  ones(1,40) - 0.085*t0;
+    x0.row(1) = 0.05*t0;
     u0            = ones(1,40)- t0;
 
     problem.phases(1).guess.controls       = u0;
@@ -242,11 +242,11 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
-    lambda.Save("lambda.dat");
-    H.Save("H.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
+    Save(lambda,"lambda.dat");
+    Save(H,"H.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////

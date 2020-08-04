@@ -31,17 +31,17 @@ struct Constants {
   double Re;
   double Isp;
   double mu;
-  DMatrix* CLa_table;
-  DMatrix* CD0_table;
-  DMatrix* eta_table;
-  DMatrix* T_table;
-  DMatrix* M1;
-  DMatrix* M2;
-  DMatrix* h1;
-  DMatrix* htab;
-  DMatrix* ttab;
-  DMatrix* ptab;
-  DMatrix* gtab;
+  MatrixXd* CLa_table;
+  MatrixXd* CD0_table;
+  MatrixXd* eta_table;
+  MatrixXd* T_table;
+  MatrixXd* M1;
+  MatrixXd* M2;
+  MatrixXd* h1;
+  MatrixXd* htab;
+  MatrixXd* ttab;
+  MatrixXd* ptab;
+  MatrixXd* gtab;
 };
 
 typedef struct Constants Constants_;
@@ -101,13 +101,13 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
   double Isp  = CONSTANTS.Isp;
   double mu   = CONSTANTS.mu;
 
-  DMatrix& M1         = *CONSTANTS.M1;
-  DMatrix& M2         = *CONSTANTS.M2;
-  DMatrix& h1         = *CONSTANTS.h1;
-  DMatrix& CLa_table  = *CONSTANTS.CLa_table;
-  DMatrix& CD0_table  = *CONSTANTS.CD0_table;
-  DMatrix& eta_table  = *CONSTANTS.eta_table;
-  DMatrix& T_table    = *CONSTANTS.T_table;
+  MatrixXd& M1         = *CONSTANTS.M1;
+  MatrixXd& M2         = *CONSTANTS.M2;
+  MatrixXd& h1         = *CONSTANTS.h1;
+  MatrixXd& CLa_table  = *CONSTANTS.CLa_table;
+  MatrixXd& CD0_table  = *CONSTANTS.CD0_table;
+  MatrixXd& eta_table  = *CONSTANTS.eta_table;
+  MatrixXd& T_table    = *CONSTANTS.T_table;
 
   int lM1 = length(M1);
 
@@ -242,7 +242,7 @@ int main(void)
     problem.phases(1).nevents   = 7;
     problem.phases(1).npath     = 0;
 
-    problem.phases(1).nodes     = "[30,60]";
+    problem.phases(1).nodes     << 30,60;
 
 
     psopt_level2_setup(problem, algorithm);
@@ -257,10 +257,10 @@ int main(void)
     problem.user_data = (void*) &CONSTANTS;
 
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare DMatrix objects to store results //////////////
+///////////////////  Declare MatrixXd objects to store results //////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, t, H;
+    MatrixXd x, u, t, H;
 
 
 
@@ -276,26 +276,26 @@ int main(void)
    CONSTANTS.mu   = 0.14076539E17; // ft^3/s^2
 
 
-   DMatrix M1(1,9,
-   0.E0, .4E0, .8E0, .9E0, 1.E0, 1.2E0, 1.4E0, 1.6E0, 1.8E0);
+   MatrixXd M1(1,9);
+   M1 << 0.E0, .4E0, .8E0, .9E0, 1.E0, 1.2E0, 1.4E0, 1.6E0, 1.8E0;
 
-   DMatrix M2(1,10,
-   0.E0, .2E0, .4E0, .6E0, .8E0, 1.E0, 1.2E0, 1.4E0, 1.6E0, 1.8E0);
+   MatrixXd M2(1,10);
+   M2 << 0.E0, .2E0, .4E0, .6E0, .8E0, 1.E0, 1.2E0, 1.4E0, 1.6E0, 1.8E0;
 
-   DMatrix h1(1,10,
-   0.E0, 5E3, 10.E3, 15.E3, 20.E3, 25.E3, 30.E3, 40.E3, 50.E3, 70.E3);
+   MatrixXd h1(1,10);
+   h1 << 0.E0, 5E3, 10.E3, 15.E3, 20.E3, 25.E3, 30.E3, 40.E3, 50.E3, 70.E3;
 
-   DMatrix CLa_table(1,9,
-   3.44E0, 3.44E0, 3.44E0, 3.58E0, 4.44E0, 3.44E0, 3.01E0, 2.86E0, 2.44E0);
+   MatrixXd CLa_table(1,9);
+   CLa_table << 3.44E0, 3.44E0, 3.44E0, 3.58E0, 4.44E0, 3.44E0, 3.01E0, 2.86E0, 2.44E0;
 
-   DMatrix CD0_table(1,9,
-   .013E0, .013E0, .013E0, .014E0, .031E0, 0.041E0, .039E0, .036E0, .035E0);
+   MatrixXd CD0_table(1,9); 
+   CD0_table << .013E0, .013E0, .013E0, .014E0, .031E0, 0.041E0, .039E0, .036E0, .035E0;
 
-   DMatrix eta_table(1,9,
-   .54E0, .54E0, .54E0, .75E0, .79E0, .78E0, .89E0, .93E0, .93E0);
+   MatrixXd eta_table(1,9); 
+   eta_table << .54E0, .54E0, .54E0, .75E0, .79E0, .78E0, .89E0, .93E0, .93E0;
 
-   DMatrix T_table(10,10,
-   24200., 24000.,  20300.,  17300.,14500.,12200.,10200.,5700.,3400.,100.,
+   MatrixXd T_table(10,10);
+   T_table << 24200., 24000.,  20300.,  17300.,14500.,12200.,10200.,5700.,3400.,100.,
    28000., 24600.,  21100.,  18100.,15200.,12800.,10700.,6500.,3900.,200.,
    28300., 25200.,  21900.,  18700.,15900.,13400.,11200.,7300.,4400.,400.,
    30800., 27200.,  23800.,  20500.,17300.,14700.,12300.,8100.,4900.,800.,
@@ -304,30 +304,31 @@ int main(void)
    36100., 38000.,  34900.,  31300.,27300.,23600.,20100.,13400.,8300.,1700.,
    34300., 36600.,  38500.,  36100.,31600.,28100.,24200.,16200.,10000.,2200.,
    32500., 35200.,  42100.,  38700.,35700.,32000.,28100.,19300.,11900.,2900.,
-   30700., 33800.,  45700.,  41300.,39800.,34600.,31100.,21700.,13300.,3100. );
+   30700., 33800.,  45700.,  41300.,39800.,34600.,31100.,21700.,13300.,3100. ;
 
-   DMatrix htab(1,8,
-                  0.0, 11.0, 20.0, 32.0, 47.0, 51.0, 71.0, 84.852);
-   DMatrix ttab(1,8,
-          288.15, 216.65, 216.65, 228.65, 270.65, 270.65, 214.65, 186.946);
-   DMatrix ptab(1,8,
-               1.0, 2.233611E-1, 5.403295E-2, 8.5666784E-3, 1.0945601E-3,
-                                     6.6063531E-4, 3.9046834E-5, 3.68501E-6);
-   DMatrix gtab(1,8, -6.5, 0.0, 1.0, 2.8, 0.0, -2.8, -2.0, 0.0);
+   MatrixXd htab(1,8);
+   htab <<      0.0, 11.0, 20.0, 32.0, 47.0, 51.0, 71.0, 84.852;
+   MatrixXd ttab(1,8);
+   ttab <<      288.15, 216.65, 216.65, 228.65, 270.65, 270.65, 214.65, 186.946;
+   MatrixXd ptab(1,8);
+   ptab <<      1.0, 2.233611E-1, 5.403295E-2, 8.5666784E-3, 1.0945601E-3,
+                                     6.6063531E-4, 3.9046834E-5, 3.68501E-6;
+   MatrixXd gtab(1,8);
+   gtab << -6.5, 0.0, 1.0, 2.8, 0.0, -2.8, -2.0, 0.0;
 
-   M1.Print("M1");
+//   M1.Print("M1");
 
-   M2.Print("M2");
+//   M2.Print("M2");
 
-   h1.Print("h1");
+//   h1.Print("h1");
 
-   CLa_table.Print("CLa_table");
+//   CLa_table.Print("CLa_table");
 
-   CD0_table.Print("CD0_table");
+//   CD0_table.Print("CD0_table");
 
-   eta_table.Print("eta_table");
+//   eta_table.Print("eta_table");
 
-   T_table.Print("T_table");
+//   T_table.Print("T_table");
 
 
    CONSTANTS.M1         = &M1;
@@ -371,59 +372,59 @@ int main(void)
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int iphase =  0;
+    int iphase =  1;
 
-    problem.phase[iphase].bounds.lower.StartTime    = t0min;
-    problem.phase[iphase].bounds.upper.StartTime    = t0max;
+    problem.phases(iphase).bounds.lower.StartTime    = t0min;
+    problem.phases(iphase).bounds.upper.StartTime    = t0max;
 
-    problem.phase[iphase].bounds.lower.EndTime      = tfmin;
-    problem.phase[iphase].bounds.upper.EndTime      = tfmax;
-
-
-    problem.phase[iphase].bounds.lower.states(1) = hmin;
-    problem.phase[iphase].bounds.upper.states(1) = hmax;
-    problem.phase[iphase].bounds.lower.states(2) = vmin;
-    problem.phase[iphase].bounds.upper.states(2) = vmax;
-    problem.phase[iphase].bounds.lower.states(3) = gammamin;
-    problem.phase[iphase].bounds.upper.states(3) = gammamax;
-    problem.phase[iphase].bounds.lower.states(4) = wmin;
-    problem.phase[iphase].bounds.upper.states(4) = wmax;
+    problem.phases(iphase).bounds.lower.EndTime      = tfmin;
+    problem.phases(iphase).bounds.upper.EndTime      = tfmax;
 
 
-    problem.phase[iphase].bounds.lower.controls(1) = alphamin;
-    problem.phase[iphase].bounds.upper.controls(1) = alphamax;
+    problem.phases(iphase).bounds.lower.states(0) = hmin;
+    problem.phases(iphase).bounds.upper.states(0) = hmax;
+    problem.phases(iphase).bounds.lower.states(1) = vmin;
+    problem.phases(iphase).bounds.upper.states(1) = vmax;
+    problem.phases(iphase).bounds.lower.states(2) = gammamin;
+    problem.phases(iphase).bounds.upper.states(2) = gammamax;
+    problem.phases(iphase).bounds.lower.states(3) = wmin;
+    problem.phases(iphase).bounds.upper.states(3) = wmax;
+
+
+    problem.phases(iphase).bounds.lower.controls(0) = alphamin;
+    problem.phases(iphase).bounds.upper.controls(0) = alphamax;
 
     // The following bounds fix the initial and final state conditions
 
-    problem.phase[iphase].bounds.lower.events(1) = h0;
-    problem.phase[iphase].bounds.upper.events(1) = h0;
-    problem.phase[iphase].bounds.lower.events(2) = v0;
-    problem.phase[iphase].bounds.upper.events(2) = v0;
-    problem.phase[iphase].bounds.lower.events(3) = gamma0;
-    problem.phase[iphase].bounds.upper.events(3) = gamma0;
-    problem.phase[iphase].bounds.lower.events(4) = w0;
-    problem.phase[iphase].bounds.upper.events(4) = w0;
-    problem.phase[iphase].bounds.lower.events(5) = hf;
-    problem.phase[iphase].bounds.upper.events(5) = hf;
-    problem.phase[iphase].bounds.lower.events(6) = vf;
-    problem.phase[iphase].bounds.upper.events(6) = vf;
-    problem.phase[iphase].bounds.lower.events(7) = gammaf;
-    problem.phase[iphase].bounds.upper.events(7) = gammaf;
+    problem.phases(iphase).bounds.lower.events(0) = h0;
+    problem.phases(iphase).bounds.upper.events(0) = h0;
+    problem.phases(iphase).bounds.lower.events(1) = v0;
+    problem.phases(iphase).bounds.upper.events(1) = v0;
+    problem.phases(iphase).bounds.lower.events(2) = gamma0;
+    problem.phases(iphase).bounds.upper.events(2) = gamma0;
+    problem.phases(iphase).bounds.lower.events(3) = w0;
+    problem.phases(iphase).bounds.upper.events(3) = w0;
+    problem.phases(iphase).bounds.lower.events(4) = hf;
+    problem.phases(iphase).bounds.upper.events(4) = hf;
+    problem.phases(iphase).bounds.lower.events(5) = vf;
+    problem.phases(iphase).bounds.upper.events(5) = vf;
+    problem.phases(iphase).bounds.lower.events(6) = gammaf;
+    problem.phases(iphase).bounds.upper.events(6) = gammaf;
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes = problem.phases(1).nodes(1);
+    int nnodes = problem.phases(iphase).nodes(0);
 
 
-    DMatrix stateGuess(4,nnodes);
+    MatrixXd stateGuess(4,nnodes);
 
-    stateGuess(1, colon()) = linspace(h0,hf,nnodes);
-    stateGuess(2, colon()) = linspace(v0,vf,nnodes);
-    stateGuess(3, colon()) = linspace(gamma0,gammaf,nnodes);
-    stateGuess(4, colon()) = linspace(w0,0.8*w0,nnodes);
+    stateGuess.row(0) = linspace(h0,hf,nnodes);
+    stateGuess.row(1) = linspace(v0,vf,nnodes);
+    stateGuess.row(2) = linspace(gamma0,gammaf,nnodes);
+    stateGuess.row(3) = linspace(w0,0.8*w0,nnodes);
 
 
 
@@ -478,18 +479,18 @@ int main(void)
     t 		= solution.get_time_in_phase(1);
     H           = solution.get_dual_hamiltonian_in_phase(1);
 
-    DMatrix h     = x(1,colon());
-    DMatrix v     = x(2,colon());
-    DMatrix gamma = x(3,colon());
-    DMatrix w     = x(4,colon());
+    MatrixXd h     = x.row(0); 
+    MatrixXd v     = x.row(1); 
+    MatrixXd gamma = x.row(2); 
+    MatrixXd w     = x.row(4); 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -561,10 +562,10 @@ void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta, Const
 !============================================================================
 */
 
-  DMatrix& htab = *CONSTANTS.htab;
-  DMatrix& ttab = *CONSTANTS.ttab;
-  DMatrix& ptab = *CONSTANTS.ptab;
-  DMatrix& gtab = *CONSTANTS.gtab;
+  MatrixXd& htab = *CONSTANTS.htab;
+  MatrixXd& ttab = *CONSTANTS.ttab;
+  MatrixXd& ptab = *CONSTANTS.ptab;
+  MatrixXd& gtab = *CONSTANTS.gtab;
 
 
 //!----------------------------------------------------------------------------
