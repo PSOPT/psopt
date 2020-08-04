@@ -789,6 +789,8 @@ void rr_num(MatrixXd& X, MatrixXd* residual_vector, Workspace* workspace);
 
 void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspace);
 
+void get_scaled_decision_variables_and_bounds(MatrixXd& x, MatrixXd& xlb, MatrixXd& xub, Workspace* workspace);
+
 
 
 #define INF  (1.0e19)
@@ -889,6 +891,8 @@ int get_number_of_nodes(Prob& problem,int iphase);
 
 int get_number_of_parameters(Prob& problem,int iphase);
 
+int get_total_number_of_parameters(Prob& problem);
+
 int get_number_of_linkages(Prob& problem);
 
 int get_number_of_phases(Prob& problem);
@@ -936,31 +940,31 @@ void auto_link(adouble* linkages, int* index, adouble* xad, int iphase_a, int ip
 
 void auto_link_2(adouble* linkages, int* index, adouble* xad, int iphase_a, int iphase_b, Workspace* workspace);
 
-void plot(MatrixXd& x, MatrixXd& y,const string& title,
+void plot(const MatrixXd& x, const MatrixXd& y,const string& title,
           const char* xlabel, const char* ylabel, const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void plot(MatrixXd& x1, MatrixXd& y1, MatrixXd& x2, MatrixXd& y2, const string& title,
+void plot(const MatrixXd& x1, const MatrixXd& y1, const MatrixXd& x2, const MatrixXd& y2, const string& title,
           const char* xlabel, const char* ylabel, const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void plot(MatrixXd& x1, MatrixXd& y1, MatrixXd& x2, MatrixXd& y2, MatrixXd& x3, MatrixXd& y3,
+void plot(const MatrixXd& x1, const MatrixXd& y1, const MatrixXd& x2, const MatrixXd& y2, const MatrixXd& x3, const MatrixXd& y3,
           const string& title, const char* xlabel, const char* ylabel, const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void multiplot(MatrixXd& x, MatrixXd& y, const string& title, const char* xlabel, const char* ylabel, const char* legend, int nrows=0, int ncols=0, const char* terminal=NULL, const char* output=NULL ) ;
+void multiplot(const MatrixXd& x, const MatrixXd& y, const string& title, const char* xlabel, const char* ylabel, const char* legend, int nrows=0, int ncols=0, const char* terminal=NULL, const char* output=NULL ) ;
 
-void spplot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal=NULL, const char* output=NULL);
+void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal=NULL, const char* output=NULL);
 
-void polar(MatrixXd& theta, MatrixXd& r, const string& title,
+void polar(const MatrixXd& theta, const MatrixXd& r, const string& title,
            const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void polar(MatrixXd& theta, MatrixXd& r, MatrixXd& theta2, MatrixXd& r2, const string& title,
+void polar(const MatrixXd& theta, const MatrixXd& r, const MatrixXd& theta2, const MatrixXd& r2, const string& title,
             const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void polar(MatrixXd& theta, MatrixXd& r, MatrixXd& theta2, MatrixXd& r2,  MatrixXd& theta3, MatrixXd& r3, const string& title,
+void polar(const MatrixXd& theta, const MatrixXd& r, const MatrixXd& theta2, const MatrixXd& r2,  const MatrixXd& theta3, const MatrixXd& r3, const string& title,
             const char* legend=NULL, const char* terminal=NULL, const char* output=NULL);
 
-void surf(MatrixXd& x, MatrixXd& y, MatrixXd& z, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal=NULL, const char* output=NULL, const char* view=NULL);
+void surf(const MatrixXd& x, const MatrixXd& y, const MatrixXd& z, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal=NULL, const char* output=NULL, const char* view=NULL);
 
-void plot3(MatrixXd& x, MatrixXd& y, MatrixXd& z, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal=NULL, const char* output=NULL, const char* view=NULL);
+void plot3(const MatrixXd& x, const MatrixXd& y, const MatrixXd& z, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal=NULL, const char* output=NULL, const char* view=NULL);
 
 void psopt_error_message(const char *error_text);
 
