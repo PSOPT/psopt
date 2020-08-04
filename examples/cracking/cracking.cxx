@@ -219,10 +219,10 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-//    algorithm.collocation_method          = "Hermite-Simpson";
+    algorithm.collocation_method          = "Hermite-Simpson";
     algorithm.nlp_iter_max                = 1000;
-    algorithm.nlp_tolerance               = 1.e-4;
-    algorithm.jac_sparsity_ratio          = 0.52;
+    algorithm.nlp_tolerance               = 1.e-6;
+//    algorithm.jac_sparsity_ratio          = 0.52;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   //////////////////
@@ -245,7 +245,7 @@ int main(void)
 
     Save(x,"x.dat");
     Save(t,"t.dat");
-    cout << "\n Estimated parameters" << p << "endl";
+    cout << "\n Estimated parameters\n" << p << endl;
 //    Print(p,"Estimated parameters");
 
 

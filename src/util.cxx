@@ -215,7 +215,7 @@ Infinity,	  	1.282,	1.645,	1.960, 	2.326,	2.576;
 
     linear_interpolation(y, (double) ndf, pointx, pointy, (int) npoints);
 
-    return y(1,1);
+    return y(0,0);
 
 }
 

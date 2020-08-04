@@ -596,8 +596,8 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 //	    j= pcount+i+1;
        j= pcount+i; // EIGEN_UPDATE
 
-	    plow(j,1)   = parameters_full(j) - tt*sqrt( Cp(j,j) );
-	    phigh(j,1)  = parameters_full(j) + tt*sqrt( Cp(j,j) );
+	    plow(j)   = parameters_full(j) - tt*sqrt( Cp(j,j) );
+	    phigh(j)  = parameters_full(j) + tt*sqrt( Cp(j,j) );
 
 	  }
 

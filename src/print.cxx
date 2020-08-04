@@ -571,7 +571,8 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
      fprintf(outfile,"\n\n>>> 95 percent statistical confidence limits on estimated parameters ");
      fprintf(outfile,"\nPhase\tParameter\t(Low Confidence Limit) \t(Value) \t\t(High Confidence Limit)");
 
-
+      pcount = 0;
+      
       for (int iphase=1; iphase<=problem.nphases; iphase++)
       {
 

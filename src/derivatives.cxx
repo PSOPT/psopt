@@ -99,8 +99,8 @@ void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& 
         x(j)= xs;
       	*dfdx_j=( (*F1)-(*F3) )/(delj);
       }
-      for(k=0;k<nf;k++) { (*JacColumn)(k,1)=(*dfdx_j)(k,1); } //EIGEN_UPDATE
-
+//      for(k=0;k<nf;k++) { (*JacColumn)(k,0)=(*dfdx_j)(k,0); } //EIGEN_UPDATE
+      *JacColumn = *dfdx_j;
 }
 
 
