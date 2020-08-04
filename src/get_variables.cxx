@@ -220,4 +220,24 @@ adouble get_final_time(adouble* xad, int iphase, Workspace* workspace)
         return (tf);
 }
 
+void get_scaled_decision_variables_and_bounds(MatrixXd& x, MatrixXd& xlb, MatrixXd& xub, Workspace* workspace)
+{
+
+    int i;
+
+    Prob & problem = *(workspace->problem);
+
+    adouble* xad = workspace->xad;
+
+
+    int nvar = get_number_nlp_vars(problem, workspace);
+
+    for(i=0;i<nvar;i++){  // EIGEN_UPDATE: index i shifted by -1
+      x(i) = xad[i].value();
+      xlb(i)= (*workspace->xlb)(i);
+      xub(i)= (*workspace->xub)(i);
+    }
+
+}
+
 

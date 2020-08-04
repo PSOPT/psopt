@@ -282,20 +282,27 @@ int get_number_of_nodes(Prob& problem, int iphase)
 
 
 
-int getNumberOfParameters(Prob& problem, int iphase)
+int get_number_of_parameters(Prob& problem, int iphase)
 {
 	return problem.phase[iphase-1].nparameters;
 }
 
-int getNumberOfLinkages(Prob& problem)
+int get_number_of_linkages(Prob& problem)
 {
 	return problem.nlinkages;
 }
 
-int getNumberOfPhases(Prob& problem)
+int get_number_of_phases(Prob& problem)
 {
 	return problem.nphases;
 }
 
 
-
+int get_total_number_of_parameters(Prob& problem)
+{
+	 int pcount=0;
+	 for (int iphase=1;iphase<=problem.nphases;iphase++) {
+        pcount+=get_number_of_parameters(problem,iphase);
+    }
+	 return pcount;
+}

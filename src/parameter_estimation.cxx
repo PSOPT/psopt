@@ -370,26 +370,6 @@ void rr_num(MatrixXd& X, MatrixXd* residual_vector, Workspace* workspace)
 }
 
 
-void get_scaled_decision_variables_and_bounds(MatrixXd& x, MatrixXd xlb, MatrixXd xub, Workspace* workspace)
-{
-
-    int i;
-
-    Prob & problem = *(workspace->problem);
-
-    adouble* xad = workspace->xad;
-
-
-    int nvar = get_number_nlp_vars(problem, workspace);
-
-    for(i=0;i<nvar;i++){  // EIGEN_UPDATE: index i shifted by -1
-      x(i) = xad[i].value();
-      xlb(i)= (*workspace->xlb)(i);
-      xub(i)= (*workspace->xub)(i);
-    }
-
-}
-
 
 
 void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspace)
@@ -404,7 +384,7 @@ void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspac
          pcount+= problem.phase[i].nparameters;
      }
 
-     Ip.resize(pcount,1);
+     Ip.resize(pcount);
 
      pcount=0;
 
@@ -430,6 +410,7 @@ void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspac
      }
 
 //     Cp = C( Ip, Ip ); // EIGEN_UPDATE
+     Cp.resize(Ip.size(), Ip.size());
      for (i=0; i< Ip.size(); i++) {
          for (j=0; j< Ip.size(); j++) {
               Cp(i,j) = C(Ip(i), Ip(j));
@@ -460,7 +441,7 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 
       double alpha;
 
-      char* msg = new char[60];
+      char* msg = new char[100];
 
       sprintf(msg,"\n>>> Performing statistical analysis of estimated parameters...");
 
@@ -631,5 +612,4 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 
 
 }
-
 

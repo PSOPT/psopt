@@ -86,6 +86,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
 	problem.phase[i].bounds.upper.path.resize(npath,1);
 
 
+
    problem.scale.linkages.resize(nlinkages,1);
 
    problem.phase[i].guess.controls.resize(0,0);
@@ -103,6 +104,9 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
 
 
   }
+
+  //problem.bounds.lower.times.resize(problem.nphases+1,1);
+  //problem.bounds.upper.times.resize(problem.nphases+1,1);
 
   problem.bounds.lower.linkage.resize(nlinkages,1);
   problem.bounds.upper.linkage.resize(nlinkages,1);

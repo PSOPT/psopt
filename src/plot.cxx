@@ -67,7 +67,7 @@ using namespace std;
 using namespace Eigen;
 
 
-void plot(MatrixXd& xa, MatrixXd& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
+void plot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
 
          MatrixXd x = xa;
@@ -171,7 +171,7 @@ void plot(MatrixXd& xa, MatrixXd& ya, const string& title, const char* xlabel, c
 }
 
 
-void multiplot(MatrixXd& xa, MatrixXd& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, int nrows, int ncols, const char* terminal,  const char* output )
+void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, int nrows, int ncols, const char* terminal,  const char* output )
 {
          MatrixXd x = xa;
 
@@ -310,7 +310,7 @@ void multiplot(MatrixXd& xa, MatrixXd& ya, const string& title, const char* xlab
 
 }
 
-void plot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
+void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
 
          MatrixXd x1 = x1a;
@@ -461,7 +461,7 @@ void plot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, const stri
 }
 
 
-void spplot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
+void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
 
          MatrixXd x1 = x1a;
@@ -612,7 +612,7 @@ void spplot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, const st
 
 
 
-void plot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, MatrixXd& x3a, MatrixXd& y3a,
+void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const MatrixXd& y2a, const MatrixXd& x3a, const MatrixXd& y3a,
           const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
          MatrixXd x1 = x1a;
@@ -808,7 +808,7 @@ void plot(MatrixXd& x1a, MatrixXd& y1a, MatrixXd& x2a, MatrixXd& y2a, MatrixXd& 
 }
 
 
-void polar(MatrixXd& theta_a, MatrixXd& r_a, const string& title,  const char* legend, const char* terminal, const char* output)
+void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const string& title,  const char* legend, const char* terminal, const char* output)
 {
          MatrixXd theta = theta_a;
 	 		MatrixXd r = r_a;
@@ -909,7 +909,7 @@ void polar(MatrixXd& theta_a, MatrixXd& r_a, const string& title,  const char* l
 }
 
 
-void polar(MatrixXd& theta_a, MatrixXd& r_a, MatrixXd& theta2_a, MatrixXd& r2_a, const string& title,  const char* legend, const char* terminal, const char* output)
+void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_a, const MatrixXd& r2_a, const string& title,  const char* legend, const char* terminal, const char* output)
 {
          MatrixXd theta = theta_a;
 	 		MatrixXd r = r_a;
@@ -1067,7 +1067,7 @@ void polar(MatrixXd& theta_a, MatrixXd& r_a, MatrixXd& theta2_a, MatrixXd& r2_a,
 }
 
 
-void polar(MatrixXd& theta_a, MatrixXd& r_a, MatrixXd& theta2_a, MatrixXd& r2_a, MatrixXd& theta3_a, MatrixXd& r3_a, const string& title,  const char* legend, const char* terminal, const char* output)
+void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_a, const MatrixXd& r2_a, const MatrixXd& theta3_a, const MatrixXd& r3_a, const string& title,  const char* legend, const char* terminal, const char* output)
 {
 
          MatrixXd theta = theta_a;
@@ -1293,7 +1293,7 @@ void polar(MatrixXd& theta_a, MatrixXd& r_a, MatrixXd& theta2_a, MatrixXd& r2_a,
 
 
 
-void surf(MatrixXd& xa, MatrixXd& ya, MatrixXd& za, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal, const char* output, const char* view)
+void surf(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal, const char* output, const char* view)
 {
 	 // This function creates surface plots given the co-ordinate values (x,y) and the height matrix z.
 
@@ -1390,7 +1390,7 @@ void surf(MatrixXd& xa, MatrixXd& ya, MatrixXd& za, const string& title, const c
 
 }
 
-void plot3(MatrixXd& xa, MatrixXd& ya, MatrixXd& za, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal, const char* output, const char* view)
+void plot3(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal, const char* output, const char* view)
 {
 	 // This function creates 3d plots given the co-ordinate values (x,y) and the height vector z.
 

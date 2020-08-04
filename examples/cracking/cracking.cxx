@@ -87,18 +87,18 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
 int main(void)
 {
 
-   DMatrix y1meas, y2meas, tmeas;
+   MatrixXd y1meas(1,21), y2meas(1,21), tmeas(1,21);
    // Measured values of y1
-   y1meas = 	"[1.0,0.8105,0.6208,0.5258,0.4345,0.3903,0.3342,0.3034, \
+   y1meas << 	   1.0,0.8105,0.6208,0.5258,0.4345,0.3903,0.3342,0.3034, \
                   0.2735,0.2405,0.2283,0.2071,0.1669,0.153,0.1339,0.1265, \
-                  0.12,0.099,0.087,0.077,0.069]";
+                  0.12,0.099,0.087,0.077,0.069;
    // Measured values of y2
-   y2meas = 	"[0.0,0.2,0.2886,0.301,0.3215,0.3123,0.2716,0.2551,0.2258, \
+   y2meas << 	0.0,0.2,0.2886,0.301,0.3215,0.3123,0.2716,0.2551,0.2258, \
                  0.1959,0.1789,0.1457,0.1198,0.0909,0.0719,0.0561,0.046, \
-                0.028,0.019,0.014,0.01]";
+                0.028,0.019,0.014,0.01;
    // Sampling instants
-   tmeas =    "[0.0,0.025,0.05,0.075,0.1,0.125,0.15,0.175,0.2,0.225,0.25, \
-            0.3,0.35,0.4,0.45,0.5,0.55,0.65,0.75,0.85,0.95]";
+   tmeas  <<  0.0,0.025,0.05,0.075,0.1,0.125,0.15,0.175,0.2,0.225,0.25, \
+              0.3,0.35,0.4,0.45,0.5,0.55,0.65,0.75,0.85,0.95;
 
 
 
@@ -136,7 +136,7 @@ int main(void)
     problem.phases(1).nevents   		= 0;
     problem.phases(1).npath     		= 0;
     problem.phases(1).nparameters        	= 3;
-    problem.phases(1).nodes    		    	= "[80]";
+    problem.phases(1).nodes    		    	<< 80;
     problem.phases(1).nobserved   = 2;
     problem.phases(1).nsamples    = 21;
 
@@ -146,9 +146,12 @@ int main(void)
 ////////////  Enter estimation information                      ////////////
 ////////////////////////////////////////////////////////////////////////////
 
+    MatrixXd observations(2, 21);
+    
+    observations << y1meas, y2meas;
 
     problem.phases(1).observation_nodes      = tmeas;
-    problem.phases(1).observations           = (y1meas && y2meas);
+    problem.phases(1).observations           = observations;
     problem.phases(1).residual_weights       = ones(2,21);
 
 
@@ -163,20 +166,20 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
+    problem.phases(1).bounds.lower.states(0) =  0.0;
     problem.phases(1).bounds.lower.states(1) =  0.0;
-    problem.phases(1).bounds.lower.states(2) =  0.0;
 
 
+    problem.phases(1).bounds.upper.states(0) =  2.0;
     problem.phases(1).bounds.upper.states(1) =  2.0;
-    problem.phases(1).bounds.upper.states(2) =  2.0;
 
 
+    problem.phases(1).bounds.lower.parameters(0) = 0.0;
     problem.phases(1).bounds.lower.parameters(1) = 0.0;
     problem.phases(1).bounds.lower.parameters(2) = 0.0;
-    problem.phases(1).bounds.lower.parameters(3) = 0.0;
+    problem.phases(1).bounds.upper.parameters(0) = 20.0;
     problem.phases(1).bounds.upper.parameters(1) = 20.0;
     problem.phases(1).bounds.upper.parameters(2) = 20.0;
-    problem.phases(1).bounds.upper.parameters(3) = 20.0;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -198,10 +201,10 @@ int main(void)
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix state_guess(2, 40);
+    MatrixXd state_guess(2, 40);
 
-    state_guess(1,colon()) = linspace(1.0,0.069, 40);
-    state_guess(2,colon()) = linspace(0.30,0.01,  40);
+    state_guess.row(0) =  linspace(1.0,0.069, 40);
+    state_guess.row(1) =  linspace(0.30,0.01,  40);
 
 
     problem.phases(1).guess.states         = state_guess;
@@ -240,9 +243,10 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    t.Save("t.dat");
-    p.Print("Estimated parameters");
+    Save(x,"x.dat");
+    Save(t,"t.dat");
+    cout << "\n Estimated parameters" << p << "endl";
+//    Print(p,"Estimated parameters");
 
 
 ////////////////////////////////////////////////////////////////////////////

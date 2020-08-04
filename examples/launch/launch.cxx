@@ -23,7 +23,7 @@
 ///////////////////  Declare auxiliary functions  ////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
-void oe2rv(DMatrix& oe, double mu, DMatrix* ri, DMatrix* vi);
+void oe2rv(MatrixXd& oe, double mu, MatrixXd* ri, MatrixXd* vi);
 
 void rv2oe(adouble* rv, adouble* vv, double mu, adouble* oe);
 
@@ -33,7 +33,7 @@ void rv2oe(adouble* rv, adouble* vv, double mu, adouble* oe);
 //////////////////////////////////////////////////////////////////////////
 
 struct Constants {
-  DMatrix* omega_matrix;
+  MatrixXd* omega_matrix;
   double mu;
   double cd;
   double sa;
@@ -111,7 +111,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
     adouble rad = sqrt( dot( r, r, 3)  );
 
-    DMatrix& omega_matrix = *CONSTANTS.omega_matrix;
+    MatrixXd& omega_matrix = *CONSTANTS.omega_matrix;
 
     adouble vrel[3];
     for (j=0;j<3;j++)
@@ -322,10 +322,10 @@ int main(void)
     problem.phases(4).nevents   = 5;
     problem.phases(4).npath     = 1;
 
-    problem.phases(1).nodes     = "[5, 15]";
-    problem.phases(2).nodes     = "[5, 15]";
-    problem.phases(3).nodes     = "[5, 15]";
-    problem.phases(4).nodes     = "[5, 15]";
+    problem.phases(1).nodes     << 5, 15;
+    problem.phases(2).nodes     << 5, 15;
+    problem.phases(3).nodes     << 5, 15;
+    problem.phases(4).nodes     << 5, 15;
 
 
 
@@ -334,10 +334,10 @@ int main(void)
     psopt_level2_setup(problem, algorithm);
 
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare DMatrix objects to store results //////////////
+///////////////////  Declare MatrixXd objects to store results //////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, t, H;
+    MatrixXd x, u, t, H;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Initialize CONSTANTS and //////////////////////////////
@@ -346,11 +346,11 @@ int main(void)
 
 
     double omega            = 7.29211585e-5; // Earth rotation rate (rad/s)
-    DMatrix omega_matrix(3,3);
+    MatrixXd omega_matrix(3,3);
 
-    omega_matrix(1,1) = 0.0;   omega_matrix(1,2) = -omega;   omega_matrix(1,3)=0.0;
-    omega_matrix(2,1) = omega; omega_matrix(2,2) = 0.0;      omega_matrix(2,3)=0.0;
-    omega_matrix(3,1) = 0.0;   omega_matrix(3,2) = 0.0;      omega_matrix(3,3)=0.0;
+    omega_matrix(0,0) = 0.0;   omega_matrix(0,1) = -omega;   omega_matrix(0,2)=0.0;
+    omega_matrix(1,0) = omega; omega_matrix(1,1) = 0.0;      omega_matrix(1,2)=0.0;
+    omega_matrix(2,0) = 0.0;   omega_matrix(2,1) = 0.0;      omega_matrix(2,2)=0.0;
 
     CONSTANTS.omega_matrix = &omega_matrix; // Rotation rate matrix (rad/s)
     CONSTANTS.mu = 3.986012e14;       // Gravitational parameter (m^3/s^2)
@@ -365,8 +365,8 @@ int main(void)
     double x0 = CONSTANTS.Re*cos(lat0);      // x component of initial position
     double z0 = CONSTANTS.Re*sin(lat0);      // z component of initial position
     double y0 = 0;
-    DMatrix r0(3,1,  x0, y0, z0);
-    DMatrix v0 = omega_matrix*r0;
+    MatrixXd r0(3,1); r0 <<  x0, y0, z0;
+    MatrixXd v0 = omega_matrix*r0;
 
     double bt_srb = 75.2;
     double bt_first = 261.0;
@@ -407,15 +407,15 @@ int main(void)
     double cosincf = cos(incf);
     double cosOmf = cos(Omf);
     double cosomf = cos(omf);
-    DMatrix oe(6,1, af, ef, incf, Omf, omf, nuguess);
+    MatrixXd oe(6,1); oe << af, ef, incf, Omf, omf, nuguess;
 
-    DMatrix rout(3,1);
-    DMatrix vout(3,1);
+    MatrixXd rout(3,1);
+    MatrixXd vout(3,1);
 
     oe2rv(oe,CONSTANTS.mu, &rout, &vout);
 
-    rout.Transpose();
-    vout.Transpose();
+    rout= rout.transpose().eval();
+    vout= vout.transpose().eval();
 
     double m10 = m_payload+m_tot_second+m_tot_first+9*m_tot_srb;
     double m1f = m10-(6*mdot_srb+mdot_first)*t1;
@@ -445,9 +445,11 @@ int main(void)
 
 
     int iphase;
-
-    problem.bounds.lower.times = "[0, 75.2, 150.4, 261.0, 261.0]";
-    problem.bounds.upper.times = "[0, 75.2, 150.4  261.0, 961.0]";
+    
+  
+   
+    problem.bounds.lower.times << 0.0, 75.2, 150.4, 261.0, 261.0;
+    problem.bounds.upper.times << 0.0, 75.2, 150.4, 261.0, 961.0;
 
 
 
@@ -456,158 +458,67 @@ int main(void)
     iphase =  1;
 
 
+    problem.phases(iphase).bounds.lower.states   << rmin, rmin, rmin, vmin, vmin, vmin, m1f;
+    problem.phases(iphase).bounds.upper.states   << rmax, rmax, rmax, vmax, vmax, vmax, m10;
 
+    problem.phases(iphase).bounds.lower.controls << -1.0, -1.0, -1.0;
+    problem.phases(iphase).bounds.upper.controls <<  1.0,  1.0,  1.0;
 
-    problem.phases(iphase).bounds.lower.states(1) = rmin;
-    problem.phases(iphase).bounds.upper.states(1) = rmax;
-    problem.phases(iphase).bounds.lower.states(2) = rmin;
-    problem.phases(iphase).bounds.upper.states(2) = rmax;
-    problem.phases(iphase).bounds.lower.states(3) = rmin;
-    problem.phases(iphase).bounds.upper.states(3) = rmax;
-    problem.phases(iphase).bounds.lower.states(4) = vmin;
-    problem.phases(iphase).bounds.upper.states(4) = vmax;
-    problem.phases(iphase).bounds.lower.states(5) = vmin;
-    problem.phases(iphase).bounds.upper.states(5) = vmax;
-    problem.phases(iphase).bounds.lower.states(6) = vmin;
-    problem.phases(iphase).bounds.upper.states(6) = vmax;
-    problem.phases(iphase).bounds.lower.states(7) = m1f;
-    problem.phases(iphase).bounds.upper.states(7) = m10;
-
-
-    problem.phases(iphase).bounds.lower.controls(1) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(1) =  1.0;
-    problem.phases(iphase).bounds.lower.controls(2) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(2) =  1.0;
-    problem.phases(iphase).bounds.lower.controls(3) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(3) =  1.0;
-
-    problem.phases(iphase).bounds.lower.path(1)     = 1.0;
-    problem.phases(iphase).bounds.upper.path(1)     = 1.0;
+    problem.phases(iphase).bounds.lower.path     <<  1.0;
+    problem.phases(iphase).bounds.upper.path     <<  1.0;
 
 
     // The following bounds fix the initial state conditions in phase 0.
 
-    problem.phases(iphase).bounds.lower.events(1) = r0(1);
-    problem.phases(iphase).bounds.upper.events(1) = r0(1);
-    problem.phases(iphase).bounds.lower.events(2) = r0(2);
-    problem.phases(iphase).bounds.upper.events(2) = r0(2);
-    problem.phases(iphase).bounds.lower.events(3) = r0(3);
-    problem.phases(iphase).bounds.upper.events(3) = r0(3);
-    problem.phases(iphase).bounds.lower.events(4) = v0(1);
-    problem.phases(iphase).bounds.upper.events(4) = v0(1);
-    problem.phases(iphase).bounds.lower.events(5) = v0(2);
-    problem.phases(iphase).bounds.upper.events(5) = v0(2);
-    problem.phases(iphase).bounds.lower.events(6) = v0(3);
-    problem.phases(iphase).bounds.upper.events(6) = v0(3);
-    problem.phases(iphase).bounds.lower.events(7) = m10;
-    problem.phases(iphase).bounds.upper.events(7) = m10;
+    problem.phases(iphase).bounds.lower.events << r0(0), r0(1), r0(2), v0(0), v0(1), v0(2), m10;  
+    problem.phases(iphase).bounds.upper.events << r0(0), r0(1), r0(2), v0(0), v0(1), v0(2), m10;
 
     // Phase 2 bounds
 
     iphase =  2;
 
+    problem.phases(iphase).bounds.lower.states   << rmin, rmin, rmin, vmin, vmin, vmin, m2f;
+    problem.phases(iphase).bounds.upper.states   << rmax, rmax, rmax, vmax, vmax, vmax, m20;
 
 
+    problem.phases(iphase).bounds.lower.controls << -1.0, -1.0, -1.0;
+    problem.phases(iphase).bounds.upper.controls <<  1.0,  1.0,  1.0;
 
-    problem.phases(iphase).bounds.lower.states(1) = rmin;
-    problem.phases(iphase).bounds.upper.states(1) = rmax;
-    problem.phases(iphase).bounds.lower.states(2) = rmin;
-    problem.phases(iphase).bounds.upper.states(2) = rmax;
-    problem.phases(iphase).bounds.lower.states(3) = rmin;
-    problem.phases(iphase).bounds.upper.states(3) = rmax;
-    problem.phases(iphase).bounds.lower.states(4) = vmin;
-    problem.phases(iphase).bounds.upper.states(4) = vmax;
-    problem.phases(iphase).bounds.lower.states(5) = vmin;
-    problem.phases(iphase).bounds.upper.states(5) = vmax;
-    problem.phases(iphase).bounds.lower.states(6) = vmin;
-    problem.phases(iphase).bounds.upper.states(6) = vmax;
-    problem.phases(iphase).bounds.lower.states(7) = m2f;
-    problem.phases(iphase).bounds.upper.states(7) = m20;
-
-    problem.phases(iphase).bounds.lower.controls(1) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(1) =  1.0;
-    problem.phases(iphase).bounds.lower.controls(2) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(2) =  1.0;
-    problem.phases(iphase).bounds.lower.controls(3) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(3) =  1.0;
-
-    problem.phases(iphase).bounds.lower.path(1)     = 1.0;
-    problem.phases(iphase).bounds.upper.path(1)     = 1.0;
+    problem.phases(iphase).bounds.lower.path     <<  1.0;
+    problem.phases(iphase).bounds.upper.path     <<  1.0;
 
     // Phase 3 bounds
 
     iphase =  3;
 
 
+    problem.phases(iphase).bounds.lower.states   << rmin, rmin, rmin, vmin, vmin, vmin, m3f;
+    problem.phases(iphase).bounds.upper.states   << rmax, rmax, rmax, vmax, vmax, vmax, m30;
+    
+    problem.phases(iphase).bounds.lower.controls << -1.0, -1.0, -1.0;
+    problem.phases(iphase).bounds.upper.controls <<  1.0,  1.0,  1.0;
 
-
-    problem.phases(iphase).bounds.lower.states(1) = rmin;
-    problem.phases(iphase).bounds.upper.states(1) = rmax;
-    problem.phases(iphase).bounds.lower.states(2) = rmin;
-    problem.phases(iphase).bounds.upper.states(2) = rmax;
-    problem.phases(iphase).bounds.lower.states(3) = rmin;
-    problem.phases(iphase).bounds.upper.states(3) = rmax;
-    problem.phases(iphase).bounds.lower.states(4) = vmin;
-    problem.phases(iphase).bounds.upper.states(4) = vmax;
-    problem.phases(iphase).bounds.lower.states(5) = vmin;
-    problem.phases(iphase).bounds.upper.states(5) = vmax;
-    problem.phases(iphase).bounds.lower.states(6) = vmin;
-    problem.phases(iphase).bounds.upper.states(6) = vmax;
-    problem.phases(iphase).bounds.lower.states(7) = m3f;
-    problem.phases(iphase).bounds.upper.states(7) = m30;
-
-    problem.phases(iphase).bounds.lower.controls(1) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(1) =  1.0;
-    problem.phases(iphase).bounds.lower.controls(2) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(2) =  1.0;
-    problem.phases(iphase).bounds.lower.controls(3) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(3) =  1.0;
-
-    problem.phases(iphase).bounds.lower.path(1)     = 1.0;
-    problem.phases(iphase).bounds.upper.path(1)     = 1.0;
+    problem.phases(iphase).bounds.lower.path     <<  1.0;
+    problem.phases(iphase).bounds.upper.path     <<  1.0;
 
     // Phase 4 bounds
 
     iphase =  4;
 
 
+    problem.phases(iphase).bounds.lower.states   << rmin, rmin, rmin, vmin, vmin, vmin, m4f;
+    problem.phases(iphase).bounds.upper.states   << rmax, rmax, rmax, vmax, vmax, vmax, m40;
 
 
-    problem.phases(iphase).bounds.lower.states(1) = rmin;
-    problem.phases(iphase).bounds.upper.states(1) = rmax;
-    problem.phases(iphase).bounds.lower.states(2) = rmin;
-    problem.phases(iphase).bounds.upper.states(2) = rmax;
-    problem.phases(iphase).bounds.lower.states(3) = rmin;
-    problem.phases(iphase).bounds.upper.states(3) = rmax;
-    problem.phases(iphase).bounds.lower.states(4) = vmin;
-    problem.phases(iphase).bounds.upper.states(4) = vmax;
-    problem.phases(iphase).bounds.lower.states(5) = vmin;
-    problem.phases(iphase).bounds.upper.states(5) = vmax;
-    problem.phases(iphase).bounds.lower.states(6) = vmin;
-    problem.phases(iphase).bounds.upper.states(6) = vmax;
-    problem.phases(iphase).bounds.lower.states(7) = m4f;
-    problem.phases(iphase).bounds.upper.states(7) = m40;
+    problem.phases(iphase).bounds.lower.controls << -1.0, -1.0, -1.0;
+    problem.phases(iphase).bounds.upper.controls <<  1.0,  1.0,  1.0;
 
-    problem.phases(iphase).bounds.lower.controls(1) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(1) =  1.0;
-    problem.phases(iphase).bounds.lower.controls(2) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(2) =  1.0;
-    problem.phases(iphase).bounds.lower.controls(3) = -1.0;
-    problem.phases(iphase).bounds.upper.controls(3) =  1.0;
+    problem.phases(iphase).bounds.lower.path     <<  1.0;
+    problem.phases(iphase).bounds.upper.path     <<  1.0;
+    
+    problem.phases(iphase).bounds.lower.events   << af, ef, incf, Omf, omf;
+    problem.phases(iphase).bounds.upper.events   << af, ef, incf, Omf, omf;   
 
-    problem.phases(iphase).bounds.lower.path(1)     = 1.0;
-    problem.phases(iphase).bounds.upper.path(1)     = 1.0;
-
-    problem.phases(iphase).bounds.lower.events(1)     = af;
-    problem.phases(iphase).bounds.lower.events(2)     = ef;
-    problem.phases(iphase).bounds.lower.events(3)     = incf;
-    problem.phases(iphase).bounds.lower.events(4)     = Omf;
-    problem.phases(iphase).bounds.lower.events(5)     = omf;
-    problem.phases(iphase).bounds.upper.events(1)     = af;
-    problem.phases(iphase).bounds.upper.events(2)     = ef;
-    problem.phases(iphase).bounds.upper.events(3)     = incf;
-    problem.phases(iphase).bounds.upper.events(4)     = Omf;
-    problem.phases(iphase).bounds.upper.events(5)     = omf;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
@@ -617,19 +528,19 @@ int main(void)
 
     problem.phases(iphase).guess.states = zeros(7,5);
 
-    problem.phases(iphase).guess.states(1, colon()) = linspace( r0(1), r0(1), 5);
-    problem.phases(iphase).guess.states(2, colon()) = linspace( r0(2), r0(2), 5);
-    problem.phases(iphase).guess.states(3, colon()) = linspace( r0(3), r0(3), 5);
-    problem.phases(iphase).guess.states(4, colon()) = linspace( v0(1), v0(1), 5);
-    problem.phases(iphase).guess.states(5, colon()) = linspace( v0(2), v0(2), 5);
-    problem.phases(iphase).guess.states(6, colon()) = linspace( v0(3), v0(3), 5);
-    problem.phases(iphase).guess.states(7, colon()) = linspace( m10  , m1f  , 5);
+    problem.phases(iphase).guess.states.row(0) = linspace( r0(0), r0(0), 5);
+    problem.phases(iphase).guess.states.row(1) = linspace( r0(1), r0(1), 5);
+    problem.phases(iphase).guess.states.row(2) = linspace( r0(2), r0(2), 5);
+    problem.phases(iphase).guess.states.row(3) = linspace( v0(0), v0(0), 5);
+    problem.phases(iphase).guess.states.row(4) = linspace( v0(1), v0(1), 5);
+    problem.phases(iphase).guess.states.row(5) = linspace( v0(2), v0(2), 5);
+    problem.phases(iphase).guess.states.row(6) = linspace( m10  , m1f  , 5);
 
     problem.phases(iphase).guess.controls = zeros(3,5);
 
-    problem.phases(iphase).guess.controls(1,colon()) = ones( 1, 5);
-    problem.phases(iphase).guess.controls(2,colon()) = zeros(1, 5);
-    problem.phases(iphase).guess.controls(3,colon()) = zeros(1, 5);
+    problem.phases(iphase).guess.controls.row(0) = ones( 1, 5);
+    problem.phases(iphase).guess.controls.row(1) = zeros(1, 5);
+    problem.phases(iphase).guess.controls.row(2) = zeros(1, 5);
 
 
     problem.phases(iphase).guess.time = linspace(t0,t1, 5);
@@ -639,19 +550,19 @@ int main(void)
 
     problem.phases(iphase).guess.states = zeros(7,5);
 
-    problem.phases(iphase).guess.states(1, colon()) = linspace( r0(1), r0(1), 5);
-    problem.phases(iphase).guess.states(2, colon()) = linspace( r0(2), r0(2), 5);
-    problem.phases(iphase).guess.states(3, colon()) = linspace( r0(3), r0(3), 5);
-    problem.phases(iphase).guess.states(4, colon()) = linspace( v0(1), v0(1), 5);
-    problem.phases(iphase).guess.states(5, colon()) = linspace( v0(2), v0(2), 5);
-    problem.phases(iphase).guess.states(6, colon()) = linspace( v0(3), v0(3), 5);
-    problem.phases(iphase).guess.states(7, colon()) = linspace( m20  , m2f  , 5);
+    problem.phases(iphase).guess.states.row(0) = linspace( r0(0), r0(0), 5);
+    problem.phases(iphase).guess.states.row(1) = linspace( r0(1), r0(1), 5);
+    problem.phases(iphase).guess.states.row(2) = linspace( r0(2), r0(2), 5);
+    problem.phases(iphase).guess.states.row(3) = linspace( v0(0), v0(0), 5);
+    problem.phases(iphase).guess.states.row(4) = linspace( v0(1), v0(1), 5);
+    problem.phases(iphase).guess.states.row(5) = linspace( v0(2), v0(2), 5);
+    problem.phases(iphase).guess.states.row(6) = linspace( m20  , m2f  , 5);
 
     problem.phases(iphase).guess.controls = zeros(3,5);
 
-    problem.phases(iphase).guess.controls(1,colon()) = ones( 1, 5);
-    problem.phases(iphase).guess.controls(2,colon()) = zeros(1, 5);
-    problem.phases(iphase).guess.controls(3,colon()) = zeros(1, 5);
+    problem.phases(iphase).guess.controls.row(0) = ones( 1, 5);
+    problem.phases(iphase).guess.controls.row(1) = zeros(1, 5);
+    problem.phases(iphase).guess.controls.row(2) = zeros(1, 5);
 
 
     problem.phases(iphase).guess.time = linspace(t1,t2, 5);
@@ -660,19 +571,19 @@ int main(void)
 
     problem.phases(iphase).guess.states = zeros(7,5);
 
-    problem.phases(iphase).guess.states(1, colon()) = linspace( rout(1), rout(1), 5);
-    problem.phases(iphase).guess.states(2, colon()) = linspace( rout(2), rout(2), 5);
-    problem.phases(iphase).guess.states(3, colon()) = linspace( rout(3), rout(3), 5);
-    problem.phases(iphase).guess.states(4, colon()) = linspace( vout(1), vout(1), 5);
-    problem.phases(iphase).guess.states(5, colon()) = linspace( vout(2), vout(2), 5);
-    problem.phases(iphase).guess.states(6, colon()) = linspace( vout(3), vout(3), 5);
-    problem.phases(iphase).guess.states(7, colon()) = linspace( m30  , m3f  , 5);
+    problem.phases(iphase).guess.states.row(0) = linspace( r0(0), r0(0), 5);
+    problem.phases(iphase).guess.states.row(1) = linspace( r0(1), r0(1), 5);
+    problem.phases(iphase).guess.states.row(2) = linspace( r0(2), r0(2), 5);
+    problem.phases(iphase).guess.states.row(3) = linspace( v0(0), v0(0), 5);
+    problem.phases(iphase).guess.states.row(4) = linspace( v0(1), v0(1), 5);
+    problem.phases(iphase).guess.states.row(5) = linspace( v0(2), v0(2), 5);
+    problem.phases(iphase).guess.states.row(6) = linspace( m30  , m3f  , 5);
 
     problem.phases(iphase).guess.controls = zeros(3,5);
 
-    problem.phases(iphase).guess.controls(1,colon()) = zeros( 1, 5);
-    problem.phases(iphase).guess.controls(2,colon()) = zeros( 1, 5);
-    problem.phases(iphase).guess.controls(3,colon()) = ones(  1, 5);
+    problem.phases(iphase).guess.controls.row(0) = ones( 1, 5);
+    problem.phases(iphase).guess.controls.row(1) = zeros(1, 5);
+    problem.phases(iphase).guess.controls.row(2) = zeros(1, 5);
 
 
     problem.phases(iphase).guess.time = linspace(t2,t3, 5);
@@ -681,19 +592,19 @@ int main(void)
 
     problem.phases(iphase).guess.states = zeros(7,5);
 
-    problem.phases(iphase).guess.states(1, colon()) = linspace( rout(1), rout(1), 5);
-    problem.phases(iphase).guess.states(2, colon()) = linspace( rout(2), rout(2), 5);
-    problem.phases(iphase).guess.states(3, colon()) = linspace( rout(3), rout(3), 5);
-    problem.phases(iphase).guess.states(4, colon()) = linspace( vout(1), vout(1), 5);
-    problem.phases(iphase).guess.states(5, colon()) = linspace( vout(2), vout(2), 5);
-    problem.phases(iphase).guess.states(6, colon()) = linspace( vout(3), vout(3), 5);
-    problem.phases(iphase).guess.states(7, colon()) = linspace( m40  , m4f  , 5);
+    problem.phases(iphase).guess.states.row(0) = linspace( rout(0), rout(0), 5);
+    problem.phases(iphase).guess.states.row(1) = linspace( rout(1), rout(1), 5);
+    problem.phases(iphase).guess.states.row(2) = linspace( rout(2), rout(2), 5);
+    problem.phases(iphase).guess.states.row(3) = linspace( vout(0), vout(0), 5);
+    problem.phases(iphase).guess.states.row(4) = linspace( vout(1), vout(1), 5);
+    problem.phases(iphase).guess.states.row(5) = linspace( vout(2), vout(2), 5);
+    problem.phases(iphase).guess.states.row(6) = linspace( m40  , m4f  , 5);
 
     problem.phases(iphase).guess.controls = zeros(3,5);
 
-    problem.phases(iphase).guess.controls(1,colon()) = zeros( 1, 5);
-    problem.phases(iphase).guess.controls(2,colon()) = zeros( 1, 5);
-    problem.phases(iphase).guess.controls(3,colon()) = ones(  1, 5);
+    problem.phases(iphase).guess.controls.row(0) = ones( 1, 5);
+    problem.phases(iphase).guess.controls.row(1) = zeros(1, 5);
+    problem.phases(iphase).guess.controls.row(2) = zeros(1, 5);
 
     problem.phases(iphase).guess.time = linspace(t3,t4, 5);
 
@@ -718,8 +629,8 @@ int main(void)
     algorithm.scaling                     	= "automatic";
     algorithm.derivatives                 	= "automatic";
     algorithm.nlp_iter_max                	= 500;
-//    algorithm.mesh_refinement                   = "automatic";
-//    algorithm.collocation_method = "trapezoidal";
+    algorithm.mesh_refinement                   = "automatic";
+    algorithm.collocation_method = "trapezoidal";
     algorithm.ode_tolerance			= 1.e-5;
 
 ////////////////////////////////////////////////////////////////////////////
@@ -732,34 +643,56 @@ int main(void)
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x = (solution.get_states_in_phase(1) || solution.get_states_in_phase(2) ||
-         solution.get_states_in_phase(3) || solution.get_states_in_phase(4) );
-    u = (solution.get_controls_in_phase(1) || solution.get_controls_in_phase(2) ||
-         solution.get_controls_in_phase(3) || solution.get_controls_in_phase(4) );
-    t = (solution.get_time_in_phase(1) || solution.get_time_in_phase(2) ||
-         solution.get_time_in_phase(3) || solution.get_time_in_phase(4) );
+    MatrixXd x_ph1, x_ph2, x_ph3, x_ph4, u_ph1, u_ph2, u_ph3, u_ph4;
+    MatrixXd t_ph1, t_ph2, t_ph3, t_ph4;
+    
+    x_ph1 = solution.get_states_in_phase(1);
+    x_ph2 = solution.get_states_in_phase(2);
+    x_ph3 = solution.get_states_in_phase(3);
+    x_ph4 = solution.get_states_in_phase(4);
+    
+    u_ph1 = solution.get_controls_in_phase(1);
+    u_ph2 = solution.get_controls_in_phase(2);
+    u_ph3 = solution.get_controls_in_phase(3);
+    u_ph4 = solution.get_controls_in_phase(4);   
+    
+    t_ph1 = solution.get_time_in_phase(1);
+    t_ph2 = solution.get_time_in_phase(2);
+    t_ph3 = solution.get_time_in_phase(3);
+    t_ph4 = solution.get_time_in_phase(4);  
+    
+    
+
+    x.resize(7, x_ph1.cols()+ x_ph2.cols()+ x_ph3.cols()+ x_ph4.cols() );
+    u.resize(3, u_ph1.cols()+ u_ph2.cols()+ u_ph3.cols()+ u_ph4.cols() );
+    t.resize(1, t_ph1.cols()+ t_ph2.cols()+ t_ph3.cols()+ t_ph4.cols() );
+
+    x << x_ph1, x_ph2, x_ph3, x_ph4; 
+    u << u_ph1, u_ph2, u_ph3, u_ph4;
+    t << t_ph1, t_ph2, t_ph3, t_ph4;
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
+    MatrixXd r, v, altitude, speed;
+    
+    r = x.block(0,0,3,r.cols()); 
 
-    DMatrix r = x(colon(1,3),colon());
+    v = x.block(3,0,3,v.cols()); 
 
-    DMatrix v = x(colon(4,6),colon());
+    altitude = (sum_columns(elemProduct(r,r)).cwiseSqrt())/1000.0;
 
-    DMatrix altitude = Sqrt(sum(elemProduct(r,r)))/1000.0;
-
-    DMatrix speed = Sqrt(sum(elemProduct(v,v)));
+    speed = sum_columns(elemProduct(v,v)).cwiseSqrt();
 
     plot(t,altitude,problem.name, "time (s)", "position (km)");
 
@@ -823,15 +756,15 @@ void rv2oe(adouble* rv, adouble* vv, double mu, adouble* oe)
 
 #ifndef USE_SMOOTH_HEAVISIDE
  	adouble Om = acos(nv[0]/n);			// RAAN
- 	if ( nv[1] < -DMatrix::GetEPS() ){		// fix quadrant
+ 	if ( nv[1] < -PSOPT_extras::GetEPS() ){		// fix quadrant
  		Om = 2*pi-Om;
  	}
 #endif
 
 #ifdef USE_SMOOTH_HEAVISIDE
 
-        adouble Om =  smooth_heaviside( (nv[1]+DMatrix::GetEPS()), a_eps )*acos(nv[0]/n)
-                     +smooth_heaviside( -(nv[1]+DMatrix::GetEPS()), a_eps )*(2*pi-acos(nv[0]/n));
+        adouble Om =  smooth_heaviside( (nv[1]+PSOPT_extras::GetEPS()), a_eps )*acos(nv[0]/n)
+                     +smooth_heaviside( -(nv[1]+PSOPT_extras::GetEPS()), a_eps )*(2*pi-acos(nv[0]/n));
 #endif
 
 #ifndef USE_SMOOTH_HEAVISIDE
@@ -870,31 +803,31 @@ void rv2oe(adouble* rv, adouble* vv, double mu, adouble* oe)
 }
 
 
-void oe2rv(DMatrix& oe, double mu, DMatrix* ri, DMatrix* vi)
+void oe2rv(MatrixXd& oe, double mu, MatrixXd* ri, MatrixXd* vi)
 {
-	double a=oe(1), e=oe(2), i=oe(3), Om=oe(4), om=oe(5), nu=oe(6);
+	double a=oe(0), e=oe(1), i=oe(2), Om=oe(3), om=oe(4), nu=oe(5);
 	double p = a*(1-e*e);
 	double r = p/(1+e*cos(nu));
-	DMatrix rv(3,1);
-        rv(1) = r*cos(nu);
-        rv(2) = r*sin(nu);
-        rv(3) = 0.0;
+	MatrixXd rv(3,1);
+        rv(0) = r*cos(nu);
+        rv(1) = r*sin(nu);
+        rv(2) = 0.0;
 
-	DMatrix vv(3,1);
+	MatrixXd vv(3,1);
 
-        vv(1) = -sin(nu);
-        vv(2) = e+cos(nu);
-        vv(3) = 0.0;
+        vv(0) = -sin(nu);
+        vv(1) = e+cos(nu);
+        vv(2) = 0.0;
         vv    *= sqrt(mu/p);
 
 	double cO = cos(Om),  sO = sin(Om);
 	double co = cos(om),  so = sin(om);
 	double ci = cos(i),   si = sin(i);
 
-	DMatrix R(3,3);
-        R(1,1)=  cO*co-sO*so*ci; R(1,2)=  -cO*so-sO*co*ci; R(1,3)=  sO*si;
-	R(2,1)=	 sO*co+cO*so*ci; R(2,2)=  -sO*so+cO*co*ci; R(2,3)=-cO*si;
-	R(3,1)=	  so*si;         R(3,2)=    co*si;         R(3,3)=  ci;
+	MatrixXd R(3,3);
+   R(0,0)=  cO*co-sO*so*ci;  R(0,1)=  -cO*so-sO*co*ci; R(0,2)=  sO*si;
+	R(1,0)=	 sO*co+cO*so*ci; R(1,1)=  -sO*so+cO*co*ci; R(1,2)=-cO*si;
+	R(2,0)=	  so*si;         R(2,1)=    co*si;         R(2,2)=  ci;
 
 	*ri = R*rv;
 	*vi = R*vv;

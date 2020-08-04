@@ -33,7 +33,6 @@ e-mail:    v.m.becerra@ieee.org
 
 
 
-
 void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algorithm, Workspace* workspace)
 {
   // This function defines the NLP bounds given the information provided by
@@ -174,7 +173,7 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 	for (k=0; k<npath; k++) // EIGEN_UPDATE: index k shifted by -1
 	{
 		for (l=0;l<(norder + 1);l++) {   // EIGEN_UPDATE: index l shifted by -1.
-		    j = offset + (l)*npath + k - 1;
+		    j = offset + (l)*npath + k;
 		    if( algorithm->scaling=="user" )
 		       path_sc = path_scaling(k);
 		    else
@@ -192,7 +191,7 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 		for (k=0; k<npath; k++)  // EIGEN_UPDATE: index k shifted by -1.
 		{
 			for (l=0;l<norder;l++) { // EIGEN_UPDATE: index l shifted by -1.
-		    		j = offset + (l)*npath + k - 1;
+		    		j = offset + (l)*npath + k;
 		    		if( algorithm->scaling=="user" )
 		       			path_sc = path_scaling(k);
 		    		else
@@ -231,5 +230,4 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 
   return;
 }
-
 

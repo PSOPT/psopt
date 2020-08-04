@@ -216,7 +216,7 @@ int main(void)
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
 //    algorithm.hessian			  = "exact";
-    algorithm.collocation_method          = "trapezoidal";
+    algorithm.collocation_method          = "Legendre";
 //    algorithm.mesh_refinement             = "automatic";
 
 

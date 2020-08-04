@@ -418,7 +418,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
     fprintf(outfile,"\n*********************************************************************************************************\n");
 
 
-    MatrixXd Cp, plow, phigh, p, r;
+
 
 
     fprintf(outfile,"\nTotal CPU time (seconds):\t\t\t%e", solution.cpu_time);
@@ -541,7 +541,11 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
     if ( problem.observation_function!=NULL && algorithm.parameter_statistics == "yes") {
 
-    fprintf(outfile,"\n****************************************** PARAMETER STATISTICS *****************************************", i);
+    fprintf(outfile,"\n****************************************** PARAMETER STATISTICS *****************************************");
+
+    int nparam = get_total_number_of_parameters(problem);
+
+    MatrixXd Cp(nparam,nparam), plow(nparam,1), phigh(nparam,1), p(nparam,1), r;
 
     bool peout = compute_parameter_statistics(Cp, p, plow, phigh,r, workspace);
 

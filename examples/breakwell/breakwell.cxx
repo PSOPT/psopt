@@ -121,15 +121,15 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name        		= "Breakwell Problem";
-    problem.outfilename                 = "breakwell.txt";
+    problem.name        		       = "Breakwell Problem";
+    problem.outfilename              = "breakwell.txt";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   			      = 1;
+    problem.nlinkages               = 0;
 
     psopt_level1_setup(problem);
 
@@ -141,7 +141,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 4;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes             = "[200]";
+    problem.phases(1).nodes(0)      = 200;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -149,8 +149,8 @@ int main(void)
 ///////////////////  Declare DMatrix objects to store results //////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, t;
-    DMatrix lambda, H;
+    MatrixXd x, u, t;
+    MatrixXd lambda, H;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter problem bounds information //////////////////////
@@ -170,34 +170,24 @@ int main(void)
     double xf = 0.0;
     double vf = -1.0;
 
+    problem.phases(1).bounds.lower.states   << xL, vL;
 
-    problem.phases(1).bounds.lower.states(1) = xL;
-    problem.phases(1).bounds.lower.states(2) = vL;
+    problem.phases(1).bounds.upper.states   << xU, vU;
 
+    problem.phases(1).bounds.lower.controls <<  uL;
+    
+    problem.phases(1).bounds.upper.controls <<  uU;
 
-    problem.phases(1).bounds.upper.states(1) = xU;
-    problem.phases(1).bounds.upper.states(2) = vU;
+    problem.phases(1).bounds.lower.events   <<  x0, v0, xf, vf;
 
-
-    problem.phases(1).bounds.lower.controls(1) = uL;
-    problem.phases(1).bounds.upper.controls(1) = uU;
-
-    problem.phases(1).bounds.lower.events(1) = x0;
-    problem.phases(1).bounds.lower.events(2) = v0;
-    problem.phases(1).bounds.lower.events(3) = xf;
-    problem.phases(1).bounds.lower.events(4) = vf;
-
-
-    problem.phases(1).bounds.upper.events(1) = x0;
-    problem.phases(1).bounds.upper.events(2) = v0;
-    problem.phases(1).bounds.upper.events(3) = xf;
-    problem.phases(1).bounds.upper.events(4) = vf;
-
+    problem.phases(1).bounds.upper.events   <<  x0, v0, xf, vf;
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
+    
     problem.phases(1).bounds.upper.StartTime    = 0.0;
 
     problem.phases(1).bounds.lower.EndTime      = 1.0;
+
     problem.phases(1).bounds.upper.EndTime      = 1.0;
 
 
@@ -207,29 +197,32 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 	                 = &integrand_cost;
+    problem.endpoint_cost 	                    = &endpoint_cost;
+    problem.dae             	                 = &dae;
+    problem.events 		                       = &events;
+    problem.linkages		                       = &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			= problem.phases(1).nodes(1);
+    int nnodes    			             = problem.phases(1).nodes(0);
     int ncontrols                       = problem.phases(1).ncontrols;
     int nstates                         = problem.phases(1).nstates;
 
-    DMatrix x_guess    =  zeros(nstates,nnodes);
+    MatrixXd x_guess                    =  zeros(nstates,nnodes);
 
-    x_guess(1,colon()) = x0*ones(1,nnodes);
-    x_guess(2,colon()) = v0*ones(1,nnodes);
+    x_guess.row(0)                      = x0*ones(1,nnodes);
+    x_guess.row(1)                      = v0*ones(1,nnodes);
 
 
-    problem.phases(1).guess.controls       = zeros(ncontrols,nnodes);
-    problem.phases(1).guess.states         = x_guess;
-    problem.phases(1).guess.time           = linspace(0.0,1.0,nnodes);
+    problem.phases(1).guess.controls    = zeros(ncontrols,nnodes);
+    problem.phases(1).guess.states      = x_guess;
+    problem.phases(1).guess.time        = linspace(0.0,1.0,nnodes);
+    
+    Save(problem.phases(1).guess.time, "guess_time.dat");
+    Save(problem.phases(1).guess.states, "guess_states.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -242,9 +235,9 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-//    algorithm.hessian                     = "exact";
-//    algorithm.mesh_refinement             = "automatic";
-    algorithm.collocation_method = "Hermite-Simpson";
+//    algorithm.hessian                   = "exact";
+//    algorithm.mesh_refinement           = "automatic";
+    algorithm.collocation_method          = "Legendre";
 //    algorithm.diff_matrix                  = "central-differences";
 //    algorithm.defect_scaling = "jacobian-based";
     algorithm.nlp_tolerance               = 1.e-6;
@@ -287,33 +280,33 @@ int main(void)
 
     int nn = length(t);
 
-    DMatrix ua(1,nn), xa(2,nn), pa(2,nn);
+    MatrixXd ua(1,nn), xa(2,nn), pa(2,nn);
 
-    for(int i=1;i <=nn;i++) {
+    for(int i=0;i <nn;i++) {
 
         if (t(i)<t1) {
-           ua(1,i) = -2.0/(3.0*l)*(1.0-t(i)/(3.0*l));
-           xa(1,i) = l*( 1.0 - pow( (1.0-t(i)/(3.0*l)), 3.0) ) ;
-           xa(2,i) = pow( 1.0 - t(i)/(3.0*l), 2.0);
-           pa(1,i) = 2.0/(9.0*l*l);
-           pa(2,i) = 2.0/(3.0*l)*(1.0-t(i)/(3*l));
+           ua(0,i) = -2.0/(3.0*l)*(1.0-t(i)/(3.0*l));
+           xa(0,i) = l*( 1.0 - pow( (1.0-t(i)/(3.0*l)), 3.0) ) ;
+           xa(1,i) = pow( 1.0 - t(i)/(3.0*l), 2.0);
+           pa(0,i) = 2.0/(9.0*l*l);
+           pa(1,i) = 2.0/(3.0*l)*(1.0-t(i)/(3*l));
 
         }
         else if (t(i)>=t1 && t(i)<t2) {
 
-           ua(1,i) = 0.0;
-           xa(1,i) = l;
-           xa(2,i) = 0.0;
+           ua(0,i) = 0.0;
+           xa(0,i) = l;
+           xa(1,i) = 0.0;
+           pa(0,i) = 0.0;
            pa(1,i) = 0.0;
-           pa(2,i) = 0.0;
 
        }
        else if (t(i)>=t2) {
-           ua(1,i) = -2.0/(3*l)*(1.0-(1.0-t(i))/(3.0*l));
-           xa(1,i) = l*(1.0 - pow( (1.0-(1.0-t(i))/(3.0*l)), 3.0));
-           xa(2,i) = -pow(1.0-(1.0-t(i))/(3.0*l), 2.0) ;
-           pa(1,i) = -2.0/(9.0*l*l);
-           pa(2,i) = 2.0/(3.0*l)*(1.0-(1.0-t(i))/(3*l));
+           ua(0,i) = -2.0/(3*l)*(1.0-(1.0-t(i))/(3.0*l));
+           xa(0,i) = l*(1.0 - pow( (1.0-(1.0-t(i))/(3.0*l)), 3.0));
+           xa(1,i) = -pow(1.0-(1.0-t(i))/(3.0*l), 2.0) ;
+           pa(0,i) = -2.0/(9.0*l*l);
+           pa(1,i) = 2.0/(3.0*l)*(1.0-(1.0-t(i))/(3*l));
 
        }
 
@@ -325,15 +318,19 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
-    lambda.Save("p.dat");
-    H.Save("H.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
+    Save(lambda,"p.dat");
+    Save(H,"H.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
+
+    plot(t,xa,problem.name+": analytical states", "time (s)", "states","xa va");
+
+    plot(t,ua,problem.name+": analytical controls","time (s)", "control", "ua");
 
     plot(t,x,t,xa,problem.name+": states", "time (s)", "states","x v xa va");
 
@@ -342,7 +339,6 @@ int main(void)
     plot(t,lambda,t,pa, problem.name+": costates","time (s)", "costates", "l_x l_v la_x la_v");
 
     plot(t,H,problem.name+": Hamiltonian","time (s)", "H", "H");
-
 
     plot(t,x,t,xa,problem.name+": states", "time (s)", "states","x v xa va", "pdf", "breakwell_states.pdf");
 

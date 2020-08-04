@@ -169,8 +169,8 @@ int main(void)
     problem.phases(2).nevents   = 0;
     problem.phases(2).npath     = 0;
 
-    problem.phases(1).nodes     = 40;
-    problem.phases(2).nodes     = 40;
+    problem.phases(1).nodes     << 40;
+    problem.phases(2).nodes     << 40;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -191,24 +191,24 @@ int main(void)
 
     // Phase 0 bounds
 
-    problem.phases(1).bounds.lower.states(1) = x1L;
-    problem.phases(1).bounds.lower.states(2) = x2L_phase1;
+    problem.phases(1).bounds.lower.states(0) = x1L;
+    problem.phases(1).bounds.lower.states(1) = x2L_phase1;
 
-    problem.phases(1).bounds.upper.states(1) = x1U;
-    problem.phases(1).bounds.upper.states(2) = x2U;
+    problem.phases(1).bounds.upper.states(0) = x1U;
+    problem.phases(1).bounds.upper.states(1) = x2U;
 
-    problem.phases(1).bounds.lower.controls(1) = uL;
-    problem.phases(1).bounds.upper.controls(1) = uU;
+    problem.phases(1).bounds.lower.controls(0) = uL;
+    problem.phases(1).bounds.upper.controls(0) = uU;
 
+    problem.phases(1).bounds.lower.events(0) = 1.0;
     problem.phases(1).bounds.lower.events(1) = 1.0;
-    problem.phases(1).bounds.lower.events(2) = 1.0;
 
 
+    problem.phases(1).bounds.upper.events(0) = 1.0;
     problem.phases(1).bounds.upper.events(1) = 1.0;
-    problem.phases(1).bounds.upper.events(2) = 1.0;
 
-    problem.phases(1).bounds.lower.path(1) = hL;
-    problem.phases(1).bounds.upper.path(1) = hU;
+    problem.phases(1).bounds.lower.path(0) = hL;
+    problem.phases(1).bounds.upper.path(0) = hU;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -219,14 +219,14 @@ int main(void)
 
     // Phase 1 bounds
 
-    problem.phases(2).bounds.lower.states(1) = x1L;
-    problem.phases(2).bounds.lower.states(2) = x2L_phase2;
+    problem.phases(2).bounds.lower.states(0) = x1L;
+    problem.phases(2).bounds.lower.states(1) = x2L_phase2;
 
-    problem.phases(2).bounds.upper.states(1) = x1U;
-    problem.phases(2).bounds.upper.states(2) = x2U;
+    problem.phases(2).bounds.upper.states(0) = x1U;
+    problem.phases(2).bounds.upper.states(1) = x2U;
 
-    problem.phases(2).bounds.lower.controls(1) = -50.0;
-    problem.phases(2).bounds.upper.controls(1) =  50.0;
+    problem.phases(2).bounds.lower.controls(0) = -50.0;
+    problem.phases(2).bounds.upper.controls(0) =  50.0;
 
     problem.phases(2).bounds.lower.StartTime    = 1.0;
     problem.phases(2).bounds.upper.StartTime    = 1.0;
@@ -252,20 +252,20 @@ int main(void)
     int iphase;
 
 
-    DMatrix u0(1,40);
-    DMatrix x0(2,40);
+    MatrixXd u0(1,40);
+    MatrixXd x0(2,40);
 
 
-    DMatrix time_guess0    = linspace(0.0, 1.0 , 40);
-    DMatrix time_guess1    = linspace(1.0, 2.9 , 40);
+    MatrixXd time_guess0    = linspace(0.0, 1.0 , 40);
+    MatrixXd time_guess1    = linspace(1.0, 2.9 , 40);
 
 
     iphase = 1;
 
 
     u0 = zeros(1,40);
-    x0(1,colon()) = linspace(1.0,1.0, 40);
-    x0(2,colon()) = linspace(1.0,1.0, 40);
+    x0.row(0) = linspace(1.0,1.0, 40);
+    x0.row(1) = linspace(1.0,1.0, 40);
 
     problem.phases(iphase).guess.controls = u0;
     problem.phases(iphase).guess.states   = x0;
@@ -274,8 +274,8 @@ int main(void)
     iphase = 2;
 
     u0 = zeros(1,40);
-    x0(1,colon()) = linspace(1.0,1.0, 40);
-    x0(2,colon()) = linspace(1.0,1.0, 40);
+    x0.row(0) = linspace(1.0,1.0, 40);
+    x0.row(1) = linspace(1.0,1.0, 40);
 
     problem.phases(iphase).guess.controls = u0;
     problem.phases(iphase).guess.states   = x0;
@@ -288,6 +288,7 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
+    algorithm.collocation_method          = "trapezoidal";
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
 
@@ -303,26 +304,34 @@ int main(void)
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix xphase1 = solution.get_states_in_phase(1);
-    DMatrix uphase1 = solution.get_controls_in_phase(1);
-    DMatrix tphase1 = solution.get_time_in_phase(1);
+    MatrixXd xphase1 = solution.get_states_in_phase(1);
+    MatrixXd uphase1 = solution.get_controls_in_phase(1);
+    MatrixXd tphase1 = solution.get_time_in_phase(1);
 
-    DMatrix xphase2 = solution.get_states_in_phase(2);
-    DMatrix uphase2 = solution.get_controls_in_phase(2);
-    DMatrix tphase2 = solution.get_time_in_phase(2);
+    MatrixXd xphase2 = solution.get_states_in_phase(2);
+    MatrixXd uphase2 = solution.get_controls_in_phase(2);
+    MatrixXd tphase2 = solution.get_time_in_phase(2);
 
-    DMatrix x = (xphase1 || xphase2);
-    DMatrix u = (uphase1 || uphase2);
-    DMatrix t = (tphase1 || tphase2);
+    MatrixXd x(xphase1.rows(), xphase1.cols()+xphase2.cols()); 
+    
+    x << xphase1 , xphase2;
+
+    MatrixXd u(uphase1.rows(), uphase1.cols()+uphase2.cols());
+    
+    u << uphase1 , uphase2;
+
+    MatrixXd t(tphase1.rows(), tphase1.cols()+tphase2.cols());
+    
+    t << tphase1 , tphase2;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////

@@ -137,7 +137,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 5;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes                     = "[10, 50]";
+    problem.phases(1).nodes                     << 50;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -153,28 +153,28 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).bounds.lower.states(1) 		= 0.0;
+    problem.phases(1).bounds.lower.states(0) 		= 0.0;
+    problem.phases(1).bounds.lower.states(1) 		= -10.0;
     problem.phases(1).bounds.lower.states(2) 		= -10.0;
-    problem.phases(1).bounds.lower.states(3) 		= -10.0;
 
-    problem.phases(1).bounds.upper.states(1)	 	= 1.0/9.0;
+    problem.phases(1).bounds.upper.states(0)	 	= 1.0/9.0;
+    problem.phases(1).bounds.upper.states(1) 		= 10.0;
     problem.phases(1).bounds.upper.states(2) 		= 10.0;
-    problem.phases(1).bounds.upper.states(3) 		= 10.0;
 
-    problem.phases(1).bounds.lower.controls(1)		= -10.0;
-    problem.phases(1).bounds.upper.controls(1)	 	=  10.0;
+    problem.phases(1).bounds.lower.controls(0)		= -10.0;
+    problem.phases(1).bounds.upper.controls(0)	 	=  10.0;
 
-    problem.phases(1).bounds.lower.events(1) 		= 0.0;
-    problem.phases(1).bounds.lower.events(2) 		= 1.0;
+    problem.phases(1).bounds.lower.events(0) 		= 0.0;
+    problem.phases(1).bounds.lower.events(1) 		= 1.0;
+    problem.phases(1).bounds.lower.events(2) 		= 0.0;
     problem.phases(1).bounds.lower.events(3) 		= 0.0;
-    problem.phases(1).bounds.lower.events(4) 		= 0.0;
-    problem.phases(1).bounds.lower.events(5) 		= -1.0;
+    problem.phases(1).bounds.lower.events(4) 		= -1.0;
 
-    problem.phases(1).bounds.upper.events(1) 		= 0.0;
-    problem.phases(1).bounds.upper.events(2) 		= 1.0;
+    problem.phases(1).bounds.upper.events(0) 		= 0.0;
+    problem.phases(1).bounds.upper.events(1) 		= 1.0;
+    problem.phases(1).bounds.upper.events(2) 		= 0.0;
     problem.phases(1).bounds.upper.events(3) 		= 0.0;
-    problem.phases(1).bounds.upper.events(4) 		= 0.0;
-    problem.phases(1).bounds.upper.events(5) 		= -1.0;
+    problem.phases(1).bounds.upper.events(4) 		= -1.0;
 
 
     problem.phases(1).bounds.lower.StartTime   		= 0.0;
@@ -198,15 +198,15 @@ int main(void)
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x0(3,10);
+    MatrixXd x0(3,50);
 
-    x0(1,colon()) = linspace(0.0, 0.0, 10);
-    x0(2,colon()) = linspace(1.0,-1.0, 10);
-    x0(3,colon()) = linspace(0.0, 0.0, 10);
+    x0.row(0) = linspace(0.0, 0.0, 50);
+    x0.row(1) = linspace(1.0,-1.0, 50);
+    x0.row(2) = linspace(0.0, 0.0, 50);
 
-    problem.phases(1).guess.controls       = zeros(1,10);
+    problem.phases(1).guess.controls       = zeros(1,50);
     problem.phases(1).guess.states         = x0;
-    problem.phases(1).guess.time           = linspace(0.0, 0.5, 10);
+    problem.phases(1).guess.time           = linspace(0.0, 0.5, 50);
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -216,6 +216,7 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
+    algorithm.collocation_method          = "Legendre";
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
 
@@ -241,11 +242,11 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
-    lambda.Save("lambda.dat");
-    H.Save("H.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
+    Save(lambda,"lambda.dat");
+    Save(H,"H.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////

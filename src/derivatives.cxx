@@ -31,6 +31,9 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+// Numerical Gradient Functions
+
+
 void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, MatrixXd& xlb, MatrixXd& xub, int jCol,
                 MatrixXd* JacColumn, GRWORK* grw, Workspace* workspace )
 {
@@ -721,15 +724,11 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
 		gad[i] >>= g[i];
 	trace_off();
 
-#ifdef ADOLC_VERSION_1
-	sparse_jac(workspace->tag_gc, ncons, nvars, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values);
-#endif
 
-#ifdef ADOLC_VERSION_2
     int options[4];
     options[0]=0; options[1]=0; options[2]=0;options[3]=0;
 	sparse_jac(workspace->tag_gc, ncons, nvars, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values, options);
-#endif
+
 
     for(j=0;j<nvars;j++)
     {

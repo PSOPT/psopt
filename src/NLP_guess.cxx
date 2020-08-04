@@ -31,7 +31,6 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
-
 using namespace Eigen;
 
 
@@ -97,7 +96,7 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
 	}
 
 
-	if ( !isEmpty(problem.phase[i].guess.controls) ) {
+	if ( !isEmpty(problem.phase[i].guess.controls ) && ncontrols>0 ) {
 
 		for (k=0;k<ncontrols;k++) { // EIGEN_UPDATE
 //			up = problem.phase[i].guess.controls(k,colon());
@@ -112,12 +111,14 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
 
 	}
 	else {
-		umean = ((problem.phase[i].bounds.lower.controls)+(problem.phase[i].bounds.upper.controls))/2.0;
-	for(k=0;k<norder+1;k++) // EIGEN_UPDATE
-	{
-//		(solution.controls[i])(colon(),k) = umean;
-      (solution.controls[i]).row(k) = umean;
-	}
+		if ( ncontrols>0 )   {
+		   umean = ((problem.phase[i].bounds.lower.controls)+(problem.phase[i].bounds.upper.controls))/2.0;
+	      for(k=0;k<norder+1;k++) // EIGEN_UPDATE
+	      {
+//		         (solution.controls[i])(colon(),k) = umean;
+               (solution.controls[i]).col(k) = umean;
+	      } 
+	   } 
 	}
 
 

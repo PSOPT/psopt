@@ -148,16 +148,16 @@ int main(void)
     problem.phases(1).ncontrols 		= 2;
     problem.phases(1).nevents   		= 4;
     problem.phases(1).npath     		= 1;
-    problem.phases(1).nodes                     = "[20]";
+    problem.phases(1).nodes         << 50;
 
     psopt_level2_setup(problem, algorithm);
 
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare DMatrix objects to store results //////////////
+///////////////////  Declare MatrixXd objects to store results //////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, t;
-    DMatrix lambda, H;
+    MatrixXd x, u, t;
+    MatrixXd lambda, H;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter problem bounds information //////////////////////
@@ -181,34 +181,34 @@ int main(void)
     double yf = 0.1;
 
 
-    problem.phases(1).bounds.lower.states(1) = xL;
-    problem.phases(1).bounds.lower.states(2) = yL;
-    problem.phases(1).bounds.lower.states(3) = vL;
+    problem.phases(1).bounds.lower.states(0) = xL;
+    problem.phases(1).bounds.lower.states(1) = yL;
+    problem.phases(1).bounds.lower.states(2) = vL;
 
 
-    problem.phases(1).bounds.upper.states(1) = xU;
-    problem.phases(1).bounds.upper.states(2) = yU;
-    problem.phases(1).bounds.upper.states(3) = vU;
+    problem.phases(1).bounds.upper.states(0) = xU;
+    problem.phases(1).bounds.upper.states(1) = yU;
+    problem.phases(1).bounds.upper.states(2) = vU;
 
 
-    problem.phases(1).bounds.lower.controls(1) = u1L;
-    problem.phases(1).bounds.lower.controls(2) = u2L;
-    problem.phases(1).bounds.upper.controls(1) = u1U;
-    problem.phases(1).bounds.upper.controls(2) = u2U;
+    problem.phases(1).bounds.lower.controls(0) = u1L;
+    problem.phases(1).bounds.lower.controls(1) = u2L;
+    problem.phases(1).bounds.upper.controls(0) = u1U;
+    problem.phases(1).bounds.upper.controls(1) = u2U;
 
-    problem.phases(1).bounds.lower.events(1) = x0;
-    problem.phases(1).bounds.lower.events(2) = y0;
-    problem.phases(1).bounds.lower.events(3) = v0;
-    problem.phases(1).bounds.lower.events(4) = yf;
+    problem.phases(1).bounds.lower.events(0) = x0;
+    problem.phases(1).bounds.lower.events(1) = y0;
+    problem.phases(1).bounds.lower.events(2) = v0;
+    problem.phases(1).bounds.lower.events(3) = yf;
 
 
-    problem.phases(1).bounds.upper.events(1) = x0;
-    problem.phases(1).bounds.upper.events(2) = y0;
-    problem.phases(1).bounds.upper.events(3) = v0;
-    problem.phases(1).bounds.upper.events(4) = yf;
+    problem.phases(1).bounds.upper.events(0) = x0;
+    problem.phases(1).bounds.upper.events(1) = y0;
+    problem.phases(1).bounds.upper.events(2) = v0;
+    problem.phases(1).bounds.upper.events(3) = yf;
 
-    problem.phases(1).bounds.upper.path(1) = 1.0;
-    problem.phases(1).bounds.lower.path(1) = 1.0;
+    problem.phases(1).bounds.upper.path(0) = 1.0;
+    problem.phases(1).bounds.lower.path(0) = 1.0;
 
 
 
@@ -235,15 +235,15 @@ int main(void)
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			= problem.phases(1).nodes(1);
+    int nnodes    			             = problem.phases(1).nodes(0);
     int ncontrols                       = problem.phases(1).ncontrols;
     int nstates                         = problem.phases(1).nstates;
 
-    DMatrix x_guess    =  zeros(nstates,nnodes);
+    MatrixXd x_guess    =  zeros(nstates,nnodes);
 
-    x_guess(1,colon()) = x0*ones(1,nnodes);
-    x_guess(2,colon()) = y0*ones(1,nnodes);
-    x_guess(3,colon()) = v0*ones(1,nnodes);
+    x_guess.row(0)  = x0*ones(1,nnodes);
+    x_guess.row(1)  = y0*ones(1,nnodes);
+    x_guess.row(2)  = v0*ones(1,nnodes);
 
     problem.phases(1).guess.controls       = zeros(ncontrols,nnodes);
     problem.phases(1).guess.states         = x_guess;
@@ -260,7 +260,7 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-    algorithm.mesh_refinement             = "automatic";
+//    algorithm.mesh_refinement             = "automatic";
     algorithm.collocation_method = "trapezoidal";
 //    algorithm.defect_scaling = "jacobian-based";
     algorithm.ode_tolerance               = 1.e-6;
@@ -289,11 +289,11 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
-    lambda.Save("lambda.dat");
-    H.Save("H.dat");
+    Save(x, "x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
+    Save(lambda,"lambda.dat");
+    Save(H,"H.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
