@@ -36,7 +36,15 @@ int get_number_of_mesh_refinement_iterations(Prob& problem, Alg& algorithm)
   int number_of_mesh_refinement_iterations;
 
   if (algorithm.mesh_refinement == "manual") {
-        number_of_mesh_refinement_iterations = (int) problem.phases(1).nodes.size();
+
+        int icount = 0;
+          	
+        for (int i=0; i<PSOPT_extras::get_max_manual_mesh_refinement_iterations(); i++) {
+            if ( problem.phases(1).nodes(i)>0 ) icount++;
+            else break; 
+        }  	  	
+  	
+        number_of_mesh_refinement_iterations = icount;
   }
   else
   {

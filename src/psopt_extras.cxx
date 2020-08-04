@@ -39,6 +39,7 @@ DEC_THREAD int     PSOPT_extras::print_level = 1;
 
 DEC_THREAD clock_t PSOPT_extras::start_clock = 0;
 
+DEC_THREAD int     PSOPT_extras::max_manual_mr = 100;
 
 
 void PSOPT_extras::SetPrintLevel( int plevel )

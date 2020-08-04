@@ -160,76 +160,77 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     if (algorithm.mesh_refinement == "manual" )
     {
-	for (i=0; i<nphases; i++)
-	{
-	  problem.phase[i].current_number_of_intervals    = ( (int) problem.phase[i].nodes(iter_nodes-1)) -1;
-	}
+			for (i=0; i<nphases; i++)
+			{
+	  			problem.phase[i].current_number_of_intervals    = ( (int) problem.phase[i].nodes(iter_nodes-1)) -1;
+			}
     }
 
     else  if (algorithm.mesh_refinement=="automatic" && use_global_collocation(algorithm)  ) {
 
-          if ( iter_nodes == 1 ) {
-	    	for (i=0; i<nphases; i++)
-		{
-		    problem.phase[i].current_number_of_intervals    = ( (int) problem.phase[i].nodes(iter_nodes-1)) -1;
-		}
-	  }
+         	if ( iter_nodes == 1 ) {
+	    			for (i=0; i<nphases; i++)
+					{
+		    			problem.phase[i].current_number_of_intervals    = ( (int) problem.phase[i].nodes(iter_nodes-1)) -1;
+					}
+	  			}
 
-	  else if (iter_nodes <= algorithm.mr_min_extrapolation_points) {
-	 	for (i=0; i<nphases; i++)
-		{
-		    problem.phase[i].current_number_of_intervals    += algorithm.mr_initial_increment;
-		}
+	  			else if (iter_nodes <= algorithm.mr_min_extrapolation_points) {
+	 				for (i=0; i<nphases; i++)
+					{
+		    			problem.phase[i].current_number_of_intervals    += algorithm.mr_initial_increment;
+					}
 
-          }
+          	}
     }
 
     else  if (algorithm.mesh_refinement=="automatic" && use_local_collocation(algorithm) ) {
           // Local mesh refinement algorithm by Betts (2001)
 
 	  // Step 3: Estimate primary order for the new mesh (either trapezoidal or Hermite-Simpson)
-          if ( iter_nodes == 1 ) {
-	    	for (i=0; i<nphases; i++)
-		{
-		    problem.phase[i].current_number_of_intervals    = ( (int) problem.phase[i].nodes(iter_nodes-1)) -1;
-		}
-		if ( workspace->differential_defects != "trapezoidal" && algorithm.switch_order > 0) {
-		     workspace->differential_defects = "trapezoidal";
-		}
-	  }
+         if ( iter_nodes == 1 ) {
+	    			for (i=0; i<nphases; i++)
+					{
+		    			problem.phase[i].current_number_of_intervals    = ( (int) problem.phase[i].nodes(iter_nodes-1)) -1;
+					}
+					if ( workspace->differential_defects != "trapezoidal" && algorithm.switch_order > 0) {
+		   	  		workspace->differential_defects = "trapezoidal";
+					}
+	  		}	
 
-	  else if (iter_nodes == 2) {
-	      bool equi_error = check_for_equidistributed_error(problem,algorithm,solution);
+	 		else if (iter_nodes == 2) {
 
-	      if (equi_error && algorithm.switch_order>0) {
-		   workspace->differential_defects = "Hermite-Simpson";
-	      }
-	  }
+	      	bool equi_error = check_for_equidistributed_error(problem,algorithm,solution);
+
+	      	if (equi_error && algorithm.switch_order>0) {
+				 	  workspace->differential_defects = "Hermite-Simpson";
+	      	}
+	 		}
 
 
-	  else if (workspace->differential_defects == "trapezoidal" && iter_nodes> algorithm.switch_order && algorithm.switch_order>0) {
+	 		else if (workspace->differential_defects == "trapezoidal" && iter_nodes> algorithm.switch_order && algorithm.switch_order>0) {
 
 	           workspace->differential_defects = "Hermite-Simpson";
 
-          }
+    		}
 
-	  // Step 4: Estimate order reduction for each interval.
+	  		// Step 4: Estimate order reduction for each interval.
 
-	  if (iter_nodes>2) {
-	      estimate_order_reduction(problem,algorithm,solution, workspace);
-	  }
+	 		if (iter_nodes>2) {
+	      		estimate_order_reduction(problem,algorithm,solution, workspace);
+	 		}
 
-	  else {
-	      zero_order_reduction(problem,algorithm,solution, workspace);
-	  }
+	 		else {
+	      		zero_order_reduction(problem,algorithm,solution, workspace);
+	 		}		
 
-	  // Step 5: construct new mesh
+	 		// Step 5: construct new mesh
 
-	  if (iter_nodes>=2) {
+	 		if (iter_nodes>=2) {
 
-	      construct_new_mesh(problem,algorithm,solution, workspace);
+	      		construct_new_mesh(problem,algorithm,solution, workspace);
 
-	  }
+	 		}
 
 
 
@@ -240,7 +241,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     workspace->nvars     = get_number_nlp_vars(problem, workspace);
 
     nlp_ncons           = get_number_nlp_constraints(problem, workspace);
-
 
     workspace->ncons = nlp_ncons;
 
@@ -301,11 +301,11 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
        define_initial_nlp_guess(x0, lambda, solution, problem, algorithm, workspace);
     }
     else {
-        hotflag = 1;
-	hot_start_nlp_guess(x0, lambda, solution,problem,algorithm, workspace->prev_states, workspace->prev_controls, workspace->prev_costates, workspace->prev_path, workspace->prev_nodes, workspace->prev_param, *workspace->prev_t0, *workspace->prev_tf, workspace);
+        	hotflag = 1;
+			hot_start_nlp_guess(x0, lambda, solution,problem,algorithm, workspace->prev_states, workspace->prev_controls, workspace->prev_costates, workspace->prev_path, workspace->prev_nodes, workspace->prev_param, *workspace->prev_t0, *workspace->prev_tf, workspace);
     }
 
-  // Define NLP bounds on the decision vector
+  	// Define NLP bounds on the decision vector
 
     define_nlp_bounds(*workspace->xlb, *workspace->xub, problem, algorithm, workspace);
 
@@ -398,33 +398,33 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 //	solution.dual.costates[i] = lambda(colon(lam_phase_offset+1,lam_phase_offset+nstates*(norder+1) ) ) ;
         solution.dual.costates[i] = lambda.block(lam_phase_offset,0,nstates*(norder+1),1);
 
-	solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1).eval();
+		  solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1).eval();
 
-	workspace->prev_costates[i]      = solution.dual.costates[i];
+		  workspace->prev_costates[i]      = solution.dual.costates[i];
 
-    t0 = (solution.nodes[i])(1);
+    	  t0 = (solution.nodes[i])(1);
 //	tf = (solution.nodes[i])("end");
-	tf = (solution.nodes[i])(0, solution.nodes[i].cols()-1); 
+	     tf = (solution.nodes[i])(0, solution.nodes[i].cols()-1); 
 
-	if ( algorithm.collocation_method=="Legendre" ) {
-	    for(k=0;k<norder+1;k++) { // EIGEN_UPDATE: Index k shifted to start at 0
+	     if ( algorithm.collocation_method=="Legendre" ) {
+	    		for(k=0;k<norder+1;k++) { // EIGEN_UPDATE: Index k shifted to start at 0
 //		   (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(workspace->w[i])(k);  
                    (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);  // See PhD thesis by Huntington (2006).
-	    }
-	}
+	    		}
+	     }	
 
-	if (use_local_collocation(algorithm)) {
-       for(k=0;k<norder;k++) { // EIGEN_UPDATE: Index k shifted to start at 0
+		  if (use_local_collocation(algorithm)) {
+        		for(k=0;k<norder;k++) { // EIGEN_UPDATE: Index k shifted to start at 0
 	         // For local collocation, this is an estimate of the costate.
-	         hk = (solution.nodes[i])(k+1)-(solution.nodes[i])(k);
+	         	hk = (solution.nodes[i])(k+1)-(solution.nodes[i])(k);
 //	         (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(2.0*hk); 
-	         (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(2.0*hk); // This gives the costates at the midpoints between the collocation nodes.
-                 (solution.dual.costates[i]).block(0,k,nstates,1)= (solution.dual.costates[i]).block(0,k,nstates,1)*(tf-t0);
- 	   }
-	}
+	         	(solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(2.0*hk); // This gives the costates at the midpoints between the collocation nodes.
+               (solution.dual.costates[i]).block(0,k,nstates,1)= (solution.dual.costates[i]).block(0,k,nstates,1)*(tf-t0);
+ 	   		}
+		  }		
 
-    if ( algorithm.collocation_method == "Chebyshev" ) {
-        	for(k=1;k<norder;k++) {  // EIGEN_UPDATE: Index k shifted by -1
+    	  if ( algorithm.collocation_method == "Chebyshev" ) {
+        		for(k=1;k<norder;k++) {  // EIGEN_UPDATE: Index k shifted by -1
                   double tk = (workspace->snodes[i])(k);
 //                  (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(workspace->w[i])(k);
                     (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);
@@ -432,26 +432,26 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                     (solution.dual.costates[i]).block(0,k,nstates,1) =(1.0/sqrt(1.0 - tk*tk))*(solution.dual.costates[i]).block(0,k,nstates,1); // See PhD thesis by Pietz (2003)
 //                  (solution.dual.costates[i])(colon(),k) =(solution.dual.costates[i])(colon(),k)*(tf-t0);
 
-        	}
-    }
+        		}
+    	  }
 
-    if ( algorithm.scaling=="user" ) {
-	     for (k=0;k<norder+1;k++) {  // EIGEN_UPDATE: Index k shifted by -1
+    	  if ( algorithm.scaling=="user" ) {
+	     		for (k=0;k<norder+1;k++) {  // EIGEN_UPDATE: Index k shifted by -1
  //                  (solution.dual.costates[i])(colon(),k)=(solution.dual.costates[i])(colon(),k) & deriv_scaling;
                      (solution.dual.costates[i]).block(0,k,nstates,1) =(solution.dual.costates[i]).block(0,k,nstates,1).cwiseProduct(deriv_scaling);
-             }
-	}
+            }
+		  }
 
-   solution.dual.costates[i] = solution.dual.costates[i]/problem.scale.objective;
+   	  solution.dual.costates[i] = solution.dual.costates[i]/problem.scale.objective;
 
-   if ( algorithm.scaling=="automatic" ) {
-	  solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates*(norder+1), 1 );
+   	  if ( algorithm.scaling=="automatic" ) {
+	  			solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates*(norder+1), 1 );
 //          solution.dual.costates[i] = elemProduct( solution.dual.costates[i],  (*workspace->constraint_scaling)(colon(lam_phase_offset+1,lam_phase_offset+nstates*(norder+1) )) );
-          solution.dual.costates[i] = solution.dual.costates[i].cwiseProduct((*workspace->constraint_scaling).block(lam_phase_offset,0, nstates*(norder+1),1) );
-	  solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1);
-   }
+          	solution.dual.costates[i] = solution.dual.costates[i].cwiseProduct((*workspace->constraint_scaling).block(lam_phase_offset,0, nstates*(norder+1),1) );
+	  			solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1);
+   	  }
 
-   if ( algorithm.collocation_method == "Chebyshev") {
+   	  if ( algorithm.collocation_method == "Chebyshev") {
                 // use linear extrapolation to approximate costate values at both ends (not perfect but better than nothing)
 
                 MatrixXd Pl, Pl1, Pl2;
@@ -554,9 +554,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 //               solution.dual.costates[i](colon(),1) = Pl;
                 solution.dual.costates[i].block(0,0,nstates,1) = Pl;
 
-    }
+        }
 
-    if ( (algorithm.collocation_method == "Legendre" || algorithm.collocation_method == "Chebyshev") && algorithm.diff_matrix != "central-differences") {
+    	  if ( (algorithm.collocation_method == "Legendre" || algorithm.collocation_method == "Chebyshev") && algorithm.diff_matrix != "central-differences") {
                 // Smooth the costates, as they can be noisy in the case of standard Legendre or Chebyshev collocation.
                 // (see Farhroo and Ross "Costate estimation by a Legendre Pseudospectral Method", Journal of Guidance
                 //    Control and Dynamics, 2001).
@@ -577,17 +577,17 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
                 solution.dual.costates[i] = pint;
 
-    }
+         }
 
 
-	if ( use_local_collocation(algorithm) ) {
+			if ( use_local_collocation(algorithm) ) {
         // use linear extrapolation to approximate the costate values at the collocation nodes...
-//       pint = solution.dual.costates[i](colon(),colon(1,norder));
-         pint = solution.dual.costates[i].block(0,0,nstates,norder);
-		for(int k=0;k<norder;k++) {  // EIGEN_UPDATE: k index shifted by -1.
-		   tint(k) = ( (workspace->snodes[i])(k)+(workspace->snodes[i])(k+1) )/2.0;
-		}
-        for (int l=0;l<nstates;l++) { // EIGEN_UPDATE: l index shifted by -1.
+//       	pint = solution.dual.costates[i](colon(),colon(1,norder));
+         	pint = solution.dual.costates[i].block(0,0,nstates,norder);
+				for(int k=0;k<norder;k++) {  // EIGEN_UPDATE: k index shifted by -1.
+		   		tint(k) = ( (workspace->snodes[i])(k)+(workspace->snodes[i])(k+1) )/2.0;
+				}
+        		for (int l=0;l<nstates;l++) { // EIGEN_UPDATE: l index shifted by -1.
 //                   ts = tra(workspace->snodes[i]);
                    ts = workspace->snodes[i].transpose();
 //                   tint = tra(tint);
@@ -598,14 +598,14 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                    linear_interpolation(pextra, ts, tint, pl,norder); // EIGEN_UPDATE - Check function
 //                   solution.dual.costates[i](l,colon()) = pextra;
                    solution.dual.costates[i].block(l,0,1,ncols) = pextra;
-        }
+       		}		
 
         // use linear extrapolation to approximate costate values at end point (not perfect but better than nothing)
 //       	pint = solution.dual.costates[i](colon(),colon(norder-1,norder));
                 pint = solution.dual.costates[i].block(0  ,norder-2  ,nstates  , 2 );
 //       	tint = workspace->snodes[i](colon(norder-1,norder));
                 tint = workspace->snodes[i].block(0  ,norder-2  ,1  , 2 );
-        for (int l=0;l<nstates;l++) {  // EIGEN_UPDATE: l index shifted by -1.
+        		for (int l=0;l<nstates;l++) {  // EIGEN_UPDATE: l index shifted by -1.
 //                   double tss = (workspace->snodes[i])(norder+1);
                    double tss = (workspace->snodes[i])(norder);
 //                   tint = tra(tint);
@@ -616,102 +616,102 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                    linear_interpolation(pextra, tss, tint, pl,2);
 //                   solution.dual.costates[i](l,norder+1) = pextra(1);
                    solution.dual.costates[i](l,norder) = pextra(0);
-        }
+        		}	
 
-     }
-
-
-	offset = lam_phase_offset+nstates*(norder+1);
-
-	if (   algorithm.nlp_method == "IPOPT"   ) {
-                solution.dual.costates[i] = -solution.dual.costates[i];
-    }
-
-//	solution.dual.events[i]  = -lambda(colon(offset+1,offset+nevents));
-	solution.dual.events[i]  = -lambda.block(offset,0,nevents,1);
-	workspace->dual_events[i] = -(solution.dual.events[i]);
-
-	if (algorithm.scaling=="user") {
-//		   solution.dual.events[i] = elemProduct( solution.dual.events[i],  problem.phase[i].scale.events );
-		   solution.dual.events[i] = solution.dual.events[i].cwiseProduct( problem.phase[i].scale.events );
-	}
-
-    if (algorithm.scaling=="automatic" && nevents>0) {
-//	   solution.dual.events[i] = elemProduct( solution.dual.events[i],  (*workspace->constraint_scaling)(colon(offset+1,offset+nevents) )) ;
-	   solution.dual.events[i] = solution.dual.events[i].cwiseProduct(  (*workspace->constraint_scaling).block(offset,0,nevents,1) );
-    }
-	solution.dual.events[i] /= problem.scale.objective;
-
-	if (   algorithm.nlp_method == "IPOPT"   ) {
-                solution.dual.events[i] = -solution.dual.events[i];
-    }
-
-	offset = offset+nevents;
-	if (npath>0) {
-//	     solution.dual.path[i]      = -lambda(colon(offset+1,offset+npath*(norder+1)));
-             solution.dual.path[i]      = -lambda.block(offset,0, npath*(norder+1), 1);
-	     solution.dual.path[i]      = reshape(solution.dual.path[i], npath, norder+1);
-	     workspace->prev_path[i] = -(solution.dual.path[i]);
-	     if (use_local_collocation(algorithm)) {
-        	for (k=0;k<norder;k++) {  // EIGEN_UPDATE: k index shifted by -1
-        	    // Below are the path constraint adjoint estimates for trapezoidal discretization
-        	    // See Betts (2010), p. 176.
-        	    if ( algorithm.collocation_method == "trapezoidal") {
-                    double hk = (solution.nodes[i])(k+1)-(solution.nodes[i])(k);
-                    if (k==0) {
-//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(2.0/hk);
-                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(2.0/hk);
-                    }
-                    else if (k==norder-1) {
-                          double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
-//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(2.0/hk_1);
-                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(2.0/hk_1);
-                    }
-                    else {
-                        double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
-//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(2.0/(hk+hk_1));
-                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(2.0/(hk+hk_1));
-        	    }
-                    }
-           	    if ( algorithm.collocation_method == "Hermite-Simpson") {
-           	        // These are the path constraint adjoint estimates for Hermite-Simpson discretization
-           	        // See Betts (2010), p. 177.
-           	        double hk = (solution.nodes[i])(k+1)-(solution.nodes[i])(k);
-                    if (k==0) {
-//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(6.0/hk);
-                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(6.0/hk);
-                    }
-                    else if (k==norder-1) {
-                        double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
-//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(6.0/hk_1);
-                        (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(6.0/hk_1);
-                    }
-                    else {
-                        double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
-//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(6.0/(hk+hk_1));
-                        (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(6.0/(hk+hk_1));
-                    }
-           	    }
+         }
 
 
-        	}
-                // use linear extrapolation to approximate multiplier values at end point (not perfect but better than nothing)
+		offset = lam_phase_offset+nstates*(norder+1);
+	
+		if (   algorithm.nlp_method == "IPOPT"   ) {
+	                solution.dual.costates[i] = -solution.dual.costates[i];
+	    }
+	
+	//	solution.dual.events[i]  = -lambda(colon(offset+1,offset+nevents));
+		solution.dual.events[i]  = -lambda.block(offset,0,nevents,1);
+		workspace->dual_events[i] = -(solution.dual.events[i]);
+	
+		if (algorithm.scaling=="user") {
+	//		   solution.dual.events[i] = elemProduct( solution.dual.events[i],  problem.phase[i].scale.events );
+			   solution.dual.events[i] = solution.dual.events[i].cwiseProduct( problem.phase[i].scale.events );
+		}
+	
+	    if (algorithm.scaling=="automatic" && nevents>0) {
+	//	   solution.dual.events[i] = elemProduct( solution.dual.events[i],  (*workspace->constraint_scaling)(colon(offset+1,offset+nevents) )) ;
+		   solution.dual.events[i] = solution.dual.events[i].cwiseProduct(  (*workspace->constraint_scaling).block(offset,0,nevents,1) );
+	    }
+		solution.dual.events[i] /= problem.scale.objective;
+	
+		if (   algorithm.nlp_method == "IPOPT"   ) {
+	                solution.dual.events[i] = -solution.dual.events[i];
+	    }
+
+		offset = offset+nevents;
+		if (npath>0) {
+	//	     solution.dual.path[i]      = -lambda(colon(offset+1,offset+npath*(norder+1)));
+	             solution.dual.path[i]      = -lambda.block(offset,0, npath*(norder+1), 1);
+		     solution.dual.path[i]      = reshape(solution.dual.path[i], npath, norder+1);
+		     workspace->prev_path[i] = -(solution.dual.path[i]);
+		     if (use_local_collocation(algorithm)) {
+	        	for (k=0;k<norder;k++) {  // EIGEN_UPDATE: k index shifted by -1
+	        	    // Below are the path constraint adjoint estimates for trapezoidal discretization
+	        	    // See Betts (2010), p. 176.
+	        	    if ( algorithm.collocation_method == "trapezoidal") {
+	                    double hk = (solution.nodes[i])(k+1)-(solution.nodes[i])(k);
+	                    if (k==0) {
+	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(2.0/hk);
+	                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(2.0/hk);
+	                    }
+	                    else if (k==norder-1) {
+	                          double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
+	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(2.0/hk_1);
+	                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(2.0/hk_1);
+	                    }
+	                    else {
+	                        double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
+	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(2.0/(hk+hk_1));
+	                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(2.0/(hk+hk_1));
+	        	    }
+	                    }
+	           	    if ( algorithm.collocation_method == "Hermite-Simpson") {
+	           	        // These are the path constraint adjoint estimates for Hermite-Simpson discretization
+	           	        // See Betts (2010), p. 177.
+	           	        double hk = (solution.nodes[i])(k+1)-(solution.nodes[i])(k);
+	                    if (k==0) {
+	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(6.0/hk);
+	                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(6.0/hk);
+	                    }
+	                    else if (k==norder-1) {
+	                        double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
+	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(6.0/hk_1);
+	                        (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(6.0/hk_1);
+	                    }
+	                    else {
+	                        double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
+	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(6.0/(hk+hk_1));
+	                        (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(6.0/(hk+hk_1));
+	                    }
+	           	    }
+	
+	
+	        	}
+             // use linear extrapolation to approximate multiplier values at end point (not perfect but better than nothing)
 //             	pint = solution.dual.path[i](colon(),colon(norder-1,norder));
-             	pint = solution.dual.path[i].block(0,norder-2,npath,2);
+          	pint = solution.dual.path[i].block(0,norder-2,npath,2);
 //             	tint = workspace->snodes[i](colon(norder-1,norder));
-             	tint = workspace->snodes[i].block(0,norder-2,1,2);
-                for (int l=0;l<npath;l++) {  //EIGEN_UPDATE: l index shifted by -1.
+          	tint = workspace->snodes[i].block(0,norder-2,1,2);
+             for (int l=0;l<npath;l++) {  //EIGEN_UPDATE: l index shifted by -1.
 //                   double tss = (workspace->snodes[i])(norder+1);
-                   double tss = (workspace->snodes[i])(norder);
+                double tss = (workspace->snodes[i])(norder);
 //                   tint = tra(tint);
-                   tint = tint.transpose().eval();
+                tint = tint.transpose().eval();
 //                   pl = pint(l,colon());
-                   pl   = pint.block(l,0,1,2);
-                   linear_interpolation(pextra, tss, tint, pl,2);
+                pl   = pint.block(l,0,1,2);
+                linear_interpolation(pextra, tss, tint, pl,2);
 //                   solution.dual.path[i](l,norder+1) = pextra(1);
-                     solution.dual.path[i](l,norder) = pextra(0);
+                  solution.dual.path[i](l,norder) = pextra(0);
 
-                }
+             }
 
 
         	    // use linear extrapolation to approximate the multiplier values at the collocation nodes...
@@ -730,10 +730,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 	     if ( algorithm.collocation_method == "Legendre") {
              for (k=0;k<norder+1;k++) {  // EIGEN_UPDATE: k index shifted by -1
-//	     		(solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)/(workspace->w[i])(k);  
-	     		(solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)/(workspace->w[i])(k);  // See PhD thesis by Huntington (2006).
-//	     		(solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k)*(2.0/(tf-t0));
-	     		(solution.dual.path[i]).block(0,k,npath,1) = (solution.dual.path[i]).block(0,k,npath,1)*(2.0/(tf-t0));
+	//	     		(solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)/(workspace->w[i])(k);  
+		     		(solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)/(workspace->w[i])(k);  // See PhD thesis by Huntington (2006).
+	//	     		(solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k)*(2.0/(tf-t0));
+		     		(solution.dual.path[i]).block(0,k,npath,1) = (solution.dual.path[i]).block(0,k,npath,1)*(2.0/(tf-t0));
              }
 	     }
 
@@ -797,9 +797,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 
 
-	workspace->prev_states[i]   =   solution.states[i];
-	workspace->prev_controls[i] =   solution.controls[i];
-	workspace->prev_nodes[i]    =   solution.nodes[i];
+		workspace->prev_states[i]   =   solution.states[i];
+		workspace->prev_controls[i] =   solution.controls[i];
+		workspace->prev_nodes[i]    =   solution.nodes[i];
         if (problem.phase[i].nparameters) workspace->prev_param[i]    =   solution.parameters[i];
 //	(*workspace->prev_t0)(i+1) = x0(x_phase_offset+nvars_phase_i-1)/problem.phase[i].scale.time;
         (*workspace->prev_t0)(i) = x0(x_phase_offset+nvars_phase_i-2)/problem.phase[i].scale.time;
