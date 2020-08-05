@@ -40,6 +40,7 @@ file(GLOB HEADER "src/*.h")
 add_library(${PROJECT_NAME} ${SRC} ${HEADER})
 target_include_directories(${PROJECT_NAME} PUBLIC src/ PRIVATE ${ipopt_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC adolc ${ipopt_LIBRARIES} PRIVATE Eigen3::Eigen)
+add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}")
 
 if(${BUILD_EXAMPLES})
 	add_subdirectory(examples/)

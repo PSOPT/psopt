@@ -29,8 +29,6 @@ e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
 
-#include "../../RELEASE_NUMBER"
-
 #include <Eigen/Dense>
 
 // using namespace Eigen;
