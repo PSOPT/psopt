@@ -575,7 +575,7 @@ CONSTANTS.hmax = hmax;
     problem.phases(1).ncontrols 				= 4;
     problem.phases(1).nevents   	        	= 20;
     problem.phases(1).npath     				= 4;
-    problem.phases(1).nodes               <<  20, 30, 40, 50, 60;
+    problem.phases(1).nodes               = (RowVectorXi(5) << 20, 30, 40, 50, 60).finished();   // <<  20, 30, 40, 50, 60;
 
 
     problem.phases(1).nparameters         = 1;
