@@ -738,7 +738,7 @@ void AutoDiffMatrix::Print(const char* text) const
   {
     for (j=0;j<m;j++)
     {
-      fprintf(stderr," %f ", (this->elem(i,j).value()) );
+      fprintf(stderr," %e ", (this->elem(i,j).value()) );
       fprintf(stderr,"\t");
     }
     fprintf(stderr,"\n");
@@ -1080,6 +1080,18 @@ void Save(const MatrixXd& m, const char* filename)
   
 }
 
+void Print(const MatrixXd& m, const char* text)
+{
+    long i,j;
+    
+    fprintf(stderr,"\n%s\n", text);
+
+    for (i=0;i<m.rows();i++) { for (j=0;j<m.cols();j++) {
+
+    fprintf(stderr,"%e\t", m(i,j)); } fprintf(stderr,"\n"); }
+  
+}
+
 MatrixXd linspace(double X1, double X2, long N)
 {
      MatrixXd  m;
@@ -1162,7 +1174,9 @@ MatrixXd load_data(const char* filename, long nrows, long ncols)
 
   FILE *fp;
   
-  MatrixXd m;
+  MatrixXd m(nrows,ncols);
+  
+  double value;
 
   if ( (fp = fopen(filename,"r")) == NULL )
 
@@ -1172,9 +1186,12 @@ MatrixXd load_data(const char* filename, long nrows, long ncols)
   for (i=0;i<nrows;i++) { 
       for (j=0;j<ncols;j++) {
 
-           fscanf(fp,"%lf", &m(i,j)); 
+           fscanf(fp,"%lf", &value); 
+           m(i,j) = value;
       } 
   }
+  
+
 
   fclose(fp);
   

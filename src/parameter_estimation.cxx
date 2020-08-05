@@ -214,7 +214,7 @@ void load_parameter_estimation_data(Prob& problem, int iphase, const char* filen
 
      data.resize(nsamples,nobserved*2 + 1);
 
-     data = load_data(filename, nsamples, nobserved);
+     data = load_data(filename, nsamples, 1+nobserved*2);
 
 //     tm = data(colon(),1); // EIGEN_UPDATE
      tm = data.block(0,0, data.rows(),1);
@@ -224,9 +224,9 @@ void load_parameter_estimation_data(Prob& problem, int iphase, const char* filen
 
      for (int i=0;i<nobserved;i++) {   // EIGEN_UPDATE index i shifted by -1
 //          ym(colon(), i) = data(colon(), 2+(i-1)*2);
-            ym.block(0,i,ym.rows(),1) =  data.block(0, 2+i*2, ym.rows(), 1);
+            ym.block(0,i,ym.rows(),1) =  data.block(0, 1+i*2, ym.rows(), 1);
 //          w (colon(), i) = data(colon(), 3+(i-1)*2);
-            w.block(0,i,w.rows(),1)   =  data.block(0, 3+i*2, w.rows(), 1);
+            w.block(0,i,w.rows(),1)   =  data.block(0, 2+i*2, w.rows(), 1);
      }
 
      problem.phases(iphase).observation_nodes   = tm.transpose(); // tra(tm);

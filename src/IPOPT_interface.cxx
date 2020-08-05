@@ -37,7 +37,7 @@ e-mail:    v.m.becerra@ieee.org
 
 
 
-#ifdef USE_IPOPT
+
 
 // constructor
 IPOPT_PSOPT::IPOPT_PSOPT(Workspace *pr, void *user_data)
@@ -675,5 +675,4 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
 }
 
 
-#endif // USE_IPOPT
 

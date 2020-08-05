@@ -307,8 +307,6 @@ int NLP_interface(
     else if ( algorithm.nlp_method=="IPOPT" )
     {
 
-#ifdef USE_IPOPT
-
 
   // Create a new instance of nlp
   SmartPtr<TNLP> mynlp = new IPOPT_PSOPT(workspace, user_data);
@@ -371,12 +369,6 @@ int NLP_interface(
   solution->nlp_return_code = (int) status;
 
   return (int) status;
-
-
-#else
-        sprintf(workspace->text,"\nIPOPT method has been specified but not linked");
-        error_message(workspace->text);
-#endif
 
 
     }

@@ -1185,6 +1185,7 @@ void sort_vector(MatrixXd& A, RowVectorXi& sindex); // careful with passing obje
 void sort(MatrixXd& m);
 void rearrange_vector(MatrixXd& A, RowVectorXi& sindex); // careful with passing object as reference. See documentation.
 void Save(const MatrixXd& m, const char* filename);
+void Print(const MatrixXd& m, const char* text);
 MatrixXd linspace(double X1, double X2, long N);
 MatrixXd reshape(MatrixXd& A, int n, int m);
 MatrixXd zeros(long nrows, long ncols);
@@ -1236,8 +1237,6 @@ extern Workspace* tempsnoptworkspace;
 
 
 
-#ifdef USE_IPOPT
-
 #ifdef PACKAGE
 #undef PACKAGE
 #undef PACKAGE_VERSION
@@ -1255,8 +1254,6 @@ extern Workspace* tempsnoptworkspace;
 
 
 using namespace Ipopt;
-
-#endif
 
 
 
