@@ -171,7 +171,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 2;
     problem.phases(1).nevents   		= 8;
     problem.phases(1).npath     		= 1;
-    problem.phases(1).nodes                     = "[120]";
+    problem.phases(1).nodes                     << 120;
 
 
 
@@ -182,21 +182,21 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).bounds.lower.states = "[-4.0, -4.0, -4.0, -4.0]";
+    problem.phases(1).bounds.lower.states <<    -4.0, -4.0, -4.0, -4.0;
 
-    problem.phases(1).bounds.upper.states = "[ 4.0,  4.0,  4.0,  4.0]";
+    problem.phases(1).bounds.upper.states <<     4.0,  4.0,  4.0,  4.0;
 
-    problem.phases(1).bounds.lower.controls = "[ -500.0, -500 ]";
+    problem.phases(1).bounds.lower.controls <<  -500.0, -500 ;
 
-    problem.phases(1).bounds.upper.controls = "[  500.0,  500 ]";
+    problem.phases(1).bounds.upper.controls <<   500.0,  500 ;
 
-    problem.phases(1).bounds.lower.events =  "[2.0, 1.0, 2.0, 1.0, 2.0, 3.0, 1.0, -2.0]";
+    problem.phases(1).bounds.lower.events <<  2.0, 1.0, 2.0, 1.0, 2.0, 3.0, 1.0, -2.0;
 
     problem.phases(1).bounds.upper.events = problem.phases(1).bounds.lower.events;
 
-    problem.phases(1).bounds.upper.path         = 100.0;
+    problem.phases(1).bounds.upper.path         << 100.0;
 
-    problem.phases(1).bounds.lower.path         = 0.0;
+    problem.phases(1).bounds.lower.path         << 0.0;
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
 
@@ -213,27 +213,27 @@ int main(void)
 
 
     problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
+    problem.endpoint_cost 	   = &endpoint_cost;
     problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.events 		      = &events;
+    problem.linkages		      = &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			    = problem.phases(1).nodes(1);
+    int nnodes    			               = problem.phases(1).nodes(0);
 
-    DMatrix x_guess    		            =  zeros(4,nnodes);
+    MatrixXd x_guess    		            =  zeros(4,nnodes);
 
-    x_guess(1,colon()) 			    = linspace(2,1,nnodes);
-    x_guess(2,colon()) 			    = linspace(2,3,nnodes);
-    x_guess(3,colon()) 			    = linspace(2,1,nnodes);
-    x_guess(4,colon()) 			    = linspace(1,-2,nnodes);
+    x_guess.row(0) 			               = linspace(2,1,nnodes);
+    x_guess.row(1) 			               = linspace(2,3,nnodes);
+    x_guess.row(2) 			               = linspace(2,1,nnodes);
+    x_guess.row(3) 			               = linspace(1,-2,nnodes);
 
-    problem.phases(1).guess.controls        = zeros(2,nnodes);
-    problem.phases(1).guess.states          = x_guess;
-    problem.phases(1).guess.time            = linspace(0.0,20.0,nnodes+1);
+    problem.phases(1).guess.controls      = zeros(2,nnodes);
+    problem.phases(1).guess.states        = x_guess;
+    problem.phases(1).guess.time          = linspace(0.0,20.0,nnodes+1);
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -251,6 +251,7 @@ int main(void)
     algorithm.diff_matrix                 = "central-differences";
     algorithm.mesh_refinement             = "automatic";
     algorithm.mr_max_increment_factor     = 0.3;
+    algorithm.mr_max_iterations           = 3;
     algorithm.defect_scaling              = "jacobian-based";
 
 
@@ -269,52 +270,52 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x = solution.get_states_in_phase(1);
-    DMatrix u = solution.get_controls_in_phase(1);
-    DMatrix t = solution.get_time_in_phase(1);
+    MatrixXd x = solution.get_states_in_phase(1);
+    MatrixXd u = solution.get_controls_in_phase(1);
+    MatrixXd t = solution.get_time_in_phase(1);
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+   Save(x,"x.dat");
+   Save(u,"u.dat");
+   Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    plot(t,x(1,colon()),problem.name+": state", "time (s)", "state","x1");
+    plot(t,x.row(0),problem.name+": state", "time (s)", "state","x1");
 
-    plot(t,x(2,colon()),problem.name+": state", "time (s)", "state","x2");
+    plot(t,x.row(1),problem.name+": state", "time (s)", "state","x2");
 
-    plot(t,x(3,colon()),problem.name+": state", "time (s)", "state","x3");
+    plot(t,x.row(2),problem.name+": state", "time (s)", "state","x3");
 
-    plot(t,x(4,colon()),problem.name+": state", "time (s)", "state","x4");
+    plot(t,x.row(3),problem.name+": state", "time (s)", "state","x4");
 
-    plot(t,u(1,colon()),problem.name+": control","time (s)", "control", "u1");
+    plot(t,u.row(0),problem.name+": control","time (s)", "control", "u1");
 
-    plot(t,u(2,colon()),problem.name+": control","time (s)", "control", "u2");
+    plot(t,u.row(1),problem.name+": control","time (s)", "control", "u2");
 
-    plot(t,x(1,colon()),problem.name+": state x1", "time (s)", "state","x1",
+    plot(t,x.row(0),problem.name+": state x1", "time (s)", "state","x1",
                                         "pdf", "alpine_state1.pdf");
 
-    plot(t,x(2,colon()),problem.name+": state x2", "time (s)", "state","x2",
+    plot(t,x.row(1),problem.name+": state x2", "time (s)", "state","x2",
                                         "pdf", "alpine_state2.pdf");
 
-    plot(t,x(3,colon()),problem.name+": state x3", "time (s)", "state","x2",
+    plot(t,x.row(2),problem.name+": state x3", "time (s)", "state","x3",
                                         "pdf", "alpine_state3.pdf");
 
-    plot(t,x(4,colon()),problem.name+": state x4", "time (s)", "state","x2",
+    plot(t,x.row(3),problem.name+": state x4", "time (s)", "state","x4",
                                         "pdf", "alpine_state4.pdf");
 
-    plot(t,u(1,colon()),problem.name+": control u1","time (s)", "control", "u1",
+    plot(t,u.row(0),problem.name+": control u1","time (s)", "control", "u1",
                                         "pdf", "alpine_control1.pdf");
 
-    plot(t,u(2,colon()),problem.name+": control u1","time (s)", "control", "u2",
+    plot(t,u.row(1),problem.name+": control u1","time (s)", "control", "u2",
                                         "pdf", "alpine_control2.pdf");
 
 }
