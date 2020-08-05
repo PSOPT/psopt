@@ -9,6 +9,8 @@ pkg_check_modules(adolc adolc)
 pkg_check_modules(ipopt REQUIRED ipopt)
 
 if(NOT TARGET ${adolc})
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
+    find_package(ColPack REQUIRED)
 	find_package(Python2 REQUIRED COMPONENTS Development)
 
 	message(STATUS "ADOL-C will be downloaded and added to the project...")
