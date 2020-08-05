@@ -95,9 +95,6 @@ using namespace std;
 #include <adolc/taping.h>
 
 
-
-
-
 #include <string>
 using std::string;
 

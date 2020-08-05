@@ -115,7 +115,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
     adouble vrel[3];
     for (j=0;j<3;j++)
-      vrel[j] =  v[j] - omega_matrix(j+1,1)*r[0] -omega_matrix(j+1,2)*r[1] - omega_matrix(j+1,3)*r[2];
+      vrel[j] =  v[j] - omega_matrix(j,0)*r[0] -omega_matrix(j,1)*r[1] - omega_matrix(j,2)*r[2];
 
 
     adouble speedrel = sqrt( dot(vrel,vrel,3) );
@@ -322,10 +322,10 @@ int main(void)
     problem.phases(4).nevents   = 5;
     problem.phases(4).npath     = 1;
 
-    problem.phases(1).nodes     << 5, 15;
-    problem.phases(2).nodes     << 5, 15;
-    problem.phases(3).nodes     << 5, 15;
-    problem.phases(4).nodes     << 5, 15;
+    problem.phases(1).nodes     = (RowVectorXi(2) << 15, 18).finished(); 
+    problem.phases(2).nodes     = (RowVectorXi(2) << 15, 18).finished(); 
+    problem.phases(3).nodes     = (RowVectorXi(2) << 15, 18).finished(); 
+    problem.phases(4).nodes     = (RowVectorXi(2) << 20, 25).finished(); 
 
 
 
@@ -447,12 +447,6 @@ int main(void)
     int iphase;
     
   
-   
-    problem.bounds.lower.times << 0.0, 75.2, 150.4, 261.0, 261.0;
-    problem.bounds.upper.times << 0.0, 75.2, 150.4, 261.0, 961.0;
-
-
-
     // Phase 1 bounds
 
     iphase =  1;
@@ -472,6 +466,13 @@ int main(void)
 
     problem.phases(iphase).bounds.lower.events << r0(0), r0(1), r0(2), v0(0), v0(1), v0(2), m10;  
     problem.phases(iphase).bounds.upper.events << r0(0), r0(1), r0(2), v0(0), v0(1), v0(2), m10;
+    
+    problem.phases(iphase).bounds.lower.StartTime    = 0.0;
+    problem.phases(iphase).bounds.upper.StartTime    = 0.0;
+    
+    problem.phases(iphase).bounds.lower.EndTime    = 75.2;
+    problem.phases(iphase).bounds.upper.EndTime    = 75.2;
+
 
     // Phase 2 bounds
 
@@ -486,6 +487,12 @@ int main(void)
 
     problem.phases(iphase).bounds.lower.path     <<  1.0;
     problem.phases(iphase).bounds.upper.path     <<  1.0;
+    
+    problem.phases(iphase).bounds.lower.StartTime    = 75.2;
+    problem.phases(iphase).bounds.upper.StartTime    = 75.2;
+    
+    problem.phases(iphase).bounds.lower.EndTime    = 150.4;
+    problem.phases(iphase).bounds.upper.EndTime    = 150.4;
 
     // Phase 3 bounds
 
@@ -500,6 +507,13 @@ int main(void)
 
     problem.phases(iphase).bounds.lower.path     <<  1.0;
     problem.phases(iphase).bounds.upper.path     <<  1.0;
+    
+    problem.phases(iphase).bounds.lower.StartTime  = 150.4;
+    problem.phases(iphase).bounds.upper.StartTime  = 150.4;
+    
+    problem.phases(iphase).bounds.lower.EndTime    = 261.0;
+    problem.phases(iphase).bounds.upper.EndTime    = 261.0;
+
 
     // Phase 4 bounds
 
@@ -518,6 +532,12 @@ int main(void)
     
     problem.phases(iphase).bounds.lower.events   << af, ef, incf, Omf, omf;
     problem.phases(iphase).bounds.upper.events   << af, ef, incf, Omf, omf;   
+    
+    problem.phases(iphase).bounds.lower.StartTime    = 261.0;
+    problem.phases(iphase).bounds.upper.StartTime    = 261.0;
+    
+    problem.phases(iphase).bounds.lower.EndTime    = 261.0;
+    problem.phases(iphase).bounds.upper.EndTime    = 961.0;   
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -628,10 +648,10 @@ int main(void)
     algorithm.nlp_method                  	= "IPOPT";
     algorithm.scaling                     	= "automatic";
     algorithm.derivatives                 	= "automatic";
-    algorithm.nlp_iter_max                	= 500;
-    algorithm.mesh_refinement                   = "automatic";
-    algorithm.collocation_method = "trapezoidal";
-    algorithm.ode_tolerance			= 1.e-5;
+    algorithm.nlp_iter_max                	= 1000;
+    algorithm.collocation_method             = "Chebyshev";
+//    algorithm.mesh_refinement              = "automatic";
+//    algorithm.ode_tolerance		 	         = 1.e-5;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   //////////////////
@@ -686,9 +706,9 @@ int main(void)
 
     MatrixXd r, v, altitude, speed;
     
-    r = x.block(0,0,3,r.cols()); 
+    r = x.block(0,0,3,x.cols()); 
 
-    v = x.block(3,0,3,v.cols()); 
+    v = x.block(3,0,3,x.cols()); 
 
     altitude = (sum_columns(elemProduct(r,r)).cwiseSqrt())/1000.0;
 
