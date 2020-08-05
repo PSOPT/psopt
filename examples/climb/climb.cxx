@@ -242,7 +242,7 @@ int main(void)
     problem.phases(1).nevents   = 7;
     problem.phases(1).npath     = 0;
 
-    problem.phases(1).nodes     << 30,60;
+    problem.phases(1).nodes     = (RowVectorXi(2) << 30, 60).finished();
 
 
     psopt_level2_setup(problem, algorithm);

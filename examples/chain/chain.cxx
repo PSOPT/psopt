@@ -159,7 +159,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 3;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes        		= "[20, 50]";
+    problem.phases(1).nodes         =  (RowVectorXi(2) << 20, 50).finished();
 
     psopt_level2_setup(problem, algorithm);
 
@@ -169,21 +169,21 @@ int main(void)
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).bounds.lower.states(1) =  -10.0;
-    problem.phases(1).bounds.upper.states(1) =   10.0;
+    problem.phases(1).bounds.lower.states(0) =  -10.0;
+    problem.phases(1).bounds.upper.states(0) =   10.0;
 
 
-    problem.phases(1).bounds.lower.controls(1) = -20.0;
-    problem.phases(1).bounds.upper.controls(1) =  20.0;
+    problem.phases(1).bounds.lower.controls(0) = -20.0;
+    problem.phases(1).bounds.upper.controls(0) =  20.0;
 
-    problem.phases(1).bounds.lower.events(1) =  1.0;
-    problem.phases(1).bounds.lower.events(2) =  3.0;
-    problem.phases(1).bounds.lower.events(3) =  4.0;
+    problem.phases(1).bounds.lower.events(0) =  1.0;
+    problem.phases(1).bounds.lower.events(1) =  3.0;
+    problem.phases(1).bounds.lower.events(2) =  4.0;
 
 
-    problem.phases(1).bounds.upper.events(1) = 1.0;
-    problem.phases(1).bounds.upper.events(2) = 3.0;
-    problem.phases(1).bounds.upper.events(3) = 4.0;
+    problem.phases(1).bounds.upper.events(0) = 1.0;
+    problem.phases(1).bounds.upper.events(1) = 3.0;
+    problem.phases(1).bounds.upper.events(2) = 4.0;
 
 
 
@@ -241,7 +241,7 @@ int main(void)
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, t;
+    MatrixXd x, u, t;
     x 		= solution.get_states_in_phase(1);
     u 		= solution.get_controls_in_phase(1);
     t           = solution.get_time_in_phase(1);
@@ -250,9 +250,9 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////

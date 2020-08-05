@@ -150,8 +150,8 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   							= 1;
+    problem.nlinkages                  	= 0;
 
     psopt_level1_setup(problem);
 
@@ -165,7 +165,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 2;
     problem.phases(1).nevents   		= 12;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes 	 		= "[40, 60, 80]";
+    problem.phases(1).nodes 	 		= (RowVectorXi(3) << 40, 60, 80).finished(); 
 
     psopt_level2_setup(problem, algorithm);
 
@@ -174,42 +174,20 @@ int main(void)
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).bounds.lower.states(1) = -5.0;
-    problem.phases(1).bounds.lower.states(2) = -5.0;
-    problem.phases(1).bounds.lower.states(3) = -5.0;
-    problem.phases(1).bounds.lower.states(4) = -2.5;
-    problem.phases(1).bounds.lower.states(5) = -1.0;
-    problem.phases(1).bounds.lower.states(6) = -5.0;
+	 problem.phases(1).bounds.lower.states    << -5.0, -5.0, -5.0, -2.5, -1.0, -5.0;
+	 problem.phases(1).bounds.upper.states    << 15.0, 25.0, 15.0,  2.5,  1.0, 15.0;
 
-    problem.phases(1).bounds.upper.states(1) = 15.0;
-    problem.phases(1).bounds.upper.states(2) = 25.0;
-    problem.phases(1).bounds.upper.states(3) = 15.0;
-    problem.phases(1).bounds.upper.states(4) = 2.5;
-    problem.phases(1).bounds.upper.states(5) = 1.0;
-    problem.phases(1).bounds.upper.states(6) = 15.0;
+    problem.phases(1).bounds.lower.controls  << -2.83374, -0.80865;
 
-    problem.phases(1).bounds.lower.controls(1) = -2.83374;
-    problem.phases(1).bounds.lower.controls(2) = -0.80865;
-    problem.phases(1).bounds.upper.controls(1) = 2.83374;
-    problem.phases(1).bounds.upper.controls(2) = 0.71265;
+    problem.phases(1).bounds.upper.controls  <<  2.83374,  0.71265;
 
-    // Initial states
-    problem.phases(1).bounds.lower.events(1) = 0.0;
-    problem.phases(1).bounds.lower.events(2) = 22.0;
-    problem.phases(1).bounds.lower.events(3) = 0.0;
-    problem.phases(1).bounds.lower.events(4) = 0.0;
-    problem.phases(1).bounds.lower.events(5) = -1.0;
-    problem.phases(1).bounds.lower.events(6) = 0.0;
 
-    // Final states
-    problem.phases(1).bounds.lower.events(7) = 10.0;
-    problem.phases(1).bounds.lower.events(8) = 14.0;
-    problem.phases(1).bounds.lower.events(9) = 0.0;
-    problem.phases(1).bounds.lower.events(10)= 2.5;
-    problem.phases(1).bounds.lower.events(11)= 0.0;
-    problem.phases(1).bounds.lower.events(12)= 0.0;
 
-    problem.phases(1).bounds.upper.events = problem.phases(1).bounds.lower.events;
+    // Initial and final states
+
+    problem.phases(1).bounds.lower.events    <<  0.0, 22.0, 0.0, 0.0, -1.0, 0.0, 10.0, 14.0, 0.0, 2.5, 0.0, 0.0; 
+
+    problem.phases(1).bounds.upper.events    = problem.phases(1).bounds.lower.events;
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
     problem.phases(1).bounds.upper.StartTime    = 0.0;
@@ -235,17 +213,17 @@ int main(void)
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x0(6,20);
+    MatrixXd state_guess(6,20);
 
-    x0(1,colon()) = linspace(0.0,10.0, 20);
-    x0(2,colon()) = linspace(22.0,14.0, 20);
-    x0(3,colon()) = linspace(0.,0., 20);
-    x0(4,colon()) = linspace(0.,2.5, 20);
-    x0(5,colon()) = linspace(-1.0,0., 20);
-    x0(6,colon()) = linspace(0.,0., 20);
+    state_guess   << 	linspace(0.0,10.0, 20),
+    						 	linspace(22.0,14.0, 20),
+    							linspace(0.,0., 20),
+    							linspace(0.,2.5, 20),
+    							linspace(-1.0,0., 20),
+   							linspace(0.,0., 20);
 
     problem.phases(1).guess.controls       = zeros(2, 20);
-    problem.phases(1).guess.states         = x0;
+    problem.phases(1).guess.states         = state_guess;
     problem.phases(1).guess.time           = linspace(0.0, 1.0, 20); ;
 
 
@@ -272,21 +250,21 @@ int main(void)
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x 		= solution.get_states_in_phase(1);
-    DMatrix u 		= solution.get_controls_in_phase(1);
-    DMatrix t 		= solution.get_time_in_phase(1);
+    MatrixXd x 		= solution.get_states_in_phase(1);
+    MatrixXd u 		= solution.get_controls_in_phase(1);
+    MatrixXd t 		= solution.get_time_in_phase(1);
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
-    DMatrix x13 = x(colon(1,3), colon() );
-    DMatrix x46 = x(colon(4,6), colon() );
+    MatrixXd x13 = x.block(0,0,3, length(t) ); 
+    MatrixXd x46 = x.block(3,0,3, length(t) ); 
 
 
 ////////////////////////////////////////////////////////////////////////////

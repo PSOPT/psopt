@@ -142,7 +142,7 @@ int main(void)
     problem.phases(1).nevents   = 3;
     problem.phases(1).npath     = 0;
 
-    problem.phases(1).nodes     = "[30]";
+    problem.phases(1).nodes     << 30;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -168,32 +168,24 @@ int main(void)
     double uL = -100.0;
     double uU =  100.0;
 
-    problem.phases(1).bounds.lower.states(1) = x1L;
-    problem.phases(1).bounds.lower.states(2) = x2L;
-    problem.phases(1).bounds.lower.states(3) = x3L;
+    problem.phases(1).bounds.lower.states << x1L, x2L, x3L;
 
-    problem.phases(1).bounds.upper.states(1) = x1U;
-    problem.phases(1).bounds.upper.states(2) = x2U;
-    problem.phases(1).bounds.upper.states(3) = x3U;
+    problem.phases(1).bounds.upper.states << x1U, x2U, x3U;
 
-    problem.phases(1).bounds.lower.controls(1) = uL;
-    problem.phases(1).bounds.upper.controls(1) = uU;
+    problem.phases(1).bounds.lower.controls << uL;
 
-    problem.phases(1).bounds.lower.events(1) = 1.0;
-    problem.phases(1).bounds.lower.events(2) = 1.0;
-    problem.phases(1).bounds.lower.events(3) = 0.0;
+    problem.phases(1).bounds.upper.controls << uU;
 
+    problem.phases(1).bounds.lower.events << 1.0, 1.0, 0.0;
 
-    problem.phases(1).bounds.upper.events(1) = 1.0;
-    problem.phases(1).bounds.upper.events(2) = 1.0;
-    problem.phases(1).bounds.upper.events(3) = 0.0;
-
-
+    problem.phases(1).bounds.upper.events << 1.0, 1.0, 0.0;
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
+
     problem.phases(1).bounds.upper.StartTime    = 0.0;
 
     problem.phases(1).bounds.lower.EndTime      = 5.0;
+
     problem.phases(1).bounds.upper.EndTime      = 5.0;
 
 
@@ -202,24 +194,24 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
     problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
+    problem.endpoint_cost 		= &endpoint_cost;
     problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.events 				= &events;
+    problem.linkages				= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x0(3,60);
+    MatrixXd state_guess(3,60);
 
-    x0(1,colon()) = linspace(1.0,1.0, 60);
-    x0(2,colon()) = linspace(1.0,1.0, 60);
-    x0(3,colon()) = linspace(0.0,0.0, 60);
+    state_guess.row(0) = linspace(1.0,1.0, 60);
+    state_guess.row(1) = linspace(1.0,1.0, 60);
+    state_guess.row(2) = linspace(0.0,0.0, 60);
 
     problem.phases(1).guess.controls       = zeros(1,60);
-    problem.phases(1).guess.states         = x0;
+    problem.phases(1).guess.states         = state_guess;
     problem.phases(1).guess.time           = linspace(0.0,5.0, 60);
 
 ////////////////////////////////////////////////////////////////////////////
@@ -253,9 +245,9 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////

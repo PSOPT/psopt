@@ -29,7 +29,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
                       adouble* parameters,adouble& t0, adouble& tf,
                       adouble* xad, int iphase, Workspace* workspace)
 {
-   adouble xf = final_states[CINDEX(1)];
+   adouble xf = final_states[0];
 
    return -(xf);
 }
@@ -55,12 +55,12 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* xad, int iphase, Workspace* workspace)
 {
 
-    adouble CL 		= controls[ CINDEX(1) ];
+    adouble CL 		= controls[ 0 ];
 
-    adouble x 		= states[ CINDEX(1) ];
-    adouble y 	    = states[ CINDEX(2) ];
-    adouble vx 		= states[ CINDEX(3) ];
-    adouble vy 	    = states[ CINDEX(4) ];
+    adouble x 		= states[ 0 ];
+    adouble y 	    = states[ 1 ];
+    adouble vx 		= states[ 2 ];
+    adouble vy 	    = states[ 3 ];
 
     double m  = 100.0,      g  = 9.80665;
     double uM = 2.5,        R  = 100.0;
@@ -82,10 +82,10 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
     W = m*g;
 
 
-    derivatives[ CINDEX(1) ] =   vx;
-    derivatives[ CINDEX(2) ] =   vy;
-    derivatives[ CINDEX(3) ] =   1.0/m*(-L*sin_eta - D*cos_eta    );
-    derivatives[ CINDEX(4) ] =   1.0/m*( L*cos_eta - D*sin_eta - W);
+    derivatives[ 0 ] =   vx;
+    derivatives[ 1 ] =   vy;
+    derivatives[ 2 ] =   1.0/m*(-L*sin_eta - D*cos_eta    );
+    derivatives[ 3 ] =   1.0/m*( L*cos_eta - D*sin_eta - W);
 
 
 
@@ -101,24 +101,23 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
 
 {
 
-    adouble x_i 	= initial_states[ CINDEX(1) ];
-    adouble y_i 	= initial_states[ CINDEX(2) ];
-    adouble vx_i 	= initial_states[ CINDEX(3) ];
-    adouble vy_i 	= initial_states[ CINDEX(4) ];
+    adouble x_i 	= initial_states[ 0 ];
+    adouble y_i 	= initial_states[ 1 ];
+    adouble vx_i 	= initial_states[ 2 ];
+    adouble vy_i 	= initial_states[ 3 ];
 
-    adouble x_f 	= final_states[ CINDEX(1) ];
-    adouble y_f		= final_states[ CINDEX(2) ];
-    adouble vx_f	= final_states[ CINDEX(3) ];
-    adouble vy_f 	= final_states[ CINDEX(4) ];
+    adouble x_f 	= final_states[ 0 ];
+    adouble y_f	= final_states[ 1 ];
+    adouble vx_f	= final_states[ 2 ];
+    adouble vy_f 	= final_states[ 3 ];
 
-    e[ CINDEX(1) ] 	    = x_i;
-    e[ CINDEX(2) ]      = y_i;
-    e[ CINDEX(3) ]      = vx_i;
-    e[ CINDEX(4) ]    	= vy_i;
-
-    e[ CINDEX(5) ]      = y_f;
-    e[ CINDEX(6) ]   	= vx_f;
-    e[ CINDEX(7) ]  	= vy_f;
+    e[ 0 ] 	    	= x_i;
+    e[ 1 ]      	= y_i;
+    e[ 2 ]      	= vx_i;
+    e[ 3 ]    	 	= vy_i;
+    e[ 4 ]      	= y_f;
+    e[ 5 ]   	 	= vx_f;
+    e[ 6 ]  	 	= vy_f;
 
 
 }
@@ -177,7 +176,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 7;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes                     = "[30 40 50 80]";
+    problem.phases(1).nodes         = (RowVectorXi(4) << 30, 40, 50, 80).finished();            // = "[30 40 50 80]";
 
 
     psopt_level2_setup(problem, algorithm);
@@ -189,17 +188,17 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).bounds.lower.states = "[0.0      0.0    0.0  -4.0]";
-    problem.phases(1).bounds.upper.states = "[1500.0  1100.0 15.0   4.0]";
+    problem.phases(1).bounds.lower.states << 0.0,      0.0,    0.0,  -4.0;
+    problem.phases(1).bounds.upper.states << 1500.0,  1100.0, 15.0,   4.0;
 
 
-    problem.phases(1).bounds.lower.controls(1) = 0.0;
+    problem.phases(1).bounds.lower.controls << 0.0;
 
-    problem.phases(1).bounds.upper.controls(1) = 1.4;
+    problem.phases(1).bounds.upper.controls << 1.4;
 
 
-    problem.phases(1).bounds.lower.events="[0.0,1000.0,13.2275675,-1.28750052,900.00,13.2275675,-1.28750052 ]";
-    problem.phases(1).bounds.upper.events="[0.0,1000.0,13.2275675,-1.28750052,900.00,13.2275675,-1.28750052 ]";
+    problem.phases(1).bounds.lower.events << 0.0,1000.0,13.2275675,-1.28750052,900.00,13.2275675,-1.28750052;
+    problem.phases(1).bounds.upper.events << 0.0,1000.0,13.2275675,-1.28750052,900.00,13.2275675,-1.28750052;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -215,29 +214,29 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 			= &integrand_cost;
+    problem.endpoint_cost 				= &endpoint_cost;
+    problem.dae             			= &dae;
+    problem.events 						= &events;
+    problem.linkages						= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			= problem.phases(1).nodes(1);
+    int nnodes    			 = problem.phases(1).nodes(0);
     int ncontrols           = problem.phases(1).ncontrols;
     int nstates             = problem.phases(1).nstates;
 
-    DMatrix state_guess    =  zeros(nstates,nnodes);
-    DMatrix control_guess  =  1.0*ones(ncontrols,nnodes);
-    DMatrix time_guess     =  linspace(0.0,105.0,nnodes);
+    MatrixXd state_guess    =  zeros(nstates,nnodes);
+    MatrixXd control_guess  =  ones(ncontrols,nnodes);
+    MatrixXd time_guess     =  linspace(0.0,105.0,nnodes);
 
 
-    state_guess(1,colon()) = linspace(0.0, 1250, nnodes);
-    state_guess(2,colon()) = linspace(1000.0, 900.0, nnodes);
-    state_guess(3,colon()) = 13.23*ones(1,nnodes);
-    state_guess(4,colon()) = -1.288*ones(1,nnodes);
+    state_guess <<  linspace(0.0, 1250, nnodes),
+                    linspace(1000.0, 900.0, nnodes),
+                    13.23*ones(1,nnodes),
+                    -1.288*ones(1,nnodes);
 
     problem.phases(1).guess.states   = state_guess;
     problem.phases(1).guess.controls = control_guess;
@@ -268,7 +267,7 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix states, CL, t, x, y, speeds;
+    MatrixXd states, CL, t, x, y, speeds;
 
     states      = solution.get_states_in_phase(1);
     CL          = solution.get_controls_in_phase(1);
@@ -281,9 +280,9 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    states.Save("states.dat");
-    CL.Save("cL.dat");
-    t.Save("t.dat");
+    Save(states,"states.dat");
+    Save(CL,"cL.dat");
+    Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -291,9 +290,12 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-   x 	= states(1,colon());
-   y 	= states(2,colon());
-   speeds = (states(3,colon()) && states(4,colon()));
+   x 	= states.row(0); 
+   y 	= states.row(1); 
+   
+   speeds.resize(2,length(t));
+   speeds << states.row(2), 
+             states.row(3);
 
    plot(x,y,problem.name+": trajectory","x [m]", "y [m]", "traj");
 

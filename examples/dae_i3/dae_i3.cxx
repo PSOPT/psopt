@@ -7,7 +7,7 @@
 //////// Title:  DAE Index 3                            ////////////////
 //////// Last modified:  07 June 2011                  ////////////////
 //////// Reference:     Schittkowski (2002)        	  ////////////////
-//////// (See PSOPT handbook for full reference)           ///////////////
+//////// (See PSOPT handbook forf full reference)           ///////////////
 //////////////////////////////////////////////////////////////////////////
 ////////     Copyright (c) Victor M. Becerra, 2011        ////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -127,15 +127,15 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name          		=       "DAE Index 3";
-    problem.outfilename         =       "dae_i3.txt";
+    problem.name          					=       "DAE Index 3";
+    problem.outfilename         			=       "dae_i3.txt";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			        = 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   			        	= 1;
+    problem.nlinkages                  = 0;
 
     psopt_level1_setup(problem);
 
@@ -144,12 +144,12 @@ int main(void)
 /////////   Define phase related information & do level 2 setup /////////////
 /////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).nstates   		= 4;
-    problem.phases(1).ncontrols 		= 1;
-    problem.phases(1).nevents   		= 0;
-    problem.phases(1).npath     		= 1;
+    problem.phases(1).nstates   			 = 4;
+    problem.phases(1).ncontrols 			 = 1;
+    problem.phases(1).nevents   			 = 0;
+    problem.phases(1).npath     			 = 1;
     problem.phases(1).nparameters       = 1;
-    problem.phases(1).nodes    		    = "[10,20,30]";
+    problem.phases(1).nodes    		    << 30;
     problem.phases(1).nobserved         = 2;
     problem.phases(1).nsamples          = 20;
 
@@ -162,41 +162,41 @@ int main(void)
    int iphase = 1;
    load_parameter_estimation_data(problem, iphase, "dae_i3.dat");
 
-   problem.phases(1).observation_nodes.Print("observation nodes");
-   problem.phases(1).observations.Print("observations");
-   problem.phases(1).residual_weights.Print("weights");
+   Print(problem.phases(1).observation_nodes, "observation nodes");
+   Print(problem.phases(1).observations, "observations");
+   Print(problem.phases(1).residual_weights, "weights");
 
 
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare DMatrix objects to store results //////////////
+///////////////////  Declare MatrixXd objects to store results //////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, p, t;
+    MatrixXd x, u, p, t;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
 
+    problem.phases(1).bounds.lower.states(0) = -2.0;
     problem.phases(1).bounds.lower.states(1) = -2.0;
     problem.phases(1).bounds.lower.states(2) = -2.0;
     problem.phases(1).bounds.lower.states(3) = -2.0;
-    problem.phases(1).bounds.lower.states(4) = -2.0;
 
+    problem.phases(1).bounds.upper.states(0) = 2.0;
     problem.phases(1).bounds.upper.states(1) = 2.0;
     problem.phases(1).bounds.upper.states(2) = 2.0;
     problem.phases(1).bounds.upper.states(3) = 2.0;
-    problem.phases(1).bounds.upper.states(4) = 2.0;
 
-    problem.phases(1).bounds.lower.controls(1) = -10.0;
-    problem.phases(1).bounds.upper.controls(1) =  10.0;
+    problem.phases(1).bounds.lower.controls(0) = -10.0;
+    problem.phases(1).bounds.upper.controls(0) =  10.0;
 
-    problem.phases(1).bounds.lower.parameters(1)  = 0.0;
-    problem.phases(1).bounds.upper.parameters(1)  = 5.0;
+    problem.phases(1).bounds.lower.parameters(0)  = 0.0;
+    problem.phases(1).bounds.upper.parameters(0)  = 5.0;
 
 
-    problem.phases(1).bounds.lower.path(1)  = 0.0;
-    problem.phases(1).bounds.upper.path(1)  = 0.0;
+    problem.phases(1).bounds.lower.path(0)  = 0.0;
+    problem.phases(1).bounds.upper.path(0)  = 0.0;
 
     problem.phases(1).bounds.lower.StartTime    = 0.5;
     problem.phases(1).bounds.upper.StartTime    = 0.5;
@@ -208,9 +208,9 @@ int main(void)
 ///////////////////  Register problem functions  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.dae 						= &dae;
+    problem.events 					= &events;
+    problem.linkages					= &linkages;
     problem.observation_function = & observation_function;
 
 ////////////////////////////////////////////////////////////////////////////
@@ -218,18 +218,19 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
     int nnodes =     (int) problem.phases(1).nsamples;
-    DMatrix state_guess(4, nnodes);
-    DMatrix control_guess(1,nnodes);
-    DMatrix param_guess(1,1);
+    
+    MatrixXd state_guess(4, nnodes);
+    MatrixXd control_guess(1,nnodes);
+    MatrixXd param_guess(1,1);
 
-    state_guess(1,colon()) = problem.phases(1).observations(1,colon());
-    state_guess(2,colon()) = problem.phases(1).observations(2,colon());
-    state_guess(3,colon()) = ones(1,nnodes);
-    state_guess(4,colon()) = ones(1,nnodes);
+    state_guess <<  	problem.phases(1).observations.row(0), 
+    						problem.phases(1).observations.row(1), 
+    						ones(1,nnodes),
+    						ones(1,nnodes);
 
-    control_guess(1,colon()) = zeros(1,nnodes);
+    control_guess = zeros(1,nnodes);
 
-    param_guess = 0.5;
+    param_guess << 0.5;
 
 
     problem.phases(1).guess.states        = state_guess;
@@ -247,7 +248,7 @@ int main(void)
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "Legendre";
-    algorithm.jac_sparsity_ratio          = 0.50;
+
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   //////////////////
@@ -269,30 +270,30 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
-    p.Print("Estimated parameter");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
+    Print(p,"Estimated parameter");
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-     DMatrix tm;
-     DMatrix ym;
+     MatrixXd tm;
+     MatrixXd ym;
 
      tm = problem.phases(1).observation_nodes;
      ym = problem.phases(1).observations;
 
 
-     plot(t,x(1,colon()),tm,ym(1,colon()),problem.name, "time (s)", "state x1", "x1 yhat1");
-     plot(t,x(2,colon()),tm,ym(2,colon()),problem.name, "time (s)", "state x2", "x2 yhat2");
+     plot(t,x.row(0) ,tm,ym.row(0) ,problem.name, "time (s)", "state x1", "x1 yhat1");
+     plot(t,x.row(1) ,tm,ym.row(1) ,problem.name, "time (s)", "state x2", "x2 yhat2");
      plot(t,u,problem.name, "time (s)", "algebraic state u", "u");
 
-     plot(t,x(1,colon()),tm,ym(1,colon()),problem.name, "time (s)", "state x1", "x1 yhat1",
+     plot(t,x.row(0),tm,ym.row(0),problem.name, "time (s)", "state x1", "x1 yhat1",
 	  "pdf", "x1.pdf");
-     plot(t,x(2,colon()),tm,ym(2,colon()),problem.name, "time (s)", "state x2", "x2 yhat2",
+     plot(t,x.row(1),tm,ym.row(1),problem.name, "time (s)", "state x2", "x2 yhat2",
 	  "pdf", "x2.pdf");
      plot(t,u,problem.name, "time (s)", "algebraic state lambda", "lambda", "pdf", "lambda.pdf");
 

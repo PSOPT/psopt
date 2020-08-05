@@ -153,7 +153,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 2;
     problem.phases(1).nevents   		= 8;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes                     = 40; 
+    problem.phases(1).nodes         << 40; 
 
     psopt_level2_setup(problem, algorithm);
 
@@ -171,38 +171,38 @@ int main(void)
     double dotq2_f =        0.0;
 
 
-    problem.phases(1).bounds.lower.states(1) = -2.0;
-    problem.phases(1).bounds.lower.states(2) = -20.0;
-    problem.phases(1).bounds.lower.states(3) = -2.0;
-    problem.phases(1).bounds.lower.states(4) = -20.0;
+    problem.phases(1).bounds.lower.states(0) = -2.0;
+    problem.phases(1).bounds.lower.states(1) = -20.0;
+    problem.phases(1).bounds.lower.states(2) = -2.0;
+    problem.phases(1).bounds.lower.states(3) = -20.0;
 
-    problem.phases(1).bounds.upper.states(1) =  2.0;
-    problem.phases(1).bounds.upper.states(2) =  20.0;
-    problem.phases(1).bounds.upper.states(3) =  2.0;
-    problem.phases(1).bounds.upper.states(4) =  20.0;
+    problem.phases(1).bounds.upper.states(0) =  2.0;
+    problem.phases(1).bounds.upper.states(1) =  20.0;
+    problem.phases(1).bounds.upper.states(2) =  2.0;
+    problem.phases(1).bounds.upper.states(3) =  20.0;
 
+    problem.phases(1).bounds.lower.controls(0) = -4.0;
     problem.phases(1).bounds.lower.controls(1) = -4.0;
-    problem.phases(1).bounds.lower.controls(2) = -4.0;
+    problem.phases(1).bounds.upper.controls(0) =  4.0;
     problem.phases(1).bounds.upper.controls(1) =  4.0;
-    problem.phases(1).bounds.upper.controls(2) =  4.0;
 
-    problem.phases(1).bounds.lower.events(1) = q1_0;
-    problem.phases(1).bounds.lower.events(2) = dotq1_0;
-    problem.phases(1).bounds.lower.events(3) = q2_0;
-    problem.phases(1).bounds.lower.events(4) = dotq2_0;
-    problem.phases(1).bounds.lower.events(5) = q1_f;
-    problem.phases(1).bounds.lower.events(6) = dotq1_f;
-    problem.phases(1).bounds.lower.events(7) = q2_f;
-    problem.phases(1).bounds.lower.events(8) = dotq2_f;
+    problem.phases(1).bounds.lower.events(0) = q1_0;
+    problem.phases(1).bounds.lower.events(1) = dotq1_0;
+    problem.phases(1).bounds.lower.events(2) = q2_0;
+    problem.phases(1).bounds.lower.events(3) = dotq2_0;
+    problem.phases(1).bounds.lower.events(4) = q1_f;
+    problem.phases(1).bounds.lower.events(5) = dotq1_f;
+    problem.phases(1).bounds.lower.events(6) = q2_f;
+    problem.phases(1).bounds.lower.events(7) = dotq2_f;
 
-    problem.phases(1).bounds.upper.events(1) = q1_0;
-    problem.phases(1).bounds.upper.events(2) = dotq1_0;
-    problem.phases(1).bounds.upper.events(3) = q2_0;
-    problem.phases(1).bounds.upper.events(4) = dotq2_0;
-    problem.phases(1).bounds.upper.events(5) = q1_f;
-    problem.phases(1).bounds.upper.events(6) = dotq1_f;
-    problem.phases(1).bounds.upper.events(7) = q2_f;
-    problem.phases(1).bounds.upper.events(8) = dotq2_f;
+    problem.phases(1).bounds.upper.events(0) = q1_0;
+    problem.phases(1).bounds.upper.events(1) = dotq1_0;
+    problem.phases(1).bounds.upper.events(2) = q2_0;
+    problem.phases(1).bounds.upper.events(3) = dotq2_0;
+    problem.phases(1).bounds.upper.events(4) = q1_f;
+    problem.phases(1).bounds.upper.events(5) = dotq1_f;
+    problem.phases(1).bounds.upper.events(6) = q2_f;
+    problem.phases(1).bounds.upper.events(7) = dotq2_f;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -217,11 +217,11 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 				= &integrand_cost;
+    problem.endpoint_cost 					= &endpoint_cost;
+    problem.dae 								= &dae;
+    problem.events 							= &events;
+    problem.linkages							= &linkages;
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -229,15 +229,15 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x0(4,40);
+    MatrixXd state_guess(4,40);
 
-    x0(1,colon()) = linspace(q1_0,q1_f, 40);
-    x0(2,colon()) = linspace(dotq1_0, dotq1_f, 40);
-    x0(3,colon()) = linspace(q2_0, q2_f, 40);
-    x0(4,colon()) = linspace(dotq2_0, dotq2_f, 40);
+    state_guess   << linspace(q1_0,q1_f, 40),
+    						linspace(dotq1_0, dotq1_f, 40),
+    						linspace(q2_0, q2_f, 40),
+							linspace(dotq2_0, dotq2_f, 40);
 
     problem.phases(1).guess.controls       = zeros(2,40);
-    problem.phases(1).guess.states         = x0;
+    problem.phases(1).guess.states         = state_guess;
     problem.phases(1).guess.time           = linspace(0.0, 4.0,40); 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -262,7 +262,7 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
-    DMatrix x, u, t;
+    MatrixXd x, u, t;
     x 		= solution.get_states_in_phase(1);
     u 		= solution.get_controls_in_phase(1);
     t 		= solution.get_time_in_phase(1);
@@ -271,16 +271,19 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix q12 = x(1,colon()) && x(3,colon());
+    MatrixXd q12(2, length(t));
+    
+    q12 = x.row(0), 
+          x.row(2); 
 
     plot(t,q12,problem.name + ": states q1 and q2", 
                         "time (s)", "states", "q1 q2");
