@@ -1139,8 +1139,7 @@ class PSOPT_extras {
    static DEC_THREAD time_t  start_time;
  //! clock_t variable
    static DEC_THREAD clock_t start_clock;
- //! Maximum manual mesh refinement iterations  
-   static DEC_THREAD int max_manual_mr;
+
 
 public:
 
@@ -1166,7 +1165,6 @@ public:
    
    static void   RiseErrorFlag()   { errorFlag = true; }
 
-   static int get_max_manual_mesh_refinement_iterations() { return max_manual_mr; }
 
    friend void error_message(const char *input_text);
   //! This function, which is to be used in conjunction with function toc(), starts counting elapsed CPU time.

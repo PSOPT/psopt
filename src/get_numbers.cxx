@@ -35,16 +35,15 @@ int get_number_of_mesh_refinement_iterations(Prob& problem, Alg& algorithm)
 {
   int number_of_mesh_refinement_iterations;
 
-  if (algorithm.mesh_refinement == "manual") {
-
-        int icount = 0;
-          	
-        for (int i=0; i<PSOPT_extras::get_max_manual_mesh_refinement_iterations(); i++) {
-            if ( problem.phases(1).nodes(i)>0 ) icount++;
-            else break; 
-        }  	  	
+  if (algorithm.mesh_refinement == "manual") {	  	
+        int n1 = problem.phases(1).nodes.cols();
+        for (int iphase=2;iphase<=problem.nphases;iphase++) {
+             if (problem.phases(iphase).nodes.cols() != n1) {
+                error_message("Number of manual mesh refinement iterations must be the same in all phases");             
+             }       
+        }
   	
-        number_of_mesh_refinement_iterations = icount;
+        number_of_mesh_refinement_iterations = n1;
   }
   else
   {
