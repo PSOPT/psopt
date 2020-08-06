@@ -37,7 +37,7 @@ endif()
 file(GLOB SRC src/*.cxx)
 file(GLOB HEADER include/*.h)
 
-add_library(${PROJECT_NAME} ${SRC} ${HEADER} psopt-config.cmake)
+add_library(${PROJECT_NAME} ${SRC} ${HEADER})
 target_include_directories(${PROJECT_NAME}
 PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include/>
@@ -55,4 +55,5 @@ endif()
 set(PACKAGE_FIND_NAME "${PROJECT_NAME}")
 install(TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME} DESTINATION "lib/${PROJECT_NAME}")
 install(DIRECTORY ${${PROJECT_NAME}_INCLUDE_DIRS} DESTINATION "include/${PROJECT_NAME}")
-install(EXPORT ${PROJECT_NAME} DESTINATION "lib/${PROJECT_NAME}")
+install(FILES psopt-config.cmake DESTINATION "share/cmake/${PROJECT_NAME}/")
+install(EXPORT ${PROJECT_NAME} DESTINATION "share/cmake/${PROJECT_NAME}")
