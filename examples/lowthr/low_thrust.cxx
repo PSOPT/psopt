@@ -81,21 +81,21 @@ adouble legendre_polynomial_derivative( adouble x, int n)
 }
 
 
-void compute_cartesian_trajectory(const DMatrix& x, DMatrix& xyz )
+void compute_cartesian_trajectory(const MatrixXd& x, MatrixXd& xyz )
 {
 
-   int npoints = x.GetNoCols();
-   xyz.Resize(3,npoints);
+   int npoints = x.cols();
+   xyz.resize(3,npoints);
 
-   for(int i=1; i<=npoints;i++) {
+   for(int i=0; i<npoints;i++) {
 
 
-   double p = x(1,i);
-   double f = x(2,i);
-   double g = x(3,i);
-   double h = x(4,i);
-   double k = x(5,i);
-   double L = x(6,i);
+   double p = x(0,i);
+   double f = x(1,i);
+   double g = x(2,i);
+   double h = x(3,i);
+   double k = x(4,i);
+   double L = x(5,i);
 
    double q      =  1.0 + f*cos(L) + g*sin(L);
    double r      =  p/q;
@@ -107,9 +107,9 @@ void compute_cartesian_trajectory(const DMatrix& x, DMatrix& xyz )
    double r2 = r/s2*( sin(L) - alpha2*sin(L) + 2*h*k*cos(L));
    double r3 = 2*r/s2*( h*sin(L) - k*cos(L) );
 
-   xyz(1,i) = r1;
-   xyz(2,i) = r2;
-   xyz(3,i) = r3;
+   xyz(0,i) = r1;
+   xyz(1,i) = r2;
+   xyz(2,i) = r3;
 
    }
 
@@ -125,7 +125,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
 {
 
    if (iphase == 1) {
-	   adouble w = final_states[CINDEX(7)];
+	   adouble w = final_states[6];
 	   return (-w);
    }
    else {
@@ -167,17 +167,17 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    // Extract individual variables
 
-   adouble p = states[ CINDEX(1) ];
-   adouble f = states[ CINDEX(2) ];
-   adouble g = states[ CINDEX(3) ];
-   adouble h = states[ CINDEX(4) ];
-   adouble k = states[ CINDEX(5) ];
-   adouble L = states[ CINDEX(6) ];
-   adouble w = states[ CINDEX(7) ];
+   adouble p = states[ 0 ];
+   adouble f = states[ 1 ];
+   adouble g = states[ 2 ];
+   adouble h = states[ 3 ];
+   adouble k = states[ 4 ];
+   adouble L = states[ 5 ];
+   adouble w = states[ 6 ];
 
    adouble* u  = controls;
 
-   adouble tau  = parameters[ CINDEX(1) ];
+   adouble tau  = parameters[ 0 ];
 
    // Define some dependent variables
 
@@ -195,7 +195,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    adouble rvec[3];
 
-   rvec[ CINDEX(1) ] = r1; rvec[ CINDEX(2)] = r2; rvec[ CINDEX(3) ] = r3;
+   rvec[ 0 ] = r1; rvec[ 1] = r2; rvec[ 2 ] = r3;
 
    adouble v1 = -(1.0/s2)*sqrt(mu/p)*(  sin(L) + alpha2*sin(L) - 2*h*k*cos(L) + g - 2*f*h*k + alpha2*g);
    adouble v2 = -(1.0/s2)*sqrt(mu/p)*( -cos(L) + alpha2*cos(L) + 2*h*k*sin(L) - f + 2*g*h*k + alpha2*f);
@@ -203,7 +203,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    adouble vvec[3];
 
-   vvec[ CINDEX(1) ] = v1; vvec[ CINDEX(2)] = v2; vvec[ CINDEX(3) ] = v3;
+   vvec[ 0 ] = v1; vvec[ 1 ] = v2; vvec[ 2 ] = v3;
 
    // compute Qr
 
@@ -242,7 +242,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    // Compute in
 
    adouble en[3];
-   en[ CINDEX(1) ] = 0.0; en[ CINDEX(2) ]= 0.0; en[ CINDEX(3) ] = 1.0;
+   en[ 0 ] = 0.0; en[ 1 ]= 0.0; en[ 2 ] = 1.0;
 
    adouble enir = dot(en,ir,3);
 
@@ -260,7 +260,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    // Geocentric latitude angle:
 
-   adouble sin_phi =  rvec[ CINDEX(3) ]/ sqrt( dot(rvec,rvec,3) ) ;
+   adouble sin_phi =  rvec[ 2 ]/ sqrt( dot(rvec,rvec,3) ) ;
    adouble cos_phi =  sqrt(1.0- pow(sin_phi,2.0));
 
    adouble deltagn = 0.0;
@@ -283,9 +283,9 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    adouble DELTA_g[3];
 
-   DELTA_g[ CINDEX(1) ] = dot(Qr1, delta_g,3);
-   DELTA_g[ CINDEX(2) ] = dot(Qr2, delta_g,3);
-   DELTA_g[ CINDEX(3) ] = dot(Qr3, delta_g,3);
+   DELTA_g[ 0 ] = dot(Qr1, delta_g,3);
+   DELTA_g[ 1 ] = dot(Qr2, delta_g,3);
+   DELTA_g[ 2 ] = dot(Qr3, delta_g,3);
 
    // Compute DELTA_T
 
@@ -305,9 +305,9 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
       DELTA[i] =  DELTA_g[i] + DELTA_T[i];
    }
 
-   adouble delta1= DELTA[ CINDEX(1) ];
-   adouble delta2= DELTA[ CINDEX(2) ];
-   adouble delta3= DELTA[ CINDEX(3) ];
+   adouble delta1= DELTA[ 0 ];
+   adouble delta2= DELTA[ 1 ];
+   adouble delta3= DELTA[ 2 ];
 
 
   // derivatives
@@ -323,15 +323,15 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    adouble wdot = -T*(1.0+0.01*tau)/Isp;
 
-   derivatives[ CINDEX(1) ] = pdot;
-   derivatives[ CINDEX(2) ] = fdot;
-   derivatives[ CINDEX(3) ] = gdot;
-   derivatives[ CINDEX(4) ] = hdot;
-   derivatives[ CINDEX(5) ] = kdot;
-   derivatives[ CINDEX(6) ] = Ldot;
-   derivatives[ CINDEX(7) ] = wdot;
+   derivatives[ 0 ] = pdot;
+   derivatives[ 1 ] = fdot;
+   derivatives[ 2 ] = gdot;
+   derivatives[ 3 ] = hdot;
+   derivatives[ 4 ] = kdot;
+   derivatives[ 5 ] = Ldot;
+   derivatives[ 6 ] = wdot;
 
-   path[ CINDEX(1) ] = pow( u[CINDEX(1)] , 2)  + pow( u[CINDEX(2)], 2) + pow( u[CINDEX(3)], 2);
+   path[ 0 ] = pow( u[0] , 2)  + pow( u[1], 2) + pow( u[2], 2);
 
 }
 
@@ -348,42 +348,42 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
 
    int offset;
 
-   adouble pti = initial_states[ CINDEX(1) ];
-   adouble fti = initial_states[ CINDEX(2) ];
-   adouble gti = initial_states[ CINDEX(3) ];
-   adouble hti = initial_states[ CINDEX(4) ];
-   adouble kti = initial_states[ CINDEX(5) ];
-   adouble Lti = initial_states[ CINDEX(6) ];
-   adouble wti = initial_states[ CINDEX(7) ];
+   adouble pti = initial_states[ 0 ];
+   adouble fti = initial_states[ 1 ];
+   adouble gti = initial_states[ 2 ];
+   adouble hti = initial_states[ 3 ];
+   adouble kti = initial_states[ 4 ];
+   adouble Lti = initial_states[ 5 ];
+   adouble wti = initial_states[ 6 ];
 
 
-   adouble ptf = final_states[ CINDEX(1) ];
-   adouble ftf = final_states[ CINDEX(2) ];
-   adouble gtf = final_states[ CINDEX(3) ];
-   adouble htf = final_states[ CINDEX(4) ];
-   adouble ktf = final_states[ CINDEX(5) ];
-   adouble Ltf = final_states[ CINDEX(6) ];
+   adouble ptf = final_states[ 0 ];
+   adouble ftf = final_states[ 1 ];
+   adouble gtf = final_states[ 2 ];
+   adouble htf = final_states[ 3 ];
+   adouble ktf = final_states[ 4 ];
+   adouble Ltf = final_states[ 5 ];
 
 
    if (iphase==1) {
-   	e[ CINDEX(1) ]  = pti;
-   	e[ CINDEX(2) ]  = fti;
-   	e[ CINDEX(3) ]  = gti;
-   	e[ CINDEX(4) ]  = hti;
-   	e[ CINDEX(5) ]  = kti;
-   	e[ CINDEX(6) ]  = Lti;
-   	e[ CINDEX(7) ]  = wti;
+   	e[ 0 ]  = pti;
+   	e[ 1 ]  = fti;
+   	e[ 2 ]  = gti;
+   	e[ 3 ]  = hti;
+   	e[ 4 ]  = kti;
+   	e[ 5 ]  = Lti;
+   	e[ 6 ]  = wti;
    }
 
    if (1 == 1) offset = 7;
    else offset = 0;
 
    if (iphase == 1 ) {
-   	e[ offset + CINDEX(1) ]  = ptf;
-   	e[ offset + CINDEX(2) ]  = sqrt( ftf*ftf + gtf*gtf );
-   	e[ offset + CINDEX(3) ]  = sqrt( htf*htf + ktf*ktf );
-   	e[ offset + CINDEX(4) ] = ftf*htf + gtf*ktf;
-   	e[ offset + CINDEX(5) ] = gtf*htf - ktf*ftf;
+   	e[ offset + 0 ]  = ptf;
+   	e[ offset + 1 ]  = sqrt( ftf*ftf + gtf*gtf );
+   	e[ offset + 2 ]  = sqrt( htf*htf + ktf*ktf );
+   	e[ offset + 3 ] = ftf*htf + gtf*ktf;
+   	e[ offset + 4 ] = gtf*htf - ktf*ftf;
    }
 
 }
@@ -422,14 +422,14 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name        		= "Low thrust transfer problem";
+    problem.name        					 = "Low thrust transfer problem";
     problem.outfilename                 = "lowthrust.txt";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
+    problem.nphases   			          = 1;
     problem.nlinkages                   = 0;
 
     psopt_level1_setup(problem);
@@ -438,12 +438,12 @@ int main(void)
 /////////   Define phase related information & do level 2 setup  ////////////
 /////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).nstates   		= 7;
-    problem.phases(1).ncontrols 		= 3;
-    problem.phases(1).nparameters               = 1;
-    problem.phases(1).nevents   	        = 12;
-    problem.phases(1).npath     		= 1;
-    problem.phases(1).nodes                     = 80;
+    problem.phases(1).nstates   				= 7;
+    problem.phases(1).ncontrols 				= 3;
+    problem.phases(1).nparameters         = 1;
+    problem.phases(1).nevents   	        	= 12;
+    problem.phases(1).npath     				= 1;
+    problem.phases(1).nodes               << 80;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -481,67 +481,26 @@ int main(void)
 
 
 
-    problem.phases(1).bounds.lower.parameters(1) =  tauL;
-    problem.phases(1).bounds.upper.parameters(1) =  tauU;
+    problem.phases(1).bounds.lower.parameters <<  tauL;
 
-    problem.phases(1).bounds.lower.states(1) = 10.e6;
-    problem.phases(1).bounds.lower.states(2) = -0.20;
-    problem.phases(1).bounds.lower.states(3) = -0.10;
-    problem.phases(1).bounds.lower.states(4) = -1.0;
-    problem.phases(1).bounds.lower.states(5) = -0.20;
-    problem.phases(1).bounds.lower.states(6) = pi;
-    problem.phases(1).bounds.lower.states(7) = 0.0;
+    problem.phases(1).bounds.upper.parameters <<  tauU;
 
-    problem.phases(1).bounds.upper.states(1) = 60.e6;
-    problem.phases(1).bounds.upper.states(2) = 0.20;
-    problem.phases(1).bounds.upper.states(3) = 1.0;
-    problem.phases(1).bounds.upper.states(4) = 1.0;
-    problem.phases(1).bounds.upper.states(5) = 0.20;
-    problem.phases(1).bounds.upper.states(6) = 20*pi;
-    problem.phases(1).bounds.upper.states(7) = 2.0;
+    problem.phases(1).bounds.lower.states << 10.e6, -0.20, -0.10, -1.0, -0.20, pi, 0.0;
 
+    problem.phases(1).bounds.upper.states << 60.e6, 0.20, 1.0, 1.0, 0.20, 20*pi, 2.0;
 
-    problem.phases(1).bounds.lower.controls(1) = -1.0;
-    problem.phases(1).bounds.lower.controls(2) = -1.0;
-    problem.phases(1).bounds.lower.controls(3) = -1.0;
-    problem.phases(1).bounds.upper.controls(1) = 1.0;
-    problem.phases(1).bounds.upper.controls(2) = 1.0;
-    problem.phases(1).bounds.upper.controls(3) = 1.0;
+    problem.phases(1).bounds.lower.controls << -1.0, -1.0, -1.0;
 
+    problem.phases(1).bounds.upper.controls << 1.0, 1.0, 1.0;
 
-    problem.phases(1).bounds.lower.events(1)  = pti;
-    problem.phases(1).bounds.lower.events(2)  = fti;
-    problem.phases(1).bounds.lower.events(3)  = gti;
-    problem.phases(1).bounds.lower.events(4)  = hti;
-    problem.phases(1).bounds.lower.events(5)  = kti;
-    problem.phases(1).bounds.lower.events(6)  = Lti;
-    problem.phases(1).bounds.lower.events(7)  = wti;
+    problem.phases(1).bounds.lower.events << pti, fti, gti, hti, kti, Lti, wti, ptf, event_final_9, event_final_10, event_final_11, event_final_12_lower;
 
-
-    problem.phases(1).bounds.lower.events(8) = ptf;
-    problem.phases(1).bounds.lower.events(9) = event_final_9;
-    problem.phases(1).bounds.lower.events(10) = event_final_10;
-    problem.phases(1).bounds.lower.events(11) = event_final_11;
-    problem.phases(1).bounds.lower.events(12) = event_final_12_lower;
-
-
-    problem.phases(1).bounds.upper.events(1)  = pti;
-    problem.phases(1).bounds.upper.events(2)  = fti;
-    problem.phases(1).bounds.upper.events(3)  = gti;
-    problem.phases(1).bounds.upper.events(4)  = hti;
-    problem.phases(1).bounds.upper.events(5)  = kti;
-    problem.phases(1).bounds.upper.events(6)  = Lti;
-    problem.phases(1).bounds.upper.events(7)  = wti;
-    problem.phases(1).bounds.upper.events(8)  = ptf;
-    problem.phases(1).bounds.upper.events(9)  = event_final_9;
-    problem.phases(1).bounds.upper.events(10) = event_final_10;
-    problem.phases(1).bounds.upper.events(11) = event_final_11;
-    problem.phases(1).bounds.upper.events(12) = event_final_12_upper;
+    problem.phases(1).bounds.upper.events << pti, fti, gti, hti, kti, Lti, wti, ptf, event_final_9, event_final_10, event_final_11, event_final_12_upper;
 
     double EQ_TOL = 0.001;
 
-    problem.phases(1).bounds.upper.path(1) = 1.0+EQ_TOL;
-    problem.phases(1).bounds.lower.path(1) = 1.0-EQ_TOL;
+    problem.phases(1).bounds.upper.path << 1.0+EQ_TOL;
+    problem.phases(1).bounds.lower.path << 1.0-EQ_TOL;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -556,29 +515,29 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 		= &integrand_cost;
+    problem.endpoint_cost 			= &endpoint_cost;
+    problem.dae             		= &dae;
+    problem.events 					= &events;
+    problem.linkages					= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
     int nnodes    			= 141;
-    int ncontrols                       = problem.phases(1).ncontrols;
-    int nstates                         = problem.phases(1).nstates;
+    int ncontrols          = problem.phases(1).ncontrols;
+    int nstates            = problem.phases(1).nstates;
 
-    DMatrix u_guess    =  zeros(ncontrols,nnodes);
-    DMatrix x_guess    =  zeros(nstates,nnodes);
-    DMatrix time_guess =  linspace(0.0,86810.0,nnodes);
+    MatrixXd u_guess    =  zeros(ncontrols,nnodes);
+    MatrixXd x_guess    =  zeros(nstates,nnodes);
+    MatrixXd time_guess =  linspace(0.0,86810.0,nnodes);
 
-    DMatrix param_guess = -25.0*ones(1,1);
+    MatrixXd param_guess = -25.0*ones(1,1);
 
-    u_guess.Load("U0.dat");
-    x_guess.Load("X0.dat");
-    time_guess.Load("T0.dat");
+    u_guess    = load_data("U0.dat",ncontrols, nnodes );
+    x_guess    = load_data("X0.dat",nstates  , nnodes );
+    time_guess = load_data("T0.dat",1        , nnodes );
 
     auto_phase_guess(problem, u_guess, x_guess, param_guess, time_guess);
 
@@ -614,7 +573,7 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x, u, t;
+    MatrixXd x, u, t;
 
     x      = solution.get_states_in_phase(1);
     u      = solution.get_controls_in_phase(1);
@@ -624,32 +583,32 @@ int main(void)
     t = t/3600.0;
 
 
-    DMatrix tau = solution.get_parameters_in_phase(1);
+    MatrixXd tau = solution.get_parameters_in_phase(1);
 
-    tau.Print("tau");
+    Print(tau,"tau");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x1 = x(1,colon())/1.e6;
-    DMatrix x2 = x(2,colon());
-    DMatrix x3 = x(3,colon());
-    DMatrix x4 = x(4,colon());
-    DMatrix x5 = x(5,colon());
-    DMatrix x6 = x(6,colon());
-    DMatrix x7 = x(7,colon());
-    DMatrix u1 = u(1,colon());
-    DMatrix u2 = u(2,colon());
-    DMatrix u3 = u(3,colon());
+    MatrixXd x1 = x.row(0)/1.e6; 
+    MatrixXd x2 = x.row(1); 
+    MatrixXd x3 = x.row(2); 
+    MatrixXd x4 = x.row(3); 
+    MatrixXd x5 = x.row(4); 
+    MatrixXd x6 = x.row(5); 
+    MatrixXd x7 = x.row(6); 
+    MatrixXd u1 = u.row(0); 
+    MatrixXd u2 = u.row(1); 
+    MatrixXd u3 = u.row(2); 
 
     plot(t,x1,problem.name+": states", "time (h)", "p (1000000 ft)","p (1000000 ft)");
 
@@ -702,7 +661,7 @@ int main(void)
     plot(t,u3,problem.name+": controls","time (h)", "uh", "uh",
 	 	 "pdf","lowthr_u3.pdf");
 
-    DMatrix r;
+    MatrixXd r;
 
     compute_cartesian_trajectory(x,r);
 
@@ -710,18 +669,18 @@ int main(void)
 
     r = r*ft2km;
 
-    DMatrix rnew, tnew;
+    MatrixXd rnew, tnew;
 
-    tnew = linspace(0.0, t("end"), 1000);
+    tnew = linspace(0.0, t(length(t)-1), 1000);
 
     resample_trajectory( rnew, tnew, r, t );
 
 
-    plot3(rnew(1,colon()), rnew(2,colon()), rnew(3,colon()),
+    plot3(rnew.row(0), rnew.row(1), rnew.row(2),
 	        "Low thrust transfer trajectory", "x (km)", "y (km)", "z (km)",
 	         NULL, NULL, "30,97");
 
-    plot3(rnew(1,colon()), rnew(2,colon()), rnew(3,colon()),
+    plot3(rnew.row(0), rnew.row(1), rnew.row(2),
 	       "Low thrust transfer trajectory", "x (km)", "y (km)", "z (km)",
 	       "pdf", "trajectory.pdf", "30,97");
 

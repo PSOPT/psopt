@@ -57,35 +57,36 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    double mu   = G*Me;       // [m^3/sec^2]
 
-   ADMatrix r(3), v(3);
+   adouble r[3];
+   adouble v[3];
 
    // Extract individual variables
 
-   r(1) = states[ CINDEX(1) ];
-   r(2) = states[ CINDEX(2) ];
-   r(3) = states[ CINDEX(3) ];
+   r[0] = states[ 0 ];
+   r[1] = states[ 1 ];
+   r[2] = states[ 2 ];
 
-   v(1) = states[ CINDEX(4) ];
-   v(2) = states[ CINDEX(5) ];
-   v(3) = states[ CINDEX(6) ];
+   v[0] = states[ 3 ];
+   v[1] = states[ 4 ];
+   v[2] = states[ 5 ];
 
 
-   ADMatrix rdd(3);
+   adouble rdd[3];
 
-   adouble rr = sqrt( r(1)*r(1)+r(2)*r(2)+r(3)*r(3) );
+   adouble rr = sqrt( r[0]*r[0]+r[1]*r[1]+r[2]*r[2] );
 
    adouble r3 = pow(rr,3.0);
 
-   rdd(1) = -mu*r(1)/r3;
-   rdd(2) = -mu*r(2)/r3;
-   rdd(3) = -mu*r(3)/r3;
+   rdd[0] = -mu*r[0]/r3;
+   rdd[1] = -mu*r[1]/r3;
+   rdd[2] = -mu*r[2]/r3;
 
-   derivatives[ CINDEX(1) ] = v(1);
-   derivatives[ CINDEX(2) ] = v(2);
-   derivatives[ CINDEX(3) ] = v(3);
-   derivatives[ CINDEX(4) ] = rdd(1);
-   derivatives[ CINDEX(5) ] = rdd(2);
-   derivatives[ CINDEX(6) ] = rdd(3);
+   derivatives[ 0 ] = v[0];
+   derivatives[ 1 ] = v[1];
+   derivatives[ 2 ] = v[2];
+   derivatives[ 3 ] = rdd[0];
+   derivatives[ 4 ] = rdd[1];
+   derivatives[ 5 ] = rdd[2];
 
 }
 
@@ -99,24 +100,24 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
 
 {
 
-   adouble ri1 = initial_states[ CINDEX(1) ];
-   adouble ri2 = initial_states[ CINDEX(2) ];
-   adouble ri3 = initial_states[ CINDEX(3) ];
+   adouble ri1 = initial_states[ 0 ];
+   adouble ri2 = initial_states[ 1 ];
+   adouble ri3 = initial_states[ 2 ];
 
 
 
 
-   adouble rf1 = final_states[ CINDEX(1) ];
-   adouble rf2 = final_states[ CINDEX(2) ];
-   adouble rf3 = final_states[ CINDEX(3) ];
+   adouble rf1 = final_states[ 0 ];
+   adouble rf2 = final_states[ 1 ];
+   adouble rf3 = final_states[ 2 ];
 
-   e[ CINDEX(1) ] = ri1;
-   e[ CINDEX(2) ] = ri2;
-   e[ CINDEX(3) ] = ri3;
+   e[ 0 ] = ri1;
+   e[ 1 ] = ri2;
+   e[ 2 ] = ri3;
 
-   e[ CINDEX(4) ] = rf1;
-   e[ CINDEX(5) ] = rf2;
-   e[ CINDEX(6) ] = rf3;
+   e[ 3 ] = rf1;
+   e[ 4 ] = rf2;
+   e[ 5 ] = rf3;
 
 }
 
@@ -154,14 +155,14 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name        		= "Lambert problem";
+    problem.name        		          = "Lambert problem";
     problem.outfilename                 = "lambert.txt";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
+    problem.nphases   			          = 1;
     problem.nlinkages                   = 0;
 
     psopt_level1_setup(problem);
@@ -174,9 +175,9 @@ int main(void)
     problem.phases(1).nstates   		= 6;
     problem.phases(1).ncontrols 		= 0;
     problem.phases(1).nevents   		= 6;
-    problem.phases(1).nparameters               = 6;
+    problem.phases(1).nparameters   = 6;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes              	= "[100]";
+    problem.phases(1).nodes         << 100;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -195,38 +196,38 @@ int main(void)
 
     double TF = 76.0*60.0; // seconds
 
-    problem.phases(1).bounds.lower.states(1) = -10*max(r1i,r1f);
-    problem.phases(1).bounds.lower.states(2) = -10*max(r2i,r2f);
-    problem.phases(1).bounds.lower.states(3) = -10*max(r3i,r3f);
-    problem.phases(1).bounds.upper.states(1) = 10*max(r1i,r1f);
-    problem.phases(1).bounds.upper.states(2) = 10*max(r2i,r2f);
-    problem.phases(1).bounds.upper.states(3) = 10*max(r3i,r3f);
+    problem.phases(1).bounds.lower.states(0) = -10*max(r1i,r1f);
+    problem.phases(1).bounds.lower.states(1) = -10*max(r2i,r2f);
+    problem.phases(1).bounds.lower.states(2) = -10*max(r3i,r3f);
+    problem.phases(1).bounds.upper.states(0) = 10*max(r1i,r1f);
+    problem.phases(1).bounds.upper.states(1) = 10*max(r2i,r2f);
+    problem.phases(1).bounds.upper.states(2) = 10*max(r3i,r3f);
 
-    problem.phases(1).bounds.lower.states(4) = -10*max(r1i,r1f)/TF;
+    problem.phases(1).bounds.lower.states(3) = -10*max(r1i,r1f)/TF;
+    problem.phases(1).bounds.lower.states(4) = -10*max(r1i,r1f)/TF;;
     problem.phases(1).bounds.lower.states(5) = -10*max(r1i,r1f)/TF;;
-    problem.phases(1).bounds.lower.states(6) = -10*max(r1i,r1f)/TF;;
-    problem.phases(1).bounds.upper.states(4) = 10*max(r1i,r1f)/TF;
-    problem.phases(1).bounds.upper.states(5) = 10*max(r2i,r2f)/TF;
-    problem.phases(1).bounds.upper.states(6) = 10*max(r3i,r3f)/TF;
+    problem.phases(1).bounds.upper.states(3) = 10*max(r1i,r1f)/TF;
+    problem.phases(1).bounds.upper.states(4) = 10*max(r2i,r2f)/TF;
+    problem.phases(1).bounds.upper.states(5) = 10*max(r3i,r3f)/TF;
 
 
-    problem.phases(1).bounds.lower.events(1) = r1i;
-    problem.phases(1).bounds.upper.events(1) = r1i;
+    problem.phases(1).bounds.lower.events(0) = r1i;
+    problem.phases(1).bounds.upper.events(0) = r1i;
 
-    problem.phases(1).bounds.lower.events(2) = r2i;
-    problem.phases(1).bounds.upper.events(2) = r2i;
+    problem.phases(1).bounds.lower.events(1) = r2i;
+    problem.phases(1).bounds.upper.events(1) = r2i;
+    
+    problem.phases(1).bounds.lower.events(2) = r3i;
+    problem.phases(1).bounds.upper.events(2) = r3i;
 
-    problem.phases(1).bounds.lower.events(3) = r3i;
-    problem.phases(1).bounds.upper.events(3) = r3i;
+    problem.phases(1).bounds.lower.events(3) = r1f;
+    problem.phases(1).bounds.upper.events(3) = r1f;
 
-    problem.phases(1).bounds.lower.events(4) = r1f;
-    problem.phases(1).bounds.upper.events(4) = r1f;
+    problem.phases(1).bounds.lower.events(4) = r2f;
+    problem.phases(1).bounds.upper.events(4) = r2f;
 
-    problem.phases(1).bounds.lower.events(5) = r2f;
-    problem.phases(1).bounds.upper.events(5) = r2f;
-
-    problem.phases(1).bounds.lower.events(6) = r3f;
-    problem.phases(1).bounds.upper.events(6) = r3f;
+    problem.phases(1).bounds.lower.events(5) = r3f;
+    problem.phases(1).bounds.upper.events(5) = r3f;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -264,31 +265,31 @@ int main(void)
 
 
     problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
+    problem.endpoint_cost  	= &endpoint_cost;
     problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.events 		 		= &events;
+    problem.linkages				= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			= 20;
+    int nnodes    							 = 20;
     int ncontrols                       = problem.phases(1).ncontrols;
     int nstates                         = problem.phases(1).nstates;
 
 
-    DMatrix x_guess    =  zeros(nstates,nnodes);
-    DMatrix time_guess =  linspace(0.0,TF,nnodes);
+    MatrixXd x_guess    =  zeros(nstates,nnodes);
+    MatrixXd time_guess =  linspace(0.0,TF,nnodes);
 
 
 
-    x_guess(1,colon()) = linspace(r1i,r1f, nnodes);
-    x_guess(2,colon()) = linspace(r2i,r2f,nnodes);
-    x_guess(3,colon()) = linspace(r3i,r3f,nnodes);
-    x_guess(4,colon()) = linspace(r1i,r1f,nnodes)/TF;
-    x_guess(5,colon()) = linspace(r2i,r2f,nnodes)/TF;
-    x_guess(6,colon()) = linspace(r3i,r3f, nnodes)/TF;
+    x_guess << linspace(r1i,r1f, nnodes),
+               linspace(r2i,r2f,nnodes),
+     				linspace(r3i,r3f,nnodes),
+    				linspace(r1i,r1f,nnodes)/TF,
+    				linspace(r2i,r2f,nnodes)/TF,
+    				linspace(r3i,r3f, nnodes)/TF;
 
 
     problem.phases(1).guess.states         = x_guess;
@@ -322,7 +323,7 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x, u, t, xi, ui, ti;
+    MatrixXd x, u, t, xi, ui, ti;
 
     x      = solution.get_states_in_phase(1);
     u      = solution.get_controls_in_phase(1);
@@ -334,35 +335,35 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix r1 = x(1,colon());
-    DMatrix r2 = x(2,colon());
-    DMatrix r3 = x(3,colon());
+    MatrixXd r1 = x.row(0); 
+    MatrixXd r2 = x.row(1); 
+    MatrixXd r3 = x.row(2); 
 
-    DMatrix v1 = x(4,colon());
-    DMatrix v2 = x(5,colon());
-    DMatrix v3 = x(6,colon());
+    MatrixXd v1 = x.row(3); 
+    MatrixXd v2 = x.row(4); 
+    MatrixXd v3 = x.row(5); 
 
-    DMatrix vi(3), vf(3);
+    MatrixXd vi(3,1), vf(3,1);
 
-    vi(1) = v1(1);
-    vi(2) = v2(1);
-    vi(3) = v3(1);
+    vi(0) = v1(0);
+    vi(1) = v2(1);
+    vi(2) = v3(2);
 
-    vf(1) = v1("end");
-    vf(2) = v2("end");
-    vf(3) = v3("end");
+    vf(0) = v1(length(v1));
+    vf(1) = v2(length(v1));
+    vf(2) = v3(length(v1));
 
-    vi.Print("Initial velocity vector [m/s]");
+    Print(vi,"Initial velocity vector [m/s]");
 
-    vf.Print("Final velocity vector [m/s]");
+    Print(vf,"Final velocity vector [m/s]");
 
 
     plot(t,r1,problem.name+": x", "time (s)", "x","x");

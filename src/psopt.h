@@ -1190,6 +1190,7 @@ MatrixXd tra(const MatrixXd& m);
 MatrixXd stack_columns(const MatrixXd& m);
 MatrixXd sum_columns(const MatrixXd& A);
 long length(const MatrixXd& m);
+// long end(const MatrixXd& m) { return (length(m)-1); }
 double Max(const MatrixXd& m);
 double Max(const MatrixXd& m, long* i);
 double Min(const MatrixXd& m);

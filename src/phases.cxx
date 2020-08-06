@@ -356,7 +356,7 @@ void  auto_phase_guess(Prob& problem, MatrixXd& controls, MatrixXd& states, Matr
 	    problem.phases(i).guess.states = zeros(problem.phases(i).nstates,min_nodes);
 	    for(j=0; j<problem.phases(i).nstates;j++) { // EIGEN_UPDATE
 //    	    	problem.phases(i).guess.states(j,colon()) = linspace(states(j,1), states(j,"end"), min_nodes);
-    	    	problem.phases(i).guess.states.row(j) = linspace(states(j,0), states(j,states.cols()), min_nodes);
+    	    	problem.phases(i).guess.states.row(j) = linspace(states(j,0), states(j,states.cols()-1), min_nodes);
     	    	
 	    }
 	    if (problem.phase[i-1].nparameters>0) {
