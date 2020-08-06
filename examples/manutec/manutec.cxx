@@ -32,13 +32,13 @@ typedef struct {
  double   g; // Gravity constant
  double   pl; // Point mass of load;
  double   Ia1; // Moment of inertia of arm 1, element (3,3)
- DMatrix* Fc; // Voltage-force constant of motor
- DMatrix* r; // Gear ratio of motor
- DMatrix* Im; // Moment of inertia of motor
- DMatrix* m; // Mass of arm 2 and 3
- DMatrix* L;   // Length of arm 2 and 3 (inc. tool)
- DMatrix* com; // Center of mass coordinates of arm 2 and 3;
- DMatrix* Ia; // Moment of inertia arm 2 and 3
+ MatrixXd* Fc; // Voltage-force constant of motor
+ MatrixXd* r; // Gear ratio of motor
+ MatrixXd* Im; // Moment of inertia of motor
+ MatrixXd* m; // Mass of arm 2 and 3
+ MatrixXd* L;   // Length of arm 2 and 3 (inc. tool)
+ MatrixXd* com; // Center of mass coordinates of arm 2 and 3;
+ MatrixXd* Ia; // Moment of inertia arm 2 and 3
 } CONSTANTS_;
 
 CONSTANTS_ CONSTANTS;
@@ -146,15 +146,15 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
  int i;
  double g    =  CONSTANTS.g;
- DMatrix& Fc = *CONSTANTS.Fc;
- DMatrix& r  = *CONSTANTS.r;
- DMatrix& Im = *CONSTANTS.Im;
- DMatrix& m  = *CONSTANTS.m;
+ MatrixXd& Fc = *CONSTANTS.Fc;
+ MatrixXd& r  = *CONSTANTS.r;
+ MatrixXd& Im = *CONSTANTS.Im;
+ MatrixXd& m  = *CONSTANTS.m;
  double pl   =  CONSTANTS.pl;
- DMatrix& L  = *CONSTANTS.L;
- DMatrix& com= *CONSTANTS.com;
+ MatrixXd& L  = *CONSTANTS.L;
+ MatrixXd& com= *CONSTANTS.com;
  double   Ia1=  CONSTANTS.Ia1;
- DMatrix& Ia = *CONSTANTS.Ia;
+ MatrixXd& Ia = *CONSTANTS.Ia;
 
 
 adouble* F = VARS.F_ad;
@@ -166,18 +166,18 @@ double ml = pl;
 for(i=0;i<3;i++) {
    q[i]  = states[i];
    qd[i] = states[3+i];
-   F[i] = Fc(i+1)*controls[i];
+   F[i] = Fc(i)*controls[i];
 }
 
 r3m2si(&ml, q, qd, F, qdd, &VARS);
 
-derivatives[CINDEX(1)] =  qd[CINDEX(1)];
-derivatives[CINDEX(2)] =  qd[CINDEX(2)];
-derivatives[CINDEX(3)] =  qd[CINDEX(3)];
+derivatives[0] =  qd[0];
+derivatives[1] =  qd[1];
+derivatives[2] =  qd[2];
 
-derivatives[CINDEX(4)]  =  qdd[CINDEX(1)];
-derivatives[CINDEX(5)]  =  qdd[CINDEX(2)];
-derivatives[CINDEX(6)]  =  qdd[CINDEX(3)];
+derivatives[3]  =  qdd[0];
+derivatives[4]  =  qdd[1];
+derivatives[5]  =  qdd[2];
 
 }
 
@@ -230,28 +230,28 @@ int main(void)
  double g = 9.81;                                     // Gravity constant [m/s2]
  double pl=  0.0;                                     // Point mass of load; [kg]
  double   Ia1 = 1.16;                                 // Moment of inertia of arm 1, element (3,3) [kgm^2]
- DMatrix Fc(3,1); Fc = "[-126.0;252.0; 72.0]";        // Voltage-force constant of motor [N*m/V]
- DMatrix r(3,1); r = "[-105; 210; 60]";               // Gear ratio of motor
- DMatrix Im(3,1); Im = "[1.3e-3; 1.3e-3; 1.3e-3]";    // Moment of inertia of motor [kg*m^2]
- DMatrix m(2,1);  m = "[56.5; 60.3]";                 // Mass of arm 2 and 3 [kg]
- DMatrix L(2,1);  L = "[0.5; 0.98]";                  // Length of arm 2 and 3 (inc. tool) [m]
- DMatrix  com(2,2);                                   // Center of mass coordinates of arm 2 and 3; [m]
- DMatrix Ia(4,2);                                     // Moment of inertia arm 2 and 3 [kg*m^2]
+ MatrixXd Fc(3,1); Fc << -126.0,252.0, 72.0;        // Voltage-force constant of motor [N*m/V]
+ MatrixXd r(3,1); r << -105, 210, 60;               // Gear ratio of motor
+ MatrixXd Im(3,1); Im << 1.3e-3, 1.3e-3, 1.3e-3;    // Moment of inertia of motor [kg*m^2]
+ MatrixXd m(2,1);  m << 56.5, 60.3;                 // Mass of arm 2 and 3 [kg]
+ MatrixXd L(2,1);  L << 0.5, 0.98;                  // Length of arm 2 and 3 (inc. tool) [m]
+ MatrixXd  com(2,2);                                   // Center of mass coordinates of arm 2 and 3; [m]
+ MatrixXd Ia(4,2);                                     // Moment of inertia arm 2 and 3 [kg*m^2]
 
- com(1,1)=0.172; com(1,2)=0.028; com(2,1)=0.205; com(2,2)=0.202;
+ com(0,0)=0.172; com(0,1)=0.028; com(1,0)=0.205; com(1,1)=0.202;
 
- Ia(1,1)=2.58; Ia(1,2)=11.0;
- Ia(2,1)=2.73; Ia(2,2)=8.0;
- Ia(3,1)=0.64; Ia(3,2)=0.80;
- Ia(4,1)=-0.46; Ia(4,2)=0.50;
+ Ia(0,0)=2.58;  Ia(0,1)=11.0;
+ Ia(1,0)=2.73;  Ia(1,1)=8.0;
+ Ia(2,0)=0.64;  Ia(2,1)=0.80;
+ Ia(3,0)=-0.46; Ia(3,1)=0.50;
 
- Fc.Print("Fc");
- r.Print("r");
- Im.Print("Im");
- m.Print("m");
- L.Print("L");
- com.Print("com");
- Ia.Print("Ia");
+ Print(Fc,"Fc");
+ Print(r,"r");
+ Print(Im,"Im");
+ Print(m,"m");
+ Print(L,"L");
+ Print(com,"com");
+ Print(Ia,"Ia");
 
 
  CONSTANTS.g   = g;
@@ -322,7 +322,7 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
+    problem.nphases   			          = 1;
     problem.nlinkages                   = 0;
 
     psopt_level1_setup(problem);
@@ -335,7 +335,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 3;
     problem.phases(1).nevents   		= 12;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes                     = "[20, 30, 40, 60, 80]";
+    problem.phases(1).nodes         = (RowVectorXi(5) << 20, 30, 40, 60, 80).finished();   
 
 
     psopt_level2_setup(problem, algorithm);
@@ -346,25 +346,25 @@ int main(void)
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix qmax(1,3), qdmax(1,3), qddmax(1,3);
+    MatrixXd qmax(3,1), qdmax(3,1), qddmax(3,1);
 
     // Joint position limits in rad
 
-    qmax(1) = 2.97;    qmax(2) = 2.01; qmax(3) = 2.86;
+    qmax(0) = 2.97;    qmax(1) = 2.01; qmax(2) = 2.86;
 
     // Joint angular velocity limits in rad/s
 
-    qdmax(1) = 3.0;   qdmax(2) = 1.5; qdmax(3) = 5.2;
+    qdmax(0) = 3.0;   qdmax(1) = 1.5; qdmax(2) = 5.2;
 
 
-    problem.phases(1).bounds.lower.states =  (-qmax || -qdmax);
-    problem.phases(1).bounds.upper.states =  ( qmax ||  qdmax);
+    problem.phases(1).bounds.lower.states << -qmax , -qdmax;
+    problem.phases(1).bounds.upper.states <<  qmax ,  qdmax;
 
-    DMatrix umax(1,3);
+    MatrixXd umax(3,1);
 
     // Control variable limits in V
 
-    umax(1) = 7.5; umax(2) = 7.5; umax(3) = 7.5;
+    umax(0) = 7.5; umax(1) = 7.5; umax(2) = 7.5;
 
 
     problem.phases(1).bounds.lower.controls = -umax;
@@ -373,25 +373,25 @@ int main(void)
 
 
 
-    DMatrix qi(1,3), qf(1,3), qdi(1,3), qdf(1,3);
+    MatrixXd qi(3,1), qf(3,1), qdi(3,1), qdf(3,1);
 
     // Initial joint positions in rad
-    qi(1) = 0.0;    qi(2) = -1.5; qi(3) = 0.0;
+    qi(0) = 0.0;    qi(1) = -1.5; qi(2) = 0.0;
 
     // Final joint positions in rad
-    qf(1) = 1.0; qf(2) = -1.95;  qf(3) = 1.0;
+    qf(0) = 1.0; qf(1) = -1.95;  qf(2) = 1.0;
 
     // Initial joint velocities in rad/s
 
-    qdi = zeros(1,3);
+    qdi = zeros(3,1);
 
     // Final joint velocities in rad/s
 
-    qdf = zeros(1,3);
+    qdf = zeros(3,1);
 
 
-    problem.phases(1).bounds.lower.events = (qi || qdi || qf || qdf);
-    problem.phases(1).bounds.upper.events = (qi || qdi || qf || qdf);
+    problem.phases(1).bounds.lower.events << qi , qdi , qf , qdf;
+    problem.phases(1).bounds.upper.events << qi , qdi , qf , qdf;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -414,31 +414,31 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 		= &integrand_cost;
+    problem.endpoint_cost 			= &endpoint_cost;
+    problem.dae             		= &dae;
+    problem.events 					= &events;
+    problem.linkages					= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			= problem.phases(1).nodes(1);
-    int ncontrols                       = problem.phases(1).ncontrols;
-    int nstates                         = problem.phases(1).nstates;
+    int nnodes    			= problem.phases(1).nodes(0);
+    int ncontrols          = problem.phases(1).ncontrols;
+    int nstates            = problem.phases(1).nstates;
 
-    DMatrix state_guess    =  zeros(nstates,nnodes);
-    DMatrix control_guess  =  zeros(ncontrols,nnodes);
-    DMatrix time_guess     =  linspace(0.0,0.53,nnodes);
+    MatrixXd state_guess    =  zeros(nstates,nnodes);
+    MatrixXd control_guess  =  zeros(ncontrols,nnodes);
+    MatrixXd time_guess     =  linspace(0.0,0.53,nnodes);
 
 
-    state_guess(1,colon()) = linspace( qi(1), qf(1), nnodes );
-    state_guess(2,colon()) = linspace( qi(2), qf(2), nnodes );
-    state_guess(3,colon()) = linspace( qi(3), qf(3), nnodes );
-    state_guess(4,colon()) = linspace( qi(4), qf(4), nnodes );
-    state_guess(5,colon()) = linspace( qi(5), qf(5), nnodes );
-    state_guess(6,colon()) = linspace( qi(6), qf(6), nnodes );
+    state_guess << 	linspace( qi(0), qf(0), nnodes ),
+     						linspace( qi(1), qf(1), nnodes ),
+     						linspace( qi(2), qf(2), nnodes ),
+     						linspace( qi(3), qf(3), nnodes ),
+     						linspace( qi(4), qf(4), nnodes ),
+     						linspace( qi(5), qf(5), nnodes );
 
 
     problem.phases(1).guess.states   = state_guess;
@@ -459,7 +459,7 @@ int main(void)
     algorithm.derivatives                 = "automatic";
     algorithm.mesh_refinement             = "automatic";
     algorithm.ode_tolerance               = 1.e-5;
-    algorithm.mr_max_iterations            = 5;
+    algorithm.mr_max_iterations           = 5;
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -473,7 +473,7 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x, u, t;
+    MatrixXd x, u, t;
 
     x           = solution.get_states_in_phase(1);
     u           = solution.get_controls_in_phase(1);
@@ -486,12 +486,12 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
-    DMatrix q = x( colon(1,3), colon() );
-    DMatrix qd= x( colon(4,6), colon() );
+    MatrixXd q = x.block(0,0,3,length(t)); 
+    MatrixXd qd= x.block(3,0,3,length(t)); 
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -504,11 +504,11 @@ int main(void)
 
     plot(t,qd,problem.name+": velocities","t", "qdot (rad/s)", "qd1 qd2 qd3");
 
-    plot(t,u(1,colon()),problem.name+": control u1","time (s)", "control", "u1");
+    plot(t,u.row(0),problem.name+": control u1","time (s)", "control", "u1");
 
-    plot(t,u(2,colon()),problem.name+": control u2","time (s)", "control", "u2");
+    plot(t,u.row(1),problem.name+": control u2","time (s)", "control", "u2");
 
-    plot(t,u(3,colon()),problem.name+": control u3","time (s)", "control", "u3");
+    plot(t,u.row(2),problem.name+": control u3","time (s)", "control", "u3");
 
     plot(t,q,problem.name+": positions","t", "q (rad)", "q1 q2 q3", "pdf",
 	                     "positions.pdf");

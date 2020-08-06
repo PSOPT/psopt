@@ -50,19 +50,19 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* xad, int iphase, Workspace* workspace)
 {
 
-   adouble x1 = states[ CINDEX(1) ];
-   adouble x2 = states[ CINDEX(2) ];
-   adouble x3 = states[ CINDEX(3) ];
-   adouble x4 = states[ CINDEX(4) ];
+   adouble x1 = states[ 0 ];
+   adouble x2 = states[ 1 ];
+   adouble x3 = states[ 2 ];
+   adouble x4 = states[ 3 ];
 
-   adouble u = controls[ CINDEX(1) ];
+   adouble u = controls[ 0 ];
 
    double a = 100.0;
 
-   derivatives[ CINDEX(1) ] = x2;
-   derivatives[ CINDEX(2) ] = a*cos(u);
-   derivatives[ CINDEX(3) ] = x4;
-   derivatives[ CINDEX(4) ] = a*sin(u);
+   derivatives[ 0 ] = x2;
+   derivatives[ 1 ] = a*cos(u);
+   derivatives[ 2 ] = x4;
+   derivatives[ 3 ] = a*sin(u);
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -73,22 +73,22 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
             int iphase, Workspace* workspace)
 {
-   adouble x10 = initial_states[ CINDEX(1) ];
-   adouble x20 = initial_states[ CINDEX(2) ];
-   adouble x30 = initial_states[ CINDEX(3) ];
-   adouble x40 = initial_states[ CINDEX(4) ];
-   adouble x2f = final_states[   CINDEX(2) ];
-   adouble x3f = final_states[   CINDEX(3) ];
-   adouble x4f = final_states[   CINDEX(4) ];
+   adouble x10 = initial_states[ 0 ];
+   adouble x20 = initial_states[ 1 ];
+   adouble x30 = initial_states[ 2 ];
+   adouble x40 = initial_states[ 3 ];
+   adouble x2f = final_states[   1 ];
+   adouble x3f = final_states[   2 ];
+   adouble x4f = final_states[   3 ];
 
 
-   e[ CINDEX(1) ] = x10;
-   e[ CINDEX(2) ] = x20;
-   e[ CINDEX(3) ] = x30;
-   e[ CINDEX(4) ] = x40;
-   e[ CINDEX(5) ] = x2f;
-   e[ CINDEX(6) ] = x3f;
-   e[ CINDEX(7) ] = x4f;
+   e[ 0 ] = x10;
+   e[ 1 ] = x20;
+   e[ 2 ] = x30;
+   e[ 3 ] = x40;
+   e[ 4 ] = x2f;
+   e[ 5 ] = x3f;
+   e[ 6 ] = x4f;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -144,51 +144,34 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 7;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes                     = "[10, 30]";
+    problem.phases(1).nodes         = (RowVectorXi(2) << 10, 30 ).finished();
 
     psopt_level2_setup(problem, algorithm);
 
 
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare DMatrix objects to store results //////////////
+///////////////////  Declare MatrixXd objects to store results /////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, t;
-    DMatrix lambda, H;
+    MatrixXd x, u, t;
+
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).bounds.lower.states(1) = -100.0;
-    problem.phases(1).bounds.lower.states(2) = -100.0;
-    problem.phases(1).bounds.lower.states(3) = -100.0;
-    problem.phases(1).bounds.lower.states(4) = -100.0;
+    problem.phases(1).bounds.lower.states      << -100.0, -100.0, -100.0, -100.0;
 
-    problem.phases(1).bounds.upper.states(1) =  100.0;
-    problem.phases(1).bounds.upper.states(2) =  100.0;
-    problem.phases(1).bounds.upper.states(3) =  100.0;
-    problem.phases(1).bounds.upper.states(4) =  100.0;
+    problem.phases(1).bounds.upper.states      <<  100.0,  100.0,  100.0,  100.0;
 
-    problem.phases(1).bounds.lower.controls(1) = -pi/2.0;
-    problem.phases(1).bounds.upper.controls(1) =  pi/2.0;
 
-    problem.phases(1).bounds.lower.events(1) = 0.0;
-    problem.phases(1).bounds.lower.events(2) = 0.0;
-    problem.phases(1).bounds.lower.events(3) = 0.0;
-    problem.phases(1).bounds.lower.events(4) = 0.0;
-    problem.phases(1).bounds.lower.events(5) = 45.0;
-    problem.phases(1).bounds.lower.events(6) = 5.0;
-    problem.phases(1).bounds.lower.events(7) = 0.0;
+    problem.phases(1).bounds.lower.controls    << -pi/2.0;
+    problem.phases(1).bounds.upper.controls    <<  pi/2.0;
 
-    problem.phases(1).bounds.upper.events(1) = 0.0;
-    problem.phases(1).bounds.upper.events(2) = 0.0;
-    problem.phases(1).bounds.upper.events(3) = 0.0;
-    problem.phases(1).bounds.upper.events(4) = 0.0;
-    problem.phases(1).bounds.upper.events(5) = 45.0;
-    problem.phases(1).bounds.upper.events(6) = 5.0;
-    problem.phases(1).bounds.upper.events(7) = 0.0;
+    problem.phases(1).bounds.lower.events      << 0.0, 0.0, 0.0, 0.0, 45.0, 5.0, 0.0;
 
+    problem.phases(1).bounds.upper.events      << 0.0, 0.0, 0.0, 0.0, 45.0, 5.0, 0.0;
+   
     problem.phases(1).bounds.lower.StartTime    = 0.0;
     problem.phases(1).bounds.upper.StartTime    = 0.0;
 
@@ -201,26 +184,26 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 					= &integrand_cost;
+    problem.endpoint_cost 						= &endpoint_cost;
+    problem.dae 									= &dae;
+    problem.events 								= &events;
+    problem.linkages								= &linkages;
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x0(3,10);
+    MatrixXd state_guess(3,10);
 
-    x0(1,colon()) = linspace(0.0, 12.0, 10);
-    x0(2,colon()) = linspace(0.0, 45.0, 10);
-    x0(3,colon()) = linspace(0.0,  5.0, 10);
-    x0(3,colon()) = linspace(0.0,  0.0, 10);
+    state_guess <<  linspace(0.0, 12.0, 10),
+                    linspace(0.0, 45.0, 10),
+                    linspace(0.0,  5.0, 10),
+                    linspace(0.0,  0.0, 10);
 
     problem.phases(1).guess.controls       = ones(1,10);
-    problem.phases(1).guess.states         = x0;
+    problem.phases(1).guess.states         = state_guess;
     problem.phases(1).guess.time           = linspace(0.0,1.0, 10);
 
 ////////////////////////////////////////////////////////////////////////////
@@ -255,9 +238,9 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////
