@@ -55,9 +55,9 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 {
    adouble xdot, ydot, vdot;
 
-   adouble x = states[ CINDEX(1) ];
+   adouble x = states[ 0 ];
 
-   adouble u = controls[ CINDEX(1) ];
+   adouble u = controls[ 0 ];
 
    derivatives[0] = -sin(x) + u;
 
@@ -72,7 +72,7 @@ adouble integrand( adouble* states, adouble* controls, adouble* parameters,
                      adouble& time, adouble* xad, int iphase, Workspace* workspace)
 {
    adouble g;
-   adouble u = controls[ CINDEX(1) ];
+   adouble u = controls[ 0 ];
 
    g =  u*u ;
 
@@ -89,16 +89,16 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
             int iphase, Workspace* workspace)
 {
-   adouble x0 = initial_states[ CINDEX(1) ];
-   adouble xf = final_states[   CINDEX(1) ];
+   adouble x0 = initial_states[ 0 ];
+   adouble xf = final_states[   0 ];
    adouble Q;
 
    // Compute the integral to be constrained
    Q = integrate( integrand, xad, iphase, workspace );
 
-   e[ CINDEX(1) ] = x0;
-   e[ CINDEX(2) ] = xf;
-   e[ CINDEX(3) ] = Q;
+   e[ 0 ] = x0;
+   e[ 1 ] = xf;
+   e[ 2 ] = Q;
 
 }
 
@@ -142,8 +142,8 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   			      = 1;
+    problem.nlinkages               = 0;
 
     psopt_level1_setup(problem);
 
@@ -157,7 +157,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 3;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes			= 50;
+    problem.phases(1).nodes			<< 50;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -167,19 +167,17 @@ int main(void)
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).bounds.lower.states(1) = -10;
-    problem.phases(1).bounds.upper.states(1) = 10;
+    problem.phases(1).bounds.lower.states << -10;
+    problem.phases(1).bounds.upper.states << 10;
 
-    problem.phases(1).bounds.lower.controls(1) = -4.0;
-    problem.phases(1).bounds.upper.controls(1) =  4.0;
+    problem.phases(1).bounds.lower.controls << -4.0;
+    problem.phases(1).bounds.upper.controls <<  4.0;
 
-    problem.phases(1).bounds.lower.events(1) =  1.0;
-    problem.phases(1).bounds.lower.events(2) =  0.0;
-    problem.phases(1).bounds.lower.events(3) =  10.0;
+    problem.phases(1).bounds.lower.events    <<  1.0, 0.0, 10.0;
 
-    problem.phases(1).bounds.upper.events(1) = 1.0;
-    problem.phases(1).bounds.upper.events(2) = 0.0;
-    problem.phases(1).bounds.upper.events(3) = 10.0;
+
+    problem.phases(1).bounds.upper.events    <<  1.0, 0.0, 10.0;
+
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
     problem.phases(1).bounds.upper.StartTime    = 0.0;
@@ -193,11 +191,11 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 	                  = &integrand_cost;
+    problem.endpoint_cost 	                     = &endpoint_cost;
+    problem.dae 		                           = &dae;
+    problem.events 		                        = &events;
+    problem.linkages		                        = &linkages;
 
 
 
@@ -233,18 +231,18 @@ int main(void)
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, t;
+    MatrixXd x, u, t;
     x 		= solution.get_states_in_phase(1);
     u 		= solution.get_controls_in_phase(1);
-    t           = solution.get_time_in_phase(1);
+    t       = solution.get_time_in_phase(1);
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////

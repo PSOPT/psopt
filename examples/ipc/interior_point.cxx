@@ -142,13 +142,13 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 2;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes        		= 20;
+    problem.phases(1).nodes         << 20;
 
     problem.phases(2).nstates   		= 1;
     problem.phases(2).ncontrols 		= 1;
     problem.phases(2).nevents   		= 1;
     problem.phases(2).npath     		= 0;
-    problem.phases(2).nodes        		= 20;
+    problem.phases(2).nodes         << 20;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -163,19 +163,19 @@ int main(void)
 
     /////////////  Phase 1 bounds ///////////////////
 
-    problem.phases(1).bounds.lower.states(1) = -1.0;
-    problem.phases(1).bounds.upper.states(1) =  1.0;
+    problem.phases(1).bounds.lower.states(0) = -1.0;
+    problem.phases(1).bounds.upper.states(0) =  1.0;
 
 
-    problem.phases(1).bounds.lower.controls(1) = -1.0;
-    problem.phases(1).bounds.upper.controls(1) =  1.0;
+    problem.phases(1).bounds.lower.controls(0) = -1.0;
+    problem.phases(1).bounds.upper.controls(0) =  1.0;
 
 
-    problem.phases(1).bounds.lower.events(1) = xi;
-    problem.phases(1).bounds.upper.events(1) = xi;
+    problem.phases(1).bounds.lower.events(0) = xi;
+    problem.phases(1).bounds.upper.events(0) = xi;
 
-    problem.phases(1).bounds.lower.events(2) = x075;
-    problem.phases(1).bounds.upper.events(2) = x075;
+    problem.phases(1).bounds.lower.events(1) = x075;
+    problem.phases(1).bounds.upper.events(1) = x075;
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
     problem.phases(1).bounds.upper.StartTime    = 0.0;
@@ -185,15 +185,15 @@ int main(void)
 
     /////////////// Phase 2 bounds /////////////////
 
-    problem.phases(2).bounds.lower.states(1) = -1.0;
-    problem.phases(2).bounds.upper.states(1) =  1.0;
+    problem.phases(2).bounds.lower.states(0) = -1.0;
+    problem.phases(2).bounds.upper.states(0) =  1.0;
 
-    problem.phases(2).bounds.lower.controls(1) = -1.0;
-    problem.phases(2).bounds.upper.controls(1) =  1.0;
+    problem.phases(2).bounds.lower.controls(0) = -1.0;
+    problem.phases(2).bounds.upper.controls(0) =  1.0;
 
 
-    problem.phases(2).bounds.lower.events(1) = xf;
-    problem.phases(2).bounds.upper.events(1) = xf;
+    problem.phases(2).bounds.lower.events(0) = xf;
+    problem.phases(2).bounds.upper.events(0) = xf;
 
 
     problem.phases(2).bounds.lower.StartTime    = 0.75;
@@ -254,21 +254,29 @@ int main(void)
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, u, t;
+    MatrixXd x, u, t1, t2, t;
+    
+    t1 = solution.get_time_in_phase(1);
+    t2 = solution.get_time_in_phase(2);
+    int nn = length(t1)+ length(t2);
+    
+    x.resize(1,nn);
+    u.resize(1,nn);
+    t.resize(1,nn);
 
 
-    x=solution.get_states_in_phase(1)  || solution.get_states_in_phase(2);
-    u=solution.get_controls_in_phase(1)|| solution.get_controls_in_phase(2);
-    t=solution.get_time_in_phase(1)   || solution.get_time_in_phase(2);
+    x << solution.get_states_in_phase(1)   , solution.get_states_in_phase(2);
+    u << solution.get_controls_in_phase(1) , solution.get_controls_in_phase(2);
+    t << t1, t2;
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////

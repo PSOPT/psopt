@@ -37,15 +37,15 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 {
 // Evaluates the integral of a user supplied function over the time
 // span of phase iphase
-    	Prob& problem = *workspace->problem;
-	Alg&  algorithm = *workspace->algorithm;
+    	   Prob& problem = *workspace->problem;
+	     Alg&  algorithm = *workspace->algorithm;
         int i = iphase-1;
 
         int k;
 
         adouble* controls;
         adouble* states;
-	adouble* states_next;
+	     adouble* states_next;
         adouble* parameters;
         adouble time;
         adouble t0;
@@ -53,12 +53,12 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
         adouble ieval;
         adouble retval = 0.0;
 
-	MatrixXd& w = workspace->w[i];
+	     MatrixXd& w = workspace->w[i];
 
         int norder    = problem.phase[i].current_number_of_intervals;
 
-	states        = workspace->states[i];
-	states_next   = workspace->states_next[i];
+	     states        = workspace->states[i];
+	     states_next   = workspace->states_next[i];
         controls      = workspace->controls[i];
         parameters    = workspace->parameters[i];
 
@@ -66,21 +66,21 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 
         get_times(&t0, &tf, xad, iphase, workspace);
 
-	if ( !use_local_collocation(algorithm) ) {
+	     if ( !use_local_collocation(algorithm) ) {
 
-	      for(k=0; k<norder+1; k++)  // EIGEN_UPDATE: k index shifted by -1
-	      {
+	        for(k=0; k<norder+1; k++)  // EIGEN_UPDATE: k index shifted by -1
+	        {
 
-		  get_controls(controls, xad, iphase, k, workspace);
+		         get_controls(controls, xad, iphase, k, workspace);
 
-		  get_states(states, xad, iphase, k, workspace);
+		         get_states(states, xad, iphase, k, workspace);
 
-		  time = convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
+		         time = convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
 
-		  ieval = (*integrand)(states,controls,parameters,time,xad,iphase, workspace);
+		         ieval = (*integrand)(states,controls,parameters,time,xad,iphase, workspace);
 
-		  retval += ((tf-t0)/2.0)*ieval*w(k);
-	      }
+		         retval += ((tf-t0)/2.0)*ieval*w(k);
+	       }
 
 	}
 
@@ -111,24 +111,24 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 
 		      if (need_midpoint_controls(algorithm, workspace)) {
 
-			  adouble tmiddle = (tk+tk1)/2.0;
+			         adouble tmiddle = (tk+tk1)/2.0;
 
-			  get_controls_bar(controls,xad,iphase,k, workspace);
+			         get_controls_bar(controls,xad,iphase,k, workspace);
 
-			  for( l =0; l< problem.phase[i].nstates; l++ ) {
+			         for( l =0; l< problem.phase[i].nstates; l++ ) {
 
-			          states[l] = 0.5*(states[l]+states_next[l]);
+			             states[l] = 0.5*(states[l]+states_next[l]);
 
-			  }
+			        }
 
-			  interval_value += 4.0*(*integrand)(states,controls,parameters,tmiddle,xad,iphase, workspace);
+			        interval_value += 4.0*(*integrand)(states,controls,parameters,tmiddle,xad,iphase, workspace);
 
 
-			  interval_value *= h/6.0;
+			        interval_value *= h/6.0;
 
-		      }
+		     }
 
-		      else {
+		     else {
 		           interval_value *= h/2.0;
 		      }
 

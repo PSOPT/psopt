@@ -115,8 +115,8 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   			       = 1;
+    problem.nlinkages                = 0;
 
     psopt_level1_setup(problem);
 
@@ -130,7 +130,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 2;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes              	= "[25, 50]";
+    problem.phases(1).nodes         << (RowVectorXi(2) << 25, 50).finished();  
 
 
     psopt_level2_setup(problem, algorithm);
@@ -142,20 +142,20 @@ int main(void)
     double xi = 1.5;
     double xf = 1.0;
 
-    problem.phases(1).bounds.lower.states(1) = -50.0;
-    problem.phases(1).bounds.upper.states(1) = 50.0;
+    problem.phases(1).bounds.lower.states(0) = -50.0;
+    problem.phases(1).bounds.upper.states(0) = 50.0;
 
 
 
-    problem.phases(1).bounds.lower.controls(1) = -50.0;
-    problem.phases(1).bounds.upper.controls(1) =  50.0;
+    problem.phases(1).bounds.lower.controls(0) = -50.0;
+    problem.phases(1).bounds.upper.controls(0) =  50.0;
 
 
-    problem.phases(1).bounds.lower.events(1) = xi;
-    problem.phases(1).bounds.upper.events(1) = xi;
+    problem.phases(1).bounds.lower.events(0) = xi;
+    problem.phases(1).bounds.upper.events(0) = xi;
 
-    problem.phases(1).bounds.lower.events(2) = xf;
-    problem.phases(1).bounds.upper.events(2) = xf;
+    problem.phases(1).bounds.lower.events(1) = xf;
+    problem.phases(1).bounds.upper.events(1) = xf;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -170,10 +170,10 @@ int main(void)
 
 
     problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.endpoint_cost 	   = &endpoint_cost;
+    problem.dae 	 	         = &dae;
+    problem.events 		      = &events;
+    problem.linkages		      = &linkages;
 
 
 
@@ -202,14 +202,6 @@ int main(void)
     algorithm.nlp_tolerance               = 1.e-6;
 
 
-//    algorithm.ps_method  = "none";
-//    algorithm.refinement_strategy = "TH";
-//    algorithm.mr_tolerance = 1.e-8;
-//    algorithm.mr_max_iterations = 8;
-
-
-
-
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   /////////////////
 ////////////////////////////////////////////////////////////////////////////
@@ -221,17 +213,17 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x      = solution.get_states_in_phase(1);
-    DMatrix u      = solution.get_controls_in_phase(1);
-    DMatrix t      = solution.get_time_in_phase(1);
+    MatrixXd x      = solution.get_states_in_phase(1);
+    MatrixXd u      = solution.get_controls_in_phase(1);
+    MatrixXd t      = solution.get_time_in_phase(1);
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
