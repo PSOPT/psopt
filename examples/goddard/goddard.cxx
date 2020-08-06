@@ -139,7 +139,7 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
     problem.nphases   			        = 1;
-    problem.nlinkages                   = 0;
+    problem.nlinkages                 = 0;
 
     psopt_level1_setup(problem);
 
@@ -155,7 +155,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 4;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes         = 20; 
+    problem.phases(1).nodes         << 20; 
 
 
     psopt_level2_setup(problem, algorithm);
@@ -186,26 +186,19 @@ int main(void)
     double m_i = 1.0;
     double m_f = 0.6;
 
-    problem.phases(1).bounds.lower.states(1) = v_L;
-    problem.phases(1).bounds.lower.states(2) = h_L;
-    problem.phases(1).bounds.lower.states(3) = m_L;
+    problem.phases(1).bounds.lower.states    << v_L, h_L, m_L;
 
-    problem.phases(1).bounds.upper.states(1) = v_U;
-    problem.phases(1).bounds.upper.states(2) = h_U;
-    problem.phases(1).bounds.upper.states(3) = m_U;
 
-    problem.phases(1).bounds.lower.controls(1) = T_L;
-    problem.phases(1).bounds.upper.controls(1) = T_U;
+    problem.phases(1).bounds.upper.states    << v_U, h_U, m_U;
 
-    problem.phases(1).bounds.lower.events(1) = v_i;
-    problem.phases(1).bounds.lower.events(2) = h_i;
-    problem.phases(1).bounds.lower.events(3) = m_i;
-    problem.phases(1).bounds.lower.events(4) = m_f;
 
-    problem.phases(1).bounds.upper.events(1) = v_i;
-    problem.phases(1).bounds.upper.events(2) = h_i;
-    problem.phases(1).bounds.upper.events(3) = m_i;
-    problem.phases(1).bounds.upper.events(4) = m_f;
+    problem.phases(1).bounds.lower.controls  << T_L;
+    problem.phases(1).bounds.upper.controls  << T_U;
+
+    problem.phases(1).bounds.lower.events << v_i, h_i, m_i, m_f;
+
+    problem.phases(1).bounds.upper.events << v_i, h_i, m_i, m_f;
+
     
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -234,14 +227,14 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x0(3,20);
+    DMatrix state_guess(3,20);
 
-    x0(1,colon()) = linspace(v_i,v_i, 20);
-    x0(2,colon()) = linspace(h_i,h_i, 20);
-    x0(3,colon()) = linspace(m_i,m_i, 20);
+    state_guess << linspace(v_i,v_i, 20),
+                   linspace(h_i,h_i, 20),
+                   linspace(m_i,m_i, 20);
 
     problem.phases(1).guess.controls       = T_U*ones(1,20);
-    problem.phases(1).guess.states         = x0;
+    problem.phases(1).guess.states         = state_guess;
     problem.phases(1).guess.time           = linspace(0.0, 15.0, 20); 
 
     
@@ -278,9 +271,9 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
