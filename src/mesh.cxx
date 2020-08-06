@@ -66,7 +66,7 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 
 		// If the error in this phase is not below the tolerance, then increment the nodes
 //	   if ( evec("end") > algorithm.ode_tolerance )   {  //EIGEN_UPDATE
-		if ( evec( evec.rows()  ) > algorithm.ode_tolerance )   {   
+		if ( evec( evec.rows() -1  ) > algorithm.ode_tolerance )   {   
 
 		    // Check convergence behaviour
 
@@ -87,14 +87,14 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 			  int istart = length(y)-decrease_count-1;
 			  int iend   = length(y)-1;
 
-           int deltai = iend-istart;
+           int deltai = iend-istart+1;
 
 //			  y = y(colon(istart,iend));  // EIGEN_UPDATE
-           y = y.block(istart,0,deltai,0);
+           y = y.block(istart,0,deltai,1);
 //			  x = x(colon(istart,iend));
-           x = x.block(istart,0,deltai,0);
+           x = x.block(istart,0,deltai,1);
 //			  evec = evec(colon(istart,iend));
-           evec = evec.block(istart,0,deltai,0);
+           evec = (evec.block(istart,0,deltai,1));
 
 			  
 			  PHI.resize(length(y),2);
@@ -129,12 +129,12 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 
 
 //			  yd = MAX( log(0.25*evec("end")), log(0.99*algorithm.ode_tolerance) );
-           yd = max( log(0.25*evec(length(evec))), log(0.99*algorithm.ode_tolerance) );
+           yd = max( log(0.25*evec(length(evec)-1)), log(0.99*algorithm.ode_tolerance) );
 
 //			  xd = (int) exp( (yd- theta(2))/theta(1) );
            xd = (int) exp( (yd- theta(1))/theta(0) );
 
-			  max_increment = max((int) algorithm.mr_max_increment_factor*Ncurrent,1);
+			  max_increment = MAX( algorithm.mr_max_increment_factor*Ncurrent,1);
 
 			  Nd = min( Ncurrent + max_increment, max(xd,Ncurrent+1) );
 
