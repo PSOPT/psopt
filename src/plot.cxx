@@ -336,7 +336,7 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
          }
          else {
 //                XY = x1 || y1;
-                  XY << x1, x2;
+                  XY << x1, y1;
          }
 
          int ny = MIN( y1.rows(), y1.cols() );

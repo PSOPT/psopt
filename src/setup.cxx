@@ -64,8 +64,11 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
         int nevents   = problem.phase[i].nevents;
         int npath     = problem.phase[i].npath;
         int nparam    = problem.phase[i].nparameters;
+        int nnodes    = problem.phase[i].nodes(i);
+        int nobserved = problem.phase[i].nobserved;
 
-
+   problem.phase[i].observation_nodes.resize(nobserved,nnodes);
+   problem.phase[i].observations.resize(nobserved,nnodes); 
 
 	problem.phase[i].scale.controls.resize(ncontrols,1);
 	problem.phase[i].scale.states.resize(nstates,1);
@@ -92,7 +95,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
    problem.phase[i].guess.controls.resize(0,0);
    problem.phase[i].guess.states.resize(0,0);
    problem.phase[i].guess.time.resize(0,0);
-   problem.phase[i].guess.parameters.resize(0,0);
+   problem.phase[i].guess.parameters.resize(nparam,1);
 
    problem.phase[i].name.states_ = new string[nstates];
    problem.phase[i].name.controls_ = new string[ncontrols];

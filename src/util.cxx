@@ -1335,3 +1335,20 @@ bool isSymmetric(const MatrixXd& m) {
 }
 
 
+MatrixXd GaussianRandom(long nrows, long ncols) {
+// Random Gaussian Matrix with zero mean and unit standard deviation.
+// Uses the transformation: R = sqrt(-2*log(R1))*cos(2*pi*R2)
+   MatrixXd R1 = (MatrixXd::Random(nrows,ncols)+ones(nrows,ncols))/2.0;
+   MatrixXd R2 = (MatrixXd::Random(nrows,ncols)+ones(nrows,ncols))/2.0;
+   MatrixXd R(nrows,ncols);
+   for(long i=0; i<nrows; i++) {
+   	for (long j=0; j<ncols;j++) {
+   	   R(i,j)= sqrt(-2.0*log(R1(i,j))+sqrt(PSOPT_extras::GetEPS()))*cos(2*pi*R2(i,j));
+   	}
+   }
+   
+   return R;
+
+}
+
+

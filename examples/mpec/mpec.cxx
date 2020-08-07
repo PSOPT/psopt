@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-////////////////        bryson_max_range.cxx         /////////////////////
+////////////////                mpec.cxx             /////////////////////
 //////////////////////////////////////////////////////////////////////////
 ////////////////           PSOPT  Example            /////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -26,7 +26,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
                       adouble* parameters,adouble& t0, adouble& tf,
                       adouble* xad, int iphase, Workspace* workspace)
 {
-   adouble y_f = final_states[ CINDEX(1) ];
+   adouble y_f = final_states[ 0 ];
 
    return pow( y_f - (5.0/3.0) , 2.0);
 }
@@ -38,10 +38,10 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
 adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
                      adouble& time, adouble* xad, int iphase, Workspace* workspace)
 {
-    adouble y = states[ CINDEX(1) ];
-    adouble s = controls[ CINDEX(1) ];
-    adouble p = controls[ CINDEX(2) ];
-    adouble q = controls[ CINDEX(3) ];
+    adouble y = states[   0 ];
+    adouble s = controls[ 0 ];
+    adouble p = controls[ 1 ];
+    adouble q = controls[ 2 ];
 
 
     adouble retval;
@@ -65,20 +65,20 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 {
 
 
-   adouble y = states[ CINDEX(1) ];
+   adouble y = states[ 0 ];
    adouble ydot;
 
 
-   adouble s = controls[ CINDEX(1) ];
-   adouble p = controls[ CINDEX(2) ];
-   adouble q = controls[ CINDEX(3) ];
+   adouble s = controls[ 0 ];
+   adouble p = controls[ 1 ];
+   adouble q = controls[ 2 ];
 
    ydot = 2.0 -s;
 
-   derivatives[ CINDEX(1) ] = ydot;
+   derivatives[ 0 ] = ydot;
 
 
-   path[ CINDEX(1) ] = -y - p + q;
+   path[ 0 ] = -y - p + q;
 
 }
 
@@ -91,10 +91,10 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             int iphase, Workspace* workspace)
 
 {
-   adouble y0 = initial_states[ CINDEX(1) ];
+   adouble y0 = initial_states[ 0 ];
 
 
-   e[ CINDEX(1) ] = y0;
+   e[ 0 ] = y0;
 
 }
 
@@ -137,8 +137,8 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   					= 1;
+    problem.nlinkages               = 0;
 
     psopt_level1_setup(problem);
 
@@ -150,15 +150,15 @@ int main(void)
     problem.phases(1).ncontrols 		= 3;
     problem.phases(1).nevents   		= 1;
     problem.phases(1).npath     		= 1;
-    problem.phases(1).nodes             = "[20]";
+    problem.phases(1).nodes         << 20;
 
     psopt_level2_setup(problem, algorithm);
 
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare DMatrix objects to store results //////////////
+///////////////////  Declare MatrixXd objects to store results //////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix y, controls, s, p, q, t;
+    MatrixXd y, controls, s, p, q, t;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter problem bounds information //////////////////////
@@ -166,28 +166,28 @@ int main(void)
 
     double y0 = -1.0;
 
-    problem.phases(1).bounds.lower.states(1) = -10.0;
+    problem.phases(1).bounds.lower.states(0) = -10.0;
 
 
 
-    problem.phases(1).bounds.upper.states(1) = 10.0;
+    problem.phases(1).bounds.upper.states(0) = 10.0;
 
 
 
-    problem.phases(1).bounds.lower.controls(1) = -1.0;
+    problem.phases(1).bounds.lower.controls(0) = -1.0;
+    problem.phases(1).bounds.lower.controls(1) = 0.0;
     problem.phases(1).bounds.lower.controls(2) = 0.0;
-    problem.phases(1).bounds.lower.controls(3) = 0.0;
 
-    problem.phases(1).bounds.upper.controls(1) = 1.0;
-    problem.phases(1).bounds.upper.controls(2) = inf;
-    problem.phases(1).bounds.upper.controls(3) = inf;
+    problem.phases(1).bounds.upper.controls(0) = 1.0;
+    problem.phases(1).bounds.upper.controls(1) = 10.0;
+    problem.phases(1).bounds.upper.controls(2) = 10.0;
 
-    problem.phases(1).bounds.lower.events(1) = y0;
-    problem.phases(1).bounds.upper.events(1) = y0;
+    problem.phases(1).bounds.lower.events(0) = y0;
+    problem.phases(1).bounds.upper.events(0) = y0;
 
 
-    problem.phases(1).bounds.upper.path(1) = 0.0;
-    problem.phases(1).bounds.lower.path(1) = 0.0;
+    problem.phases(1).bounds.upper.path(0) = 0.0;
+    problem.phases(1).bounds.lower.path(0) = 0.0;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -204,25 +204,22 @@ int main(void)
 
 
     problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
+    problem.endpoint_cost 		= &endpoint_cost;
     problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.events 				= &events;
+    problem.linkages				= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			= problem.phases(1).nodes(1);
+    int nnodes    			 = problem.phases(1).nodes(1);
     int ncontrols           = problem.phases(1).ncontrols;
     int nstates             = problem.phases(1).nstates;
 
-    DMatrix x_guess    =  zeros(nstates,nnodes);
-
-    x_guess(1,colon()) = y0*ones(1,nnodes);
 
     problem.phases(1).guess.controls       = zeros(ncontrols,nnodes);
-    problem.phases(1).guess.states         = x_guess;
+    problem.phases(1).guess.states         = y0*ones(1,nnodes);
     problem.phases(1).guess.time           = linspace(0.0,2.0,nnodes);
 
 
@@ -237,8 +234,7 @@ int main(void)
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.mesh_refinement             = "automatic";
-    algorithm.collocation_method = "trapezoidal";
-//    algorithm.defect_scaling = "jacobian-based";
+    algorithm.collocation_method 			= "trapezoidal";
     algorithm.ode_tolerance               = 1.e-6;
 
 
@@ -257,18 +253,18 @@ int main(void)
     y        = solution.get_states_in_phase(1);
     controls = solution.get_controls_in_phase(1);
     t        = solution.get_time_in_phase(1);
-    s        = controls(1,colon());
-    p        = controls(2,colon());
-    q        = controls(3,colon());
+    s        = controls.row(0); 
+    p        = controls.row(1); 
+    q        = controls.row(2); 
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    y.Save("y.dat");
-    controls.Save("controls.dat");
-    t.Save("t.dat");
+    Save(y,"y.dat");
+    Save(controls,"controls.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////

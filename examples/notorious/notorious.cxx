@@ -18,6 +18,8 @@
 
 #include "psopt.h"
 
+
+
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Define the observation function //////////
 //////////////////////////////////////////////////////////////////////////
@@ -30,8 +32,8 @@ void  observation_function( adouble* observations,
                             adouble* xad, int iphase, Workspace* workspace)
 {
 
-      observations[ CINDEX(1) ] = states[ CINDEX(1) ];
-      observations[ CINDEX(2) ] = states[ CINDEX(2) ];
+      observations[ 0 ] = states[ 0 ];
+      observations[ 1 ] = states[ 1 ];
 }
 
 
@@ -47,17 +49,17 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* xad, int iphase, Workspace* workspace)
 {
 
-   adouble x1 = states[ CINDEX(1) ];
-   adouble x2 = states[ CINDEX(2) ];
+   adouble x1 = states[ 0 ];
+   adouble x2 = states[ 1 ];
 
 
-   adouble p  = parameters[ CINDEX(1) ];
+   adouble p  = parameters[ 0 ];
    adouble t  = time;
 
    double mu = 60.0;
 
-   derivatives[CINDEX(1)] =  x2;
-   derivatives[CINDEX(2)] =  mu*mu*x1 - (mu*mu + p*p)*sin(p*t);
+   derivatives[0] =  x2;
+   derivatives[1] =  mu*mu*x1 - (mu*mu + p*p)*sin(p*t);
 
 
 }
@@ -87,6 +89,7 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
   // No linkages as this is a single phase problem
 }
 
+using namespace std;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define the main routine ///////////////////////////////
@@ -100,15 +103,26 @@ int main(void)
 
    double sigma = 0.05;
 
-   DMatrix theta, y1m, y2m, ym;
+   MatrixXd y1m, y2m;
 
-   theta = randu(1,nobs);
+
+//   theta = randu(1,nobs);
+
+   MatrixXd noise1= GaussianRandom(1,nobs);
+   
+   MatrixXd noise2= GaussianRandom(1,nobs);
+   
+   MatrixXd theta = (MatrixXd::Random(1,nobs)+ones(1,nobs))/2.0;
 
    sort(theta);
+   
+   MatrixXd ss = (pi*theta).array().sin();
+   MatrixXd cc = (pi*theta).array().cos();
 
-   y1m = sin( pi* theta ) + sigma*randn(1,nobs);
+   y1m =  ss + sigma*noise1;
 
-   y2m = pi*cos( pi*theta ) + sigma*randn(1,nobs);
+   y2m =  pi*cc + sigma*noise2;
+   
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -130,8 +144,8 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   							= 1;
+    problem.nlinkages                   	= 0;
 
     psopt_level1_setup(problem);
 
@@ -140,14 +154,14 @@ int main(void)
 /////////   Define phase related information & do level 2 setup /////////////
 /////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).nstates   		= 2;
-    problem.phases(1).ncontrols 		= 0;
-    problem.phases(1).nevents   		= 2;
-    problem.phases(1).npath     		= 0;
-    problem.phases(1).nparameters        	= 1;
-    problem.phases(1).nodes    		    	= "[80]";
-    problem.phases(1).nobserved                 = 2;
-    problem.phases(1).nsamples                  = nobs;
+    problem.phases(1).nstates   					= 2;
+    problem.phases(1).ncontrols 					= 0;
+    problem.phases(1).nevents   					= 2;
+    problem.phases(1).npath     					= 0;
+    problem.phases(1).nparameters        		= 1;
+    problem.phases(1).nodes    		    		<< 80;
+    problem.phases(1).nobserved              = 2;
+    problem.phases(1).nsamples               = nobs;
 
 
     psopt_level2_setup(problem, algorithm);
@@ -157,8 +171,9 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).observation_nodes      = (theta);
-    problem.phases(1).observations           = (y1m && y2m);
+    problem.phases(1).observation_nodes      = theta;
+    problem.phases(1).observations           << y1m, 
+                                                y2m;
 
 
 
@@ -167,23 +182,23 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).bounds.lower.states(1) =  -10.0;
-    problem.phases(1).bounds.lower.states(2) =  -100.0;
+    problem.phases(1).bounds.lower.states(0) =  -10.0;
+    problem.phases(1).bounds.lower.states(1) =  -100.0;
 
 
 
-    problem.phases(1).bounds.upper.states(1) =  10.0;
-    problem.phases(1).bounds.upper.states(2) =  100.0;
+    problem.phases(1).bounds.upper.states(0) =  10.0;
+    problem.phases(1).bounds.upper.states(1) =  100.0;
 
 
-    problem.phases(1).bounds.lower.parameters(1) =  -10.0;
-    problem.phases(1).bounds.upper.parameters(1) =   10.0;
+    problem.phases(1).bounds.lower.parameters(0) =  -10.0;
+    problem.phases(1).bounds.upper.parameters(0) =   10.0;
 
-    problem.phases(1).bounds.lower.events(1) =  0.0;
-    problem.phases(1).bounds.upper.events(1) =  0.0;
+    problem.phases(1).bounds.lower.events(0) =  0.0;
+    problem.phases(1).bounds.upper.events(0) =  0.0;
 
-    problem.phases(1).bounds.lower.events(2) =  pi;
-    problem.phases(1).bounds.upper.events(2) =  pi;
+    problem.phases(1).bounds.lower.events(1) =  pi;
+    problem.phases(1).bounds.upper.events(1) =  pi;
 
 
 
@@ -197,10 +212,10 @@ int main(void)
 ///////////////////  Register problem functions  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
-    problem.observation_function = & observation_function;
+    problem.dae 							= &dae;
+    problem.events 						= &events;
+    problem.linkages						= &linkages;
+    problem.observation_function 	= & observation_function;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
@@ -208,12 +223,10 @@ int main(void)
 
     int nnodes = problem.phases(1).nodes(1);
 
-    DMatrix state_guess;
-    state_guess = zeros(2,nnodes);
 
-    problem.phases(1).guess.states         = state_guess;
+    problem.phases(1).guess.states         = zeros(2,nnodes);
     problem.phases(1).guess.time           = linspace(0.0, 1.0, nnodes);
-    problem.phases(1).guess.parameters     = 0.0;
+    problem.phases(1).guess.parameters(1)  = 0.0;
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -252,26 +265,26 @@ int main(void)
     states = solution.get_states_in_phase(1);
     t      = solution.get_time_in_phase(1);
     p      = solution.get_parameters_in_phase(1);
-    x1     = states(1,colon());
-    x2     = states(2,colon());
+    x1     = states.row(0);
+    x2     = states.row(1);
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    states.Save("states.dat");
-    t.Save("t.dat");
-    p.Print("Estimated parameter");
-    Abs(p-pi).Print("Parameter error");
+    Save(states,"states.dat");
+    Save(t,"t.dat");
+    Print(p,"Estimated parameter");
+    printf( "\nParameter error %e\n", abs(p(0)-pi) );
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    plot(theta,ym(1,colon()),t,x1,problem.name, "time (s)", "observed x1", "x1m x1");
-    plot(theta,ym(2,colon()),t,x2,problem.name, "time (s)", "observed x2", "x2m x2");
+    plot(theta,y1m,t,x1,problem.name, "time (s)", "observed x1", "x1m x1");
+    plot(theta,y2m,t,x2,problem.name, "time (s)", "observed x2", "x2m x2");
 
 
 
