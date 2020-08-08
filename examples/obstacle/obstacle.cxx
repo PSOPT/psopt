@@ -38,7 +38,7 @@ adouble integrand_cost(adouble* states, adouble* controls,
                        int iphase, Workspace* workspace)
 {
     double V = 2.138;
-    adouble theta = controls[ CINDEX(1) ];
+    adouble theta = controls[ 0 ];
 
     adouble dxdt = V*cos(theta);
     adouble dydt = V*sin(theta);
@@ -64,11 +64,11 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* xad, int iphase, Workspace* workspace)
 {
 
-   adouble x    = states[ CINDEX(1) ];
-   adouble y    = states[ CINDEX(2) ];
+   adouble x    = states[ 0 ];
+   adouble y    = states[ 1 ];
 
 
-   adouble theta = controls[ CINDEX(1) ];
+   adouble theta = controls[ 0 ];
 
    double V = 2.138;
 
@@ -76,12 +76,12 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    adouble dydt = V*sin(theta);
 
 
-   derivatives[ CINDEX(1) ] = dxdt;
-   derivatives[ CINDEX(2) ] = dydt;
+   derivatives[ 0 ] = dxdt;
+   derivatives[ 1 ] = dydt;
 
 
-   path[ CINDEX(1) ] = pow(x-0.4,2.0) + pow(y-0.5,2.0);
-   path[ CINDEX(2) ] = pow(x-0.8,2.0) + pow(y-1.5,2.0);
+   path[ 0 ] = pow(x-0.4,2.0) + pow(y-0.5,2.0);
+   path[ 1 ] = pow(x-0.8,2.0) + pow(y-1.5,2.0);
 
 }
 
@@ -94,15 +94,15 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             int iphase, Workspace* workspace)
 
 {
-   adouble x0 = initial_states[ CINDEX(1) ];
-   adouble y0 = initial_states[ CINDEX(2) ];
-   adouble xf = final_states[   CINDEX(1) ];
-   adouble yf = final_states[   CINDEX(2) ];
+   adouble x0 = initial_states[ 0 ];
+   adouble y0 = initial_states[ 1 ];
+   adouble xf = final_states[   0 ];
+   adouble yf = final_states[   1 ];
 
-   e[ CINDEX(1) ] = x0;
-   e[ CINDEX(2) ] = y0;
-   e[ CINDEX(3) ] = xf;
-   e[ CINDEX(4) ] = yf;
+   e[ 0 ] = x0;
+   e[ 1 ] = y0;
+   e[ 2 ] = xf;
+   e[ 3 ] = yf;
 
 }
 
@@ -145,7 +145,7 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
+    problem.nphases   						= 1;
     problem.nlinkages                   = 0;
 
     psopt_level1_setup(problem);
@@ -154,11 +154,11 @@ int main(void)
 /////////   Define phase related information & do level 2 setup  ////////////
 /////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).nstates   		= 2;
-    problem.phases(1).ncontrols 		= 1;
-    problem.phases(1).nevents   		= 4;
+    problem.phases(1).nstates   						= 2;
+    problem.phases(1).ncontrols 						= 1;
+    problem.phases(1).nevents   						= 4;
     problem.phases(1).npath                     = 2;
-    problem.phases(1).nodes                     = "[20]";
+    problem.phases(1).nodes                     << 20;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -181,32 +181,23 @@ int main(void)
     double yf = 1.6;
 
 
-    problem.phases(1).bounds.lower.states(1) = xL;
-    problem.phases(1).bounds.lower.states(2) = yL;
+    problem.phases(1).bounds.lower.states    <<  xL, yL;
 
-    problem.phases(1).bounds.upper.states(1) = xU;
-    problem.phases(1).bounds.upper.states(2) = yU;
+    problem.phases(1).bounds.upper.states    <<  xU, yU;
 
+    problem.phases(1).bounds.lower.controls  << thetaL;
+    
+    problem.phases(1).bounds.upper.controls  << thetaU;
 
-    problem.phases(1).bounds.lower.controls(1) = thetaL;
-    problem.phases(1).bounds.upper.controls(1) = thetaU;
+    problem.phases(1).bounds.lower.events    << x0, y0, xf, yf;
 
-    problem.phases(1).bounds.lower.events(1) = x0;
-    problem.phases(1).bounds.lower.events(2) = y0;
-    problem.phases(1).bounds.lower.events(3) = xf;
-    problem.phases(1).bounds.lower.events(4) = yf;
+    problem.phases(1).bounds.upper.events    << x0, y0, xf, yf;
 
 
-    problem.phases(1).bounds.upper.events(1) = x0;
-    problem.phases(1).bounds.upper.events(2) = y0;
-    problem.phases(1).bounds.upper.events(3) = xf;
-    problem.phases(1).bounds.upper.events(4) = yf;
+    problem.phases(1).bounds.lower.path      <<  0.1, 0.1;
+    
+    problem.phases(1).bounds.upper.path      <<  100.0, 100.0;
 
-    problem.phases(1).bounds.lower.path(1) = 0.1;
-    problem.phases(1).bounds.upper.path(1) = 100.0;
-
-    problem.phases(1).bounds.lower.path(2) = 0.1;
-    problem.phases(1).bounds.upper.path(2) = 100.0;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -222,33 +213,33 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 				= &integrand_cost;
+    problem.endpoint_cost 					= &endpoint_cost;
+    problem.dae             				= &dae;
+    problem.events 							= &events;
+    problem.linkages							= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			= 30;
-    int ncontrols                       = problem.phases(1).ncontrols;
-    int nstates                         = problem.phases(1).nstates;
+    int nnodes    							 	= 30;
+    int ncontrols                       	= problem.phases(1).ncontrols;
+    int nstates                         	= problem.phases(1).nstates;
 
-    DMatrix u_guess    =  zeros(ncontrols,nnodes);
-    DMatrix x_guess    =  zeros(nstates,nnodes);
-    DMatrix time_guess =  linspace(0.0,1.0,nnodes);
+    MatrixXd u_guess    						= zeros(ncontrols,nnodes);
+    MatrixXd x_guess    						= zeros(nstates,nnodes);
+    MatrixXd time_guess 						= linspace(0.0,1.0,nnodes);
 
 
-    x_guess(1,colon()) = linspace(x0,xf,nnodes);
-    x_guess(2,colon()) = linspace(y0,yf,nnodes);
+    x_guess            							<< linspace(x0,xf,nnodes),
+                          							linspace(y0,yf,nnodes);
 
-    u_guess(1,colon()) = zeros(1,nnodes);
+    u_guess            							=  zeros(1,nnodes);
 
-    problem.phases(1).guess.controls       = u_guess;
-    problem.phases(1).guess.states         = x_guess;
-    problem.phases(1).guess.time           = time_guess;
+    problem.phases(1).guess.controls      = u_guess;
+    problem.phases(1).guess.states        = x_guess;
+    problem.phases(1).guess.time          = time_guess;
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -274,36 +265,35 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix states = solution.get_states_in_phase(1);
-    DMatrix theta  = solution.get_controls_in_phase(1);
-    DMatrix t      = solution.get_time_in_phase(1);
-    DMatrix mu     = solution.get_dual_path_in_phase(1);
-    DMatrix lambda = solution.get_dual_costates_in_phase(1);
+    MatrixXd states = solution.get_states_in_phase(1);
+    MatrixXd theta  = solution.get_controls_in_phase(1);
+    MatrixXd t      = solution.get_time_in_phase(1);
+    MatrixXd mu     = solution.get_dual_path_in_phase(1);
+    MatrixXd lambda = solution.get_dual_costates_in_phase(1);
 
-    DMatrix x = states(1,colon());
-    DMatrix y = states(2,colon());
+    MatrixXd x = states.row(0);
+    MatrixXd y = states.row(1);
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("obstacle_x.dat");
-    y.Save("obstacle_y.dat");
-    theta.Save("obstacle_theta.dat");
-    t.Save("obstacle_t.dat");
+    Save(x,"x.dat");
+    Save(y,"y.dat");
+    Save(theta,"theta.dat");
+    Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix alpha = colon(0.0, pi/20, 2*pi);
-
-    DMatrix xObs1 = sqrt(0.1)*cos(alpha) + 0.4;
-    DMatrix yObs1 = sqrt(0.1)*sin(alpha) + 0.5;
-
-    DMatrix xObs2 = sqrt(0.1)*cos(alpha) + 0.8;
-    DMatrix yObs2 = sqrt(0.1)*sin(alpha) + 1.5;
+    MatrixXd alpha = linspace(0.0, 2*pi, 100);
+    MatrixXd xObs1 = sqrt(0.1)*cos(alpha) + 0.4*ones(1,length(alpha));
+    MatrixXd yObs1 = sqrt(0.1)*sin(alpha) + 0.5*ones(1,length(alpha));
+    MatrixXd xObs2 = sqrt(0.1)*cos(alpha) + 0.8*ones(1,length(alpha));
+    MatrixXd yObs2 = sqrt(0.1)*sin(alpha) + 1.5*ones(1,length(alpha));
+        
 
     plot(x,y,xObs1,yObs1,xObs2,yObs2,problem.name+": x-y trajectory",
                                             "x", "y", "y obs1 obs2");

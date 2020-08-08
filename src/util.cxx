@@ -1352,3 +1352,43 @@ MatrixXd GaussianRandom(long nrows, long ncols) {
 }
 
 
+MatrixXd sin(const MatrixXd& m) {
+	 return m.array().sin(); 
+	 }
+MatrixXd cos(const MatrixXd& m) { 
+    return m.array().cos(); 
+    }
+MatrixXd tan(const MatrixXd& m) { 
+    return m.array().tan(); 
+    }
+MatrixXd asin(const MatrixXd& m) { 
+     return m.array().asin(); 
+     }
+MatrixXd acos(const MatrixXd& m) { 
+     return m.array().acos();
+      }
+MatrixXd atan(const MatrixXd& m) { 
+     return m.array().atan(); 
+      }
+MatrixXd sinh(const MatrixXd& m) { 
+     return m.array().sinh(); 
+     }
+MatrixXd cosh(const MatrixXd& m) { 
+     return m.array().cosh(); 
+     }
+MatrixXd tanh(const MatrixXd& m) { 
+     return m.array().tanh(); 
+     }
+MatrixXd exp(const MatrixXd& m) { 
+     return m.array().exp(); 
+     }
+MatrixXd log(const MatrixXd& m) { 
+     return m.array().log(); 
+     }
+MatrixXd log10(const MatrixXd& m) { 
+     return m.array().log10(); 
+     }
+MatrixXd sqrt(const MatrixXd& m) { 
+     return m.array().sqrt(); 
+     }
+

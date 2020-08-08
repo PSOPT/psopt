@@ -93,6 +93,7 @@ void plot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const cha
          }
          else {
 //                 XY = x || y;
+                   XY.resize(x.rows(), x.cols()+y.cols());
                    XY << x, y;
          }
 
@@ -202,7 +203,7 @@ void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, cons
          }
          else {
 //                 XY = x || y;
-
+                   XY.resize(x.rows(), x.cols()+y.cols());
                    XY << x, y;
          }
 
@@ -336,6 +337,7 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
          }
          else {
 //                XY = x1 || y1;
+                  XY.resize(x1.rows(), x1.cols()+y1.cols());
                   XY << x1, y1;
          }
 
@@ -414,6 +416,7 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
          }
          else {
 //               XY = x2 || y2;
+                 XY.resize(x2.rows(), x2.cols()+y2.cols());
                  XY << x2 , y2;
 
          }
@@ -487,6 +490,7 @@ void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const
          }
          else {
 //                XY = x1 || y1;
+                  XY.resize(x1.rows(), x1.cols()+y1.cols());
                   XY << x1, y1;
          }
 
@@ -565,6 +569,7 @@ void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const
          }
          else {
 //               XY = x2 || y2;
+                 XY.resize(x2.rows(), x2.cols()+y2.cols());
                  XY << x2, y2;
          }
 
@@ -640,6 +645,7 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
          }
          else {
 //                XY = x1 || y1;
+                XY.resize(x1.rows(), x1.cols()+y1.cols());
                 XY << x1 , y1;
          }
 
@@ -714,10 +720,11 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
                    x2 = x2.transpose().eval();
                    y2 = y2.transpose().eval();
                    XY.resize(x2.rows(), x2.cols()+y2.cols());
-                   XY<< x1,y1 ;
+                   XY<< x2,y2 ;
          }
          else {
 //               XY = x2 || y2;
+                 XY.resize(x2.rows(), x2.cols()+y2.cols());
                  XY << x2 , y2;
          }
 
@@ -762,6 +769,7 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
          }
          else {
 //               XY = x3 || y3;
+               XY.resize(x3.rows(), x3.cols()+y3.cols());
                XY << x3, y3;
          }
 
@@ -835,6 +843,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const string& title,  c
          }
          else {
 //                 XY = x || y;
+                   XY.resize(x.rows(), x.cols()+y.cols());
                    XY << x,y;
          }
 
@@ -938,6 +947,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
          }
          else {
 //                 XY = x || y;
+                 XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
 
@@ -1012,6 +1022,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
          }
          else {
 //                 XY = x || y;
+                 XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
 
@@ -1101,6 +1112,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
          }
          else {
 //                 XY = x || y;
+                 XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
 
@@ -1175,6 +1187,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
          }
          else {
 //                 XY = x || y;
+                 XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
 
@@ -1234,6 +1247,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
          }
          else {
 //                 XY = x || y;
+                 XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
 
