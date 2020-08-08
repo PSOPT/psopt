@@ -1094,12 +1094,9 @@ void Print(const MatrixXd& m, const char* text)
 
 MatrixXd linspace(double X1, double X2, long N)
 {
-     MatrixXd  m;
-     VectorXd  v1;
-     v1 = VectorXd::LinSpaced(N,X1,X2);
-     m = v1;
-     long lm = length(m);
-     m.resize(1,lm);
+     MatrixXd  m(1,N);
+     m = VectorXd::LinSpaced(N,X1,X2);
+     m.resize(1,N);
      return m;
 }
 

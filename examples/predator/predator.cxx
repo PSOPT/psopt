@@ -50,19 +50,19 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
        adouble x1, x2, p1, p2, p3, p4;
 
     // Differential states
-       x1 = states[CINDEX(1)];
-       x2 = states[CINDEX(2)];
+       x1 = states[0];
+       x2 = states[1];
 
 
     // Parameters
-       p1 = parameters[CINDEX(1)];
-       p2 = parameters[CINDEX(2)];
-	   p3 = parameters[CINDEX(3)];
-       p4 = parameters[CINDEX(4)];
+       p1 = parameters[0];
+       p2 = parameters[1];
+	    p3 = parameters[2];
+       p4 = parameters[3];
 
-       derivatives[CINDEX(1)] = -p1*x1 + p2*x1*x2;
+       derivatives[0] = -p1*x1 + p2*x1*x2;
 
-       derivatives[CINDEX(2)] = p3*x2 - p4*x1*x2;
+       derivatives[1] = p3*x2 - p4*x1*x2;
 
 }
 
@@ -114,15 +114,15 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name          	=       "Predator-prey example";
-    problem.outfilename         =       "predator.txt";
+    problem.name          			=       "Predator-prey example";
+    problem.outfilename         	=       "predator.txt";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
     problem.nphases   			        = 1;
-    problem.nlinkages                   = 0;
+    problem.nlinkages                 = 0;
 
     psopt_level1_setup(problem);
 
@@ -131,14 +131,14 @@ int main(void)
 /////////   Define phase related information & do level 2 setup /////////////
 /////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).nstates   		= 2;
-    problem.phases(1).ncontrols 		= 0;
-    problem.phases(1).nevents   		= 2;
-    problem.phases(1).npath     		= 0;
-    problem.phases(1).nparameters       = 4;
-    problem.phases(1).nodes    		    = 20;
-    problem.phases(1).nobserved         = 2;
-    problem.phases(1).nsamples          = 10;
+    problem.phases(1).nstates   				= 2;
+    problem.phases(1).ncontrols 				= 0;
+    problem.phases(1).nevents   				= 2;
+    problem.phases(1).npath     				= 0;
+    problem.phases(1).nparameters       	= 4;
+    problem.phases(1).nodes    		      << 20;
+    problem.phases(1).nobserved        	= 2;
+    problem.phases(1).nsamples          	= 10;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -149,47 +149,47 @@ int main(void)
    int iphase = 1;
    load_parameter_estimation_data(problem, iphase, "predator.dat");
 
-   problem.phases(1).observation_nodes.Print("observation nodes");
-   problem.phases(1).observations.Print("observations");
-   problem.phases(1).residual_weights.Print("weights");
+   Print(problem.phases(1).observation_nodes, "observation nodes");
+   Print(problem.phases(1).observations,"observations");
+   Print(problem.phases(1).residual_weights,"weights");
 
 
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare DMatrix objects to store results //////////////
+///////////////////  Declare MatrixXd objects to store results //////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, p, t;
+    MatrixXd x, p, t;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
 
+    problem.phases(1).bounds.lower.states(0) = 0.0;
     problem.phases(1).bounds.lower.states(1) = 0.0;
-    problem.phases(1).bounds.lower.states(2) = 0.0;
    
 
 
+    problem.phases(1).bounds.upper.states(0) = 3.0;
     problem.phases(1).bounds.upper.states(1) = 3.0;
-    problem.phases(1).bounds.upper.states(2) = 3.0;
-
-    problem.phases(1).bounds.lower.events(1) = 0.4;
-    problem.phases(1).bounds.lower.events(2) = 1.0;
-
-
-    problem.phases(1).bounds.upper.events(1) = 0.4;
-    problem.phases(1).bounds.upper.events(2) = 1.0;
+    
+    problem.phases(1).bounds.lower.events(0) = 0.4;
+    problem.phases(1).bounds.lower.events(1) = 1.0;
 
 
+    problem.phases(1).bounds.upper.events(0) = 0.4;
+    problem.phases(1).bounds.upper.events(1) = 1.0;
+
+
+    problem.phases(1).bounds.lower.parameters(0)  = -1.0;
     problem.phases(1).bounds.lower.parameters(1)  = -1.0;
-    problem.phases(1).bounds.lower.parameters(2)  = -1.0;
-	problem.phases(1).bounds.lower.parameters(3)  = -1.0;
-    problem.phases(1).bounds.lower.parameters(4)  = -1.0;
+	 problem.phases(1).bounds.lower.parameters(2)  = -1.0;
+    problem.phases(1).bounds.lower.parameters(3)  = -1.0;
 
+    problem.phases(1).bounds.upper.parameters(0)  = 5.0;
     problem.phases(1).bounds.upper.parameters(1)  = 5.0;
-    problem.phases(1).bounds.upper.parameters(2)  = 5.0;
-	problem.phases(1).bounds.upper.parameters(3)  = 5.0;
-    problem.phases(1).bounds.upper.parameters(4)  = 5.0;
+	 problem.phases(1).bounds.upper.parameters(2)  = 5.0;
+    problem.phases(1).bounds.upper.parameters(3)  = 5.0;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -213,17 +213,14 @@ int main(void)
 
     int nnodes =     (int) problem.phases(1).nsamples;
 
-    DMatrix state_guess(3, nnodes);
-    DMatrix param_guess(2,1);
+    MatrixXd state_guess(3, nnodes);
+    MatrixXd param_guess(4,1);
 
 
-    state_guess(1,colon()) = linspace(0.4, 0.4, nnodes );
-    state_guess(2,colon()) = linspace(1.0, 1.0, nnodes );
+    state_guess            << linspace(0.4, 0.4, nnodes ),
+                              linspace(1.0, 1.0, nnodes );
 	
-    param_guess(1) = 0.8;
-    param_guess(2) = 0.8;
-	param_guess(3) = 1.5;
-	param_guess(4) = 1.5;
+    param_guess << 0.8, 0.8, 1.5, 1.5;
 
     problem.phases(1).guess.states        = state_guess;
     problem.phases(1).guess.time          = linspace(0.0, 10.0, nnodes);
@@ -240,7 +237,7 @@ int main(void)
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "trapezoidal";
     algorithm.mesh_refinement             = "automatic";
-     algorithm.ode_tolerance               = 1.e-4;
+    algorithm.ode_tolerance               = 1.e-4;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   //////////////////
@@ -261,26 +258,27 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    t.Save("t.dat");
-    p.Print("Estimated parameters");
+    Save(x,"x.dat");
+    Save(t,"t.dat");
+    Save(p,"Estimated parameters");
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-     DMatrix tm;
-     DMatrix ym;
+     MatrixXd tm;
+     MatrixXd ym;
 
      tm = problem.phases(1).observation_nodes;
+     
      ym = problem.phases(1).observations;
 
 
 
      spplot(t,x,tm,ym,problem.name, "time (s)", "state x1", "x1 x2 y1 y2");
 
-	 spplot(t,x,tm,ym,problem.name, "time (s)", "state x1", "x1 x2 y1 y2", "pdf", "x1x2.pdf");
+  	  spplot(t,x,tm,ym,problem.name, "time (s)", "state x1", "x1 x2 y1 y2", "pdf", "x1x2.pdf");
 
 
 
