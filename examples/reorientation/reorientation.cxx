@@ -53,17 +53,17 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* xad, int iphase, Workspace* workspace)
 {
 
-    adouble u1 		= controls[ CINDEX(1) ];
-    adouble u2          = controls[ CINDEX(2) ];
-    adouble u3          = controls[ CINDEX(3) ];
-    adouble q4          = controls[ CINDEX(4) ];
+    adouble u1 		   = controls[ 0 ];
+    adouble u2          = controls[ 1 ];
+    adouble u3          = controls[ 2 ];
+    adouble q4          = controls[ 3 ];
 
-    adouble q1 		= states[ CINDEX(1) ];
-    adouble q2 		= states[ CINDEX(2) ];
-    adouble q3 		= states[ CINDEX(3) ];
-    adouble omega1 	= states[ CINDEX(4) ];
-    adouble omega2      = states[ CINDEX(5) ];
-    adouble omega3      = states[ CINDEX(6) ];
+    adouble q1 		   = states[ 0 ];
+    adouble q2 		   = states[ 1 ];
+    adouble q3 		   = states[ 2 ];
+    adouble omega1 	   = states[ 3 ];
+    adouble omega2      = states[ 4 ];
+    adouble omega3      = states[ 5 ];
 
     double Ix = 5621.0;
     double Iy = 4547.0;
@@ -79,15 +79,15 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
 
 
-    derivatives[ CINDEX(1) ] =   dq1;
-    derivatives[ CINDEX(2) ] =   dq2;
-    derivatives[ CINDEX(3) ] =   dq3;
-    derivatives[ CINDEX(4) ] =   domega1;
-    derivatives[ CINDEX(5) ] =   domega2;
-    derivatives[ CINDEX(6) ] =   domega3;
+    derivatives[ 0 ] =   dq1;
+    derivatives[ 1 ] =   dq2;
+    derivatives[ 2 ] =   dq3;
+    derivatives[ 3 ] =   domega1;
+    derivatives[ 4 ] =   domega2;
+    derivatives[ 5 ] =   domega3;
 
 
-    path[ CINDEX(1) ] = q1*q1 + q2*q2 + q3*q3 + q4*q4 - 1.0;
+    path[ 0 ] = q1*q1 + q2*q2 + q3*q3 + q4*q4 - 1.0;
 
 }
 
@@ -101,12 +101,12 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
 
 {
 
-    adouble q1i 	= initial_states[ CINDEX(1) ];
-    adouble q2i 	= initial_states[ CINDEX(2) ];
-    adouble q3i 	= initial_states[ CINDEX(3) ];
-    adouble omega1i 	= initial_states[ CINDEX(4) ];
-    adouble omega2i     = initial_states[ CINDEX(5) ];
-    adouble omega3i     = initial_states[ CINDEX(6) ];
+    adouble q1i 	      = initial_states[ 0 ];
+    adouble q2i 	      = initial_states[ 1 ];
+    adouble q3i 	      = initial_states[ 2 ];
+    adouble omega1i 	   = initial_states[ 3 ];
+    adouble omega2i     = initial_states[ 4 ];
+    adouble omega3i     = initial_states[ 5 ];
 
     adouble initial_controls[4], final_controls[4], q4i, q4f;
 
@@ -114,33 +114,33 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
 
     get_final_controls(   final_controls  , xad, iphase, workspace );
 
-    q4i = initial_controls[ CINDEX(4) ];
+    q4i = initial_controls[ 3 ];
 
-    q4f = final_controls[   CINDEX(4) ];
+    q4f = final_controls[   3 ];
 
-    adouble q1f 	= final_states[ CINDEX(1) ];
-    adouble q2f 	= final_states[ CINDEX(2) ];
-    adouble q3f 	= final_states[ CINDEX(3) ];
-    adouble omega1f 	= final_states[ CINDEX(4) ];
-    adouble omega2f     = final_states[ CINDEX(5) ];
-    adouble omega3f     = final_states[ CINDEX(6) ];
+    adouble q1f 	      = final_states[ 0 ];
+    adouble q2f 	      = final_states[ 1 ];
+    adouble q3f 	      = final_states[ 2 ];
+    adouble omega1f 	   = final_states[ 3 ];
+    adouble omega2f     = final_states[ 4 ];
+    adouble omega3f     = final_states[ 5 ];
 
 
-    e[ CINDEX(1)  ] 	= q1i;
-    e[ CINDEX(2)  ]     = q2i;
-    e[ CINDEX(3)  ]     = q3i;
-    e[ CINDEX(4)  ]   	= q4i;
-    e[ CINDEX(5)  ]   	= omega1i;
-    e[ CINDEX(6)  ]     = omega2i;
-    e[ CINDEX(7)  ]  	= omega3i;
+    e[ 0  ] 	= q1i;
+    e[ 1  ]    = q2i;
+    e[ 2  ]    = q3i;
+    e[ 3  ]   	= q4i;
+    e[ 4  ]   	= omega1i;
+    e[ 5  ]    = omega2i;
+    e[ 6  ]  	= omega3i;
 
-    e[ CINDEX(8)  ] 	= q1f;
-    e[ CINDEX(9)  ]     = q2f;
-    e[ CINDEX(10) ]     = q3f;
-    e[ CINDEX(11) ]    	= q4f;
-    e[ CINDEX(12) ]   	= omega1f;
-    e[ CINDEX(13) ]     = omega2f;
-    e[ CINDEX(14) ]  	= omega3f;
+    e[ 7  ] 	= q1f;
+    e[ 8  ]    = q2f;
+    e[ 9 ]     = q3f;
+    e[ 10 ]    = q4f;
+    e[ 11 ]   	= omega1f;
+    e[ 12 ]    = omega2f;
+    e[ 13 ]  	= omega3f;
 
 
 }
@@ -186,8 +186,8 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   					= 1;
+    problem.nlinkages               = 0;
 
     psopt_level1_setup(problem);
 
@@ -199,7 +199,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 4;
     problem.phases(1).nevents   		= 14;
     problem.phases(1).npath     		= 1;
-    problem.phases(1).nodes                     = "[60]";
+    problem.phases(1).nodes         << 60;
 
 
     psopt_level2_setup(problem, algorithm);
@@ -211,31 +211,48 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).bounds.lower.states = "[-1.0    -1.0    -1.0   -0.5    -0.5  -0.5]";
-    problem.phases(1).bounds.upper.states = "[ 1.0     1.0     1.0    0.5     0.5   0.5]";
+    problem.phases(1).bounds.lower.states << -1.0,    -1.0,    -1.0,   -0.5,    -0.5,  -0.5;
+    problem.phases(1).bounds.upper.states <<  1.0,     1.0,     1.0,    0.5,     0.5,   0.5;
 
 
-    problem.phases(1).bounds.lower.controls = "[-50.0  -50.0 -50.0  -1.0]";
+    problem.phases(1).bounds.lower.controls << -50.0,  -50.0, -50.0,  -1.0;
 
-    problem.phases(1).bounds.upper.controls = "[ 50.0   50.0  50.0   1.0]";
+    problem.phases(1).bounds.upper.controls <<  50.0,   50.0,  50.0,   1.0;
 
 
-    problem.phases(1).bounds.lower.path(1) = 0.000;
+    problem.phases(1).bounds.lower.path(0) = 0.000;
 
-    problem.phases(1).bounds.upper.path(1) =  0.000;
+    problem.phases(1).bounds.upper.path(0) = 0.000;
 
-    DMatrix q0, qf, omega0, omegaf;
+    MatrixXd q0(4,1), qf(4,1), omega0(3,1), omegaf(3,1);
 
     double phi = 150.0*(pi/180.0);
 
-    q0(1) = 0.0; q0(2) = 0.0; q0(3)=0.0; q0(4)=1.0;
-    qf(1) = sin(phi/2.0); qf(2) = 0.0; qf(3) = 0.0; qf(4) = cos(phi/2.0);
+    q0(0) = 0.0;          q0(1) = 0.0; q0(2) = 0.0; q0(3) = 1.0;
+    qf(0) = sin(phi/2.0); qf(1) = 0.0; qf(2) = 0.0; qf(3) = cos(phi/2.0);
 
     omega0 = zeros(1,3); omegaf = zeros(1,3);
+     
 
-    problem.phases(1).bounds.lower.events = q0 || omega0 || qf || omegaf;
+    problem.phases(1).bounds.lower.events(0) = q0(0); 
+    problem.phases(1).bounds.lower.events(1) = q0(1);
+    problem.phases(1).bounds.lower.events(2) = q0(2);
+    problem.phases(1).bounds.lower.events(3) = q0(3);     
+    problem.phases(1).bounds.lower.events(4) = omega0(0);
+    problem.phases(1).bounds.lower.events(5) = omega0(1);
+    problem.phases(1).bounds.lower.events(6) = omega0(2);  
+    
+    problem.phases(1).bounds.lower.events(7)  = qf(0); 
+    problem.phases(1).bounds.lower.events(8)  = qf(1);
+    problem.phases(1).bounds.lower.events(9)  = qf(2);  
+    problem.phases(1).bounds.lower.events(10) = qf(3);  
+    problem.phases(1).bounds.lower.events(11) = omegaf(0);
+    problem.phases(1).bounds.lower.events(12) = omegaf(1);
+    problem.phases(1).bounds.lower.events(13) = omegaf(2);          
+    
+   
     problem.phases(1).bounds.upper.events = problem.phases(1).bounds.lower.events;
-
+    
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
     problem.phases(1).bounds.upper.StartTime    = 0.0;
@@ -250,32 +267,33 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 		= &integrand_cost;
+    problem.endpoint_cost 			= &endpoint_cost;
+    problem.dae             		= &dae;
+    problem.events 					= &events;
+    problem.linkages					= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			= problem.phases(1).nodes(1);
-    int ncontrols                       = problem.phases(1).ncontrols;
-    int nstates                         = problem.phases(1).nstates;
+    int nnodes    			= problem.phases(1).nodes(0);
+    int ncontrols          = problem.phases(1).ncontrols;
+    int nstates            = problem.phases(1).nstates;
 
-    DMatrix state_guess    =  zeros(nstates,nnodes);
-    DMatrix control_guess  =  50.0*ones(ncontrols,nnodes);
-    DMatrix time_guess     =  linspace(0.0,40,nnodes);
+    MatrixXd state_guess    =  zeros(nstates,nnodes);
+    MatrixXd control_guess  =  50.0*ones(ncontrols,nnodes);
+    MatrixXd time_guess     =  linspace(0.0,40,nnodes);
 
 
-    state_guess(1, colon() ) = linspace( q0(1), qf(1), nnodes );
-    state_guess(2, colon() ) = linspace( q0(2), qf(2), nnodes );
-    state_guess(3, colon() ) = linspace( q0(3), qf(3), nnodes );
-    control_guess(4, colon() )=linspace( q0(4), qf(4), nnodes );
-    state_guess(4, colon() ) = linspace( omega0(1), omegaf(1), nnodes );
-    state_guess(5, colon() ) = linspace( omega0(2), omegaf(2), nnodes );
-    state_guess(6, colon() ) = linspace( omega0(3), omegaf(3), nnodes );
+    state_guess              << linspace( q0(0), qf(0), nnodes ),
+                                linspace( q0(1), qf(1), nnodes ),
+                                linspace( q0(2), qf(2), nnodes ),
+                                linspace( omega0(0), omegaf(0), nnodes ),
+                                linspace( omega0(1), omegaf(1), nnodes ),
+                                linspace( omega0(2), omegaf(2), nnodes );
+                                
+    control_guess.row(3) = linspace( q0(3), qf(3), nnodes );
 
     problem.phases(1).guess.states   = state_guess;
     problem.phases(1).guess.controls = control_guess;
@@ -309,33 +327,44 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix states, controls, t, q1, q2, q3, q4, omega, u, q;
+    MatrixXd states, controls, t, q1, q2, q3, q4, omega, u, q;
 
     states      = solution.get_states_in_phase(1);
     controls    = solution.get_controls_in_phase(1);
     t           = solution.get_time_in_phase(1);
 
-    q1 = states(1,colon());
-    q2 = states(2,colon());
-    q3 = states(3,colon());
-    q4 = controls(4, colon());
+    q1 = states.row(0);
+    q2 = states.row(1);
+    q3 = states.row(2);
+    q4 = controls.row(3);
+    
+    q.resize(4,length(t));
 
-    q = q1 && q2 && q3 && q4;
+    q << q1 , 
+         q2 , 
+         q3 , 
+         q4;
 
-    omega = states(colon(4,6), colon());
-
-    u = controls(colon(1,3), colon());
-
-
+    omega.resize(3, length(t)); 
+    
+    omega << states.row(3),
+             states.row(4),
+             states.row(5);
+    
+    u.resize(3,length(t));
+     
+    u << controls.row(0),
+         controls.row(1),
+         controls.row(2);
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    states.Save("states.dat");
-    controls.Save("controls.dat");
-    t.Save("t.dat");
+    Save(states, "states.dat");
+    Save(controls, "controls.dat");
+    Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////
