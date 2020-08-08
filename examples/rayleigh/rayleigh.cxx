@@ -36,8 +36,8 @@ adouble integrand_cost(adouble* states, adouble* controls,
                        adouble* parameters, adouble& time, adouble* xad,
                        int iphase, Workspace* workspace)
 {
-  adouble x1 = states[CINDEX(1)];
-  adouble u = controls[CINDEX(1)];
+  adouble x1 = states[0];
+  adouble u = controls[0];
 
   return  (u*u + x1*x1);
 }
@@ -51,17 +51,17 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* xad, int iphase, Workspace* workspace)
 {
 
-   adouble x1 = states[CINDEX(1)];
-   adouble x2 = states[CINDEX(2)];
+   adouble x1 = states[0];
+   adouble x2 = states[1];
 
-   adouble u = controls[CINDEX(1)];
+   adouble u = controls[0];
 
    double p = 0.14;
 
-   derivatives[ CINDEX(1) ] = x2;
-   derivatives[ CINDEX(2) ] = -x1 + x2*(1.4-p*x2*x2) + 4.0*u;
+   derivatives[ 0 ] = x2;
+   derivatives[ 1 ] = -x1 + x2*(1.4-p*x2*x2) + 4.0*u;
 
-   path[ CINDEX(1) ] = u + x1/6.0;
+   path[ 0 ] = u + x1/6.0;
 }
 
 
@@ -73,11 +73,11 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
             int iphase, Workspace* workspace)
 {
-   adouble x10 = initial_states[ CINDEX(1) ];
-   adouble x20 = initial_states[ CINDEX(2) ];
+   adouble x10 = initial_states[ 0 ];
+   adouble x20 = initial_states[ 1 ];
 
-   e[ CINDEX(1) ] = x10;
-   e[ CINDEX(2) ] = x20;
+   e[ 0 ] = x10;
+   e[ 1 ] = x20;
 
 }
 
@@ -112,15 +112,15 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name        		= "Rayleigh problem";
-    problem.outfilename                 = "rayleigh.txt";
+    problem.name        							= "Rayleigh problem";
+    problem.outfilename                	 	= "rayleigh.txt";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////  Declare problem level constants & do level 1 setup ///////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   								= 1;
+    problem.nlinkages                   		= 0;
 
     psopt_level1_setup(problem);
 
@@ -130,11 +130,11 @@ int main(void)
 /////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).nstates   		= 2;
-    problem.phases(1).ncontrols 		= 1;
-    problem.phases(1).nevents   		= 2;
-    problem.phases(1).npath     		= 1;
-    problem.phases(1).nodes                     = "[80]";
+    problem.phases(1).nstates   					= 2;
+    problem.phases(1).ncontrols 					= 1;
+    problem.phases(1).nevents   					= 2;
+    problem.phases(1).npath     					= 1;
+    problem.phases(1).nodes                  << 80;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -150,23 +150,23 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
+    problem.phases(1).bounds.lower.states(0) 		= -10.0;
     problem.phases(1).bounds.lower.states(1) 		= -10.0;
-    problem.phases(1).bounds.lower.states(2) 		= -10.0;
 
-    problem.phases(1).bounds.upper.states(1)	 	= 10.0;
-    problem.phases(1).bounds.upper.states(2) 		= 10.0;
+    problem.phases(1).bounds.upper.states(0)	 	   = 10.0;
+    problem.phases(1).bounds.upper.states(1) 		= 10.0;
 
-    problem.phases(1).bounds.lower.controls(1)		= -10.0;
-    problem.phases(1).bounds.upper.controls(1)	 	= 10.0;
+    problem.phases(1).bounds.lower.controls(0)		= -10.0;
+    problem.phases(1).bounds.upper.controls(0)	 	= 10.0;
 
+    problem.phases(1).bounds.lower.events(0) 		= -5.0;
     problem.phases(1).bounds.lower.events(1) 		= -5.0;
-    problem.phases(1).bounds.lower.events(2) 		= -5.0;
 
+    problem.phases(1).bounds.upper.events(0) 		= -5.0;
     problem.phases(1).bounds.upper.events(1) 		= -5.0;
-    problem.phases(1).bounds.upper.events(2) 		= -5.0;
 
-    problem.phases(1).bounds.lower.path(1) = -100.0;
-    problem.phases(1).bounds.upper.path(1) = 0.0;
+    problem.phases(1).bounds.lower.path(0) 			= -100.0;
+    problem.phases(1).bounds.upper.path(0) 			= 0.0;
 
     problem.phases(1).bounds.lower.StartTime   		= 0.0;
     problem.phases(1).bounds.upper.StartTime   		= 0.0;
@@ -179,23 +179,23 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 								= &integrand_cost;
+    problem.endpoint_cost 									= &endpoint_cost;
+    problem.dae 												= &dae;
+    problem.events 											= &events;
+    problem.linkages											= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x0(2,30);
+    DMatrix state_guess(2,30);
 
-    x0(1,colon()) = -5.0*ones(1,30);
-    x0(2,colon()) = -5.0*ones(1, 30);
+    state_guess   << -5.0*ones(1,30),
+                     -5.0*ones(1, 30);
 
     problem.phases(1).guess.controls       = zeros(1,30);
-    problem.phases(1).guess.states         = x0;
+    problem.phases(1).guess.states         = state_guess;
     problem.phases(1).guess.time           = linspace(0.0, 4.5, 30);
 
 
