@@ -50,40 +50,40 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
        adouble x1, x2, x3, p1, p2, t;
 
     // Differential states
-       x1 = states[CINDEX(1)];
-       x2 = states[CINDEX(2)];
-       x3 = states[CINDEX(3)];
+       x1 = states[0];
+       x2 = states[1];
+       x3 = states[2];
 
     // Parameters
-       p1 = parameters[CINDEX(1)];
-       p2 = parameters[CINDEX(2)];
+       p1 = parameters[0];
+       p2 = parameters[1];
 
        t= time;
 
-	   ADMatrix M(3,3), f(3,1), dxdt(3,1), x(3,1), y(3,1);
+	   AutoDiffMatrix M(3,3), f(3,1), dxdt(3,1), x(3,1), y(3,1);
 
-	   x(1,1) = x1; x(2,1) = x2; x(3,1) = x3;
+	   x(0) = x1; x(1) = x2; x(2) = x3;
 
-	   M(1,1) = p2-p1*cos(p2*t);  M(1,2) = 0.0; M(1,3) = p2 + p1*sin(p2*t);
-	   M(2,1) = 0.0;              M(2,2) = p1;  M(2,3) = 0.0;
-	   M(3,1) = -p2+p1*sin(p2*t); M(3,2) = 0.0; M(3,3) = p2 + p1*cos(p2*t);
+	   M(0,0) = p2-p1*cos(p2*t);  M(0,1) = 0.0; M(0,2) = p2 + p1*sin(p2*t);
+	   M(1,0) = 0.0;              M(1,1) = p1;  M(1,2) = 0.0;
+	   M(2,0) = -p2+p1*sin(p2*t); M(2,1) = 0.0; M(2,2) = p2 + p1*cos(p2*t);
 	   
-	   f(1,1) = exp(t)*(-1.0 + 19.0*( cos(t) - sin(t) ) );
-	   f(2,1) = exp(t)*(-18.0);
-	   f(3,1) = exp(t)*(1.0 - 19.0*( cos(t) + sin(t) ) );
+	   f(0) = exp(t)*(-1.0 + 19.0*( cos(t) - sin(t) ) );
+	   f(1) = exp(t)*(-18.0);
+	   f(2) = exp(t)*(1.0 - 19.0*( cos(t) + sin(t) ) );
 
        // Differential equations
 
 
-           product_ad(M, x, &y);
+      product_ad(M, x, &y);
 
 	   sum_ad(y, f, &dxdt );
 
-           derivatives[CINDEX(1)] = dxdt(1,1);
+      derivatives[0] = dxdt(0);
 
-           derivatives[CINDEX(2)] = dxdt(2,1);
+      derivatives[1] = dxdt(1);
 
-	   derivatives[CINDEX(3)] = dxdt(3,1);
+	   derivatives[2] = dxdt(2);
 
 }
 
@@ -136,15 +136,15 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name          	=       "Parameter estimation for ODE with two parameters";
-    problem.outfilename         =       "param2.txt";
+    problem.name          			=       "Parameter estimation for ODE with two parameters";
+    problem.outfilename         	=       "param2.txt";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
     problem.nphases   			        = 1;
-    problem.nlinkages                   = 0;
+    problem.nlinkages                 = 0;
 
     psopt_level1_setup(problem);
 
@@ -153,14 +153,14 @@ int main(void)
 /////////   Define phase related information & do level 2 setup /////////////
 /////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).nstates   		= 3;
-    problem.phases(1).ncontrols 		= 0;
-    problem.phases(1).nevents   		= 3;
-    problem.phases(1).npath     		= 0;
-    problem.phases(1).nparameters               = 2;
-    problem.phases(1).nodes    		        = 40;
-    problem.phases(1).nobserved                 = 3;
-    problem.phases(1).nsamples                  = 129;
+    problem.phases(1).nstates   			= 3;
+    problem.phases(1).ncontrols 			= 0;
+    problem.phases(1).nevents   			= 3;
+    problem.phases(1).npath     			= 0;
+    problem.phases(1).nparameters      = 2;
+    problem.phases(1).nodes    		   << 40;
+    problem.phases(1).nobserved        = 3;
+    problem.phases(1).nsamples         = 129;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -169,49 +169,50 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
    int iphase = 1;
+   
    load_parameter_estimation_data(problem, iphase, "param2.dat");
 
-   problem.phases(1).observation_nodes.Print("observation nodes");
-   problem.phases(1).observations.Print("observations");
-   problem.phases(1).residual_weights.Print("weights");
+   Print(problem.phases(1).observation_nodes,"observation nodes");
+   Print(problem.phases(1).observations, "observations");
+   Print(problem.phases(1).residual_weights, "weights");
 
 
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare DMatrix objects to store results //////////////
+///////////////////  Declare MatrixXd objects to store results //////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x, p, t;
+    MatrixXd x, p, t;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
 
+    problem.phases(1).bounds.lower.states(0) = 0.0;
     problem.phases(1).bounds.lower.states(1) = 0.0;
     problem.phases(1).bounds.lower.states(2) = 0.0;
-    problem.phases(1).bounds.lower.states(3) = 0.0;
 
 
+    problem.phases(1).bounds.upper.states(0) = 30.0;
     problem.phases(1).bounds.upper.states(1) = 30.0;
     problem.phases(1).bounds.upper.states(2) = 30.0;
-    problem.phases(1).bounds.upper.states(3) = 30.0;
 
 
+    problem.phases(1).bounds.lower.events(0) = 0.0;
     problem.phases(1).bounds.lower.events(1) = 0.0;
     problem.phases(1).bounds.lower.events(2) = 0.0;
-    problem.phases(1).bounds.lower.events(3) = 0.0;
 
 
+    problem.phases(1).bounds.upper.events(0) = 0.0;
     problem.phases(1).bounds.upper.events(1) = 0.0;
     problem.phases(1).bounds.upper.events(2) = 0.0;
-    problem.phases(1).bounds.upper.events(3) = 0.0;
 
 
+    problem.phases(1).bounds.lower.parameters(0)  = 0.0;
     problem.phases(1).bounds.lower.parameters(1)  = 0.0;
-    problem.phases(1).bounds.lower.parameters(2)  = 0.0;
 
+    problem.phases(1).bounds.upper.parameters(0)  = 30.0;
     problem.phases(1).bounds.upper.parameters(1)  = 30.0;
-    problem.phases(1).bounds.upper.parameters(2)  = 30.0;
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
     problem.phases(1).bounds.upper.StartTime    = 0.0;
@@ -234,16 +235,16 @@ int main(void)
 
     int nnodes =     (int) problem.phases(1).nsamples;
 
-    DMatrix state_guess(3, nnodes);
-    DMatrix param_guess(2,1);
+    MatrixXd state_guess(3, nnodes);
+    MatrixXd param_guess(2,1);
 
 
-    state_guess(1,colon()) = linspace(1.0, exp(pi), nnodes );
-    state_guess(2,colon()) = linspace(1.0, exp(pi), nnodes );
-    state_guess(3,colon()) = linspace(1.0, exp(pi), nnodes );
+    state_guess << linspace(1.0, exp(pi), nnodes );
+                   linspace(1.0, exp(pi), nnodes );
+                   linspace(1.0, exp(pi), nnodes );
 
-    param_guess(1) = 19.0*1.5;
-    param_guess(2) = 1.0*1.5;
+    param_guess  << 19.0*1.5;
+                    1.0*1.5;
 
     problem.phases(1).guess.states        = state_guess;
     problem.phases(1).guess.time          = linspace(0.0, pi, nnodes);
@@ -283,29 +284,29 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    t.Save("t.dat");
-    p.Print("Estimated parameters");
+    Save(x,"x.dat");
+    Save(t,"t.dat");
+    Print(p,"Estimated parameters");
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-     DMatrix tm;
-     DMatrix ym;
+     MatrixXd tm;
+     MatrixXd ym;
 
      tm = problem.phases(1).observation_nodes;
      ym = problem.phases(1).observations;
 
-     spplot(t,x(1,colon()),tm,ym(1,colon()),problem.name, "time (s)", "state x1", "x1 y1");
-     spplot(t,x(2,colon()),tm,ym(2,colon()),problem.name, "time (s)", "state x2", "x2 y2");
-     spplot(t,x(3,colon()),tm,ym(3,colon()),problem.name, "time (s)", "state x3", "x3 y3");
+     spplot(t,x.row(0),tm,ym.row(0),problem.name, "time (s)", "state x1", "x1 y1");
+     spplot(t,x.row(1),tm,ym.row(1),problem.name, "time (s)", "state x2", "x2 y2");
+     spplot(t,x.row(2),tm,ym.row(2),problem.name, "time (s)", "state x3", "x3 y3");
 
 
-     spplot(t,x(1,colon()),tm,ym(1,colon()),problem.name, "time (s)", "state x1", "x1 y1", "pdf", "x1.pdf");
-     spplot(t,x(2,colon()),tm,ym(2,colon()),problem.name, "time (s)", "state x2", "x2 y2", "pdf", "x2.pdf");
-     spplot(t,x(3,colon()),tm,ym(3,colon()),problem.name, "time (s)", "state x3", "x3 y3", "pdf", "x3.pdf");
+     spplot(t,x.row(0),tm,ym.row(0),problem.name, "time (s)", "state x1", "x1 y1", "pdf", "x1.pdf");
+     spplot(t,x.row(1),tm,ym.row(1),problem.name, "time (s)", "state x2", "x2 y2", "pdf", "x2.pdf");
+     spplot(t,x.row(2),tm,ym.row(2),problem.name, "time (s)", "state x3", "x3 y3", "pdf", "x3.pdf");
 
 
 }
