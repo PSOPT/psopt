@@ -50,13 +50,13 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 {
    adouble xdot, ydot, vdot;
 
-   adouble x1 = states[ CINDEX(1) ];
-   adouble x2 = states[ CINDEX(2) ];
-   adouble x3 = states[ CINDEX(3) ];
-   adouble x4 = states[ CINDEX(4) ];
+   adouble x1 = states[ 0 ];
+   adouble x2 = states[ 1 ];
+   adouble x3 = states[ 2 ];
+   adouble x4 = states[ 3 ];
 
-   adouble u1 = controls[ CINDEX(1) ];
-   adouble u2 = controls[ CINDEX(2) ];
+   adouble u1 = controls[ 0 ];
+   adouble u2 = controls[ 1 ];
 
    adouble num1 =  sin(x3)*( (9.0/4.0)*cos(x3)*x1*x1+2*x2*x2 )
                    + (4.0/3.0)*(u1-u2)-(3.0/2.0)*cos(x3)*u2;
@@ -66,10 +66,10 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    adouble den  =  31.0/36.0 + 9.0/4.0*pow(sin(x3),2);
 
-   derivatives[ CINDEX(1) ] = num1/den;
-   derivatives[ CINDEX(2) ] = num2/den;
-   derivatives[ CINDEX(3) ] = x2 - x1;
-   derivatives[ CINDEX(4) ] = x1;
+   derivatives[ 0 ] = num1/den;
+   derivatives[ 1 ] = num2/den;
+   derivatives[ 2 ] = x2 - x1;
+   derivatives[ 3 ] = x1;
 
 
 }
@@ -82,23 +82,23 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
             int iphase, Workspace* workspace)
 {
-   adouble x10 = initial_states[ CINDEX(1) ];
-   adouble x20 = initial_states[ CINDEX(2) ];
-   adouble x30 = initial_states[ CINDEX(3) ];
-   adouble x40 = initial_states[ CINDEX(4) ];
-   adouble x1f = final_states[ CINDEX(1) ];
-   adouble x2f = final_states[ CINDEX(2) ];
-   adouble x3f = final_states[ CINDEX(3) ];
-   adouble x4f = final_states[ CINDEX(4) ];
+   adouble x10 = initial_states[ 0 ];
+   adouble x20 = initial_states[ 1 ];
+   adouble x30 = initial_states[ 2 ];
+   adouble x40 = initial_states[ 3 ];
+   adouble x1f = final_states[ 0 ];
+   adouble x2f = final_states[ 1 ];
+   adouble x3f = final_states[ 2 ];
+   adouble x4f = final_states[ 3 ];
 
-   e[ CINDEX(1) ] = x10;
-   e[ CINDEX(2) ] = x20;
-   e[ CINDEX(3) ] = x30;
-   e[ CINDEX(4) ] = x40;
-   e[ CINDEX(5) ] = x1f;
-   e[ CINDEX(6) ] = x2f;
-   e[ CINDEX(7) ] = x3f;
-   e[ CINDEX(8) ] = x4f;
+   e[ 0 ] = x10;
+   e[ 1 ] = x20;
+   e[ 2 ] = x30;
+   e[ 3 ] = x40;
+   e[ 4 ] = x1f;
+   e[ 5 ] = x2f;
+   e[ 6 ] = x3f;
+   e[ 7 ] = x4f;
 
 }
 
@@ -132,16 +132,16 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name        		= "Two link robotic arm";
+    problem.name        						= "Two link robotic arm";
 
-    problem.outfilename                 = "twolink.txt";
+    problem.outfilename                 	= "twolink.txt";
 
 ////////////////////////////////////////////////////////////////////////////
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   							= 1;
+    problem.nlinkages                   	= 0;
 
     psopt_level1_setup(problem);
 
@@ -150,11 +150,11 @@ int main(void)
 /////////   Define phase related information & do level 2 setup /////////////
 /////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).nstates   		= 4;
-    problem.phases(1).ncontrols 		= 2;
-    problem.phases(1).nevents   		= 8;
-    problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes                     = 40;
+    problem.phases(1).nstates   				= 4;
+    problem.phases(1).ncontrols 				= 2;
+    problem.phases(1).nevents   				= 8;
+    problem.phases(1).npath     				= 0;
+    problem.phases(1).nodes               << 40;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -170,30 +170,30 @@ int main(void)
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
+    problem.phases(1).bounds.lower.states(0) = -2.0;
     problem.phases(1).bounds.lower.states(1) = -2.0;
     problem.phases(1).bounds.lower.states(2) = -2.0;
     problem.phases(1).bounds.lower.states(3) = -2.0;
-    problem.phases(1).bounds.lower.states(4) = -2.0;
 
+    problem.phases(1).bounds.upper.states(0) = 2.0;
     problem.phases(1).bounds.upper.states(1) = 2.0;
     problem.phases(1).bounds.upper.states(2) = 2.0;
     problem.phases(1).bounds.upper.states(3) = 2.0;
-    problem.phases(1).bounds.upper.states(4) = 2.0;
 
+    problem.phases(1).bounds.lower.controls(0) = -1.0;
     problem.phases(1).bounds.lower.controls(1) = -1.0;
-    problem.phases(1).bounds.lower.controls(2) = -1.0;
 
+    problem.phases(1).bounds.upper.controls(0) = 1.0;
     problem.phases(1).bounds.upper.controls(1) = 1.0;
-    problem.phases(1).bounds.upper.controls(2) = 1.0;
 
+    problem.phases(1).bounds.lower.events(0) = 0.0;
     problem.phases(1).bounds.lower.events(1) = 0.0;
-    problem.phases(1).bounds.lower.events(2) = 0.0;
-    problem.phases(1).bounds.lower.events(3) = 0.5;
+    problem.phases(1).bounds.lower.events(2) = 0.5;
+    problem.phases(1).bounds.lower.events(3) = 0.0;
     problem.phases(1).bounds.lower.events(4) = 0.0;
     problem.phases(1).bounds.lower.events(5) = 0.0;
-    problem.phases(1).bounds.lower.events(6) = 0.0;
-    problem.phases(1).bounds.lower.events(7) = 0.5;
-    problem.phases(1).bounds.lower.events(8) = 0.522;
+    problem.phases(1).bounds.lower.events(6) = 0.5;
+    problem.phases(1).bounds.lower.events(7) = 0.522;
 
     problem.phases(1).bounds.upper.events = problem.phases(1).bounds.lower.events;
 
@@ -211,11 +211,11 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 				= &integrand_cost;
+    problem.endpoint_cost 					= &endpoint_cost;
+    problem.dae 								= &dae;
+    problem.events 							= &events;
+    problem.linkages							= &linkages;
 
 
 
@@ -226,10 +226,10 @@ int main(void)
 
     DMatrix x0(4,40);
 
-    x0(1,colon()) = linspace(0.0,0.0, 40);
-    x0(2,colon()) = linspace(0.0,0.0, 40);
-    x0(3,colon()) = linspace(0.5,0.5, 40);
-    x0(4,colon()) = linspace(0.522,0.522, 40);
+    x0 <<  linspace(0.0,0.0, 40);
+           linspace(0.0,0.0, 40);
+           linspace(0.5,0.5, 40);
+           linspace(0.522,0.522, 40);
 
     problem.phases(1).guess.controls       = zeros(1,40);
     problem.phases(1).guess.states         = x0;
@@ -264,9 +264,9 @@ int main(void)
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 
 ////////////////////////////////////////////////////////////////////////////

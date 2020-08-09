@@ -194,8 +194,8 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 2;
-    problem.nlinkages                   = 5;
+    problem.nphases   			      = 2;
+    problem.nlinkages               = 5;
 
     psopt_level1_setup(problem);
 
@@ -213,8 +213,8 @@ int main(void)
     problem.phases(2).nevents   		= 4;
     problem.phases(2).npath     		= 0;
 
-    problem.phases(1).nodes        		= 30;
-    problem.phases(2).nodes        		= 30;
+    problem.phases(1).nodes        	<< 30;
+    problem.phases(2).nodes        	<< 30;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -233,34 +233,34 @@ int main(void)
     double x3f = 0.0;
     double x4f = 0.5;
 
-    // Phase 0 bounds
+    // Phase 1 bounds
 
+    problem.phases(1).bounds.lower.states(0) = -10.0;
     problem.phases(1).bounds.lower.states(1) = -10.0;
     problem.phases(1).bounds.lower.states(2) = -10.0;
     problem.phases(1).bounds.lower.states(3) = -10.0;
-    problem.phases(1).bounds.lower.states(4) = -10.0;
 
+    problem.phases(1).bounds.upper.states(0) = 10.0;
     problem.phases(1).bounds.upper.states(1) = 10.0;
     problem.phases(1).bounds.upper.states(2) = 10.0;
     problem.phases(1).bounds.upper.states(3) = 10.0;
-    problem.phases(1).bounds.upper.states(4) = 10.0;
 
 
+    problem.phases(1).bounds.lower.controls(0) = -10.0;
+    problem.phases(1).bounds.upper.controls(0) =  10.0;
     problem.phases(1).bounds.lower.controls(1) = -10.0;
     problem.phases(1).bounds.upper.controls(1) =  10.0;
-    problem.phases(1).bounds.lower.controls(2) = -10.0;
-    problem.phases(1).bounds.upper.controls(2) =  10.0;
 
-    problem.phases(1).bounds.lower.events(1) = x1i;
-    problem.phases(1).bounds.lower.events(2) = x2i;
-    problem.phases(1).bounds.lower.events(3) = x3i;
-    problem.phases(1).bounds.lower.events(4) = x4i;
+    problem.phases(1).bounds.lower.events(0) = x1i;
+    problem.phases(1).bounds.lower.events(1) = x2i;
+    problem.phases(1).bounds.lower.events(2) = x3i;
+    problem.phases(1).bounds.lower.events(3) = x4i;
 
 
-    problem.phases(1).bounds.upper.events(1) = x1i;
-    problem.phases(1).bounds.upper.events(2) = x2i;
-    problem.phases(1).bounds.upper.events(3) = x3i;
-    problem.phases(1).bounds.upper.events(4) = x4i;
+    problem.phases(1).bounds.upper.events(0) = x1i;
+    problem.phases(1).bounds.upper.events(1) = x2i;
+    problem.phases(1).bounds.upper.events(2) = x3i;
+    problem.phases(1).bounds.upper.events(3) = x4i;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -270,34 +270,34 @@ int main(void)
     problem.phases(1).bounds.upper.EndTime      = 1.0;
 
 
-    // Phase 1 bounds
+    // Phase 2 bounds
 
 
+    problem.phases(2).bounds.lower.states(0) = -10.0;
     problem.phases(2).bounds.lower.states(1) = -10.0;
     problem.phases(2).bounds.lower.states(2) = -10.0;
     problem.phases(2).bounds.lower.states(3) = -10.0;
-    problem.phases(2).bounds.lower.states(4) = -10.0;
 
+    problem.phases(2).bounds.upper.states(0) = 10.0;
     problem.phases(2).bounds.upper.states(1) = 10.0;
     problem.phases(2).bounds.upper.states(2) = 10.0;
     problem.phases(2).bounds.upper.states(3) = 10.0;
-    problem.phases(2).bounds.upper.states(4) = 10.0;
 
+    problem.phases(2).bounds.lower.controls(0) = -10.0;
+    problem.phases(2).bounds.upper.controls(0) =  10.0;
     problem.phases(2).bounds.lower.controls(1) = -10.0;
     problem.phases(2).bounds.upper.controls(1) =  10.0;
-    problem.phases(2).bounds.lower.controls(2) = -10.0;
-    problem.phases(2).bounds.upper.controls(2) =  10.0;
 
-    problem.phases(2).bounds.lower.events(1) = x1f;
-    problem.phases(2).bounds.lower.events(2) = x2f;
-    problem.phases(2).bounds.lower.events(3) = x3f;
-    problem.phases(2).bounds.lower.events(4) = x4f;
+    problem.phases(2).bounds.lower.events(0) = x1f;
+    problem.phases(2).bounds.lower.events(1) = x2f;
+    problem.phases(2).bounds.lower.events(2) = x3f;
+    problem.phases(2).bounds.lower.events(3) = x4f;
 
 
-    problem.phases(2).bounds.upper.events(1) = x1f;
-    problem.phases(2).bounds.upper.events(2) = x2f;
-    problem.phases(2).bounds.upper.events(3) = x3f;
-    problem.phases(2).bounds.upper.events(4) = x4f;
+    problem.phases(2).bounds.upper.events(0) = x1f;
+    problem.phases(2).bounds.upper.events(1) = x2f;
+    problem.phases(2).bounds.upper.events(2) = x3f;
+    problem.phases(2).bounds.upper.events(3) = x4f;
 
     problem.phases(2).bounds.lower.StartTime    = 1.0;
     problem.phases(2).bounds.upper.StartTime    = 1.0;
@@ -311,11 +311,11 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 		= &integrand_cost;
+    problem.endpoint_cost 			= &endpoint_cost;
+    problem.dae 						= &dae;
+    problem.events 					= &events;
+    problem.linkages					= &linkages;
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -323,20 +323,20 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
     int iphase;
 
-    DMatrix u0(2,30);
-    DMatrix x0(4,30);
+    MatrixXd u0(2,30);
+    MatrixXd x0(4,30);
 
-    DMatrix time_guess0    = linspace(0.0, 1.0 , 30);
-    DMatrix time_guess1    = linspace(1.0, 2.0 , 30);
+    MatrixXd time_guess0    = linspace(0.0, 1.0 , 30);
+    MatrixXd time_guess1    = linspace(1.0, 2.0 , 30);
 
     iphase = 1;
 
-    u0 = zeros(2,30+1);
+    u0 = zeros(2,30);
 
-    x0(1,colon()) = linspace(x1i,(x1i+x1f)/2, 30);
-    x0(2,colon()) = linspace(x2i,(x2i+x2f)/2, 30);
-    x0(3,colon()) = linspace(x3i,(x3i+x3f)/2, 30);
-    x0(4,colon()) = linspace(x4i,(x4i+x4f)/2, 30);
+    x0 << linspace(x1i,(x1i+x1f)/2, 30);
+          linspace(x2i,(x2i+x2f)/2, 30);
+          linspace(x3i,(x3i+x3f)/2, 30);
+          linspace(x4i,(x4i+x4f)/2, 30);
 
     problem.phases(iphase).guess.controls = u0;
     problem.phases(iphase).guess.states   = x0;
@@ -344,12 +344,12 @@ int main(void)
 
     iphase = 2;
 
-    u0 = zeros(2,30+1);
+    u0 = zeros(2,30);
 
-    x0(1,colon()) = linspace((x1i+x1f)/2, x1f, 30);
-    x0(2,colon()) = linspace((x2i+x2f)/2, x2f, 30);
-    x0(3,colon()) = linspace((x3i+x3f)/2, x3f, 30);
-    x0(4,colon()) = linspace((x4i+x4f)/2, x4f, 30);
+    x0  <<  linspace((x1i+x1f)/2, x1f, 30),
+            linspace((x2i+x2f)/2, x2f, 30),
+            linspace((x3i+x3f)/2, x3f, 30),
+            linspace((x4i+x4f)/2, x4f, 30);
 
     problem.phases(iphase).guess.controls = u0;
     problem.phases(iphase).guess.states   = x0;
@@ -363,7 +363,7 @@ int main(void)
     algorithm.nlp_method                  	= "IPOPT";
     algorithm.scaling                     	= "automatic";
     algorithm.derivatives                 	= "automatic";
-    algorithm.hessian                           = "exact";
+    algorithm.hessian                        = "exact";
     algorithm.nlp_iter_max                	= 1000;
     algorithm.nlp_tolerance               	= 1.e-6;
 
@@ -379,25 +379,28 @@ int main(void)
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix xphase1 = solution.get_states_in_phase(1);
-    DMatrix uphase1 = solution.get_controls_in_phase(1);
-    DMatrix tphase1 = solution.get_time_in_phase(1);
+    MatrixXd xphase1 = solution.get_states_in_phase(1);
+    MatrixXd uphase1 = solution.get_controls_in_phase(1);
+    MatrixXd tphase1 = solution.get_time_in_phase(1);
 
-    DMatrix xphase2 = solution.get_states_in_phase(2);
-    DMatrix uphase2 = solution.get_controls_in_phase(2);
-    DMatrix tphase2 = solution.get_time_in_phase(2);
+    MatrixXd xphase2 = solution.get_states_in_phase(2);
+    MatrixXd uphase2 = solution.get_controls_in_phase(2);
+    MatrixXd tphase2 = solution.get_time_in_phase(2);
 
-    DMatrix x = (xphase1 || xphase2);
-    DMatrix u = (uphase1 || uphase2);
-    DMatrix t = (tphase1 || tphase2);
+    MatrixXd x(4, length(tphase1)+length(tphase2));
+    x  << xphase1 , xphase2;
+    MatrixXd u(2, length(tphase1)+length(tphase2));
+    u << uphase1 , uphase2;
+    MatrixXd t(1, length(tphase1)+length(tphase2));  
+    t << tphase1 , tphase2;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
