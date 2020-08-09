@@ -80,21 +80,21 @@ adouble legendre_polynomial_derivative( adouble x, int n)
 }
 
 
-void compute_cartesian_trajectory(const DMatrix& x, DMatrix& xyz )
+void compute_cartesian_trajectory(const MatrixXd& x, MatrixXd& xyz )
 {
 
-   int npoints = x.GetNoCols();
-   xyz.Resize(3,npoints);
+   int npoints = x.cols();
+   xyz.resize(3,npoints);
 
-   for(int i=1; i<=npoints;i++) {
+   for(int i=0; i<npoints;i++) {
 
 
-   double p = x(1,i);
-   double f = x(2,i);
-   double g = x(3,i);
-   double h = x(4,i);
-   double k = x(5,i);
-   double L = x(6,i);
+   double p = x(0,i);
+   double f = x(1,i);
+   double g = x(2,i);
+   double h = x(3,i);
+   double k = x(4,i);
+   double L = x(5,i);
 
    double q      =  1.0 + f*cos(L) + g*sin(L);
    double r      =  p/q;
@@ -106,13 +106,14 @@ void compute_cartesian_trajectory(const DMatrix& x, DMatrix& xyz )
    double r2 = r/s2*( sin(L) - alpha2*sin(L) + 2*h*k*cos(L));
    double r3 = 2*r/s2*( h*sin(L) - k*cos(L) );
 
-   xyz(1,i) = r1;
-   xyz(2,i) = r2;
-   xyz(3,i) = r3;
+   xyz(0,i) = r1;
+   xyz(1,i) = r2;
+   xyz(2,i) = r3;
 
    }
 
 }
+
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Define the end point (Mayer) cost function //////////
@@ -124,7 +125,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
 {
 
    if (iphase == 4) {
-	   adouble w = final_states[CINDEX(7)];
+	   adouble w = final_states[6];
 	   return (-w);
    }
    else {
@@ -168,12 +169,12 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    // Extract individual variables
 
-   adouble p = states[ CINDEX(1) ];
-   adouble f = states[ CINDEX(2) ];
-   adouble g = states[ CINDEX(3) ];
-   adouble h = states[ CINDEX(4) ];
-   adouble k = states[ CINDEX(5) ];
-   adouble L = states[ CINDEX(6) ];
+   adouble p = states[ 0 ];
+   adouble f = states[ 1 ];
+   adouble g = states[ 2 ];
+   adouble h = states[ 3 ];
+   adouble k = states[ 4 ];
+   adouble L = states[ 5 ];
    adouble w;
 
 
@@ -195,7 +196,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    adouble rvec[3];
 
-   rvec[ CINDEX(1) ] = r1; rvec[ CINDEX(2)] = r2; rvec[ CINDEX(3) ] = r3;
+   rvec[ 0 ] = r1; rvec[ 1] = r2; rvec[ 2 ] = r3;
 
    adouble v1 = -(1.0/s2)*sqrt(mu/p)*(  sin(L) + alpha2*sin(L) - 2*h*k*cos(L) + g - 2*f*h*k + alpha2*g);
    adouble v2 = -(1.0/s2)*sqrt(mu/p)*( -cos(L) + alpha2*cos(L) + 2*h*k*sin(L) - f + 2*g*h*k + alpha2*f);
@@ -203,7 +204,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    adouble vvec[3];
 
-   vvec[ CINDEX(1) ] = v1; vvec[ CINDEX(2)] = v2; vvec[ CINDEX(3) ] = v3;
+   vvec[ 0 ] = v1; vvec[ 1] = v2; vvec[ 2 ] = v3;
 
    // compute Qr
 
@@ -263,7 +264,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    // Compute in
 
    adouble en[3];
-   en[ CINDEX(1) ] = 0.0; en[ CINDEX(2) ]= 0.0; en[ CINDEX(3) ] = 1.0;
+   en[ 0 ] = 0.0; en[ 1 ]= 0.0; en[ 2 ] = 1.0;
 
    adouble enir = dot(en,ir,3);
 
@@ -281,7 +282,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    // Geocentric latitude angle:
 
-   adouble sin_phi =  rvec[ CINDEX(3) ]/ sqrt( dot(rvec,rvec,3) ) ;
+   adouble sin_phi =  rvec[ 2 ]/ sqrt( dot(rvec,rvec,3) ) ;
    adouble cos_phi =  sqrt(1.0- pow(sin_phi,2.0));
 
    adouble deltagn = 0.0;
@@ -304,9 +305,9 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    adouble DELTA_g[3];
 
-   DELTA_g[ CINDEX(1) ] = dot(Qr1, delta_g,3);
-   DELTA_g[ CINDEX(2) ] = dot(Qr2, delta_g,3);
-   DELTA_g[ CINDEX(3) ] = dot(Qr3, delta_g,3);
+   DELTA_g[ 0 ] = dot(Qr1, delta_g,3);
+   DELTA_g[ 1 ] = dot(Qr2, delta_g,3);
+   DELTA_g[ 2 ] = dot(Qr3, delta_g,3);
 
    // Compute DELTA_T
 
@@ -333,20 +334,20 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
        transpose_ad(Qr, 3, 3, Qrt );
 
-       adouble theta = u[ CINDEX(1) ];
-       adouble phi   = u[ CINDEX(2) ];
+       adouble theta = u[ 0 ];
+       adouble phi   = u[ 1 ];
 
        adouble Tvec[3];
 
-       w = states[CINDEX(7)];
+       w = states[6];
 
        adouble mass = w/CM2W;
 
        adouble Tacc = T/mass;
 
-       Tvec[ CINDEX(1) ] = Tacc*cos(theta)*cos(phi);
-       Tvec[ CINDEX(2) ] = Tacc*cos(theta)*sin(phi);
-       Tvec[ CINDEX(3) ] = Tacc*sin(theta);
+       Tvec[ 0 ] = Tacc*cos(theta)*cos(phi);
+       Tvec[ 1 ] = Tacc*cos(theta)*sin(phi);
+       Tvec[ 2 ] = Tacc*sin(theta);
 
        product_ad( Qv, Tvec, 3, 3, 3, 1, Tvel );
 
@@ -363,9 +364,9 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
       DELTA[i] =  DELTA_g[i] + DELTA_T[i];
    }
 
-   adouble delta1= DELTA[ CINDEX(1) ];
-   adouble delta2= DELTA[ CINDEX(2) ];
-   adouble delta3= DELTA[ CINDEX(3) ];
+   adouble delta1= DELTA[ 0 ];
+   adouble delta2= DELTA[ 1 ];
+   adouble delta3= DELTA[ 2 ];
 
 
   // derivatives
@@ -388,14 +389,14 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
      wdot = 0.0;
    }
 
-   derivatives[ CINDEX(1) ] = pdot;
-   derivatives[ CINDEX(2) ] = fdot;
-   derivatives[ CINDEX(3) ] = gdot;
-   derivatives[ CINDEX(4) ] = hdot;
-   derivatives[ CINDEX(5) ] = kdot;
-   derivatives[ CINDEX(6) ] = Ldot;
+   derivatives[ 0 ] = pdot;
+   derivatives[ 1 ] = fdot;
+   derivatives[ 2 ] = gdot;
+   derivatives[ 3 ] = hdot;
+   derivatives[ 4 ] = kdot;
+   derivatives[ 5 ] = Ldot;
    if (iphase==2 || iphase==4) {
-    derivatives[ CINDEX(7) ] = wdot;
+    derivatives[ 6 ] = wdot;
    }
 
 
@@ -412,44 +413,44 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
 {
 
 
-   adouble pti = initial_states[ CINDEX(1) ];
-   adouble fti = initial_states[ CINDEX(2) ];
-   adouble gti = initial_states[ CINDEX(3) ];
-   adouble hti = initial_states[ CINDEX(4) ];
-   adouble kti = initial_states[ CINDEX(5) ];
-   adouble Lti = initial_states[ CINDEX(6) ];
+   adouble pti = initial_states[ 0 ];
+   adouble fti = initial_states[ 1 ];
+   adouble gti = initial_states[ 2 ];
+   adouble hti = initial_states[ 3 ];
+   adouble kti = initial_states[ 4 ];
+   adouble Lti = initial_states[ 5 ];
    adouble wti;
    if (iphase==2) {
-      wti = initial_states[ CINDEX(7) ];
+      wti = initial_states[ 6 ];
    }
 
-   adouble ptf = final_states[ CINDEX(1) ];
-   adouble ftf = final_states[ CINDEX(2) ];
-   adouble gtf = final_states[ CINDEX(3) ];
-   adouble htf = final_states[ CINDEX(4) ];
-   adouble ktf = final_states[ CINDEX(5) ];
-   adouble Ltf = final_states[ CINDEX(6) ];
+   adouble ptf = final_states[ 0 ];
+   adouble ftf = final_states[ 1 ];
+   adouble gtf = final_states[ 2 ];
+   adouble htf = final_states[ 3 ];
+   adouble ktf = final_states[ 4 ];
+   adouble Ltf = final_states[ 5 ];
 
 
    if (iphase==1) {
-   	e[ CINDEX(1) ]  = pti;
-   	e[ CINDEX(2) ]  = fti;
-   	e[ CINDEX(3) ]  = gti;
-   	e[ CINDEX(4) ]  = hti;
-   	e[ CINDEX(5) ]  = kti;
-   	e[ CINDEX(6) ]  = Lti;
+   	e[ 0 ]  = pti;
+   	e[ 1 ]  = fti;
+   	e[ 2 ]  = gti;
+   	e[ 3 ]  = hti;
+   	e[ 4 ]  = kti;
+   	e[ 5 ]  = Lti;
    }
 
    if (iphase==2) {
-     e[ CINDEX(1) ] = wti;
+     e[ 0 ] = wti;
    }
 
    if (iphase == 4) {
-   	e[ CINDEX(1) ] = ptf;
-   	e[ CINDEX(2) ] = ftf;
-   	e[ CINDEX(3) ] = gtf;
-   	e[ CINDEX(4) ] = htf;
-   	e[ CINDEX(5) ] = ktf;
+   	e[ 0 ] = ptf;
+   	e[ 1 ] = ftf;
+   	e[ 2 ] = gtf;
+   	e[ 3 ] = htf;
+   	e[ 4 ] = ktf;
    }
 
 }
@@ -479,13 +480,13 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
     t0b = get_initial_time(     xad, 2, workspace );
 
 
-    linkages[ CINDEX(1) ] = xf[ CINDEX(1) ] - xi[ CINDEX(1) ];
-    linkages[ CINDEX(2) ] = xf[ CINDEX(2) ] - xi[ CINDEX(2) ];
-    linkages[ CINDEX(3) ] = xf[ CINDEX(3) ] - xi[ CINDEX(3) ];
-    linkages[ CINDEX(4) ] = xf[ CINDEX(4) ] - xi[ CINDEX(4) ];
-    linkages[ CINDEX(5) ] = xf[ CINDEX(5) ] - xi[ CINDEX(5) ];
-    linkages[ CINDEX(6) ] = xf[ CINDEX(6) ] - xi[ CINDEX(6) ];
-    linkages[ CINDEX(7) ] = t0b - tfa;
+    linkages[ 0 ] = xf[ 0 ] - xi[ 0 ];
+    linkages[ 1 ] = xf[ 1 ] - xi[ 1 ];
+    linkages[ 2 ] = xf[ 2 ] - xi[ 2 ];
+    linkages[ 3 ] = xf[ 3 ] - xi[ 3 ];
+    linkages[ 4 ] = xf[ 4 ] - xi[ 4 ];
+    linkages[ 5 ] = xf[ 5 ] - xi[ 5 ];
+    linkages[ 6 ] = t0b - tfa;
 
     // Linking phases 2 and 3
 
@@ -494,15 +495,15 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
     tfa = get_final_time(        xad, 2, workspace );
     t0b = get_initial_time(      xad, 3, workspace );
 
-    wtf2 = xf[ CINDEX(7) ];
+    wtf2 = xf[ 6 ];
 
-    linkages[ CINDEX(8) ]  = xf[ CINDEX(1) ] - xi[ CINDEX(1) ];
-    linkages[ CINDEX(9) ]  = xf[ CINDEX(2) ] - xi[ CINDEX(2) ];
-    linkages[ CINDEX(10) ] = xf[ CINDEX(3) ] - xi[ CINDEX(3) ];
-    linkages[ CINDEX(11) ] = xf[ CINDEX(4) ] - xi[ CINDEX(4) ];
-    linkages[ CINDEX(12) ] = xf[ CINDEX(5) ] - xi[ CINDEX(5) ];
-    linkages[ CINDEX(13) ] = xf[ CINDEX(6) ] - xi[ CINDEX(6) ];
-    linkages[ CINDEX(14) ] = t0b - tfa;
+    linkages[ 7 ]  = xf[ 0 ] - xi[ 0 ];
+    linkages[ 8 ]  = xf[ 1 ] - xi[ 1 ];
+    linkages[ 9 ] = xf[ 2 ] - xi[ 2 ];
+    linkages[ 10 ] = xf[ 3 ] - xi[ 3 ];
+    linkages[ 11 ] = xf[ 4 ] - xi[ 4 ];
+    linkages[ 12 ] = xf[ 5 ] - xi[ 5 ];
+    linkages[ 13 ] = t0b - tfa;
 
     // Linking phases 3 and 4
 
@@ -511,20 +512,20 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
     tfa = get_final_time(      xad, 3, workspace );
     t0b = get_initial_time(    xad, 4, workspace );
 
-    wti4 = xi[ CINDEX(7) ];
+    wti4 = xi[ 6 ];
 
 
-    linkages[ CINDEX(15) ] = xf[ CINDEX(1) ] - xi[ CINDEX(1) ];
-    linkages[ CINDEX(16) ] = xf[ CINDEX(2) ] - xi[ CINDEX(2) ];
-    linkages[ CINDEX(17) ] = xf[ CINDEX(3) ] - xi[ CINDEX(3) ];
-    linkages[ CINDEX(18) ] = xf[ CINDEX(4) ] - xi[ CINDEX(4) ];
-    linkages[ CINDEX(19) ] = xf[ CINDEX(5) ] - xi[ CINDEX(5) ];
-    linkages[ CINDEX(20) ] = xf[ CINDEX(6) ] - xi[ CINDEX(6) ];
-    linkages[ CINDEX(21) ] = t0b - tfa;
+    linkages[ 14 ] = xf[ 0 ] - xi[ 0 ];
+    linkages[ 15 ] = xf[ 1 ] - xi[ 1 ];
+    linkages[ 16 ] = xf[ 2 ] - xi[ 2 ];
+    linkages[ 17 ] = xf[ 3 ] - xi[ 3 ];
+    linkages[ 18 ] = xf[ 4 ] - xi[ 4 ];
+    linkages[ 19 ] = xf[ 5 ] - xi[ 5 ];
+    linkages[ 20 ] = t0b - tfa;
 
     // Linking the weight at the end of phase 2 with the weight at the beginning of phase 4
 
-    linkages[ CINDEX(22) ] = wtf2 - wti4;
+    linkages[ 21 ] = wtf2 - wti4;
 
 }
 
@@ -558,7 +559,7 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 4;
+    problem.nphases   			          = 4;
     problem.nlinkages                   = 22;
 
     psopt_level1_setup(problem);
@@ -567,33 +568,33 @@ int main(void)
 /////////   Define phase related information & do level 2 setup  ////////////
 /////////////////////////////////////////////////////////////////////////////
 
-    problem.phases(1).nstates   		= 6;
-    problem.phases(1).ncontrols 		= 0;
+    problem.phases(1).nstates   						= 6;
+    problem.phases(1).ncontrols 						= 0;
     problem.phases(1).nparameters               = 0;
-    problem.phases(1).nevents   	        = 6;
-    problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes                     = 10;
+    problem.phases(1).nevents   	        			= 6;
+    problem.phases(1).npath     						= 0;
+    problem.phases(1).nodes                     << 10;
 
-    problem.phases(2).nstates   		= 7;
-    problem.phases(2).ncontrols 		= 2;
+    problem.phases(2).nstates   						= 7;
+    problem.phases(2).ncontrols 						= 2;
     problem.phases(2).nparameters               = 0;
-    problem.phases(2).nevents   	        = 1;
-    problem.phases(2).npath     		= 0;
-    problem.phases(2).nodes                     = 10;
+    problem.phases(2).nevents   	        			= 1;
+    problem.phases(2).npath     						= 0;
+    problem.phases(2).nodes                     << 10;
 
-    problem.phases(3).nstates   		= 6;
-    problem.phases(3).ncontrols 		= 0;
+    problem.phases(3).nstates   						= 6;
+    problem.phases(3).ncontrols 						= 0;
     problem.phases(3).nparameters               = 0;
-    problem.phases(3).nevents   	        = 0;
-    problem.phases(3).npath     		= 0;
-    problem.phases(3).nodes                     = 10;
+    problem.phases(3).nevents   	        			= 0;
+    problem.phases(3).npath     						= 0;
+    problem.phases(3).nodes                     << 10;
 
-    problem.phases(4).nstates   		= 7;
-    problem.phases(4).ncontrols 		= 2;
+    problem.phases(4).nstates   						= 7;
+    problem.phases(4).ncontrols 						= 2;
     problem.phases(4).nparameters               = 0;
-    problem.phases(4).nevents   	        = 5;
-    problem.phases(4).npath     		= 0;
-    problem.phases(4).nodes                     = 10;
+    problem.phases(4).nevents   	        			= 5;
+    problem.phases(4).npath     						= 0;
+    problem.phases(4).nodes                     << 10;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -637,38 +638,38 @@ int main(void)
    // BOUNDS FOR PHASE 1
 
 
-    problem.phases(1).bounds.lower.states(1) = 10.e6;
+    problem.phases(1).bounds.lower.states(0) = 10.e6;
+    problem.phases(1).bounds.lower.states(1) = -1;
     problem.phases(1).bounds.lower.states(2) = -1;
     problem.phases(1).bounds.lower.states(3) = -1;
     problem.phases(1).bounds.lower.states(4) = -1;
-    problem.phases(1).bounds.lower.states(5) = -1;
-    problem.phases(1).bounds.lower.states(6) = pi;
+    problem.phases(1).bounds.lower.states(5) = pi;
 
 
-    problem.phases(1).bounds.upper.states(1) = 2e8;
+    problem.phases(1).bounds.upper.states(0) = 2e8;
+    problem.phases(1).bounds.upper.states(1) = 1;
     problem.phases(1).bounds.upper.states(2) = 1;
     problem.phases(1).bounds.upper.states(3) = 1;
     problem.phases(1).bounds.upper.states(4) = 1;
-    problem.phases(1).bounds.upper.states(5) = 1;
-    problem.phases(1).bounds.upper.states(6) = 30*pi;
+    problem.phases(1).bounds.upper.states(5) = 30*pi;
 
 
 
-    problem.phases(1).bounds.lower.events(1)  = pti;
-    problem.phases(1).bounds.lower.events(2)  = fti;
-    problem.phases(1).bounds.lower.events(3)  = gti;
-    problem.phases(1).bounds.lower.events(4)  = hti;
-    problem.phases(1).bounds.lower.events(5)  = kti;
-    problem.phases(1).bounds.lower.events(6)  = Lti;
+    problem.phases(1).bounds.lower.events(0)  = pti;
+    problem.phases(1).bounds.lower.events(1)  = fti;
+    problem.phases(1).bounds.lower.events(2)  = gti;
+    problem.phases(1).bounds.lower.events(3)  = hti;
+    problem.phases(1).bounds.lower.events(4)  = kti;
+    problem.phases(1).bounds.lower.events(5)  = Lti;
 
 
 
-    problem.phases(1).bounds.upper.events(1)  = pti;
-    problem.phases(1).bounds.upper.events(2)  = fti;
-    problem.phases(1).bounds.upper.events(3)  = gti;
-    problem.phases(1).bounds.upper.events(4)  = hti;
-    problem.phases(1).bounds.upper.events(5)  = kti;
-    problem.phases(1).bounds.upper.events(6)  = Lti;
+    problem.phases(1).bounds.upper.events(0)  = pti;
+    problem.phases(1).bounds.upper.events(1)  = fti;
+    problem.phases(1).bounds.upper.events(2)  = gti;
+    problem.phases(1).bounds.upper.events(3)  = hti;
+    problem.phases(1).bounds.upper.events(4)  = kti;
+    problem.phases(1).bounds.upper.events(5)  = Lti;
 
 
     problem.phases(1).bounds.lower.StartTime    = 0.0;
@@ -679,30 +680,30 @@ int main(void)
 
     // BOUNDS FOR PHASE 2
 
-    problem.phases(2).bounds.lower.states(1) = 10.e6;
+    problem.phases(2).bounds.lower.states(0) = 10.e6;
+    problem.phases(2).bounds.lower.states(1) = -1;
     problem.phases(2).bounds.lower.states(2) = -1;
     problem.phases(2).bounds.lower.states(3) = -1;
     problem.phases(2).bounds.lower.states(4) = -1;
-    problem.phases(2).bounds.lower.states(5) = -1;
-    problem.phases(2).bounds.lower.states(6) = pi;
-    problem.phases(2).bounds.lower.states(7) = 0.0;
+    problem.phases(2).bounds.lower.states(5) = pi;
+    problem.phases(2).bounds.lower.states(6) = 0.0;
 
-    problem.phases(2).bounds.upper.states(1) = 2.e8;
+    problem.phases(2).bounds.upper.states(0) = 2.e8;
+    problem.phases(2).bounds.upper.states(1) = 1;
     problem.phases(2).bounds.upper.states(2) = 1;
     problem.phases(2).bounds.upper.states(3) = 1;
     problem.phases(2).bounds.upper.states(4) = 1;
-    problem.phases(2).bounds.upper.states(5) = 1;
-    problem.phases(2).bounds.upper.states(6) = 30*pi;
-    problem.phases(2).bounds.upper.states(7) = 2.0;
+    problem.phases(2).bounds.upper.states(5) = 30*pi;
+    problem.phases(2).bounds.upper.states(6) = 2.0;
 
 
+    problem.phases(2).bounds.lower.controls(0) = -pi;
     problem.phases(2).bounds.lower.controls(1) = -pi;
-    problem.phases(2).bounds.lower.controls(2) = -pi;
+    problem.phases(2).bounds.upper.controls(0) = pi;
     problem.phases(2).bounds.upper.controls(1) = pi;
-    problem.phases(2).bounds.upper.controls(2) = pi;
 
-    problem.phases(2).bounds.lower.events(1)  = wti;
-    problem.phases(2).bounds.upper.events(1)  = wti;
+    problem.phases(2).bounds.lower.events(0)  = wti;
+    problem.phases(2).bounds.upper.events(0)  = wti;
 
 
     problem.phases(2).bounds.lower.StartTime    = 2000;
@@ -712,22 +713,21 @@ int main(void)
     problem.phases(2).bounds.upper.EndTime      = 3100;
 
 
-    // BOUNDS FOR PHASE 3
-
-    problem.phases(3).bounds.lower.states(1) = 10.e6;
+    // BOUNDS FOR PHASE 
+    problem.phases(3).bounds.lower.states(0) = 10.e6;
+    problem.phases(3).bounds.lower.states(1) = -1;
     problem.phases(3).bounds.lower.states(2) = -1;
     problem.phases(3).bounds.lower.states(3) = -1;
     problem.phases(3).bounds.lower.states(4) = -1;
-    problem.phases(3).bounds.lower.states(5) = -1;
-    problem.phases(3).bounds.lower.states(6) = pi;
+    problem.phases(3).bounds.lower.states(5) = pi;
 
 
-    problem.phases(3).bounds.upper.states(1) = 2.e8;
+    problem.phases(3).bounds.upper.states(0) = 2.e8;
+    problem.phases(3).bounds.upper.states(1) = 1.0;
     problem.phases(3).bounds.upper.states(2) = 1.0;
     problem.phases(3).bounds.upper.states(3) = 1.0;
     problem.phases(3).bounds.upper.states(4) = 1.0;
-    problem.phases(3).bounds.upper.states(5) = 1.0;
-    problem.phases(3).bounds.upper.states(6) = 30*pi;
+    problem.phases(3).bounds.upper.states(5) = 30*pi;
 
 
     problem.phases(3).bounds.lower.StartTime    = 2100;
@@ -739,40 +739,40 @@ int main(void)
 
     // BOUNDS FOR PHASE 4
 
-    problem.phases(4).bounds.lower.states(1) = 10.e6;
+    problem.phases(4).bounds.lower.states(0) = 10.e6;
+    problem.phases(4).bounds.lower.states(1) = -1;
     problem.phases(4).bounds.lower.states(2) = -1;
     problem.phases(4).bounds.lower.states(3) = -1;
     problem.phases(4).bounds.lower.states(4) = -1;
-    problem.phases(4).bounds.lower.states(5) = -1;
-    problem.phases(4).bounds.lower.states(6) = pi;
-    problem.phases(4).bounds.lower.states(7) = 0.0;
+    problem.phases(4).bounds.lower.states(5) = pi;
+    problem.phases(4).bounds.lower.states(6) = 0.0;
 
-    problem.phases(4).bounds.upper.states(1) = 2.e8;
+    problem.phases(4).bounds.upper.states(0) = 2.e8;
+    problem.phases(4).bounds.upper.states(1) = 1;
     problem.phases(4).bounds.upper.states(2) = 1;
     problem.phases(4).bounds.upper.states(3) = 1;
     problem.phases(4).bounds.upper.states(4) = 1;
-    problem.phases(4).bounds.upper.states(5) = 1;
-    problem.phases(4).bounds.upper.states(6) = 30*pi;
-    problem.phases(4).bounds.upper.states(7) = 2.0;
+    problem.phases(4).bounds.upper.states(5) = 30*pi;
+    problem.phases(4).bounds.upper.states(6) = 2.0;
 
 
+    problem.phases(4).bounds.lower.controls(0) = -pi;
     problem.phases(4).bounds.lower.controls(1) = -pi;
-    problem.phases(4).bounds.lower.controls(2) = -pi;
+    problem.phases(4).bounds.upper.controls(0) = pi;
     problem.phases(4).bounds.upper.controls(1) = pi;
-    problem.phases(4).bounds.upper.controls(2) = pi;
 
 
-    problem.phases(4).bounds.lower.events(1)  = ptf;
-    problem.phases(4).bounds.lower.events(2)  = ftf;
-    problem.phases(4).bounds.lower.events(3)  = gtf;
-    problem.phases(4).bounds.lower.events(4)  = htf;
-    problem.phases(4).bounds.lower.events(5)  = ktf;
+    problem.phases(4).bounds.lower.events(0)  = ptf;
+    problem.phases(4).bounds.lower.events(1)  = ftf;
+    problem.phases(4).bounds.lower.events(2)  = gtf;
+    problem.phases(4).bounds.lower.events(3)  = htf;
+    problem.phases(4).bounds.lower.events(4)  = ktf;
 
-    problem.phases(4).bounds.upper.events(1)  = ptf;
-    problem.phases(4).bounds.upper.events(2)  = ftf;
-    problem.phases(4).bounds.upper.events(3)  = gtf;
-    problem.phases(4).bounds.upper.events(4)  = htf;
-    problem.phases(4).bounds.upper.events(5)  = ktf;
+    problem.phases(4).bounds.upper.events(0)  = ptf;
+    problem.phases(4).bounds.upper.events(1)  = ftf;
+    problem.phases(4).bounds.upper.events(2)  = gtf;
+    problem.phases(4).bounds.upper.events(3)  = htf;
+    problem.phases(4).bounds.upper.events(4)  = ktf;
 
     problem.phases(4).bounds.lower.StartTime    = 21600;
     problem.phases(4).bounds.upper.StartTime    = 21800;
@@ -786,11 +786,11 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 			= &integrand_cost;
+    problem.endpoint_cost 				= &endpoint_cost;
+    problem.dae             			= &dae;
+    problem.events 						= &events;
+    problem.linkages						= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
@@ -800,27 +800,27 @@ int main(void)
     int ncontrols;
     int nstates;
     int iphase;
-    DMatrix x_guess, u_guess, time_guess, param_guess, xini, xfinal;
+    MatrixXd x_guess, u_guess, time_guess, param_guess, xini, xfinal;
 
     // Phase 1
 
-    nnodes    			= problem.phases(1).nodes(1);
-    nstates                     = problem.phases(1).nstates;
+    nnodes    							= problem.phases(1).nodes(0);
+    nstates                     	= problem.phases(1).nstates;
     iphase = 1;
 
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(0.0,2690,nnodes);
 
-    xini.Resize(6,1);
-    xini(1)= pti; xini(2)=fti;xini(3)=gti;xini(4)=hti;xini(5)=kti;xini(6)=Lti;
+    xini.resize(6,1);
+    xini(0)= pti; xini(1)=fti;xini(2)=gti;xini(3)=hti;xini(4)=kti;xini(5)=Lti;
 
 
 
     rk4_propagate( dae, u_guess, time_guess, xini, param_guess, problem, iphase, x_guess, NULL);
 
-    tra(x_guess).Print("x_guess(iphase=1)");
+//    tra(x_guess).Print("x_guess(iphase=1)");
 
-    xfinal = x_guess(colon(),nnodes);
+    xfinal = x_guess.col(nnodes-1); 
 
     problem.phases(1).guess.states = x_guess;
     problem.phases(1).guess.time   = time_guess;
@@ -830,7 +830,7 @@ int main(void)
 
     // Phase 2
 
-    nnodes    			= problem.phases(2).nodes(1);
+    nnodes    			           = problem.phases(2).nodes(0);
     nstates                     = problem.phases(2).nstates;
     ncontrols                   = problem.phases(2).ncontrols;
     iphase = 2;
@@ -839,20 +839,20 @@ int main(void)
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(2690,2840,nnodes);
 
-    xini.Resize(7,1);
-    xini(1)= xfinal(1); xini(2)=xfinal(2);xini(3)=xfinal(3);xini(4)=xfinal(4);xini(5)=xfinal(5);xini(6)=xfinal(6);
-    xini(7)= wti;
+    xini.resize(7,1);
+    xini(0)= xfinal(0); xini(1)=xfinal(1);xini(2)=xfinal(2);xini(3)=xfinal(3);xini(4)=xfinal(4);xini(5)=xfinal(5);
+    xini(6)= wti;
 
-    u_guess(1,colon()) = 0.148637e-2*D2R*ones(1,nnodes);
-    u_guess(2,colon()) = -9.08446*D2R*ones(1,nnodes);
+    u_guess.row(0) =  0.148637e-2*D2R*ones(1,nnodes);
+    u_guess.row(1) = -9.08446*D2R*ones(1,nnodes);
 
     rk4_propagate( dae, u_guess, time_guess, xini, param_guess, problem, iphase, x_guess, NULL);
 
-    tra(x_guess).Print("x_guess(iphase=2)");
+//    tra(x_guess).Print("x_guess(iphase=2)");
 
 
-    xfinal = x_guess(colon(),nnodes);
-    double wtf2__ = xfinal(7);
+    xfinal = x_guess.col(nnodes-1); 
+    double wtf2__ = xfinal(6);
 
     problem.phases(2).guess.states   = x_guess;
     problem.phases(2).guess.controls = u_guess;
@@ -860,7 +860,7 @@ int main(void)
 
     // Phase 3
 
-    nnodes    			= problem.phases(3).nodes(1);
+    nnodes    			           = problem.phases(3).nodes(0);
     nstates                     = problem.phases(3).nstates;
     iphase = 3;
 
@@ -869,21 +869,21 @@ int main(void)
     time_guess =  linspace(2840,21650,nnodes);
 
 
-    xini.Resize(6,1);
-    xini(1)= xfinal(1); xini(2)=xfinal(2);xini(3)=xfinal(3);xini(4)=xfinal(4);xini(5)=xfinal(5);xini(6)=xfinal(6);
+    xini.resize(6,1);
+    xini(0)= xfinal(0); xini(1)=xfinal(1);xini(2)=xfinal(2);xini(3)=xfinal(3);xini(4)=xfinal(4);xini(5)=xfinal(5);
 
     rk4_propagate( dae, u_guess, time_guess, xini, param_guess, problem, iphase, x_guess, NULL);
 
-    tra(x_guess).Print("x_guess(iphase=3)");
+//    tra(x_guess).Print("x_guess(iphase=3)");
 
-    xfinal = x_guess(colon(),nnodes);
+    xfinal = x_guess.col(nnodes-1); 
 
     problem.phases(3).guess.states = x_guess;
     problem.phases(3).guess.time   = time_guess;
 
     // Phase 4
 
-    nnodes    			= problem.phases(4).nodes(1);
+    nnodes    			           = problem.phases(4).nodes(0);
     nstates                     = problem.phases(4).nstates;
     ncontrols                   = problem.phases(4).ncontrols;
     iphase = 4;
@@ -892,16 +892,16 @@ int main(void)
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(21650,21700,nnodes);
 
-    u_guess(1,colon()) = -0.136658e-2*D2R*ones(1,nnodes);
-    u_guess(2,colon()) = 49.7892*D2R*ones(1,nnodes);
+    u_guess.row(0) =  -0.136658e-2*D2R*ones(1,nnodes);
+    u_guess.row(1) =       49.7892*D2R*ones(1,nnodes);
 
-    xini.Resize(7,1);
-    xini(1)= xfinal(1); xini(2)=xfinal(2);xini(3)=xfinal(3);xini(4)=xfinal(4);xini(5)=xfinal(5);xini(6)=xfinal(6);
-    xini(7)= wtf2__;
+    xini.resize(7,1);
+    xini(0)= xfinal(0); xini(1)=xfinal(1);xini(2)=xfinal(2);xini(3)=xfinal(3);xini(4)=xfinal(4);xini(5)=xfinal(5);
+    xini(6)= wtf2__;
 
     rk4_propagate( dae, u_guess, time_guess, xini, param_guess, problem, iphase, x_guess, NULL);
 
-    tra(x_guess).Print("x_guess(iphase=4)");
+//    tra(x_guess).Print("x_guess(iphase=4)");
 
 
     problem.phases(4).guess.states   = x_guess;
@@ -942,34 +942,33 @@ int main(void)
 
 
 
-    DMatrix x, t, w2, xi, w4,  ti;
+    MatrixXd x, t, xp1, xp2, xp3, xp4, tp1, tp2, tp3, tp4;
 
-    x      = solution.get_states_in_phase(1);
-    t      = solution.get_time_in_phase(1);
+    xp1      = solution.get_states_in_phase(1);
+    tp1      = solution.get_time_in_phase(1);
 
-    w2     = solution.get_states_in_phase(2);
-    w2     = w2(7,colon());
+    xp2     = solution.get_states_in_phase(2);
+    tp2     = solution.get_time_in_phase(2);
 
-    w4     = solution.get_states_in_phase(4);
-    w4     = w4(7,colon());
+    xp3     = solution.get_states_in_phase(3);
+    tp3     = solution.get_time_in_phase(3);
+    
+    xp3     = solution.get_states_in_phase(3);
+    tp3     = solution.get_time_in_phase(3);
+    
+    xp4     = solution.get_states_in_phase(4);
+    tp4     = solution.get_time_in_phase(4);
+
+    x.resize(6, length(tp1)+length(tp2)+length(tp3)+length(tp4));
+    t.resize(1, length(tp1)+length(tp2)+length(tp3)+length(tp4));
+
+    x  <<  xp1, xp2.block(0,0,6,length(tp2)), xp3, xp4.block(0,0,6,length(tp4));
+    t  <<  tp1, tp2, tp3, tp4;
 
 
-    for(int i=2;i<=problem.nphases;i++) {
-      	     xi      = solution.get_states_in_phase(i);
-    	     ti      = solution.get_time_in_phase(i);
+    MatrixXd u_phase2     = solution.get_controls_in_phase(2);
+    MatrixXd u_phase4     = solution.get_controls_in_phase(4);
 
-	xi = xi(colon(1,6),colon());
-
-	x = x || xi;
-
-        t = t || ti;
-
-    }
-
-    DMatrix u_phase2     = solution.get_controls_in_phase(2);
-    DMatrix u_phase4     = solution.get_controls_in_phase(4);
-    DMatrix t2           = solution.get_time_in_phase(2);
-    DMatrix t4           = solution.get_time_in_phase(4);
 
 
 
@@ -988,60 +987,60 @@ int main(void)
 
     double R2D = 180/pi;
 
-    DMatrix x1 = x(1,colon())/1.e6;
-    DMatrix x2 = x(2,colon());
-    DMatrix x3 = x(3,colon());
-    DMatrix x4 = x(4,colon());
-    DMatrix x5 = x(5,colon());
-    DMatrix x6 = x(6,colon());
-    DMatrix x7 = x(7,colon());
-    DMatrix theta_phase2;
-    DMatrix theta_phase4;
-    DMatrix phi_phase2;
-    DMatrix phi_phase4;
-    DMatrix r;
+    MatrixXd x1 = x.row(0)/1.e6;
+    MatrixXd x2 = x.row(1); 
+    MatrixXd x3 = x.row(2); 
+    MatrixXd x4 = x.row(3); 
+    MatrixXd x5 = x.row(4); 
+    MatrixXd x6 = x.row(5); 
+//    MatrixXd x7 = x(7,colon());
+    MatrixXd theta_phase2;
+    MatrixXd theta_phase4;
+    MatrixXd phi_phase2;
+    MatrixXd phi_phase4;
+    MatrixXd r;
 
-    theta_phase2 = u_phase2(1,colon())*R2D;
-    phi_phase2    = u_phase2(2,colon())*R2D;
-    theta_phase4  = u_phase4(1,colon())*R2D;
-    phi_phase4    = u_phase4(2,colon())*R2D;
+    theta_phase2 =  u_phase2.row(0)*R2D; 
+    phi_phase2    = u_phase2.row(1)*R2D; 
+    theta_phase4  = u_phase4.row(0)*R2D; 
+    phi_phase4    = u_phase4.row(1)*R2D; 
 
     compute_cartesian_trajectory(x,r);
 
-    r.Save("r.dat");
+    Save(r,"r.dat");
 
     double ft2km = 0.0003048;
 
     r = r*ft2km;
 
 
-    plot(t2,theta_phase2,problem.name+": thrust theta phase 2","time (s)", "theta (deg)", "theta");
+    plot(tp2,theta_phase2,problem.name+": thrust theta phase 2","time (s)", "theta (deg)", "theta");
 
-    plot(t2,phi_phase2,problem.name+": thrust phi phase 2","time (s)", "phi (deg)", "phi");
+    plot(tp2,phi_phase2,problem.name+": thrust phi phase 2","time (s)", "phi (deg)", "phi");
 
-    plot(t4,theta_phase4,problem.name+": thrust theta phase 4","time (s)", "theta (deg)", "theta");
+    plot(tp4,theta_phase4,problem.name+": thrust theta phase 4","time (s)", "theta (deg)", "theta");
 
-    plot(t4,phi_phase4,problem.name+": thrust phi phase 4","time (s)", "phi (deg)", "phi");
+    plot(tp4,phi_phase4,problem.name+": thrust phi phase 4","time (s)", "phi (deg)", "phi");
 
-    plot(t2,theta_phase2,problem.name+":  thrust pitch angle phase 2","time (s)", "theta (deg)", "theta",
+    plot(tp2,theta_phase2,problem.name+":  thrust pitch angle phase 2","time (s)", "theta (deg)", "theta",
 	 "pdf", "theta2.pdf");
 
-    plot(t2,phi_phase2,problem.name+": thrust angle phase 2","time (s)", "phi (deg)", "phi",
+    plot(tp2,phi_phase2,problem.name+": thrust angle phase 2","time (s)", "phi (deg)", "phi",
 	 "pdf", "phi2.pdf");
 
-    plot(t4,theta_phase4,problem.name+": thrust pitch angle phase 4","time (s)", "theta (deg)", "theta",
+    plot(tp4,theta_phase4,problem.name+": thrust pitch angle phase 4","time (s)", "theta (deg)", "theta",
 	 "pdf", "theta4.pdf");
 
-    plot(t4,phi_phase4,problem.name+": thrust yaw angle phase 4","time (s)", "phi (deg)", "phi",
+    plot(tp4,phi_phase4,problem.name+": thrust yaw angle phase 4","time (s)", "phi (deg)", "phi",
     	 "pdf", "phi4.pdf");
 
-    plot3(r(1,colon()), r(2,colon()), r(3,colon()), "Two burn trasnfer trajectory", "x (km)", "y (km)", "z (km)",
+    plot3(r.row(0) , r.row(1) , r.row(2) , "Two burn trasnfer trajectory", "x (km)", "y (km)", "z (km)",
 	   NULL, NULL, "30,110");
 
-    plot3(r(1,colon()), r(2,colon()), r(3,colon()), "Two burn transfer trajectory", "x (km)", "y (km)", "z (km)",
+    plot3(r.row(0) , r.row(1) , r.row(3) , "Two burn transfer trajectory", "x (km)", "y (km)", "z (km)",
 	   "pdf", "trajectory.pdf", "30,110");
 
-    plot(r(1,colon()), r(2,colon()),  "Two burn trajectory - projection on the equatorial plane",
+    plot(r.row(0) , r.row(1),  "Two burn trajectory - projection on the equatorial plane",
 	    "x (km)", "y (km)");
 
 
