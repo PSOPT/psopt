@@ -485,7 +485,14 @@ typedef struct {
 } GRWORK;
 
 
-typedef struct {
+class MSdata {
+public:
+  MSdata() {
+    nodes.resize(1);  
+  }
+  MSdata(long n) {
+    nodes.resize(n);  
+  }
   int nsegments;
   int nstates;
   int nparameters;
@@ -493,11 +500,9 @@ typedef struct {
   int npath;
   int ninitial_events;
   int nfinal_events;
-  int nobserved;
-  int nsamples;
   bool continuous_controls;
   RowVectorXi nodes;
-} MSdata;
+};
 
 
 typedef struct {

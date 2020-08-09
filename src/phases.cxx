@@ -186,19 +186,12 @@ void multi_segment_setup(Prob& problem, Alg& algorithm, MSdata& msdata)
   
      problem.phases(1).nparameters = msdata.nparameters;
 
-     if (problem.observation_function!=NULL) {
+     for (int i=1; i<= problem.nphases;i++) {
+        // No parameter estimation problems can be defined as multi-segment problems
+        
+        problem.phases(i).nobserved = 0;
 
-        problem.phases(1).nobserved = msdata.nobserved;
-
-        if (msdata.nsegments>0) problem.phases(1).nsamples  = (msdata.nsamples-1)/msdata.nsegments + 1;
-
-     }
-
-     else {
-
-        problem.phases(1).nobserved = 0;
-
-        problem.phases(1).nsamples  = 0;
+        problem.phases(i).nsamples  = 0;
 
      }
 
@@ -235,14 +228,11 @@ void auto_phase_setup(Prob& problem,int n_final_events, RowVectorXi& nodes)
 
 	for(i=2;i<=problem.nphases;i++)
 	{
-	        if ( nodes.rows() == 1 ) j = 1;
-		else if (nodes.rows() == problem.nphases) j=i;
 		   problem.phases(i).nstates   		       = problem.phases(1).nstates;
 		   problem.phases(i).ncontrols 		       = problem.phases(1).ncontrols;
     		problem.phases(i).nevents   		       = 0;
     		problem.phases(i).npath     		       = problem.phases(1).npath;
-//    		problem.phases(i).nodes          = nodes(j,colon());  // EIGEN_UPDATE
-	      problem.phases(i).nodes                 = nodes.row(j);
+	      problem.phases(i).nodes                 = nodes;
 		   problem.phases(i).nparameters           = 0;
          problem.phases(i).nobserved             = problem.phases(1).nobserved;
          problem.phases(i).nsamples              = problem.phases(1).nsamples;
@@ -365,15 +355,12 @@ void  auto_phase_guess(Prob& problem, MatrixXd& controls, MatrixXd& states, Matr
 		           problem.phases(i).guess.parameters(j)= param(j);
 		      }
 	    }
-       if (i==1) {
-                time_min = time(0);
-                time_max = time(0)+ (time(time.cols()-1)-time(0))/problem.nphases;
-       }
-       else {
-       	       long iend = length(problem.phases(i-1).guess.time)-1; // EIGEN_UPDATE
-		          time_min = problem.phases(i-1).guess.time(iend);
-                time_max = time_min + i*(time(length(time)-1)-time(0))/problem.nphases;
-       }
+
+       	
+       double dt = (time(time.cols()-1)- time(0))/problem.nphases;
+		 time_min = time(0)+(i-1)*dt;
+       time_max = time(0)+i*dt;
+
     	 problem.phases(i).guess.time = linspace(time_min,time_max,min_nodes);
 	}
 

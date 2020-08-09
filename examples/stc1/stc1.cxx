@@ -124,8 +124,8 @@ int main(void)
 ////////////  Define problem level constants & do level 1 setup ////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.nphases   			= 1;
-    problem.nlinkages                   = 0;
+    problem.nphases   					= 1;
+    problem.nlinkages               = 0;
 
     psopt_level1_setup(problem);
 
@@ -139,7 +139,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 2;
     problem.phases(1).npath     		= 1;
-    problem.phases(1).nodes                     = "[20 50]";
+    problem.phases(1).nodes         = (RowVectorXi(2) << 20, 50 ).finished(); // "[20 50]";
 
     psopt_level2_setup(problem, algorithm);
 
@@ -149,25 +149,25 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
+    problem.phases(1).bounds.lower.states(0) = -2.0;
     problem.phases(1).bounds.lower.states(1) = -2.0;
-    problem.phases(1).bounds.lower.states(2) = -2.0;
 
 
+    problem.phases(1).bounds.upper.states(0) = 2.0;
     problem.phases(1).bounds.upper.states(1) = 2.0;
-    problem.phases(1).bounds.upper.states(2) = 2.0;
 
 
-    problem.phases(1).bounds.lower.controls(1) = -20.0;
-    problem.phases(1).bounds.upper.controls(1) =  20.0;
+    problem.phases(1).bounds.lower.controls(0) = -20.0;
+    problem.phases(1).bounds.upper.controls(0) =  20.0;
 
-    problem.phases(1).bounds.lower.events(1) = 0.0;
-    problem.phases(1).bounds.lower.events(2) = -1.0;
+    problem.phases(1).bounds.lower.events(0) = 0.0;
+    problem.phases(1).bounds.lower.events(1) = -1.0;
 
-    problem.phases(1).bounds.upper.events(1) = 0.0;
-    problem.phases(1).bounds.upper.events(2) = -1.0;
+    problem.phases(1).bounds.upper.events(0) = 0.0;
+    problem.phases(1).bounds.upper.events(1) = -1.0;
 
-    problem.phases(1).bounds.upper.path(1) = 0.0;
-    problem.phases(1).bounds.lower.path(1) = -100.0;
+    problem.phases(1).bounds.upper.path(0) = 0.0;
+    problem.phases(1).bounds.lower.path(0) = -100.0;
 
 
 
@@ -184,10 +184,10 @@ int main(void)
 
 
     problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae 		= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.endpoint_cost 		= &endpoint_cost;
+    problem.dae 					= &dae;
+    problem.events 				= &events;
+    problem.linkages				= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
@@ -203,9 +203,9 @@ int main(void)
 
     algorithm.scaling                     	= "automatic";
     algorithm.derivatives                 	= "automatic";
-    algorithm.nlp_iter_max 		  	= 1000;
-    algorithm.nlp_tolerance 			= 1.e-4;
-    algorithm.nlp_method			="IPOPT";
+    algorithm.nlp_iter_max 		  				= 1000;
+    algorithm.nlp_tolerance 						= 1.e-6;
+    algorithm.nlp_method							="IPOPT";
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   /////////////////
@@ -218,24 +218,24 @@ int main(void)
 ///////////  Extract relevant variables from solution structure   //////////
 ////////////////////////////////////////////////////////////////////////////
 
-    DMatrix x = solution.get_states_in_phase(1);
-    DMatrix u = solution.get_controls_in_phase(1);
-    DMatrix t = solution.get_time_in_phase(1);
+    MatrixXd x = solution.get_states_in_phase(1);
+    MatrixXd u = solution.get_controls_in_phase(1);
+    MatrixXd t = solution.get_time_in_phase(1);
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
     // Generate points to plot the constraint boundary
 
-    DMatrix x2c =  8.0*((t-0.5)^2.0) -0.5*ones(1,length(t));
+    MatrixXd x2c =  8.0*elemProduct(t.array()-0.5,t.array()-0.5) -0.5*ones(1,length(t));
 
     plot(t,x,t,x2c,"states","time (s)", "x", "x1 x2 constraint");
     plot(t,u,"control","time (s)", "u");

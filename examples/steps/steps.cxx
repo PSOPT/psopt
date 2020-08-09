@@ -38,7 +38,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
 adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
                      adouble& time, adouble* xad, int iphase, Workspace* workspace)
 {
-   adouble x = states[ CINDEX(1) ];
+   adouble x = states[ 0 ];
 
    return (x);
 }
@@ -56,7 +56,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
     adouble u = controls[CINDEX(1)];
 
-    derivatives[ CINDEX(1) ]  = u;
+    derivatives[ 0 ]  = u;
 
 }
 
@@ -70,16 +70,16 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
 
 {
 
-    adouble x1_i 	= initial_states[ CINDEX(1) ];
+    adouble x1_i 	= initial_states[ 0 ];
 
-    adouble x1_f 	= final_states[ CINDEX(1) ];
+    adouble x1_f 	= final_states[   0 ];
 
 
    if ( iphase==1 ) {
-		    e[ CINDEX(1) ] =  x1_i;
+		    e[ 0 ] =  x1_i;
    }
    else if ( iphase==3 ) {
-		    e[ CINDEX(1) ] = x1_f;
+		    e[ 0 ] =  x1_f;
    }
 
 }
@@ -117,7 +117,7 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name        		= "Steps problem";
+    problem.name        		          = "Steps problem";
     problem.outfilename                 = "steps.txt";
 
 ////////////////////////////////////////////////////////////////////////////
@@ -131,7 +131,7 @@ int main(void)
     msdata.npath           = 0;
     msdata.ninitial_events = 1;
     msdata.nfinal_events   = 1;
-    msdata.nodes           = 20; // nodes per segment
+    msdata.nodes           << 20; // nodes per segment
 
     multi_segment_setup(problem, algorithm, msdata );
 
@@ -140,12 +140,12 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).bounds.lower.controls(1) = -1.0;
-    problem.phases(1).bounds.upper.controls(1) =  1.0;
-    problem.phases(1).bounds.lower.states(1) = 0.0;
-    problem.phases(1).bounds.upper.states(1) = 5.0;
-    problem.phases(1).bounds.lower.events(1) = 1.0;
-    problem.phases(3).bounds.lower.events(1) = 1.0;
+    problem.phases(1).bounds.lower.controls(0) = -1.0;
+    problem.phases(1).bounds.upper.controls(0) =  1.0;
+    problem.phases(1).bounds.lower.states(0) = 0.0;
+    problem.phases(1).bounds.upper.states(0) = 5.0;
+    problem.phases(1).bounds.lower.events(0) = 1.0;
+    problem.phases(3).bounds.lower.events(0) = 1.0;
 
 
     problem.phases(1).bounds.upper.events=problem.phases(1).bounds.lower.events;
@@ -162,8 +162,11 @@ int main(void)
 //    problem.bounds.lower.times = "[0.0, 1.0, 2.0, 3.0]";
 //    problem.bounds.upper.times = "[0.0, 1.0, 2.0, 3.0]";
 
-    problem.bounds.lower.times = "[0.0, 1.0, 2.0, 3.0]";
-    problem.bounds.upper.times = "[0.0, 1.0, 2.0, 3.0]";
+problem.bounds.lower.times.resize(1,4);
+problem.bounds.upper.times.resize(1,4);
+
+    problem.bounds.lower.times << 0.0, 1.0, 2.0, 3.0;
+    problem.bounds.upper.times << 0.0, 1.0, 2.0, 3.0;
 
     auto_phase_bounds(problem);
 
@@ -174,30 +177,30 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.integrand_cost 	= &integrand_cost;
-    problem.endpoint_cost 	= &endpoint_cost;
-    problem.dae             	= &dae;
-    problem.events 		= &events;
-    problem.linkages		= &linkages;
+    problem.integrand_cost 		= &integrand_cost;
+    problem.endpoint_cost 			= &endpoint_cost;
+    problem.dae             		= &dae;
+    problem.events 					= &events;
+    problem.linkages					= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			= problem.phases(1).nodes(1);
+    int nnodes    							 = problem.phases(1).nodes(0);
     int ncontrols                       = problem.phases(1).ncontrols;
     int nstates                         = problem.phases(1).nstates;
 
-    DMatrix state_guess    =  zeros(nstates,nnodes);
-    DMatrix control_guess  =  zeros(ncontrols,nnodes);
-    DMatrix time_guess     =  linspace(0.0,3.0,nnodes);
-    DMatrix param_guess;
+    MatrixXd state_guess    				=  zeros(nstates,nnodes);
+    MatrixXd control_guess  				=  zeros(ncontrols,nnodes);
+    MatrixXd time_guess    				=  linspace(0.0,3.0,nnodes);
+    MatrixXd param_guess;
 
 
 
-    state_guess(1,colon()) = linspace(1.0, 1.0, nnodes);
+    state_guess   = linspace(1.0, 1.0, nnodes);
 
-    control_guess(1,colon()) = zeros(1,nnodes);
+    control_guess = zeros(1,nnodes);
 
 
     auto_phase_guess(problem, control_guess, state_guess, param_guess, time_guess);
@@ -228,47 +231,51 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x, u, t, xi, ui, ti;
+    MatrixXd x, u, t, x_ph1, u_ph1, t_ph1, x_ph2, u_ph2, t_ph2, x_ph3, u_ph3, t_ph3; 
 
-    x      = solution.get_states_in_phase(1);
-    u      = solution.get_controls_in_phase(1);
-    t      = solution.get_time_in_phase(1);
+    x_ph1      = solution.get_states_in_phase(1);
+    u_ph1      = solution.get_controls_in_phase(1);
+    t_ph1      = solution.get_time_in_phase(1);
+    
+    x_ph2      = solution.get_states_in_phase(2);
+    u_ph2      = solution.get_controls_in_phase(2);
+    t_ph2      = solution.get_time_in_phase(2);
+    
+    x_ph3      = solution.get_states_in_phase(3);
+    u_ph3      = solution.get_controls_in_phase(3);
+    t_ph3      = solution.get_time_in_phase(3);
 
-    for(int i=2;i<=problem.nphases;i++) {
-      	     xi      = solution.get_states_in_phase(i);
-    	     ui      = solution.get_controls_in_phase(i);
-    	     ti      = solution.get_time_in_phase(i);
 
-	x = x || xi;
-
-        u = u || ui;
-
-        t = t || ti;
-
-    }
+    x.resize(1, length(t_ph1)+length(t_ph2)+length(t_ph3) );
+    u.resize(1, length(t_ph1)+length(t_ph2)+length(t_ph3) ); 
+    t.resize(1, length(t_ph1)+length(t_ph2)+length(t_ph3) );  
+    
+    x << x_ph2, x_ph2, x_ph3;
+    u << u_ph1, u_ph2, u_ph3;
+    t << t_ph1, t_ph2, t_ph3;
 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    x.Save("x.dat");
-    u.Save("u.dat");
-    t.Save("t.dat");
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Plot some results if desired (requires gnuplot) ///////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    plot(t,x(1,colon()),problem.name+": state","time (s)", "x", "x");
+    plot(t,x,problem.name+": state","time (s)", "x", "x");
 
-    plot(t,u(1,colon()),problem.name+": control","time (s)", "u", "u");
+    plot(t,u,problem.name+": control","time (s)", "u", "u");
 
-    plot(t,x(1,colon()),problem.name+": state","time (s)", "x", "x",
+    plot(t,x,problem.name+": state","time (s)", "x", "x",
 	                                "pdf", "steps_state.pdf");
 
 
-    plot(t,u(1,colon()),problem.name+": control","time (s)", "u", "u",
+    plot(t,u,problem.name+": control","time (s)", "u", "u",
 	                                "pdf", "steps_control.pdf");
 
 
