@@ -55,22 +55,22 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    double g = 1.0;
    double a = 0.5*g;
 
-   adouble x = states[ CINDEX(1) ];
-   adouble y = states[ CINDEX(2) ];
-   adouble v = states[ CINDEX(3) ];
+   adouble x = states[ 0 ];
+   adouble y = states[ 1 ];
+   adouble v = states[ 2 ];
 
-   adouble u1 = controls[ CINDEX(1) ];
-   adouble u2 = controls[ CINDEX(2) ];
+   adouble u1 = controls[ 0 ];
+   adouble u2 = controls[ 1 ];
 
    xdot = v*u1;
    ydot = v*u2;
    vdot = a-g*u2;
 
-   derivatives[ CINDEX(1) ] = xdot;
-   derivatives[ CINDEX(2) ] = ydot;
-   derivatives[ CINDEX(3) ] = vdot;
+   derivatives[ 0 ] = xdot;
+   derivatives[ 1 ] = ydot;
+   derivatives[ 2 ] = vdot;
 
-   path[ CINDEX(1) ] = (u1*u1) + (u2*u2);
+   path[ 0 ] = (u1*u1) + (u2*u2);
 
 }
 
@@ -83,16 +83,16 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             int iphase, Workspace* workspace)
 
 {
-   adouble x0 = initial_states[ CINDEX(1) ];
-   adouble y0 = initial_states[ CINDEX(2) ];
-   adouble v0 = initial_states[ CINDEX(3) ];
-   adouble xf = final_states[ CINDEX(1) ];
-   adouble yf = final_states[ CINDEX(2) ];
+   adouble x0 = initial_states[ 0 ];
+   adouble y0 = initial_states[ 1 ];
+   adouble v0 = initial_states[ 2 ];
+   adouble xf = final_states[ 0 ];
+   adouble yf = final_states[ 1 ];
 
-   e[ CINDEX(1) ] = x0;
-   e[ CINDEX(2) ] = y0;
-   e[ CINDEX(3) ] = v0;
-   e[ CINDEX(4) ] = yf;
+   e[ 0 ] = x0;
+   e[ 1 ] = y0;
+   e[ 2 ] = v0;
+   e[ 3 ] = yf;
 
 }
 
@@ -260,7 +260,7 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-//    algorithm.mesh_refinement             = "automatic";
+    algorithm.mesh_refinement             = "automatic";
     algorithm.collocation_method = "trapezoidal";
 //    algorithm.defect_scaling = "jacobian-based";
     algorithm.ode_tolerance               = 1.e-6;

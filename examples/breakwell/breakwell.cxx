@@ -54,17 +54,17 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    double g = 1.0;
    double a = 0.5*g;
 
-   adouble x = states[ CINDEX(1) ];
-   adouble v = states[ CINDEX(2) ];
+   adouble x = states[ 0 ];
+   adouble v = states[ 1 ];
 
-   adouble u = controls[ CINDEX(1) ];
+   adouble u = controls[ 0 ];
 
 
    xdot = v;
    vdot = u;
 
-   derivatives[ CINDEX(1) ] = xdot;
-   derivatives[ CINDEX(2) ] = vdot;
+   derivatives[ 0 ] = xdot;
+   derivatives[ 1 ] = vdot;
 
 }
 
@@ -77,15 +77,15 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             int iphase, Workspace* workspace)
 
 {
-   adouble x0 = initial_states[ CINDEX(1) ];
-   adouble v0 = initial_states[ CINDEX(2) ];
-   adouble xf = final_states[ CINDEX(1) ];
-   adouble vf = final_states[ CINDEX(2) ];
+   adouble x0 = initial_states[ 0 ];
+   adouble v0 = initial_states[ 1 ];
+   adouble xf = final_states[ 0 ];
+   adouble vf = final_states[ 1 ];
 
-   e[ CINDEX(1) ] = x0;
-   e[ CINDEX(2) ] = v0;
-   e[ CINDEX(3) ] = xf;
-   e[ CINDEX(4) ] = vf;
+   e[ 0 ] = x0;
+   e[ 1 ] = v0;
+   e[ 2 ] = xf;
+   e[ 3 ] = vf;
 
 }
 

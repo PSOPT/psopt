@@ -46,12 +46,12 @@ adouble integrand_cost(adouble* states, adouble* controls,
                        adouble* parameters, adouble& time, adouble* xad,
                        int iphase, Workspace* workspace)
 {
-    adouble x1 = states[CINDEX(1)];
-    adouble x2 = states[CINDEX(2)];
-    adouble x3 = states[CINDEX(3)];
-    adouble x4 = states[CINDEX(4)];
-    adouble u1 = controls[CINDEX(1)];
-    adouble u2 = controls[CINDEX(2)];
+    adouble x1 = states[0];
+    adouble x2 = states[1];
+    adouble x3 = states[2];
+    adouble x4 = states[3];
+    adouble u1 = controls[0];
+    adouble u2 = controls[1];
 
     adouble L;
 
@@ -69,18 +69,18 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* controls, adouble* parameters, adouble& time,
          adouble* xad, int iphase, Workspace* workspace)
 {
-    adouble x1 = states[CINDEX(1)];
-    adouble x2 = states[CINDEX(2)];
-    adouble x3 = states[CINDEX(3)];
-    adouble x4 = states[CINDEX(4)];
-    adouble u1 = controls[CINDEX(1)];
-    adouble u2 = controls[CINDEX(2)];
+    adouble x1 = states[0];
+    adouble x2 = states[1];
+    adouble x3 = states[2];
+    adouble x4 = states[3];
+    adouble u1 = controls[0];
+    adouble u2 = controls[1];
     adouble t  = time;
 
-   derivatives[CINDEX(1)] = -10*x1 + u1 + u2;
-   derivatives[CINDEX(2)] = -2*x2 + u1 + 2*u2;
-   derivatives[CINDEX(3)] = -3*x3 + 5*x4 + u1 - u2;
-   derivatives[CINDEX(4)] =  5*x3 - 3*x4 + u1 + 3*u2;
+   derivatives[0] = -10*x1 + u1 + u2;
+   derivatives[1] = -2*x2 + u1 + 2*u2;
+   derivatives[2] = -3*x3 + 5*x4 + u1 - u2;
+   derivatives[3] =  5*x3 - 3*x4 + u1 + 3*u2;
 
    path[0] = x1*x1 + x2*x2 + x3*x3 + x4*x4
              - 3*pk(t,3,12) - 3*pk(t,6,10) - 3*pk(t,10,6) - 8*pk(t,15,4)
@@ -97,25 +97,25 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             int iphase, Workspace* workspace)
 
 {
-   adouble x1i = initial_states[ CINDEX(1) ];
-   adouble x2i = initial_states[ CINDEX(2) ];
-   adouble x3i = initial_states[ CINDEX(3) ];
-   adouble x4i = initial_states[ CINDEX(4) ];
-   adouble x1f = final_states[ CINDEX(1) ];
-   adouble x2f = final_states[ CINDEX(2) ];
-   adouble x3f = final_states[ CINDEX(3) ];
-   adouble x4f = final_states[ CINDEX(4) ];
+   adouble x1i = initial_states[ 0 ];
+   adouble x2i = initial_states[ 1 ];
+   adouble x3i = initial_states[ 2 ];
+   adouble x4i = initial_states[ 3 ];
+   adouble x1f = final_states[ 0 ];
+   adouble x2f = final_states[ 1 ];
+   adouble x3f = final_states[ 2 ];
+   adouble x4f = final_states[ 3 ];
 
 
 
-   e[ CINDEX(1) ] = x1i;
-   e[ CINDEX(2) ] = x2i;
-   e[ CINDEX(3) ] = x3i;
-   e[ CINDEX(4) ] = x4i;
-   e[ CINDEX(5) ] = x1f;
-   e[ CINDEX(6) ] = x2f;
-   e[ CINDEX(7) ] = x3f;
-   e[ CINDEX(8) ] = x4f;
+   e[ 0 ] = x1i;
+   e[ 1 ] = x2i;
+   e[ 2 ] = x3i;
+   e[ 3 ] = x4i;
+   e[ 4 ] = x1f;
+   e[ 5 ] = x2f;
+   e[ 6 ] = x3f;
+   e[ 7 ] = x4f;
 
 }
 

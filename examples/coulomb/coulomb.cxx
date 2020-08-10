@@ -48,13 +48,13 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* controls, adouble* parameters, adouble& time, 
          adouble* xad, int iphase, Workspace* workspace)
 {
-   adouble q1    = states[ CINDEX(1) ];
-   adouble q1dot = states[ CINDEX(2) ];
-   adouble q2    = states[ CINDEX(3) ];
-   adouble q2dot = states[ CINDEX(4) ];
+   adouble q1    = states[ 0 ];
+   adouble q1dot = states[ 1 ];
+   adouble q2    = states[ 2 ];
+   adouble q2dot = states[ 3 ];
 
-   adouble u1 = controls[ CINDEX(1) ];
-   adouble u2 = controls[ CINDEX(2) ];
+   adouble u1 = controls[ 0 ];
+   adouble u2 = controls[ 1 ];
 
    double k1 = 0.95; 
    double k2 = 0.85;
@@ -64,10 +64,10 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
    double epsilon = 0.01;
 
-   derivatives[ CINDEX(1) ] = q1dot;
-   derivatives[ CINDEX(2) ] = ( (-k1-k2)*q1+k2*q2-mu*smooth_sign(q1dot,epsilon)+u1 )/m1;
-   derivatives[ CINDEX(3) ] = q2dot;
-   derivatives[ CINDEX(4) ] = ( k2*q1-k2*q2-mu*smooth_sign(q2dot,epsilon)+u2 )/m2;
+   derivatives[ 0 ] = q1dot;
+   derivatives[ 1 ] = ( (-k1-k2)*q1+k2*q2-mu*smooth_sign(q1dot,epsilon)+u1 )/m1;
+   derivatives[ 2 ] = q2dot;
+   derivatives[ 3 ] = ( k2*q1-k2*q2-mu*smooth_sign(q2dot,epsilon)+u2 )/m2;
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -79,25 +79,25 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             int iphase, Workspace* workspace) 
 {
 
-   adouble q1_0    = initial_states[ CINDEX(1) ];
-   adouble q1dot_0 = initial_states[ CINDEX(2) ];
-   adouble q2_0    = initial_states[ CINDEX(3) ];
-   adouble q2dot_0 = initial_states[ CINDEX(4) ];
+   adouble q1_0    = initial_states[ 0 ];
+   adouble q1dot_0 = initial_states[ 1 ];
+   adouble q2_0    = initial_states[ 2 ];
+   adouble q2dot_0 = initial_states[ 3 ];
 
-   adouble q1_f    = final_states[ CINDEX(1) ];
-   adouble q1dot_f = final_states[ CINDEX(2) ];
-   adouble q2_f    = final_states[ CINDEX(3) ];
-   adouble q2dot_f = final_states[ CINDEX(4) ];
+   adouble q1_f    = final_states[ 0 ];
+   adouble q1dot_f = final_states[ 1 ];
+   adouble q2_f    = final_states[ 2 ];
+   adouble q2dot_f = final_states[ 3 ];
 
 
-   e[ CINDEX(1) ] = q1_0;
-   e[ CINDEX(2) ] = q1dot_0;
-   e[ CINDEX(3) ] = q2_0;
-   e[ CINDEX(4) ] = q2dot_0;
-   e[ CINDEX(5) ] = q1_f;
-   e[ CINDEX(6) ] = q1dot_f;
-   e[ CINDEX(7) ] = q2_f;
-   e[ CINDEX(8) ] = q2dot_f;
+   e[ 0 ] = q1_0;
+   e[ 1 ] = q1dot_0;
+   e[ 2 ] = q2_0;
+   e[ 3 ] = q2dot_0;
+   e[ 4 ] = q1_f;
+   e[ 5 ] = q1dot_f;
+   e[ 6 ] = q2_f;
+   e[ 7 ] = q2dot_f;
 
 }
 

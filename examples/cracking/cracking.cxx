@@ -30,8 +30,8 @@ void  observation_function( adouble* observations,
                             adouble* xad, int iphase, Workspace* workspace)
 {
 
-      observations[ CINDEX(1) ] = states[ CINDEX(1) ];
-      observations[ CINDEX(2) ] = states[ CINDEX(2) ];
+      observations[ 0 ] = states[ 0 ];
+      observations[ 1 ] = states[ 1 ];
 }
 
 
@@ -45,15 +45,15 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* xad, int iphase, Workspace* workspace)
 {
 
-   adouble y1 = states[CINDEX(1)];
-   adouble y2 = states[CINDEX(2)];
+   adouble y1 = states[0];
+   adouble y2 = states[1];
 
-   adouble theta1 = parameters[ CINDEX(1) ];
-   adouble theta2 = parameters[ CINDEX(2) ];
-   adouble theta3 = parameters[ CINDEX(3) ];
+   adouble theta1 = parameters[ 0 ];
+   adouble theta2 = parameters[ 1 ];
+   adouble theta3 = parameters[ 2 ];
 
-   derivatives[CINDEX(1)] = -(theta1 + theta3)*y1*y1;
-   derivatives[CINDEX(2)] =  theta1*y1*y1 - theta2*y2;
+   derivatives[0] = -(theta1 + theta3)*y1*y1;
+   derivatives[1] =  theta1*y1*y1 - theta2*y2;
 
 }
 

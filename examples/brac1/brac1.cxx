@@ -50,19 +50,19 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 {
    adouble xdot, ydot, vdot;
 
-   adouble x = states[ CINDEX(1) ];
-   adouble y = states[ CINDEX(2) ];
-   adouble v = states[ CINDEX(3) ];
+   adouble x = states[ 0 ];
+   adouble y = states[ 1 ];
+   adouble v = states[ 2 ];
 
-   adouble theta = controls[ CINDEX(1) ];
+   adouble theta = controls[ 0 ];
 
    xdot = v*sin(theta);
    ydot = v*cos(theta);
    vdot = 9.8*cos(theta);
 
-   derivatives[ CINDEX(1) ] = xdot;
-   derivatives[ CINDEX(2) ] = ydot;
-   derivatives[ CINDEX(3) ] = vdot;
+   derivatives[ 0 ] = xdot;
+   derivatives[ 1 ] = ydot;
+   derivatives[ 2 ] = vdot;
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -73,17 +73,17 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
             int iphase, Workspace* workspace)
 {
-   adouble x0 = initial_states[ CINDEX(1) ];
-   adouble y0 = initial_states[ CINDEX(2) ];
-   adouble v0 = initial_states[ CINDEX(3) ];
-   adouble xf = final_states[ CINDEX(1)];
-   adouble yf = final_states[ CINDEX(2)];
+   adouble x0 = initial_states[ 0 ];
+   adouble y0 = initial_states[ 1 ];
+   adouble v0 = initial_states[ 2 ];
+   adouble xf = final_states[ 0];
+   adouble yf = final_states[ 1];
 
-   e[ CINDEX(1) ] = x0;
-   e[ CINDEX(2) ] = y0;
-   e[ CINDEX(3) ] = v0;
-   e[ CINDEX(4) ] = xf;
-   e[ CINDEX(5) ] = yf;
+   e[ 0 ] = x0;
+   e[ 1 ] = y0;
+   e[ 2 ] = v0;
+   e[ 3 ] = xf;
+   e[ 4 ] = yf;
 }
 
 ///////////////////////////////////////////////////////////////////////////

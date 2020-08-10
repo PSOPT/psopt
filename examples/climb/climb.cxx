@@ -86,13 +86,13 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
   Constants_& CONSTANTS = *( (Constants_ *) workspace->problem->user_data );
 
-  adouble alpha = controls[ CINDEX(1)]; // Angle of attack (rad)
+  adouble alpha = controls[ 0]; // Angle of attack (rad)
 
 
-  adouble h     =   states[ CINDEX(1) ]; // Altitude (ft)
-  adouble v     =   states[ CINDEX(2) ]; // Velocity (ft/s)
-  adouble gamma =   states[ CINDEX(3) ]; // Flight path angle (rad)
-  adouble w     =   states[ CINDEX(4) ]; // weight (lb)
+  adouble h     =   states[ 0 ]; // Altitude (ft)
+  adouble v     =   states[ 1 ]; // Velocity (ft/s)
+  adouble gamma =   states[ 2 ]; // Flight path angle (rad)
+  adouble w     =   states[ 3 ]; // weight (lb)
 
 
   double g0   = CONSTANTS.g0;
@@ -151,10 +151,10 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
 
 
-   derivatives[ CINDEX(1) ] = hdot;
-   derivatives[ CINDEX(2) ] = vdot;
-   derivatives[ CINDEX(3) ] = gammadot;
-   derivatives[ CINDEX(4) ] = wdot;
+   derivatives[ 0 ] = hdot;
+   derivatives[ 1 ] = vdot;
+   derivatives[ 2 ] = gammadot;
+   derivatives[ 3 ] = wdot;
 
 
 }
@@ -170,22 +170,22 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
 
 
 
-      adouble h0     = initial_states[CINDEX(1)];
-      adouble v0     = initial_states[CINDEX(2)];
-      adouble gamma0 = initial_states[CINDEX(3)];
-      adouble w0     = initial_states[CINDEX(4)];
+      adouble h0     = initial_states[0];
+      adouble v0     = initial_states[1];
+      adouble gamma0 = initial_states[2];
+      adouble w0     = initial_states[3];
 
-      adouble hf     = final_states[CINDEX(1)];
-      adouble vf     = final_states[CINDEX(2)];
-      adouble gammaf = final_states[CINDEX(3)];
+      adouble hf     = final_states[0];
+      adouble vf     = final_states[1];
+      adouble gammaf = final_states[2];
 
-      e[ CINDEX(1) ] = h0;
-      e[ CINDEX(2) ] = v0;
-      e[ CINDEX(3) ] = gamma0;
-      e[ CINDEX(4) ] = w0;
-      e[ CINDEX(5) ] = hf;
-      e[ CINDEX(6) ] = vf;
-      e[ CINDEX(7) ] = gammaf;
+      e[ 0 ] = h0;
+      e[ 1 ] = v0;
+      e[ 2 ] = gamma0;
+      e[ 3 ] = w0;
+      e[ 4 ] = hf;
+      e[ 5 ] = vf;
+      e[ 6 ] = gammaf;
 
 }
 

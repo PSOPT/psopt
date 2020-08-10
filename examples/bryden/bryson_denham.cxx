@@ -25,7 +25,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
                       adouble* parameters,adouble& t0, adouble& tf,
                       adouble* xad, int iphase, Workspace* workspace)
 {
-    adouble x3f = final_states[ CINDEX(3) ];
+    adouble x3f = final_states[ 2 ];
 
     return x3f;
 }
@@ -50,15 +50,15 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
          adouble* xad, int iphase, Workspace* workspace )
 {
 
-   adouble x1 = states[CINDEX(1)];
-   adouble x2 = states[CINDEX(2)];
-   adouble x3 = states[CINDEX(3)];
+   adouble x1 = states[0];
+   adouble x2 = states[1];
+   adouble x3 = states[2];
 
-   adouble u = controls[CINDEX(1)];
+   adouble u = controls[0];
 
-   derivatives[ CINDEX(1) ] = x2;
-   derivatives[ CINDEX(2) ] = u;
-   derivatives[ CINDEX(3) ] = u*u/2;
+   derivatives[ 0 ] = x2;
+   derivatives[ 1 ] = u;
+   derivatives[ 2 ] = u*u/2;
 }
 
 
@@ -71,17 +71,17 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
             int iphase, Workspace* workspace)
 {
-   adouble x10 = initial_states[ CINDEX(1) ];
-   adouble x20 = initial_states[ CINDEX(2) ];
-   adouble x30 = initial_states[ CINDEX(3) ];
-   adouble x1f = final_states[ CINDEX(1) ];
-   adouble x2f = final_states[ CINDEX(2) ];
+   adouble x10 = initial_states[ 0 ];
+   adouble x20 = initial_states[ 1 ];
+   adouble x30 = initial_states[ 2 ];
+   adouble x1f = final_states[ 0 ];
+   adouble x2f = final_states[ 1 ];
 
-   e[ CINDEX(1) ] = x10;
-   e[ CINDEX(2) ] = x20;
-   e[ CINDEX(3) ] = x30;
-   e[ CINDEX(4) ] = x1f;
-   e[ CINDEX(5) ] = x2f;
+   e[ 0 ] = x10;
+   e[ 1 ] = x20;
+   e[ 2 ] = x30;
+   e[ 3 ] = x1f;
+   e[ 4 ] = x2f;
 }
 
 

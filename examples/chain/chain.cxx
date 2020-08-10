@@ -38,8 +38,8 @@ adouble integrand_cost(adouble* states, adouble* controls,
                        adouble* parameters, adouble& time, adouble* xad,
                        int iphase, Workspace* workspace)
 {
-    adouble x 		= states[   CINDEX(1) ];
-    adouble dxdt 	= controls[ CINDEX(1) ];
+    adouble x 		= states[   0 ];
+    adouble dxdt 	= controls[ 0 ];
 
     adouble L = x*sqrt(1.0+ pow(dxdt,2.0));
 
@@ -56,11 +56,11 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 {
    adouble xdot, ydot, vdot;
 
-   adouble x = states[ CINDEX(1) ];
+   adouble x = states[ 0 ];
 
-   adouble dxdt = controls[ CINDEX(1) ];
+   adouble dxdt = controls[ 0 ];
 
-   derivatives[ CINDEX(1) ] = dxdt;
+   derivatives[ 0 ] = dxdt;
 
 }
 
@@ -73,7 +73,7 @@ adouble integrand( adouble* states, adouble* controls, adouble* parameters,
                      adouble& time, adouble* xad, int iphase, Workspace* workspace)
 {
    adouble G;
-   adouble dxdt = controls[ CINDEX(1) ];
+   adouble dxdt = controls[ 0 ];
 
    G =   sqrt( 1.0 + pow(dxdt,2.0));
 
@@ -90,16 +90,16 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
             int iphase, Workspace* workspace)
 {
-   adouble x0 = initial_states[ CINDEX(1) ];
-   adouble xf = final_states[   CINDEX(1) ];
+   adouble x0 = initial_states[ 0 ];
+   adouble xf = final_states[   0 ];
    adouble Q;
 
    // Compute the integral to be constrained
    Q = integrate( integrand, xad, iphase, workspace );
 
-   e[ CINDEX(1) ] = x0;
-   e[ CINDEX(2) ] = xf;
-   e[ CINDEX(3) ] = Q;
+   e[ 0 ] = x0;
+   e[ 1 ] = xf;
+   e[ 2 ] = Q;
 
 }
 
