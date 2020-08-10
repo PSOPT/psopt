@@ -29,8 +29,8 @@ void  observation_function( adouble* observations,
                             adouble* parameters, adouble& time, int k,
                             adouble* xad, int iphase, Workspace* workspace)
 {
-      observations[ CINDEX(1) ] = states[ CINDEX(1) ];
-      observations[ CINDEX(2) ] = states[ CINDEX(2) ];
+      observations[ 0 ] = states[ 0 ];
+      observations[ 1 ] = states[ 1 ];
 
 }
 
@@ -50,17 +50,17 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
        adouble dx1, dx2, dx3, dx4;
 
     // Differential states
-       x1 = states[CINDEX(1)];
-       x2 = states[CINDEX(2)];
-       x3 = states[CINDEX(3)];
-       x4 = states[CINDEX(4)];
+       x1 = states[0];
+       x2 = states[1];
+       x3 = states[2];
+       x4 = states[3];
 
     // Algebraic variables
-       LAMBDA = controls[CINDEX(1)];
+       LAMBDA = controls[0];
 
 
     // Parameters
-       L     = parameters[CINDEX(1)];
+       L     = parameters[0];
     // Differential equations
 
       dx1 = x3;
@@ -71,15 +71,15 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
 
       dx4 = LAMBDA*x2;
 
-      derivatives[ CINDEX(1) ] = dx1;
-      derivatives[ CINDEX(2) ] = dx2;
-      derivatives[ CINDEX(3) ] = dx3;
-      derivatives[ CINDEX(4) ] = dx4;
+      derivatives[ 0 ] = dx1;
+      derivatives[ 1 ] = dx2;
+      derivatives[ 2 ] = dx3;
+      derivatives[ 3 ] = dx4;
 
 
      // algebraic equation
 
-      path[ CINDEX(1) ] = L*L - x1*x1 - x2*x2;
+      path[ 0 ] = L*L - x1*x1 - x2*x2;
 
 }
 
