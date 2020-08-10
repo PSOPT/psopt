@@ -191,6 +191,7 @@ struct alg_str {
   string    defect_scaling;
   string    diff_matrix;
   string    parameter_statistics;
+  string    ipopt_linear_solver;
   double    jac_sparsity_ratio;
   double    hess_sparsity_ratio;
   int       print_level; // 1: detailed output on screen and files (default), 0: no output
@@ -201,7 +202,7 @@ struct alg_str {
 
   double    ode_tolerance;
   double    mr_max_increment_factor;
-  int	    mr_max_iterations;
+  int	      mr_max_iterations;
   int       mr_min_extrapolation_points;
   int       mr_initial_increment;
   double    mr_kappa;

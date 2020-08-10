@@ -319,6 +319,7 @@ int NLP_interface(
   app->Options()->SetStringValue("mu_strategy", "adaptive");
   app->Options()->SetStringValue("output_file", "ipopt.out");
   app->Options()->SetStringValue("nlp_scaling_method","gradient-based");
+  app->Options()->SetStringValue("linear_solver",workspace->algorithm->ipopt_linear_solver);
   app->Options()->SetNumericValue("max_cpu_time", workspace->algorithm->ipopt_max_cpu_time );
 
 

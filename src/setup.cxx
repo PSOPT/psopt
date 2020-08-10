@@ -140,6 +140,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.hessian                     = "limited-memory";
   algorithm.collocation_method          = "Legendre";
   algorithm.diff_matrix                 = "standard";
+  algorithm.ipopt_linear_solver         = "mumps";
   algorithm.print_level                 = 1;
   algorithm.save_sparsity_pattern       = 0;
   algorithm.nsteps_error_integration    = 10;
