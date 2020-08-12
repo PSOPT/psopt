@@ -356,7 +356,13 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
 
 	// And finally copy the lagrange multiplier variables into vector lambda
 //	lambda(colon(lam_phase_offset+1,lam_phase_offset+nstates*(norder+1)) ) = (*workspace->dual_costates)(colon(1, nstates*(norder+1)));
-   lambda.block(lam_phase_offset,0, nstates*(norder+1), 1) = (*workspace->dual_costates).block(0,0, nstates*(norder+1),1);
+//   lambda.block(lam_phase_offset,0, nstates*(norder+1), 1) = ((*workspace->dual_costates).array()).segment(0, nstates*(norder+1));
+   for (k=0;k<(norder+1);k++) {
+      for (int j=0; j<nstates;j++) {
+          lambda(lam_phase_offset + k*nstates+j ) = (workspace->dual_costates[i])(j,k);
+      }   
+   }
+
 	offset = lam_phase_offset+nstates*(norder+1);
 
 	if (nevents>0)
@@ -367,7 +373,12 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
         }
 	if (npath>0) {
 //		lambda(colon(offset+1, offset+npath*(norder+1))) = (workspace->dual_path[i])(colon(1, npath*(norder+1)));
-      lambda.block(offset,0, npath*(norder+1),1) = (workspace->dual_path[i]).block(0,0, npath*(norder+1), 1);    
+//      lambda.block(offset,0, npath*(norder+1),1) = (workspace->dual_path[i]).block(0,0, npath*(norder+1), 1);    
+      for (k=0;k<(norder+1);k++) {
+         for (int j=0; j<npath;j++) {
+         	lambda(offset+k*npath+j) = (workspace->dual_path[i])(j,k);
+         }
+      }
    }
         x_phase_offset += nvars_phase_i;
         lam_phase_offset += ncons_phase_i;

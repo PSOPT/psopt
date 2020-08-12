@@ -1260,7 +1260,7 @@ extern Workspace* tempsnoptworkspace;
 #endif
 
 
-#include "IpIpoptApplication.hpp"
+#include <IpIpoptApplication.hpp>
 #include "ipopt_psopt.h"
 
 
