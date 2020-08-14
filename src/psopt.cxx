@@ -593,11 +593,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 //                   tint = tra(tint);
                    tint = tint.transpose().eval();
 //                   pl = pint(l,colon());
-                   long ncols = pint.cols();
-                   pl = pint.block(l,0,1,ncols);
+                   pl = pint.row(l);
                    linear_interpolation(pextra, ts, tint, pl,norder); // EIGEN_UPDATE - Check function
 //                   solution.dual.costates[i](l,colon()) = pextra;
-                   solution.dual.costates[i].block(l,0,1,ncols) = pextra;
+                   solution.dual.costates[i].row(l) = pextra;
        		}		
 
         // use linear extrapolation to approximate costate values at end point (not perfect but better than nothing)

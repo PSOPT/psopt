@@ -1037,7 +1037,7 @@ int main(void)
     plot3(r.row(0) , r.row(1) , r.row(2) , "Two burn trasnfer trajectory", "x (km)", "y (km)", "z (km)",
 	   NULL, NULL, "30,110");
 
-    plot3(r.row(0) , r.row(1) , r.row(3) , "Two burn transfer trajectory", "x (km)", "y (km)", "z (km)",
+    plot3(r.row(0) , r.row(1) , r.row(2) , "Two burn transfer trajectory", "x (km)", "y (km)", "z (km)",
 	   "pdf", "trajectory.pdf", "30,110");
 
     plot(r.row(0) , r.row(1),  "Two burn trajectory - projection on the equatorial plane",
