@@ -224,7 +224,7 @@ int main(void)
     problem.phases(1).ncontrols 		            = 2;
     problem.phases(1).nevents   		            = 9;
     problem.phases(1).npath    		            = 0;
-    problem.phases(1).nodes                     << 60, 80;
+    problem.phases(1).nodes                     = (RowVectorXi(2) << 60, 80).finished();
     problem.phases(1).zero_cost_integrand       = true;
 
     psopt_level2_setup(problem, algorithm);
