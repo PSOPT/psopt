@@ -814,7 +814,7 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 
         if (need_midpoint_controls(*workspace->algorithm, workspace)) {
 
-		for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
+		for (k=0; k<norder; k++) { // EIGEN_UPDATE
 
 			for (ii=0;ii<ncontrols;ii++) {
 				j = iphase_offset+offset2+nparam+(k)*ncontrols+ii;

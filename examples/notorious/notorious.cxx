@@ -221,12 +221,12 @@ int main(void)
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes = problem.phases(1).nodes(1);
+    int nnodes = problem.phases(1).nodes(0);
 
 
     problem.phases(1).guess.states         = zeros(2,nnodes);
     problem.phases(1).guess.time           = linspace(0.0, 1.0, nnodes);
-    problem.phases(1).guess.parameters(1)  = 0.0;
+    problem.phases(1).guess.parameters(0)  = 0.0;
 
 
 ////////////////////////////////////////////////////////////////////////////

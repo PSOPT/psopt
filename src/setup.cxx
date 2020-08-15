@@ -66,9 +66,10 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
         int nparam    = problem.phase[i].nparameters;
         int nnodes    = problem.phase[i].nodes(0);
         int nobserved = problem.phase[i].nobserved;
+        int nsamples  = problem.phase[i].nsamples;
 
    problem.phase[i].observation_nodes.resize(nobserved,nnodes);
-   problem.phase[i].observations.resize(nobserved,nnodes); 
+   problem.phase[i].observations.resize(nobserved,nsamples);
 
 	problem.phase[i].scale.controls.resize(ncontrols,1);
 	problem.phase[i].scale.states.resize(nstates,1);
