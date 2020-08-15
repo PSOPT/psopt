@@ -751,7 +751,11 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 //        	pint = solution.dual.path[i](colon(),colon(3,norder-1));
                 pint = solution.dual.path[i].block(0,2,npath,norder-3);
 //            tint = workspace->snodes[i](colon(3,norder-2));
-            tint = workspace->snodes[i].block(0,2,1,norder-4);
+//            tint = workspace->snodes[i].block(0,2,1,norder-4);
+             tint.resize(1,norder-4);
+             for (int ii=0; ii<(norder-4); ii++) {
+                 tint(ii) = workspace->snodes[i](2+ii);
+             }
             for (int l=0;l<npath;l++) {  //EIGEN_UPDATE: l index shifted by -1
 //                   ts = tra(workspace->snodes[i]);
                    ts = workspace->snodes[i].transpose();
@@ -762,7 +766,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                      pl = pint.block(l,0,1,ncols);
                    linear_interpolation(pextra, ts, tint, pl,norder-4);
 //                   solution.dual.path[i](l,colon()) = pextra;
-                     solution.dual.path[i].block(l,0,1,ncols) = pextra;
+                   for(k=0; k<length(pextra);k++) {
+                	   solution.dual.path[i](l,k) = pextra(k);
+                   }
             }
 	     }
 
