@@ -274,7 +274,8 @@ int main(void)
     state_guess.row(2) = linspace(0.0, 10000.0, nnodes);
     state_guess.row(3) = linspace(30.0, 0.0, nnodes);
 
-    control_guess = 6000.0*ones(1,nnodes);
+    control_guess << 6000.0*ones(1,nnodes),
+    		         zeros(1,nnodes);
 
     problem.phases(1).guess.controls   = control_guess;
     problem.phases(1).guess.states     = state_guess;

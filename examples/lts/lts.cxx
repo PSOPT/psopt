@@ -195,7 +195,7 @@ int main(void)
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    MatrixXd state_guess(3,10);
+    MatrixXd state_guess(4,10);
 
     state_guess <<  linspace(0.0, 12.0, 10),
                     linspace(0.0, 45.0, 10),

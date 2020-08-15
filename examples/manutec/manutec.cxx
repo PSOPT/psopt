@@ -434,11 +434,11 @@ int main(void)
 
 
     state_guess << 	linspace( qi(0), qf(0), nnodes ),
-     						linspace( qi(1), qf(1), nnodes ),
-     						linspace( qi(2), qf(2), nnodes ),
-     						linspace( qi(3), qf(3), nnodes ),
-     						linspace( qi(4), qf(4), nnodes ),
-     						linspace( qi(5), qf(5), nnodes );
+     						linspace( qi(1),  qf(1),  nnodes ),
+     						linspace( qi(2),  qf(2),  nnodes ),
+     						linspace( qdi(0), qdf(0), nnodes ),
+     						linspace( qdi(1), qdf(1), nnodes ),
+     						linspace( qdi(2), qdf(2), nnodes );
 
 
     problem.phases(1).guess.states   = state_guess;

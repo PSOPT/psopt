@@ -213,7 +213,7 @@ int main(void)
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int nnodes    			 = problem.phases(1).nodes(1);
+    int nnodes    			 = problem.phases(1).nodes(0);
     int ncontrols           = problem.phases(1).ncontrols;
     int nstates             = problem.phases(1).nstates;
 

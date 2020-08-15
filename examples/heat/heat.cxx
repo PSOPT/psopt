@@ -279,7 +279,7 @@ int main(void)
     	state_guess.row(i) = yI*ones(1,nnodes);
     }
 
-    control_guess <<  linspace(0.1,0.1, nnodes);
+    control_guess <<  linspace(0.1,0.1, nnodes),
                       state_guess.row(0), 
                       state_guess.row(N-1);
 

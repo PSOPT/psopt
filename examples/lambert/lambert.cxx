@@ -357,9 +357,9 @@ int main(void)
     vi(1) = v2(1);
     vi(2) = v3(2);
 
-    vf(0) = v1(length(v1));
-    vf(1) = v2(length(v1));
-    vf(2) = v3(length(v1));
+    vf(0) = v1(length(v1)-1);
+    vf(1) = v2(length(v1)-1);
+    vf(2) = v3(length(v1)-1);
 
     Print(vi,"Initial velocity vector [m/s]");
 
