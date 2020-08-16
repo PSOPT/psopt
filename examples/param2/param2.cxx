@@ -239,11 +239,11 @@ int main(void)
     MatrixXd param_guess(2,1);
 
 
-    state_guess << linspace(1.0, exp(pi), nnodes );
-                   linspace(1.0, exp(pi), nnodes );
+    state_guess << linspace(1.0, exp(pi), nnodes ),
+                   linspace(1.0, exp(pi), nnodes ),
                    linspace(1.0, exp(pi), nnodes );
 
-    param_guess  << 19.0*1.5;
+    param_guess  << 19.0*1.5,
                     1.0*1.5;
 
     problem.phases(1).guess.states        = state_guess;

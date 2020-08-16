@@ -213,7 +213,7 @@ int main(void)
 
     int nnodes =     (int) problem.phases(1).nsamples;
 
-    MatrixXd state_guess(3, nnodes);
+    MatrixXd state_guess(2, nnodes);
     MatrixXd param_guess(4,1);
 
 

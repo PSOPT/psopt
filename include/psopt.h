@@ -33,11 +33,8 @@ using Eigen::RowVectorXi;
 // typedef Eigen::SparseMatrix<double> SpMat; // declares a column-major sparse matrix type of double
 
 
-#define DMatrix MatrixXd
+#define DMatrix MatrixXd  // In case a change of type is forgotten
 
-
-/* Define to the C type corresponding to Fortran INTEGER */
-#define FORTRAN_INTEGER_TYPE int
 
 
 #ifdef WIN32

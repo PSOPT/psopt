@@ -333,9 +333,9 @@ int main(void)
 
     u0 = zeros(2,30);
 
-    x0 << linspace(x1i,(x1i+x1f)/2, 30);
-          linspace(x2i,(x2i+x2f)/2, 30);
-          linspace(x3i,(x3i+x3f)/2, 30);
+    x0 << linspace(x1i,(x1i+x1f)/2, 30),
+          linspace(x2i,(x2i+x2f)/2, 30),
+          linspace(x3i,(x3i+x3f)/2, 30),
           linspace(x4i,(x4i+x4f)/2, 30);
 
     problem.phases(iphase).guess.controls = u0;

@@ -882,7 +882,7 @@ void resample_trajectory(MatrixXd& Y,  MatrixXd& X, MatrixXd& Ydata, MatrixXd& X
 
     MatrixXd Yi, Yidata;
 
-    if ( (X(0) < Xdata(0)) || X(length(X)) > Xdata(length(Xdata)) ) {                   // EIGEN_UPDATE
+    if ( (X(0) < Xdata(0)) || X(length(X)-1) > Xdata(length(Xdata)-1) ) {                   // EIGEN_UPDATE
          error_message("No extrapolation is allowed in function resample_trajectory()");
     }
 

@@ -28,8 +28,6 @@ e-mail:    v.m.becerra@ieee.org
 
 **********************************************************************************************/
 
-#define FORTRAN_INTEGER_TYPE int
-
 
 
 #ifndef MAX

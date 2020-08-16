@@ -224,14 +224,14 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    DMatrix x0(4,40);
+    MatrixXd x0(4,40);
 
-    x0 <<  linspace(0.0,0.0, 40);
-           linspace(0.0,0.0, 40);
-           linspace(0.5,0.5, 40);
+    x0 <<  linspace(0.0,0.0, 40),
+           linspace(0.0,0.0, 40),
+           linspace(0.5,0.5, 40),
            linspace(0.522,0.522, 40);
 
-    problem.phases(1).guess.controls       = zeros(1,40);
+    problem.phases(1).guess.controls       = zeros(2,40);
     problem.phases(1).guess.states         = x0;
     problem.phases(1).guess.time           = linspace(0.0, 3.0, 40);
 
