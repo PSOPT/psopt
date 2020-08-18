@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.10)
-project(PSOPT VERSION 4.0.1 LANGUAGES CXX)
+project(PSOPT VERSION 5.RC1 LANGUAGES CXX)
 
 option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
 
