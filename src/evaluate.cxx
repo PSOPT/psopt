@@ -105,7 +105,6 @@ void evaluate_integral_of_differential_error(MatrixXd& eta, int iphase, adouble 
    evaluate_differential_error_in_phase( state_error1, iphase, t1, xad, workspace );
    evaluate_differential_error_in_phase( state_error2, iphase, t2, xad, workspace );
 
-//	R1(colon(),1) = ( Abs(state_error1) + Abs(state_error2) );  // EIGEN_UPDATE
 
    R1 = state_error1.cwiseAbs() + state_error2.cwiseAbs() ;
 
@@ -114,7 +113,7 @@ void evaluate_integral_of_differential_error(MatrixXd& eta, int iphase, adouble 
 	for (j=1; j<=nover2-1; j++) {
 
 			evaluate_differential_error_in_phase( state_error1, iphase, t1 +2*j*h, xad, workspace );
-//			R1 += 2.0*Abs( state_error1 );
+
          R1+= 2.0*state_error1.cwiseAbs();
 
 	}
@@ -122,7 +121,7 @@ void evaluate_integral_of_differential_error(MatrixXd& eta, int iphase, adouble 
 	for (j=1; j<=nover2; j++) {
 
 			evaluate_differential_error_in_phase( state_error1, iphase, t1 +(2*j-1)*h, xad, workspace );
-//			R1 += 4.0*Abs( state_error1 );
+
          R1 += 4.0*state_error1.cwiseAbs();
 	}
 
@@ -149,7 +148,6 @@ void evaluate_integral_of_differential_error_L2(MatrixXd& eta, int iphase, adoub
         evaluate_differential_error_in_phase( state_error1, iphase, t1, xad, workspace );
         evaluate_differential_error_in_phase( state_error2, iphase, t2, xad, workspace );
 
-//	R1(colon(),1) = ( (state_error1^2) + (state_error2^2) );
    R1 =  state_error1.cwiseAbs2() + state_error2.cwiseAbs2() ;
 
         int nover2 = (int) n/2;
@@ -157,7 +155,6 @@ void evaluate_integral_of_differential_error_L2(MatrixXd& eta, int iphase, adoub
 	for (j=1; j<=nover2-1; j++) {
 
 			evaluate_differential_error_in_phase( state_error1, iphase, t1 +2*j*h, xad, workspace );
-//			R1 += 2.0*( state_error1^2 );
          R1 += 2.0*( state_error1.cwiseAbs2() );
 
 	}
@@ -165,12 +162,10 @@ void evaluate_integral_of_differential_error_L2(MatrixXd& eta, int iphase, adoub
 	for (j=1; j<=nover2; j++) {
 
 			evaluate_differential_error_in_phase( state_error1, iphase, t1 +(2*j-1)*h, xad, workspace );
-//			R1 += 4.0*( state_error1^2 );
          R1 += 4.0*( state_error1.cwiseAbs2() );
 	}
 
 
-//	eta = Sqrt( (h/3.0)*R1 );
    eta = ((h/3.0)*R1).cwiseSqrt();
 }
 
@@ -194,7 +189,6 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
 		t2 = convert_to_original_time_ad( (workspace->snodes[iphase-1])(k+1), t0, tf );;
 
       evaluate_integral_of_differential_error(eta_k,iphase,t1,t2,xad,n, workspace);
-//		eta(colon(),k) = eta_k;
       eta.col(k) = eta_k;
 	}
 }
@@ -235,23 +229,22 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 			Xdot   = workspace->Xdot[iphase-1];
 			w.resize(nstates,1);
 			for (i=0; i<nstates;i++ ) { // EIGEN_UPDATE: i index shifted by -1
-//				states_i = states(i,colon());
+
             states_i = states.row(i);
-//				Xdot_i   = Xdot(i,colon() );
+
             Xdot_i   = Xdot.row(i);
-//				w(i) = MAX(  MaxAbs( states_i ), MaxAbs( Xdot_i ) ) + 1.0;
+
             w(i) = max(  states_i.lpNorm<Infinity>() , Xdot_i.lpNorm<Infinity>() ) + 1.0;
 			}
 		}
 		eta.resize(nstates,norder);
     		evaluate_matrix_of_integrated_errors_in_phase(eta,iphase,xad,n, workspace);
 		for(i=0;i<norder;i++) { // EIGEN_UPDATE: index i shifted by -1
-//			eta(colon(),i) = elemDivision( eta(colon(),i), w );
+
          eta.col(i) = eta.col(i).cwiseQuotient(w);
-//			eta_i = eta(colon(),i);
+
          eta_i = eta.col(i);
 
-//			epsilon(1,i)   = Max( eta_i );
          epsilon(0,i)   = eta_i.maxCoeff();
 		}
 
@@ -302,22 +295,22 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 	for(iphase=1;iphase<=nphases;iphase++) {
 
 	  	MatrixXd& emax_history = workspace->emax_history[iphase-1];
-//  		mv = mean(tra(solution.relative_errors[iphase-1]));
+
 	   mv = solution.relative_errors[iphase-1].transpose().mean();
-//		emax_history( workspace->current_mesh_refinement_iteration, 1) = length(solution.nodes[iphase-1]);
+
 		emax_history( workspace->current_mesh_refinement_iteration-1, 0) = (double) solution.nodes[iphase-1].size();
-//		emax_history( workspace->current_mesh_refinement_iteration, 2) = Max(solution.relative_errors[iphase-1]);
+
 		emax_history( workspace->current_mesh_refinement_iteration-1, 1) = solution.relative_errors[iphase-1].maxCoeff();
 		sprintf(msg,"\n%i\t\t%li\t\t%e\t%e\t%e", iphase, length(solution.nodes[iphase-1]), Max(solution.relative_errors[iphase-1]),  Min(solution.relative_errors[iphase-1]), mv );
 		psopt_print(workspace,msg);
 
-//		if ( emax_history( workspace->current_mesh_refinement_iteration, 2)>solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max )
+
       if ( emax_history( workspace->current_mesh_refinement_iteration-1, 1)>solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max )
 		{
-//		  solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = emax_history( workspace->current_mesh_refinement_iteration, 2);
+
         solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = emax_history( workspace->current_mesh_refinement_iteration-1, 1);
 		}
-//		solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].nnodes += length(solution.nodes[iphase-1]);
+
       solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].nnodes += (int) solution.nodes[iphase-1].size();
 	}
 

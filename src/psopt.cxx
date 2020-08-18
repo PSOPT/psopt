@@ -259,9 +259,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		    workspace->differential_defects="central-differences";
 		 }
         	 lglnodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->P[i], workspace->D[i], workspace);
-//         	 sort(workspace->snodes[i],workspace->sindex[i]);
+
                 sort_vector(workspace->snodes[i],workspace->sindex[i]);
-//         	 workspace->w[i] = (workspace->w[i])(workspace->sindex[i]);
+
                 rearrange_vector(workspace->w[i], workspace->sindex[i] );
 
     	}
@@ -277,9 +277,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		    workspace->differential_defects="central-differences";
 		 }
          	cglnodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i], workspace );
- //        	sort(workspace->snodes[i],workspace->sindex[i]);
+
                 sort_vector(workspace->snodes[i],workspace->sindex[i]);
- //        	workspace->w[i] = (workspace->w[i])(workspace->sindex[i]);
+
                 rearrange_vector(workspace->w[i], workspace->sindex[i] );
             }
 
@@ -319,7 +319,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     //       "t0" and "tf" are real numbers
     //       and the vec(.) operator stacks the columns of a matrix one below the next
 
-//    x0.Print("Initial guess for SQP decision vector, x0:");
 
     sprintf(workspace->text,"\nProblem:\t\t\t\t\t\t%s", problem.name.c_str());
     psopt_print(workspace,workspace->text);
@@ -395,7 +394,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
         int ncons_phase_i =  get_ncons_phase_i(problem,i, workspace);
 
-//	solution.dual.costates[i] = lambda(colon(lam_phase_offset+1,lam_phase_offset+nstates*(norder+1) ) ) ;
         solution.dual.costates[i] = lambda.block(lam_phase_offset,0,nstates*(norder+1),1);
 
 		  solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1).eval();
@@ -403,12 +401,12 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		  workspace->prev_costates[i]      = solution.dual.costates[i];
 
     	  t0 = (solution.nodes[i])(1);
-//	tf = (solution.nodes[i])("end");
+
 	     tf = (solution.nodes[i])(0, solution.nodes[i].cols()-1); 
 
 	     if ( algorithm.collocation_method=="Legendre" ) {
 	    		for(k=0;k<norder+1;k++) { // EIGEN_UPDATE: Index k shifted to start at 0
-//		   (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(workspace->w[i])(k);  
+
                    (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);  // See PhD thesis by Huntington (2006).
 	    		}
 	     }	
@@ -417,7 +415,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         		for(k=0;k<norder;k++) { // EIGEN_UPDATE: Index k shifted to start at 0
 	         // For local collocation, this is an estimate of the costate.
 	         	hk = (solution.nodes[i])(k+1)-(solution.nodes[i])(k);
-//	         (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(2.0*hk); 
+
 	         	(solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(2.0*hk); // This gives the costates at the midpoints between the collocation nodes.
                (solution.dual.costates[i]).block(0,k,nstates,1)= (solution.dual.costates[i]).block(0,k,nstates,1)*(tf-t0);
  	   		}
@@ -426,11 +424,11 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     	  if ( algorithm.collocation_method == "Chebyshev" ) {
         		for(k=1;k<norder;k++) {  // EIGEN_UPDATE: Index k shifted by -1
                   double tk = (workspace->snodes[i])(k);
-//                  (solution.dual.costates[i])(colon(),k) = (solution.dual.costates[i])(colon(),k)/(workspace->w[i])(k);
+
                     (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);
-//                  (solution.dual.costates[i])(colon(),k) =(1.0/sqrt(1.0 - tk*tk))*(solution.dual.costates[i])(colon(),k); 
+
                     (solution.dual.costates[i]).block(0,k,nstates,1) =(1.0/sqrt(1.0 - tk*tk))*(solution.dual.costates[i]).block(0,k,nstates,1); // See PhD thesis by Pietz (2003)
-//                  (solution.dual.costates[i])(colon(),k) =(solution.dual.costates[i])(colon(),k)*(tf-t0);
+
 
         		}
     	  }
@@ -446,7 +444,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
    	  if ( algorithm.scaling=="automatic" ) {
 	  			solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates*(norder+1), 1 );
-//          solution.dual.costates[i] = elemProduct( solution.dual.costates[i],  (*workspace->constraint_scaling)(colon(lam_phase_offset+1,lam_phase_offset+nstates*(norder+1) )) );
           	solution.dual.costates[i] = solution.dual.costates[i].cwiseProduct((*workspace->constraint_scaling).block(lam_phase_offset,0, nstates*(norder+1),1) );
 	  			solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1);
    	  }
@@ -456,102 +453,94 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
                 MatrixXd Pl, Pl1, Pl2;
                 double sl, sl1;
-//                Pl1 = solution.dual.costates[i](colon(), norder-2);
+
                   Pl1 = solution.dual.costates[i].block(0,norder-3, nstates, 1);
-//                Pl2 = solution.dual.costates[i](colon(), norder-3);
                   Pl2 = solution.dual.costates[i].block(0,norder-4, nstates, 1);
-
-//                sl  = (workspace->snodes[i])(norder-1)-(workspace->snodes[i])(norder -2  );
                   sl  = (workspace->snodes[i])(norder-2)-(workspace->snodes[i])(norder -3  );
-
-//                sl1 = (workspace->snodes[i])(norder-2)-(workspace->snodes[i])(  norder-3 );
                   sl1 = (workspace->snodes[i])(norder-3)-(workspace->snodes[i])(  norder-4 );
 
                 Pl = Pl1 + (Pl1-Pl2)/sl1*sl;
-
-//                solution.dual.costates[i](colon(),norder-1) = Pl;
                solution.dual.costates[i].block(0, norder-2, nstates, 1) = Pl;
 
-//                Pl1 = solution.dual.costates[i](colon(), 5);
+
                 Pl1 = solution.dual.costates[i].block(0,4, nstates, 1);
-//                Pl2 = solution.dual.costates[i](colon(), 4);
+
                 Pl2 = solution.dual.costates[i].block(0,3, nstates, 1);
 
-//                sl1  = (workspace->snodes[i])(5)-(workspace->snodes[i])(4);
+
                 sl1  = (workspace->snodes[i])(4)-(workspace->snodes[i])(3);
-//                sl   = (workspace->snodes[i])(4)-(workspace->snodes[i])(3);
+
                 sl   = (workspace->snodes[i])(3)-(workspace->snodes[i])(2);
 
                 Pl = Pl2 - (Pl1-Pl2)/sl1*sl;
 
-//                solution.dual.costates[i](colon(),3) = Pl;
+
                 solution.dual.costates[i].block(0,2, nstates,1) = Pl;
 
                 /*  */
 
 
- //               Pl1 = solution.dual.costates[i](colon(), norder-1);
+
                   Pl1 = solution.dual.costates[i].block(0,norder-2,nstates,1);
- //               Pl2 = solution.dual.costates[i](colon(), norder-2);
+
                   Pl2 = solution.dual.costates[i].block(0,norder-3,nstates,1);
 
-//                sl  = (workspace->snodes[i])(norder)-(workspace->snodes[i])(norder -1  );
+
                 sl  = (workspace->snodes[i])(norder-1)-(workspace->snodes[i])(norder -2  );
-//                sl1 = (workspace->snodes[i])(norder-1)-(workspace->snodes[i])(  norder-2 );
+
                 sl1 = (workspace->snodes[i])(norder-2)-(workspace->snodes[i])(  norder-3 );
 
                 Pl = Pl1 + (Pl1-Pl2)/sl1*sl;
 
-//                solution.dual.costates[i](colon(),norder) = Pl;
+
                 solution.dual.costates[i].block(0,norder-1,nstates,1) = Pl;
 
-//                Pl1 = solution.dual.costates[i](colon(), 4);
+
                 Pl1 = solution.dual.costates[i].block(0,3,nstates,1);
-//                Pl2 = solution.dual.costates[i](colon(), 3);
+
                 Pl2 = solution.dual.costates[i].block(0,2,nstates,1);
 
-//                sl1  = (workspace->snodes[i])(4)-(workspace->snodes[i])(3);
+
                 sl1  = (workspace->snodes[i])(3)-(workspace->snodes[i])(2);
-//                sl   = (workspace->snodes[i])(3)-(workspace->snodes[i])(2);
+
                 sl   = (workspace->snodes[i])(2)-(workspace->snodes[i])(1);
 
                 Pl = Pl2 - (Pl1-Pl2)/sl1*sl;
 
-//                solution.dual.costates[i](colon(),2) = Pl;
+
                 solution.dual.costates[i].block(0,1,nstates,1) = Pl;
 
 
                 /*  */
 
-//                Pl1 = solution.dual.costates[i](colon(), norder);
+
                 Pl1 = solution.dual.costates[i].block(0,norder-1,nstates,1);
-//                Pl2 = solution.dual.costates[i](colon(), norder-1);
+
                 Pl2 = solution.dual.costates[i].block(0,norder-2,nstates,1);
 
-//                sl  = (workspace->snodes[i])(norder+1)-(workspace->snodes[i])(norder   );
+
                 sl  = (workspace->snodes[i])(norder)-(workspace->snodes[i])(norder -1  );
-//                sl1 = (workspace->snodes[i])(norder)-(workspace->snodes[i])(  norder-1 );
+
                 sl1 = (workspace->snodes[i])(norder-1)-(workspace->snodes[i])(  norder-2 );
 
                 Pl = Pl1 + (Pl1-Pl2)/sl1*sl;
 
-//                solution.dual.costates[i](colon(),norder+1) = Pl;
+
                 solution.dual.costates[i].block(0,norder,nstates,1) = Pl;
 
-//                Pl1 = solution.dual.costates[i](colon(), 3);
+
                 Pl1 = solution.dual.costates[i].block(0,2,nstates,1);
 
-//                Pl2 = solution.dual.costates[i](colon(), 2);
+
                 Pl2 = solution.dual.costates[i].block(0,1,nstates,1);
 
-//                sl1  = (workspace->snodes[i])(3)-(workspace->snodes[i])(2);
+
                 sl1  = (workspace->snodes[i])(2)-(workspace->snodes[i])(1);
-//                sl   = (workspace->snodes[i])(2)-(workspace->snodes[i])(1);
+
                 sl   = (workspace->snodes[i])(1)-(workspace->snodes[i])(0);
 
                 Pl = Pl2 - (Pl1-Pl2)/sl1*sl;
 
-//               solution.dual.costates[i](colon(),1) = Pl;
                 solution.dual.costates[i].block(0,0,nstates,1) = Pl;
 
         }
@@ -563,15 +552,13 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
                 pint.resize(nstates,norder+1);
 
-//                pint(colon(),1) = (solution.dual.costates[i](colon(),1) + solution.dual.costates[i](colon(),2) )/2.0;
                 pint.block(0,0,nstates,1) = (solution.dual.costates[i].block(0,0,nstates,1) + solution.dual.costates[i].block(0,1,nstates,1))/2.0;
 
                 for (k=1;k< norder;k++) {  // EIGEN_UPDATE: k index shifted by -1
-//                    pint(colon(),k) = (0.25*solution.dual.costates[i](colon(),k-1) + 0.5*solution.dual.costates[i](colon(),k) + 0.25*solution.dual.costates[i](colon(),k+1) )/1.0;
+
                 pint.block(0,k,nstates,1) = (0.25*solution.dual.costates[i].block(0,k-1,nstates,1) + 0.5*solution.dual.costates[i].block(0,k,nstates,1) + 0.25*solution.dual.costates[i].block(0,k+1,nstates,1) )/1.0;
                 }
 
-//                pint(colon(),norder+1) = (solution.dual.costates[i](colon(),norder) + solution.dual.costates[i](colon(),norder+1))/2.0;
 
                 pint.block(0,norder,nstates,1) = (solution.dual.costates[i].block(0,norder-1,nstates,1) + solution.dual.costates[i].block(0,norder,nstates,1))/2.0;
 
@@ -582,38 +569,38 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 			if ( use_local_collocation(algorithm) ) {
         // use linear extrapolation to approximate the costate values at the collocation nodes...
-//       	pint = solution.dual.costates[i](colon(),colon(1,norder));
+
          	pint = solution.dual.costates[i].block(0,0,nstates,norder);
 				for(int k=0;k<norder;k++) {  // EIGEN_UPDATE: k index shifted by -1.
 		   		tint(k) = ( (workspace->snodes[i])(k)+(workspace->snodes[i])(k+1) )/2.0;
 				}
         		for (int l=0;l<nstates;l++) { // EIGEN_UPDATE: l index shifted by -1.
-//                   ts = tra(workspace->snodes[i]);
+
                    ts = workspace->snodes[i].transpose();
-//                   tint = tra(tint);
+
                    tint = tint.transpose().eval();
-//                   pl = pint(l,colon());
+
                    pl = pint.row(l);
                    linear_interpolation(pextra, ts, tint, pl,norder); // EIGEN_UPDATE - Check function
-//                   solution.dual.costates[i](l,colon()) = pextra;
+
                    solution.dual.costates[i].row(l) = pextra;
        		}		
 
         // use linear extrapolation to approximate costate values at end point (not perfect but better than nothing)
-//       	pint = solution.dual.costates[i](colon(),colon(norder-1,norder));
+
                 pint = solution.dual.costates[i].block(0  ,norder-2  ,nstates  , 2 );
-//       	tint = workspace->snodes[i](colon(norder-1,norder));
+
                 tint = workspace->snodes[i].block(0  ,norder-2  ,1  , 2 );
         		for (int l=0;l<nstates;l++) {  // EIGEN_UPDATE: l index shifted by -1.
-//                   double tss = (workspace->snodes[i])(norder+1);
+
                    double tss = (workspace->snodes[i])(norder);
-//                   tint = tra(tint);
+
                    tint = tint.transpose().eval();
-//                   pl = pint(l,colon());
+
                    long ncols = pint.cols();
                    pl = pint.block(l, 0, 1, ncols);
                    linear_interpolation(pextra, tss, tint, pl,2);
-//                   solution.dual.costates[i](l,norder+1) = pextra(1);
+
                    solution.dual.costates[i](l,norder) = pextra(0);
         		}	
 
@@ -626,17 +613,17 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	                solution.dual.costates[i] = -solution.dual.costates[i];
 	    }
 	
-	//	solution.dual.events[i]  = -lambda(colon(offset+1,offset+nevents));
+
 		solution.dual.events[i]  = -lambda.block(offset,0,nevents,1);
 		workspace->dual_events[i] = -(solution.dual.events[i]);
 	
 		if (algorithm.scaling=="user") {
-	//		   solution.dual.events[i] = elemProduct( solution.dual.events[i],  problem.phase[i].scale.events );
+
 			   solution.dual.events[i] = solution.dual.events[i].cwiseProduct( problem.phase[i].scale.events );
 		}
 	
 	    if (algorithm.scaling=="automatic" && nevents>0) {
-	//	   solution.dual.events[i] = elemProduct( solution.dual.events[i],  (*workspace->constraint_scaling)(colon(offset+1,offset+nevents) )) ;
+
 		   solution.dual.events[i] = solution.dual.events[i].cwiseProduct(  (*workspace->constraint_scaling).block(offset,0,nevents,1) );
 	    }
 		solution.dual.events[i] /= problem.scale.objective;
@@ -647,7 +634,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 		offset = offset+nevents;
 		if (npath>0) {
-	//	     solution.dual.path[i]      = -lambda(colon(offset+1,offset+npath*(norder+1)));
+
 	             solution.dual.path[i]      = -lambda.block(offset,0, npath*(norder+1), 1);
 		     solution.dual.path[i]      = reshape(solution.dual.path[i], npath, norder+1);
 		     workspace->prev_path[i] = -(solution.dual.path[i]);
@@ -658,17 +645,17 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	        	    if ( algorithm.collocation_method == "trapezoidal") {
 	                    double hk = (solution.nodes[i])(k+1)-(solution.nodes[i])(k);
 	                    if (k==0) {
-	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(2.0/hk);
+
 	                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(2.0/hk);
 	                    }
 	                    else if (k==norder-1) {
 	                          double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
-	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(2.0/hk_1);
+
 	                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(2.0/hk_1);
 	                    }
 	                    else {
 	                        double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
-	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(2.0/(hk+hk_1));
+
 	                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(2.0/(hk+hk_1));
 	        	    }
 	                    }
@@ -677,17 +664,17 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	           	        // See Betts (2010), p. 177.
 	           	        double hk = (solution.nodes[i])(k+1)-(solution.nodes[i])(k);
 	                    if (k==0) {
-	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(6.0/hk);
+
 	                          (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(6.0/hk);
 	                    }
 	                    else if (k==norder-1) {
 	                        double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
-	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(6.0/hk_1);
+
 	                        (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(6.0/hk_1);
 	                    }
 	                    else {
 	                        double hk_1 = (solution.nodes[i])(k)-(solution.nodes[i])(k-1);
-	//                        (solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)*(6.0/(hk+hk_1));
+
 	                        (solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)*(6.0/(hk+hk_1));
 	                    }
 	           	    }
@@ -695,43 +682,30 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	
 	        	}
              // use linear extrapolation to approximate multiplier values at end point (not perfect but better than nothing)
-//             	pint = solution.dual.path[i](colon(),colon(norder-1,norder));
+
           	pint = solution.dual.path[i].block(0,norder-2,npath,2);
-//             	tint = workspace->snodes[i](colon(norder-1,norder));
+
           	tint = workspace->snodes[i].block(0,norder-2,1,2);
              for (int l=0;l<npath;l++) {  //EIGEN_UPDATE: l index shifted by -1.
-//                   double tss = (workspace->snodes[i])(norder+1);
+
                 double tss = (workspace->snodes[i])(norder);
-//                   tint = tra(tint);
+
                 tint = tint.transpose().eval();
-//                   pl = pint(l,colon());
+
                 pl   = pint.block(l,0,1,2);
                 linear_interpolation(pextra, tss, tint, pl,2);
-//                   solution.dual.path[i](l,norder+1) = pextra(1);
+
                   solution.dual.path[i](l,norder) = pextra(0);
 
              }
 
-
-        	    // use linear extrapolation to approximate the multiplier values at the collocation nodes...
-//             	pint = solution.dual.path[i](colon(),colon(1,norder));
-//		        for(int k=1;k<=norder;k++) {
-//		             tint(k) = ( (workspace->snodes[i])(k)+(workspace->snodes[i])(k+1) )/2.0;
-//		        }
-//                for (int l=1;l<=npath;l++) {
-//                   ts = tra(workspace->snodes[i]);
-//                   tint = tra(tint);
-//                   pl = pint(l,colon());
-//                   linear_interpolation(pextra, ts, tint, pl,norder);
-//                   solution.dual.path[i](l,colon()) = pextra;
-//                }
 	     }
 
 	     if ( algorithm.collocation_method == "Legendre") {
              for (k=0;k<norder+1;k++) {  // EIGEN_UPDATE: k index shifted by -1
-	//	     		(solution.dual.path[i])(colon(),k) = -(solution.dual.path[i])(colon(),k)/(workspace->w[i])(k);  
+
 		     		(solution.dual.path[i]).block(0,k,npath,1) = -(solution.dual.path[i]).block(0,k,npath,1)/(workspace->w[i])(k);  // See PhD thesis by Huntington (2006).
-	//	     		(solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k)*(2.0/(tf-t0));
+
 		     		(solution.dual.path[i]).block(0,k,npath,1) = (solution.dual.path[i]).block(0,k,npath,1)*(2.0/(tf-t0));
              }
 	     }
@@ -739,33 +713,33 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	     if ( algorithm.collocation_method == "Chebyshev" ) {
              for (k=1; k< norder;k++) { // EIGEN_UPDATE: k index shifted by -1
                   double tk = (workspace->snodes[i])(k);
-//                  (solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k)/(workspace->w[i])(k);
+
                     (solution.dual.path[i]).block(0,k,npath,1) = (solution.dual.path[i]).block(0,k,npath,1)/(workspace->w[i])(k);
-//                  (solution.dual.path[i])(colon(),k) = -(1.0/sqrt(1.0 - tk*tk))*(solution.dual.path[i])(colon(),k); // See PhD thesis by Pietz (2003)
+
                     (solution.dual.path[i]).block(0,k,npath,1) = -(1.0/sqrt(1.0 - tk*tk))*(solution.dual.path[i]).block(0,k,npath,1); // See PhD thesis by Pietz (2003)
-//                  (solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k)*(2.0/(tf-t0));
+
                     (solution.dual.path[i]).block(0,k,npath,1) = (solution.dual.path[i]).block(0,k,npath,1)*(2.0/(tf-t0));
 
              }
             // use linear extrapolation to approximate multiplier values at both ends (not perfect but better than nothing)
-//        	pint = solution.dual.path[i](colon(),colon(3,norder-1));
+
                 pint = solution.dual.path[i].block(0,2,npath,norder-3);
-//            tint = workspace->snodes[i](colon(3,norder-2));
-//            tint = workspace->snodes[i].block(0,2,1,norder-4);
+
+
              tint.resize(1,norder-4);
              for (int ii=0; ii<(norder-4); ii++) {
                  tint(ii) = workspace->snodes[i](2+ii);
              }
             for (int l=0;l<npath;l++) {  //EIGEN_UPDATE: l index shifted by -1
-//                   ts = tra(workspace->snodes[i]);
+
                    ts = workspace->snodes[i].transpose();
-//                   tint = tra(tint);
+
                    tint = tint.transpose().eval();
-//                   pl = pint(l,colon());
+
                      long ncols = pint.cols();
                      pl = pint.block(l,0,1,ncols);
                    linear_interpolation(pextra, ts, tint, pl,norder-4);
-//                   solution.dual.path[i](l,colon()) = pextra;
+
                    for(k=0; k<length(pextra);k++) {
                 	   solution.dual.path[i](l,k) = pextra(k);
                    }
@@ -774,14 +748,14 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 	     if ( algorithm.scaling == "user") {
 	         for(k=0;k<norder+1;k++) { //EIGEN_UPDATE: k index shifted by -1
-//                    (solution.dual.path[i])(colon(),k) = (solution.dual.path[i])(colon(),k) & (problem.phase[i].scale.path);
+
                       (solution.dual.path[i]).block(0,k,npath,1) = (solution.dual.path[i]).block(0,k,npath,1).cwiseProduct(problem.phase[i].scale.path);
 	         }
          }
 
          if (algorithm.scaling=="automatic") {
              for (k=0;k<norder+1;k++) { //EIGEN_UPDATE: k index shifted by -1
-//  	            solution.dual.path[i](colon(),k) =elemProduct( solution.dual.path[i](colon(),k),(*workspace->constraint_scaling)(colon(offset+(k-1)*npath+1,offset+k*npath)));
+
                     solution.dual.path[i].block(0,k,npath,1)  =solution.dual.path[i].block(0,k,npath,1).cwiseProduct( (*workspace->constraint_scaling).block(offset+(k-1)*npath,0,npath,1) );
   	         }
          }
@@ -794,7 +768,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     compute_derivatives_trajectory( workspace->Xdot[i], problem, solution, iphase, workspace );
 
-//	solution.dual.Hamiltonian[i] = (solution.integrand_cost[i]) + sum( (solution.dual.costates[i]) & workspace->Xdot[i] );
+
        solution.dual.Hamiltonian[i] = (solution.integrand_cost[i]);
        MatrixXd Temp1 =  solution.dual.costates[i].cwiseProduct(workspace->Xdot[i]);
        MatrixXd Temp2 = sum_columns(Temp1);
@@ -806,9 +780,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		workspace->prev_controls[i] =   solution.controls[i];
 		workspace->prev_nodes[i]    =   solution.nodes[i];
         if (problem.phase[i].nparameters) workspace->prev_param[i]    =   solution.parameters[i];
-//	(*workspace->prev_t0)(i+1) = x0(x_phase_offset+nvars_phase_i-1)/problem.phase[i].scale.time;
+
         (*workspace->prev_t0)(i) = x0(x_phase_offset+nvars_phase_i-2)/problem.phase[i].scale.time;
-//		(*workspace->prev_tf)(i+1) = x0(x_phase_offset+nvars_phase_i)/problem.phase[i].scale.time;
+
         (*workspace->prev_tf)(i) = x0(x_phase_offset+nvars_phase_i-1)/problem.phase[i].scale.time;
 
         x_phase_offset   += nvars_phase_i;
@@ -821,15 +795,15 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     }
 
     if (problem.nlinkages) {
-//       *solution.dual.linkages = -lambda(colon(lam_phase_offset+1,lam_phase_offset+problem.nlinkages));
+
          *solution.dual.linkages = -lambda.block(lam_phase_offset, 0, problem.nlinkages, 1);
          if (algorithm.scaling=="user") {
-//           *solution.dual.linkages = (*solution.dual.linkages)&problem.scale.linkages;
+
              *solution.dual.linkages = (*solution.dual.linkages).cwiseProduct(problem.scale.linkages);
 
          }
          if (algorithm.scaling=="automatic") {
-//           *solution.dual.linkages = elemProduct( (*solution.dual.linkages),   (*workspace->constraint_scaling)(colon(offset+1,offset+problem.nlinkages))    );
+
            *solution.dual.linkages =  (*solution.dual.linkages).cwiseProduct(   (*workspace->constraint_scaling).block(offset,0,problem.nlinkages,1)   );
          }
          *solution.dual.linkages /= problem.scale.objective;
@@ -851,7 +825,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
        for ( i=0; i< problem.nphases; i++ ) {
 	    MatrixXd& emax_history = workspace->emax_history[i];
 
-//	    if ( emax_history( iter_nodes, 2 )   <= algorithm.ode_tolerance )
             if ( emax_history( iter_nodes-1, 1 ) <= algorithm.ode_tolerance )
 	        mr_phase_convergence_count++;
        }

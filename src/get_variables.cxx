@@ -36,9 +36,9 @@ void get_controls(adouble* controls, adouble* xad, int iphase, int k, Workspace*
 {
         int i = iphase-1;
         Prob& problem = *workspace->problem;
-	MatrixXd& control_scaling = problem.phase[i].scale.controls;
+	     MatrixXd& control_scaling = problem.phase[i].scale.controls;
 
-	int j;
+	     int j;
 
         int iphase_offset= get_iphase_offset(problem,iphase, workspace);
 
@@ -49,7 +49,7 @@ void get_controls(adouble* controls, adouble* xad, int iphase, int k, Workspace*
 
 
         for(j=0;j<ncontrols;j++) {
-//           controls[j] =  xad[iphase_offset+(k-1)*ncontrols+j]/control_scaling(j+1); // EIGEN_UPDATE
+
            controls[j] =  xad[iphase_offset+(k)*ncontrols+j]/control_scaling(j);
         }
 
@@ -57,13 +57,13 @@ void get_controls(adouble* controls, adouble* xad, int iphase, int k, Workspace*
 
 void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Workspace* workspace)
 {
-        int i = iphase-1;
-        Prob& problem = *workspace->problem;
+   int i = iphase-1;
+   Prob& problem = *workspace->problem;
 	MatrixXd& control_scaling = problem.phase[i].scale.controls;
 
 	int j;
 
-        int iphase_offset= get_iphase_offset(problem,iphase, workspace);
+   int iphase_offset= get_iphase_offset(problem,iphase, workspace);
 
 	int norder    = problem.phase[i].current_number_of_intervals;
 	int ncontrols = problem.phase[i].ncontrols;
@@ -73,7 +73,6 @@ void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Wo
         int offset = (nstates+ncontrols)*(norder+1)+nparam;
 
         for(j=0;j<ncontrols;j++) {
-//           controls_bar[j] =  xad[iphase_offset+offset+(k-1)*ncontrols+j]/control_scaling(j+1); //EIGEN_UPDATE
              controls_bar[j] =  xad[iphase_offset+offset+(k)*ncontrols+j]/control_scaling(j);
         }
 }
@@ -110,7 +109,6 @@ void get_states(adouble* states, adouble* xad, int iphase, int k, Workspace* wor
 	int offset1   = ncontrols*(norder+1);
         // get states
         for(j=0;j<nstates;j++) {
-//           states[j] =  xad[iphase_offset+offset1+(k-1)*nstates+j]/state_scaling(j+1);  // EIGEN_UPDATE
            states[j] =  xad[iphase_offset+offset1+(k)*nstates+j]/state_scaling(j);
         }
 
@@ -162,7 +160,6 @@ void get_parameters(adouble* parameters, adouble* xad, int iphase, Workspace* wo
 
         // get parameters
         for(j=0;j<nparam;j++) {
-//           parameters[j] =  xad[iphase_offset+offset2+j]/param_scaling(j+1);  // EIGEN_UPDATE
              parameters[j] =  xad[iphase_offset+offset2+j]/param_scaling(j);
         }
 
@@ -175,12 +172,12 @@ void get_times(adouble *t0, adouble *tf, adouble* xad, int iphase, Workspace* wo
         double   time_scaling    =  problem.phase[i].scale.time;
 
 
-	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
+	     int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
 
         int iphase_offset = get_iphase_offset(problem, iphase, workspace);
 
-	*t0  = xad[iphase_offset + nvars_phase_i-2]/time_scaling;
-	*tf  = xad[iphase_offset + nvars_phase_i-1]/time_scaling;
+	     *t0  = xad[iphase_offset + nvars_phase_i-2]/time_scaling;
+	     *tf  = xad[iphase_offset + nvars_phase_i-1]/time_scaling;
 
 }
 
@@ -193,11 +190,11 @@ adouble get_initial_time(adouble* xad, int iphase, Workspace* workspace)
 
 
 
-	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
+	     int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
 
         int iphase_offset = get_iphase_offset(problem,iphase, workspace);
 
-	t0  = xad[iphase_offset + nvars_phase_i-2]/time_scaling;
+        t0  = xad[iphase_offset + nvars_phase_i-2]/time_scaling;
 
         return (t0);
 }
@@ -211,11 +208,11 @@ adouble get_final_time(adouble* xad, int iphase, Workspace* workspace)
 
 
 
-	int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
+	     int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
 
         int iphase_offset = get_iphase_offset(problem,iphase, workspace);
 
-	tf  = xad[iphase_offset + nvars_phase_i-1]/time_scaling;
+		  tf  = xad[iphase_offset + nvars_phase_i-1]/time_scaling;
 
         return (tf);
 }

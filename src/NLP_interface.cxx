@@ -109,10 +109,9 @@ int NLP_interface(
 
   double InfValue = 1.0e20;
 
-  // TODO could be improved.
-//  memcpy(xlow, xlb->GetPr(), n*sizeof(double) );
+
   memcpy(xlow, &(*xlb)(0), n*sizeof(double) );
-//  memcpy(xupp, xub->GetPr(), n*sizeof(double) );
+
     memcpy(xupp, &(*xub)(0), n*sizeof(double) );
   for (int ix = 0; ix < n; ++ix) {
       x[ix]=0.0;
@@ -263,7 +262,7 @@ int NLP_interface(
   solution->nlp_return_code = int (inform/10);
 
   // Copy results.
-//  memcpy(x0->GetPr(), x, n*sizeof(double));
+
   memcpy( &(*x0)(0), x, n*sizeof(double));
 
   for (int ix = 0; ix < n; ++ix) solution->xad[ix] = x[ix];

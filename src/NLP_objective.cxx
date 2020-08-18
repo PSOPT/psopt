@@ -167,7 +167,7 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 			  for( l =0; l< problem.phase[i].nstates; l++ ) {
 
 			          states[l] = 0.5*(states[l]+states_next[l]);
-//				  get_interpolated_state(&states[l], l+1, iphase, tmiddle, xad)
+
 
 
 			  }

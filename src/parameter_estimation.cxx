@@ -65,26 +65,10 @@ adouble endpoint_cost_for_parameter_estimation(adouble* initial_states, adouble*
 
    adouble* resid = workspace->observed_residual[iphase-1];
 
-   // adouble* lam_resid = workspace->lam_resid[iphase-1];
 
-
-//   MatrixXd  Lambda; //  = Sqrt( inv( covariance ) );
 
    // Note, the covariance matrix needs to be symmetric and positive definite.
 
-//   MatrixXd inv_cov= inv(covariance);
-
-//   MatrixXd V( inv_cov.GetNoRows(), 2*inv_cov.GetNoCols());
-
-//   MatrixXd E = eig( inv_cov, & V );
-
-//   E = E.sub_matrix(1,E.GetNoRows(),1,1);
-
-//   V = V.sub_matrix(1,V.GetNoRows(),1,V.GetNoCols()/2);
-//   MatrixXd D = diag(E);
-
-
-//   Lambda = V*Sqrt(D)*tra(V);  // Lambda is the square root of the covariance matrix.
 
 
    for(k=0; k<nsamples;k++) {   // EIGEN_UPDATE: k index shifted by -1
@@ -181,9 +165,8 @@ void auto_split_observations(Prob& problem, MatrixXd& observation_nodes, MatrixX
     for (i=1; i<=problem.nphases; i++ ) {
             if (i>1) kstart = kend; else kstart = 0;
             kend   = kstart + problem.phases(i).nsamples-1;
-//	    problem.phases(i).observation_nodes      = tobs(1, colon(kstart,kend) ); // EIGEN_UPDATE
+
        problem.phases(i).observation_nodes      = tobs.block(0,kstart,1,problem.phases(i).nsamples); 
-//	    problem.phases(i).observations           = xobs(colon(), colon(kstart,kend) ); // EIGEN_UPDATA
        problem.phases(i).observations           = xobs.block(0,kstart,xobs.rows(), problem.phases(i).nsamples ); 
 	    problem.phases(i).residual_weights       = problem.phases(1).residual_weights;
 	    problem.phases(i).covariance             = problem.phases(1).covariance;
@@ -216,16 +199,16 @@ void load_parameter_estimation_data(Prob& problem, int iphase, const char* filen
 
      data = load_data(filename, nsamples, 1+nobserved*2);
 
-//     tm = data(colon(),1); // EIGEN_UPDATE
+
      tm = data.block(0,0, data.rows(),1);
 
      ym.resize(nsamples, nobserved);
      w.resize(nsamples,nobserved);
 
      for (int i=0;i<nobserved;i++) {   // EIGEN_UPDATE index i shifted by -1
-//          ym(colon(), i) = data(colon(), 2+(i-1)*2);
+
             ym.block(0,i,ym.rows(),1) =  data.block(0, 1+i*2, ym.rows(), 1);
-//          w (colon(), i) = data(colon(), 3+(i-1)*2);
+
             w.block(0,i,w.rows(),1)   =  data.block(0, 2+i*2, w.rows(), 1);
      }
 
@@ -330,7 +313,6 @@ void rr_num(MatrixXd& X, MatrixXd* residual_vector, Workspace* workspace)
 
    Prob & problem = *(workspace->problem);
 
-//   adouble* parameters;
 
    MatrixXd residual_vector_in_phase;
 
@@ -356,11 +338,10 @@ void rr_num(MatrixXd& X, MatrixXd* residual_vector, Workspace* workspace)
 
    for(iphase=1; iphase<=problem.nphases;iphase++)
    {
-//       parameters    = workspace->parameters[iphase-1];
+
        dindex = problem.phases(iphase).nobserved*problem.phases(iphase).nsamples;
        residual_vector_in_phase.resize( dindex, 1);
        compute_residual_vector_in_phase( residual_vector_in_phase, xad, iphase, workspace);
-//       (*residual_vector)( colon(index+1, index + dindex), 1) = residual_vector_in_phase; // EIGEN_UPDATE
        (*residual_vector).block(index, 0, dindex, 1) = residual_vector_in_phase;
        index = index+ dindex;
    }
@@ -394,22 +375,20 @@ void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspac
      	  int nstates   = problem.phase[i].nstates;
         int ncontrols = problem.phase[i].ncontrols;
         int nparam    = problem.phase[i].nparameters;
-//	     int offset;
+
         int iphase_offset = get_iphase_offset(problem,i+1, workspace); // CAREFUL HERE: CHECK THIS FUNCTION'S SECOND PARAM
-//	     int nvars_phase_i = get_nvars_phase_i(problem,i, workspace);
-//        int offset1 = (norder+1)*ncontrols;
+
+
         int offset2 = (norder+1)*(ncontrols+nstates);
 
 	      for (ii=0;ii<nparam;ii++) { // EIGEN_UPDATE: index ii shifted by -1
                         j = iphase_offset+offset2+ii;
-//                      pcount++                                 // EIGEN_UPDATE
-//                        Ip(pcount,0)=(double) j;
+
                         Ip(pcount) = j;
                         pcount++;
 	      }
      }
 
-//     Cp = C( Ip, Ip ); // EIGEN_UPDATE
      Cp.resize(Ip.size(), Ip.size());
      for (i=0; i< Ip.size(); i++) {
          for (j=0; j< Ip.size(); j++) {
@@ -493,7 +472,6 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 
 	  p = parameters_full;
 
-//      MatrixXd JcT(Jc.GetNoCols(),Jc.GetNoRows()); // EIGEN_UPDATE
      MatrixXd JcT(Jc.cols(),Jc.rows());
 
       for(i=0;i<Jc.rows();i++) {      // EIGEN_UPDATE
@@ -504,20 +482,13 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 
       long M= JcT.rows();
       long N= JcT.cols();
-//      double* A = &JcT(0);
-//      integer LDA = M;
-//      double* TAU = new double[MIN(M,N)];
-//      integer LWORK = 6*MAX(1,N);
-//      double* WORK= new double[MAX(1,LWORK)];
-//      integer INFO;
+
 
       if ((M-N)<=0) return false;
 
-//      dgeqrf_( &M, &N, A, &LDA, TAU, WORK, &LWORK, &INFO );
+
 
        MatrixXd Q = JcT.fullPivHouseholderQr().matrixQ();
-
-      // MatrixXd I2 = ( zeros(N,M-N) && eye(M-N) ); // EIGEN_UPDATE
       
       MatrixXd I2( N+(M-N) , (M-N) );
       
@@ -526,40 +497,23 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
             
        MatrixXd Z = Q*I2;            
             
-            
-//      double *C = &I2.(0);
-//      integer LDC = MAX(1,M);
-
-//      char SIDE = 'L';
-//      char TRANS = 'N';
-
-//      integer N2 = M-N;
-//      integer K  = MIN(M,N);
-
-
-
-//      dormqr_( &SIDE, &TRANS, &M, &N2, &K, A, &LDA, TAU, C, &LDC, WORK, &LWORK, &INFO, 1, 1);
 
       // Calculation of covariance matrix w.r.t all decision variables.
       // See the paper:
       // Kostina et al (2003) "Computation of covariance matrices for constrained parameter estimation
       // problems using LSQR".
 
-//      MatrixXd& Z = I2;
+
 
       MatrixXd& J1 = Jr;
       MatrixXd CC;
 
       MatrixXd F;
 
-//      F = (TProductT(Z,J1)*(J1*Z));   // EIGEN_UPDATE
       F = Z.transpose()*J1.transpose()*J1*Z;
 
-//      F = pinv(F);  // EIGEN_UPDATE
       F.completeOrthogonalDecomposition().pseudoInverse();
-//      F = inv(F);
 
-//      CC = Z*F*tra(Z);  // EIGEN_UPDATE
         CC = Z*F*Z.transpose();
 
       extract_parameter_covariance(Cp, CC, workspace);
@@ -593,7 +547,6 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 
 	  for(i=0;i< problem.phases(iphase).nparameters;i++) {
 
-//	    j= pcount+i+1;
        j= pcount+i; // EIGEN_UPDATE
 
 	    plow(j)   = parameters_full(j) - tt*sqrt( Cp(j,j) );

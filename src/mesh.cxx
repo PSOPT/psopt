@@ -55,17 +55,18 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 
 		int Nd;
 	  	MatrixXd& emax_history = workspace->emax_history[iphase-1];
-//		x    = emax_history(colon(1,workspace->current_mesh_refinement_iteration), 1);
+
       x    = emax_history.block(0,0, workspace->current_mesh_refinement_iteration, 1); 
-//		evec = emax_history(colon(1,workspace->current_mesh_refinement_iteration), 2);
+
       evec = emax_history.block(0,1, workspace->current_mesh_refinement_iteration, 1); 
-//      y    = log( evec ); // EIGEN_UPDATE
+
       y.resize(evec.rows(),1);
+      
     	for(int iii=0;iii<evec.rows();iii++)   y(iii)= log(evec(iii));
 
 
 		// If the error in this phase is not below the tolerance, then increment the nodes
-//	   if ( evec("end") > algorithm.ode_tolerance )   {  //EIGEN_UPDATE
+
 		if ( evec( evec.rows() -1  ) > algorithm.ode_tolerance )   {   
 
 		    // Check convergence behaviour
@@ -89,49 +90,39 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 
            int deltai = iend-istart+1;
 
-//			  y = y(colon(istart,iend));  // EIGEN_UPDATE
+
            y = y.block(istart,0,deltai,1);
-//			  x = x(colon(istart,iend));
+
            x = x.block(istart,0,deltai,1);
-//			  evec = evec(colon(istart,iend));
+
            evec = (evec.block(istart,0,deltai,1));
 
 			  
 			  PHI.resize(length(y),2);
 			  
-//         PHI =   log( x(0) )*ones(1,1) ||  ones(1,1);   // EIGEN_UPDATE
            PHI(0,0) = log( x(0)); PHI(0,1) = 1.0;
 
 			  for (i=1;i<length(y);i++) { // EIGEN_UPDATE: Index i shifted by -1.
-//			    PHI = PHI && ( log(x(i))*ones(1,1) || ones(1,1) );
              PHI(i,0) = log(x(i)); PHI(i,1) = 1.0;
 			  }
 
 //	    	          Solve the least squares problem
 
-//			  theta = inv(tra(PHI)*PHI)*tra(PHI)*y;
 			  theta = (PHI.transpose()*PHI).colPivHouseholderQr().solve(PHI.transpose()*y);
 			  
 
 			  yls = PHI*theta;
 
-//			  yerror = enorm(y-yls);
            yerror = (y-yls).norm();
 
 			  sprintf(msg, "\nLeast squares problem solved for global mesh refinement. Norm of residual = %e", yerror);
 
 			  psopt_print(workspace,msg);
 
-//			  PHI.Print("PHI");
-//			  theta.Print("theta");
-//			  yls.Print("yls");
-//			  y.Print("y");
 
 
-//			  yd = MAX( log(0.25*evec("end")), log(0.99*algorithm.ode_tolerance) );
            yd = max( log(0.25*evec(length(evec)-1)), log(0.99*algorithm.ode_tolerance) );
 
-//			  xd = (int) exp( (yd- theta(2))/theta(1) );
            xd = (int) exp( (yd- theta(1))/theta(0) );
 
 			  max_increment = MAX( algorithm.mr_max_increment_factor*Ncurrent,1);
@@ -174,9 +165,9 @@ bool check_for_equidistributed_error(Prob& problem,Alg& algorithm,Sol& solution)
 
     for(iphase=1;iphase<=nphases;iphase++) {
         	MatrixXd& epsilon = solution.relative_errors[iphase-1];
-//			double epsilon_max = Max(tra(epsilon));
+
 			double epsilon_max = Max(epsilon);
-//			double epsilon_mean = (mean(tra(epsilon)))(1);
+
          double epsilon_mean = mean(epsilon);
 
 			if ( epsilon_max <= 2*epsilon_mean ) {
@@ -316,11 +307,11 @@ void construct_new_mesh(Prob& problem,Alg& algorithm,Sol& solution, Workspace* w
 	terminate_flag = false;
         epsilon = solution.relative_errors[iphase-1];
         MatrixXd& r       = workspace->order_reduction[iphase-1];
-//	r.Print("order reduction");
+
 	while (!terminate_flag) {
 	      // Check which interval has maximum relative error
 	      double epsilon_max = epsilon.maxCoeff(&rmax,&imax);
-//	      fprintf(stderr,"\n epsilon_max = %f, imax = %i", epsilon_max, imax );
+
 	      if ( (Icount>Mdash) && (epsilon_max <= algorithm.ode_tolerance) && (I(imax)==0) )
 				terminate_flag=true;
 	      if ( (epsilon_max <= kappa*algorithm.ode_tolerance) && (I(imax)<M1) && (I(imax)>0) )
@@ -339,13 +330,12 @@ void construct_new_mesh(Prob& problem,Alg& algorithm,Sol& solution, Workspace* w
 		  		// Update the predicted error for interval imax
 		  		epsilon(imax) = epsilon_max*pow( 1.0/(1.0+I(imax)), p-r(imax)+1.0);
 
-//		  		fprintf(stderr,"\n iphase: %i, imax: %i, old error=%f, new error=%f, r=%f, I(imax)=%f", iphase, imax, epsilon_max, epsilon(imax), r(imax), I(imax));
 	      }
 	}
 
 	// Now construct the new snodes array and sort it
 
-//	I.Print(">>> Added nodes per interval");
+
 
 	MatrixXd& snodes = workspace->snodes[iphase-1];
 
@@ -355,7 +345,7 @@ void construct_new_mesh(Prob& problem,Alg& algorithm,Sol& solution, Workspace* w
 	    if ( Ii> 0 ) {
 	         double delta = snodes(i+1)-snodes(i);
 	         for(l=1;l<=Ii;l++) { //EIGEN_UPDATE: NO NEED TO SHIFT THIS INDEX AS IT IS NOT USED BY A MATRIX OR VECTOR.
-//	             snodes = (snodes || (snodes(i) + (l)*delta/(Ii+1))*ones(1,1) ) ; // EIGEN_UPDATE
+
 	             MatrixXd snodes_prev = snodes;
 	             snodes.resize(snodes.rows(), snodes.cols()+1);
 	             snodes.block(0,0, 1, snodes_prev.cols()) = snodes_prev;  
@@ -367,7 +357,7 @@ void construct_new_mesh(Prob& problem,Alg& algorithm,Sol& solution, Workspace* w
 
 	sort(snodes);
    problem.phase[iphase-1].current_number_of_intervals = length(snodes)-1;
-//	fprintf(stderr,"\n >>> Local mesh refinement added %i new nodes in phase %i", (int) sum(tra(I)).elem(1,1), iphase );
+
    fprintf(stderr,"\n >>> Local mesh refinement added %i new nodes in phase %i", (int) ( I.transpose() ).sum(), iphase );
 
 

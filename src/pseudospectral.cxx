@@ -54,14 +54,13 @@ int N1 = length(x);
 
 int N = N1-1;
 
-// D = zeros(N1,N1);
 D.resize(N1,N1);
 D.setZero();
 
-h = x(2)-x(1);
-// D(1,1)  = -1/h;
+h = x(1)-x(0);
+
 D(0,0)  = -1/h;
-// D(1,2)  =  1/h;
+
 D(0,1)  =  1/h;
 
 for (i=1;i<N;i++) { // EIGEN_UPDATE
@@ -70,11 +69,11 @@ for (i=1;i<N;i++) { // EIGEN_UPDATE
     D(i,i+1) = 1/(h1+h2);
     D(i,i-1) = -1/(h1+h2);
 }
-// h = x(N)-x(N+1);
+
 h = x(N-1)-x(N);
-//D(N+1,N)  =1/h;
+
 D(N,N-1)  =1/h;
-//D(N+1,N+1)=-1/h;
+
 D(N,N)=-1/h;
 
 }
@@ -90,11 +89,11 @@ int N1 = length(x);
 
 int N = N1-1;
 
-//D = zeros(N1,N1);
+
 D.resize(N1,N1);
 D.setZero();
 
-//h = x(2)-x(1);
+
   h = x(1)-x(0);
 //D(1,1)  = -1/h;
   D(0,0)  = -1/h;
@@ -109,11 +108,11 @@ for (i=1;i<N;i++) { // EIGEN_UPDATE
 
 }
 
-//h = x(N)-x(N+1);
+
 h = x(N-1)-x(N);
-//D(N+1,N)  =1/h;
+
 D(N,N-1)  =1/h;
-//D(N+1,N+1)=-1/h;
+
 D(N,N)=-1/h;
 
 }
@@ -130,15 +129,15 @@ int N1 = length(x);
 
 int N = N1-1;
 
-// D = zeros(N1,N1);
+
 D.resize(N1,N1);
 D.setZero();
 
-//h = x(2)-x(1);
+
   h = x(1)-x(0);
-//D(1,1)  = -1/h;
+
   D(0,0)  = -1/h;
-//D(1,2)  =  1/h;
+
   D(0,1)  = 1/h;
 
     // 3 Point differentiation based on lagrange polynomial interpolation
@@ -166,11 +165,11 @@ for (i=2;i<(N-1);i++) {  // EIGEN_UPDATE
     D(i,i+2)   =  ((-x1+x3)*(-x2+x3)*(x3-x4))/((-x1+x5)*(-x2+x5)*(-x3+x5)*(-x4+x5));
 
 }
-//h = x(N)-x(N+1);
+
 h = x(N-1)-x(N);
-//D(N+1,N)  =1/h;
+
 D(N,N-1)  =1/h;
-//D(N+1,N+1)=-1/h;
+
 D(N,N)=-1/h;
 
 }
@@ -195,7 +194,6 @@ void legendre_points(int N, MatrixXd& x, MatrixXd& w)
       T1.setZero();
       T2.setZero();
 
-//      beta = 0.5*elemDivision( ones(N,1) , Sqrt(ones(N,1)-((2*(colon(1,N1-1)))^(-2))) );
 
       MatrixXd C(N1-1,1);
       
@@ -216,16 +214,14 @@ void legendre_points(int N, MatrixXd& x, MatrixXd& w)
             T2(i+1,i) = beta(i);
       }
       T  = T1 + T2;
-//      x = eig(T, &V);
 
       EigenSolver<MatrixXd> es(T);
       
       x = es.eigenvalues().real();
       V = es.eigenvectors().real();
 
-//      x = x.Column(1);  // 
       sort_vector(x,indx);
-//      w = 2.0*(V(1,indx)^2);
+
      MatrixXd V1 = V.row(0);
      for (i=0; i<length(x); i++) {
         w(i) = 2.0*pow(V1(indx(i)), 2.0);     
@@ -255,13 +251,12 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
     x(i) = cos((pi*i)/N);   
   }
 //  Use the Chebyshev-Gauss-Lobatto nodes as the first guess
-//  x = cos(pi*colon(0,N)/N);
+
   
 //  The Legendre Vandermonde Matrix
-//  P = zeros(N1,N1);
-//  w = zeros(N1,1);
+
   P.resize(N1,N1);
-//  w.resize(1,N1);
+
   w.resize(N1,1);
   P.setZero();
   w.setZero();
@@ -273,22 +268,21 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
   {
 
        xold = x;
-//       P(colon(),1)=ones(N1,1); P(colon(),2)=x;
+
        P.col(0)=ones(N1,1); P.col(1)=x;
 
        for ( k = 1; k<N; k++ ) // EIGEN_UPDATE
        {
 	          double kd = (double) k;
-//           P(colon(),k+1) = ( elemProduct((2*kd-1)*x,P(colon(),k)) - (kd-1)*P(colon(),k-1) )/kd;
+
              P.col(k+1) = ( elemProduct((2*kd+1)*x,P.col(k)) - (kd)*P.col(k-1) )/(kd+1);
-//         for(j=0;j<N1;j++) P(j,k+1)= ((2*kd+1)*x(j)*P(j,k)-(kd)*P(j,k-1.0))/(kd+1);
 
        }
 
        double N1d = (double) N1;
-//       x = xold-elemDivision(  elemProduct(x,P(colon(),N1))-P(colon(),N) , N1d*P(colon(),N1) );
+
        x = xold-elemDivision(  elemProduct(x,P.col(N1-1))-P.col(N-1) , N1d*P.col(N1-1) );
-//       for(j=0;j<N1;j++)  x(j)=xold(j)-(x(j)*P(j,N1-1)-P(j,N-1))/(N1d*P(j,N1-1));
+
 
   }
 
@@ -300,16 +294,15 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
   if ( workspace->differential_defects == "standard") {
 
 	// Compute now the differentiation matrix D using the standard formula
-//	X = zeros(N1,N1);
+
         X.resize(N1,N1);
         X.setZero();
 	for(k=0;k<N1;k++) // EIGEN_UPDATE
 	{
-//  	X(colon(),k) = x;
+
       X.col(k) = x;
 	}
 
-//	Xdiff= X-tra(X)+eye(N1);
         Xdiff.resize(N1,N1);
 
         for(i=0;i<N1;i++) {  // EIGEN_UPDATE
@@ -320,12 +313,12 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
                 }
         }
 
-//	L = zeros(N1,N1);
+
         L.resize(N1,N1);
         L.setZero();
 	for(k=0;k<N1;k++) // EIGEN_UPDATE
 	{
-//   	L(colon(),k) =  P(colon(),N1);
+
       L.col(k) =  P.col(N1-1);
 	}
 
@@ -334,26 +327,21 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
 	     L(k)=1;
 	}
 
-//	D = elemDivision(L, elemProduct(Xdiff, tra(L) ) );
+
    D = elemDivision(L, elemProduct(Xdiff, (L).transpose() ) );
-//        for(i=1;i<=N1;i++) {
-//                for(j=1;j<=N1;j++) {
-//                     D(i,j) = L(i,j)/(Xdiff(i,j)*L(j,i));
-//                }
-//       }
+
 
 	for (k=0; k<N1*N1; k=k+N1+1)  // EIGEN_UPDATE
 	{
 	    D(k) = 0.0;
 	}
 
-//	D(1) = ((double) N1*N)/4.0;
+
    D(0) = ((double) N1*N)/4.0;
 
-//	D(N1*N1)=-((double) N1*N)/4.0;
+
    D(N1*N1-1)=-((double) N1*N)/4.0;
 
-//	D=-D;
         for(i=0;i<N1;i++) { // EIGEN_UPDATE
                 for(j=0;j<N1;j++) {
                      D(i,j) = -D(i,j);
@@ -368,7 +356,7 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
 	for(j=0;j<=N;j++) {
 		for(l=0;l<=N;l++)  {
 		if(j!=l) {
-//			D(j+1,l+1) = delta(l,N)*pow(-1.0,(double) (j+l))/(delta(j,N)*(x(j+1)-x(l+1)));
+
          D(j,l) = delta(l,N)*pow(-1.0,(double) (j+l))/(delta(j,N)*(x(j)-x(l)));
 		}
 		else {
@@ -376,16 +364,16 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
 			long i;
 			for(i=0;i<=N;i++) {
 				if (i != j) {
-//					sum += delta(i,N)*pow(-1.0,(double) (i+j))/(delta(j,N)*(x(j+1)-x(i+1)));
+
                sum += delta(i,N)*pow(-1.0,(double) (i+j))/(delta(j,N)*(x(j)-x(i)));
 				}
 			}
-//			D(j+1,l+1) = -sum;
+
          D(j,l) = -sum;
 		}
 		}
 	}
-//	D = -D;
+
         for(i=0;i<N1;i++) { // EIGEN_UNDATE
                 for(j=0;j<N1;j++) {
                      D(i,j) = -D(i,j);
@@ -396,8 +384,6 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
 
   else if (workspace->differential_defects == "central-differences") {
       diffmat_central_differences( D, x );
-//      diffmat_lagrange5pt( D, x );
-//      D=-D;
         for(i=0;i<N1;i++) { // EIGEN_UPDATE
                 for(j=0;j<N1;j++) {
                      D(i,j) = -D(i,j);
@@ -407,7 +393,6 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
 
   else if (workspace->differential_defects == "Lagrange-3pt") {
       diffmat_lagrange3pt( D, x );
-//      D=-D;
         for(i=0;i<N1;i++) {  // EIGEN_UPDATE
                 for(j=0;j<N1;j++) {
                      D(i,j) = -D(i,j);
@@ -450,7 +435,7 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
   long i,j,l;
 
 //  compute the Chebyshev-Gauss-Lobatto nodes
-//  x = cos(pi*colon(0,N)/N);
+
   x.resize(N1,1);
   for (i=0; i<N+1; i++) {
     x(i) = cos((pi*i)/N); 
@@ -459,7 +444,7 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
   w = zeros(N1,1);
 
 
-//  w(1)=pi/(2*N);
+
   w(0)=pi/(2*N);
 
   for( k=1; k<N1-1; k++)  // EIGEN_UPDATE
@@ -467,7 +452,7 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
      w(k) = pi/N;
   }
 
-//  w(N1)=pi/(2*N);
+
 
  w(N1-1)=pi/(2*N);
 
@@ -478,21 +463,21 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
 	for(j=0;j<=N;j++) {
 		for(l=0;l<=N;l++)  {
 		if(j!=l)
-//			D(j+1,l+1)= -cbar(j,N)/(2*cbar(l,N))*pow(-1.0,(int) (j+l))/( sin((j+l)*pi/(2*N))*sin((j-l)*pi/(2*N)));
+
 			D(j,l)= -cbar(j,N)/(2*cbar(l,N))*pow(-1.0,(int) (j+l))/( sin((j+l)*pi/(2*N))*sin((j-l)*pi/(2*N)));
 			else if ( j==l && 1<=j && l <= N-1)
-//			D(j+1,l+1) =  -x(j+1)/(2*pow( sin(j*pi/N), 2));
+
          D(j,l) =  -x(j)/(2*pow( sin(j*pi/N), 2));
 			else if ( j==0 && l==0 )
-//			D(j+1,l+1)=(2*pow(N,2.0)+1.0)/6.0;
+
          D(j,l)=(2*pow(N,2.0)+1.0)/6.0;
 			else if ( j==N && l==N)
-//				D(j+1,l+1)=-(2*pow(N,2.0)+1.0)/6.0;
+
          D(j,l)=-(2*pow(N,2.0)+1.0)/6.0;
 		}
 	}
 
-//	D=-D;
+
         for(i=0;i<N1;i++) {  // EIGEN_UPDATE
                 for(j=0;j<N1;j++) {
                      D(i,j) = -D(i,j);
@@ -507,7 +492,7 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
 	for(j=0;j<=N;j++) {
 		for(l=0;l<=N;l++)  {
 		if(j!=l) {
-//			D(j+1,l+1) = delta(l,N)*pow(-1.0,(int) (j+l))/(delta(j,N)*(x(j+1)-x(l+1)));
+
          D(j,l) = delta(l,N)*pow(-1.0,(int) (j+l))/(delta(j,N)*(x(j)-x(l)));
 		}
 		else {
@@ -515,16 +500,15 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
 			long i;
 			for(i=0;i<=N;i++) {
 				if (i != j) {
-//					sum += delta(i,N)*pow(-1.0,(int) (i+j))/(delta(j,N)*(x(j+1)-x(i+1)));
                sum += delta(i,N)*pow(-1.0,(int) (i+j))/(delta(j,N)*(x(j)-x(i)));
 				}
 			}
-//			D(j+1,l+1) = -sum;
+
          D(j,l) = -sum;
 		}
 		}
 	}
-//	D = -D;
+
         for(i=0;i<N1;i++) {  // EIGEN_UPDATE
                 for(j=0;j<N1;j++) {
                      D(i,j) = -D(i,j);
@@ -535,8 +519,7 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
 
   else if (workspace->differential_defects == "central-differences") {
       diffmat_central_differences( D, x );
-//      diffmat_lagrange5pt( D, x );
-//      D=-D;
+
         for(i=0;i<N1;i++) {   // EIGEN_UPDATE
                 for(j=0;j<N1;j++) {
                      D(i,j) = -D(i,j);

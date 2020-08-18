@@ -191,14 +191,14 @@ void determine_objective_scaling(MatrixXd& X,Sol& solution, Prob& problem, Alg& 
 	    problem.scale.objective = -1.0;
 	    trace_on(itag);
 	    for(i=0;i<n;i++) {
-//			xad[i] <<= (X.GetPr())[i];
+
          xad[i] <<= (&X(0))[i];
 	    }
 	    yad = ff_ad(xad, workspace);
 	    yad >>= yp;
 	    trace_off();
 
-//	    gradient(itag,n,X.GetPr(),GF.GetPr());
+
        gradient(itag,n,&X(0),&GF(0));
 
 	}
@@ -242,8 +242,6 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
     int ncons = get_number_nlp_constraints(problem, workspace);
 
     MatrixXd& JacCol1 = *workspace->JacCol1;
-//    MatrixXd& xlb     = *workspace->xlb;
-//    MatrixXd& xub     = *workspace->xub;
     MatrixXd& xp      = *workspace->xp;
     MatrixXd& jac_row_norm = *workspace->JacCol2;
     MatrixXd jtemp;
@@ -259,7 +257,7 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
      if ( useAutomaticDifferentiation(algorithm) && algorithm.constraint_scaling=="automatic") {
         // EXTRA PARAMETER .constraint_scaling ADDED TO ALGORITHM STRUCTURE 27.11.2012.
 
-//        jac_row_norm.FillWithZeros();
+
 
 		   jac_row_norm.setZero();
 		
@@ -271,7 +269,7 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
 			adouble *xad = workspace->xad;
 			adouble *gad = workspace->gad;
 			double  *g   = workspace->fg;
-		//	double  *x   = xp.GetPr();
+
 		   double  *x   = &xp(0);
 		
 			/* Tracing of function gg() */
@@ -291,7 +289,7 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
 			sparse_jac(workspace->tag_gc, ncons, nvars, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values, options);
 		
 			for (i=0;i<nnz;i++) {
-		//	    jac_row_norm( jac_rind[i] + 1  ) += pow( jac_values[i], 2.0);
+
 		       jac_row_norm( jac_rind[i]      ) += pow( jac_values[i], 2.0);
 			}
 
@@ -319,7 +317,7 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
 		        double sqeps = sqrt(PSOPT_extras::GetEPS());
 
 		        if ( jac_row_norm(i) < 1.e7 ) {
-		 //	     (*workspace->constraint_scaling)(i) = 1.0/jac_row_norm(i);
+
 			        (*workspace->constraint_scaling)(i) = 1.0/(jac_row_norm(i)+sqeps);
 		
 			     }

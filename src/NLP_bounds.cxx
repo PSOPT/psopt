@@ -65,18 +65,18 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
 
 	for (k=0; k<norder+1; k++) {   // EIGEN_UPDATE: k index shifted by -1.
                 if (ncontrols>0) {
-//	              xlb(colon(x_phase_offset+(k-1)*ncontrols+1,x_phase_offset+ (k)*ncontrols) ) = elemProduct((problem.phase[i].bounds.lower.controls),control_scaling);
+
 	              xlb.block(x_phase_offset+k*ncontrols, 0, ncontrols, 1 ) = elemProduct((problem.phase[i].bounds.lower.controls),control_scaling);
                 }
-//		xlb(colon(x_phase_offset+(k-1)*nstates+1+offset1, x_phase_offset+(k)*nstates+offset1))=elemProduct((problem.phase[i].bounds.lower.states),state_scaling);
+
 		xlb.block(x_phase_offset+(k)*nstates+offset1,0, nstates, 1) = elemProduct((problem.phase[i].bounds.lower.states),state_scaling);
 
                 if (ncontrols>0) {
-//		     xub(colon(x_phase_offset+(k-1)*ncontrols+1, x_phase_offset+(k)*ncontrols) ) = elemProduct((problem.phase[i].bounds.upper.controls),control_scaling);
+
 		     xub.block(x_phase_offset+(k)*ncontrols,0, ncontrols, 1) = elemProduct((problem.phase[i].bounds.upper.controls),control_scaling);
 
                 }
-//		xub(colon(x_phase_offset+(k-1)*nstates+1+offset1, x_phase_offset+(k)*nstates+offset1))=elemProduct((problem.phase[i].bounds.upper.states),state_scaling);
+
         xub.block(x_phase_offset+(k)*nstates+offset1,0, nstates, 1)=elemProduct((problem.phase[i].bounds.upper.states),state_scaling);
 
 	}
@@ -85,11 +85,11 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
 
         if (nparam>=1) {
 
- //          xlb(colon(x_phase_offset+offset2+1, x_phase_offset+offset2+nparam)) = elemProduct((problem.phase[i].bounds.lower.parameters),param_scaling);
+
              xlb.block(x_phase_offset+offset2,0,nparam,1)= elemProduct((problem.phase[i].bounds.lower.parameters),param_scaling);
 
 
-//           xub(colon(x_phase_offset+offset2+1, x_phase_offset+offset2+nparam)) = elemProduct((problem.phase[i].bounds.upper.parameters),param_scaling);
+
              xub.block(x_phase_offset+offset2,0,nparam,1)= elemProduct((problem.phase[i].bounds.upper.parameters),param_scaling);
 
         }
@@ -99,10 +99,10 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
         if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
 	   for (k=0; k<norder; k++) { // EIGEN_UPDATE: K index shifted by -1
                 if (ncontrols>0) {
-//	              xlb(colon(x_phase_offset+offset1+(k-1)*ncontrols+1,x_phase_offset+offset1+ k*ncontrols) ) = elemProduct((problem.phase[i].bounds.lower.controls),control_scaling);
+
 		          xlb.block(x_phase_offset+offset1+(k)*ncontrols,0,ncontrols,1) = elemProduct((problem.phase[i].bounds.lower.controls),control_scaling);
 
-//		          xub(colon(x_phase_offset+offset1+(k-1)*ncontrols+1, x_phase_offset+offset1+k*ncontrols) ) = elemProduct((problem.phase[i].bounds.upper.controls),control_scaling);
+
                   xub.block(x_phase_offset+offset1+(k)*ncontrols,0,ncontrols,1) = elemProduct((problem.phase[i].bounds.upper.controls),control_scaling);
 
                 }

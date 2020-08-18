@@ -578,21 +578,21 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
 
 	int nvars_phase_i = get_nvars_phase_i(problem,i,workspace);
 
-//	double    t0  = x(iphase_offset + nvars_phase_i-1)/time_scaling;
+
              double    t0  = x(iphase_offset + nvars_phase_i-2)/time_scaling;
-//	double    tf  = x(iphase_offset + nvars_phase_i)/time_scaling;
+
              double    tf  = x(iphase_offset + nvars_phase_i-1)/time_scaling;
 	for (k=0; k<norder+1; k++) {  // EIGEN_UPDATE
                 if (ncontrols>0) {
-//		    (solution.controls[i])(colon(),k) = elemDivision(x(colon(iphase_offset+(k-1)*ncontrols+1,iphase_offset+k*ncontrols) ) , control_scaling);
+
           (solution.controls[i]).col(k) = elemDivision(x.block(iphase_offset+(k)*ncontrols, 0, ncontrols,1) , control_scaling);
                 }
-//		(solution.states[i])(colon(),k)   = elemDivision(x(colon(iphase_offset+(k-1)*nstates+1+offset1, iphase_offset + k*nstates+offset1)), state_scaling);
+
       (solution.states[i]).col(k)   = elemDivision(x.block(iphase_offset+(k)*nstates+offset1, 0, nstates, 1), state_scaling);
   	   (solution.nodes[i])(0,k)          =  convert_to_original_time( (workspace->snodes[i])(k), t0, tf );
 	}
 
-//        solution.parameters[i] = elemDivision( x(colon(iphase_offset+offset2+1, iphase_offset+offset2+nparam)), param_scaling);
+
         solution.parameters[i] = elemDivision( x.block(iphase_offset+offset2,0,nparam,1), param_scaling);
 
         iphase_offset += nvars_phase_i;

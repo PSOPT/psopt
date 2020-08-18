@@ -82,7 +82,7 @@ void plot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const cha
 
          if ( y.rows() < y.cols() )
          {
-//                 XY = tra(x) || tra(y);
+
 
                    x = x.transpose().eval();
                    y = y.transpose().eval();
@@ -90,7 +90,7 @@ void plot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const cha
                    XY << x, y;
          }
          else {
-//                 XY = x || y;
+
                    XY.resize(x.rows(), x.cols()+y.cols());
                    XY << x, y;
          }
@@ -191,7 +191,7 @@ void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, cons
 
          if ( y.rows() < y.cols() )
          {
-//                 XY = tra(x) || tra(y);
+
                    x = x.transpose().eval();
                    y = y.transpose().eval();
                    XY.resize(x.rows(), x.cols()+y.cols());
@@ -200,7 +200,7 @@ void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, cons
                    ycopy = y;
          }
          else {
-//                 XY = x || y;
+
                    XY.resize(x.rows(), x.cols()+y.cols());
                    XY << x, y;
          }
@@ -242,7 +242,6 @@ void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, cons
 
          for(int i=2;i<=ny+1;i++) {
 
-//                 MatrixXd yi = ycopy(colon(), i-1); // EIGEN_UPDATE
 
             MatrixXd yi = ycopy.col(i-2);
 
@@ -295,7 +294,6 @@ void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, cons
 
                 fprintf(gscript,"with linespoints");
 
- //               if(i<(ny+1) ) fprintf(gscript,", ");
 
          }
 
@@ -327,14 +325,14 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
          if ( y1.rows() < y1.cols() )
          {
-//                XY = tra(x1) || tra(y1);
+
                    x1 = x1.transpose().eval();
                    y1 = y1.transpose().eval();
                    XY.resize(x1.rows(), x1.cols()+y1.cols());
                    XY << x1,y1;
          }
          else {
-//                XY = x1 || y1;
+
                   XY.resize(x1.rows(), x1.cols()+y1.cols());
                   XY << x1, y1;
          }
@@ -406,14 +404,14 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
          if ( y2.rows() < y2.cols() )
          {
-//               XY = tra(x2) || tra(y2);
+
                    x2 = x2.transpose().eval();
                    y2 = y2.transpose().eval();
                    XY.resize(x2.rows(), x2.cols()+y2.cols());
                    XY<< x2, y2;
          }
          else {
-//               XY = x2 || y2;
+
                  XY.resize(x2.rows(), x2.cols()+y2.cols());
                  XY << x2 , y2;
 
@@ -421,7 +419,7 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
          ny = MIN( y2.rows(), y2.cols());
 
-//         pos = 0;
+
 
 
          Save(XY, "XY2.dat");
@@ -480,14 +478,14 @@ void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const
 
          if ( y1.rows() < y1.cols() )
          {
-//                XY = tra(x1) || tra(y1);
+
                    x1 = x1.transpose().eval();
                    y1 = y1.transpose().eval();
                    XY.resize(x1.rows(), x1.cols()+y1.cols());
                    XY<< x1,y1 ;
          }
          else {
-//                XY = x1 || y1;
+
                   XY.resize(x1.rows(), x1.cols()+y1.cols());
                   XY << x1, y1;
          }
@@ -559,21 +557,20 @@ void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const
 
          if ( y2.rows() < y2.cols() )
          {
-//               XY = tra(x2) || tra(y2);
+
                    x2 = x2.transpose().eval();
                    y2 = y2.transpose().eval();
                    XY.resize(x2.rows(), x2.cols()+y2.cols());
                    XY << x2, y2;
          }
          else {
-//               XY = x2 || y2;
+
                  XY.resize(x2.rows(), x2.cols()+y2.cols());
                  XY << x2, y2;
          }
 
          ny = MIN( y2.rows(), y2.cols());
 
-//         pos = 0;
 
 
          Save(XY, "XY2.dat");
@@ -635,14 +632,14 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
          if ( y1.rows() < y1.cols() )
          {
-//                XY = tra(x1) || tra(y1);
+
                    x1 = x1.transpose().eval();
                    y1 = y1.transpose().eval();
                    XY.resize(x1.rows(), x1.cols()+y1.cols());
                    XY<< x1,y1 ;
          }
          else {
-//                XY = x1 || y1;
+
                 XY.resize(x1.rows(), x1.cols()+y1.cols());
                 XY << x1 , y1;
          }
@@ -714,21 +711,20 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
          if ( y2.rows() < y2.cols() )
          {
-//               XY = tra(x2) || tra(y2);
+
                    x2 = x2.transpose().eval();
                    y2 = y2.transpose().eval();
                    XY.resize(x2.rows(), x2.cols()+y2.cols());
                    XY<< x2,y2 ;
          }
          else {
-//               XY = x2 || y2;
+
                  XY.resize(x2.rows(), x2.cols()+y2.cols());
                  XY << x2 , y2;
          }
 
          ny = MIN( y2.rows(), y2.cols());
 
-//         pos = 0;
 
 
          Save(XY,"XY2.dat");
@@ -759,21 +755,21 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
          if ( y3.rows() < y3.cols() )
          {
-//               XY = tra(x3) || tra(y3);
+
                    x3 = x3.transpose().eval();
                    y3 = y3.transpose().eval();
                    XY.resize(x3.rows(), x3.cols()+y3.cols());
                    XY<< x3,y3 ;
          }
          else {
-//               XY = x3 || y3;
+
                XY.resize(x3.rows(), x3.cols()+y3.cols());
                XY << x3, y3;
          }
 
          ny = MIN( y3.rows(), y3.cols());
 
-//         pos = 0;
+
 
 
          Save(XY,"XY3.dat");
@@ -833,14 +829,14 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const string& title,  c
 
          if ( y.rows() < y.cols() )
          {
-//                 XY = tra(x) || tra(y);
+
                    x = x.transpose().eval();
                    y = y.transpose().eval();
                    XY.resize(x.rows(), x.cols()+y.cols());
                    XY<< x,y ;
          }
          else {
-//                 XY = x || y;
+
                    XY.resize(x.rows(), x.cols()+y.cols());
                    XY << x,y;
          }
@@ -899,7 +895,6 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const string& title,  c
 
          	fprintf(gscript,"'XY.dat' using 1:%i title \"%s\" ",  i, legend_i);
 
-//                fprintf(gscript,"with linespoints");
 
                 if(i<(ny+1) ) fprintf(gscript,", ");
 
@@ -937,14 +932,14 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          if ( y.rows() < y.cols() )
          {
-//                 XY = tra(x) || tra(y);
+
                    x = x.transpose().eval();
                    y = y.transpose().eval();
                    XY.resize(x.rows(), x.cols()+y.cols());
                    XY<< x,y ;
          }
          else {
-//                 XY = x || y;
+
                  XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
@@ -1012,14 +1007,14 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          if ( y.rows() < y.cols() )
          {
-//                 XY = tra(x) || tra(y);
+
                    x = x.transpose().eval();
                    y = y.transpose().eval();
                    XY.resize(x.rows(), x.cols()+y.cols());
                    XY<< x,y ;
          }
          else {
-//                 XY = x || y;
+
                  XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
@@ -1040,7 +1035,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          Save(XY,"XY2.dat");
 
-//         fprintf(gscript,"\nplot [ ] ");
+
 
          for(int i=2;i<=ny+1;i++) {
 
@@ -1102,14 +1097,14 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          if ( y.rows() < y.cols() )
          {
-//                 XY = tra(x) || tra(y);
+
                    x = x.transpose().eval();
                    y = y.transpose().eval();
                    XY.resize(x.rows(), x.cols()+y.cols());
                    XY<< x,y ;
          }
          else {
-//                 XY = x || y;
+
                  XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
@@ -1177,14 +1172,14 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          if ( y.rows() < y.cols() )
          {
-//                 XY = tra(x) || tra(y);
+
                    x = x.transpose().eval();
                    y = y.transpose().eval();
                    XY.resize(x.rows(), x.cols()+y.cols());
                    XY<< x,y ;
          }
          else {
-//                 XY = x || y;
+
                  XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
@@ -1205,7 +1200,6 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          Save(XY,"XY2.dat");
 
-//         fprintf(gscript,"\nplot [ ] ");
 
          for(int i=2;i<=ny+1;i++) {
 
@@ -1237,14 +1231,14 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          if ( y.rows() < y.cols() )
          {
-//                 XY = tra(x) || tra(y);
+
                    x = x.transpose().eval();
                    y = y.transpose().eval();
                    XY.resize(x.rows(), x.cols()+y.cols());
                    XY<< x,y ;
          }
          else {
-//                 XY = x || y;
+
                  XY.resize(x.rows(), x.cols()+y.cols());
                  XY << x,y;
          }
@@ -1265,7 +1259,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          Save(XY,"XY3.dat");
 
-//         fprintf(gscript,"\nplot [ ] ");
+
 
          for(int i=2;i<=ny+1;i++) {
 
@@ -1325,10 +1319,10 @@ void surf(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const stri
 
          if (y.rows()>1 && y.cols()>1) error_message("surf(): MatrixXd object y must be a vector");
 
-//         X = x(colon());
+
            X = stack_columns(x);
 
-//         Y = y(colon());
+
            Y = stack_columns(y);
 
          if ( z.rows()*z.cols() != length(X)*length(y) ) {
@@ -1380,10 +1374,6 @@ void surf(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const stri
 
          fprintf(gscript,"\nunset key");
 
-//         fprintf(gscript,"\nset palette rgbformulae 22,13,-31");
-
-//         fprintf(gscript,"\nset pm3d");
-
          fprintf(gscript,"\nset hidden3d");
 
          fprintf(gscript,"\nset grid");
@@ -1424,13 +1414,13 @@ void plot3(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const str
 
          if (z.rows()>1 && z.cols()>1) error_message("plot3(): MatrixXd object z must be a vector");
 
-//         X = x(colon());
+
          X = stack_columns(x); 
 
-//         Y = y(colon());
+
          Y = stack_columns(y);
 
-//         Z = z(colon());
+
          Z = stack_columns(z);
 
          if ( length(X) != length(Y) || length(x)!=length(Z) ) {

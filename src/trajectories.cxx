@@ -44,7 +44,7 @@ void get_individual_control_trajectory(adouble *control_traj, int control_index,
     MatrixXd& control_scaling = problem.phase[i].scale.controls;
 
     for(k=0;k<norder+1;k++) { // EIGEN_UPDATE: k index shifted by -1
-//	  control_traj[k-1] = xad[iphase_offset+(k-1)*ncontrols+control_index-1]/control_scaling(control_index); // EIGEN_UPDATE
+
           control_traj[k] = xad[iphase_offset+(k)*ncontrols+control_index]/control_scaling(control_index);
     }
 
@@ -63,7 +63,7 @@ void get_individual_state_trajectory(adouble *state_traj, int state_index, int i
     MatrixXd& state_scaling = problem.phase[i].scale.states;
 
     for(k=0;k<norder+1;k++) { // EIGEN_UPDATE: k index shifted by -1
-//	  state_traj[k-1] = xad[iphase_offset+offset1+(k-1)*nstates+state_index-1]/state_scaling(state_index); // EIGEN_UPDATE
+
           state_traj[k] = xad[iphase_offset+offset1+(k)*nstates+state_index]/state_scaling(state_index); 
     }
 

@@ -345,9 +345,8 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
                 }
                 C1 = J.col(igroup->colindex[0][l]);
                 C2 = J.col(j);
-//                dotCols = dot( C1, C2);  // EIGEN_UPDATE
                   dotCols = (C1.transpose()*C2)(0);
-//                sprintf(workspace->text,"\nz=%d, j=%d, dotCols=%f",igroup->colindex[0][l],j,dotCols);
+
           	if  ( dotCols>0.0 ) {
                         ok=false;
           		break;
@@ -397,7 +396,7 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
                         }
                         C1 = J.col(igroup->colindex[group_index][l]);
                         C2 = J.col(j);
-//                        dotCols = dot( C1, C2 ); // EIGEN_UPDATE
+
                         dotCols = (C1.adjoint()*C2)(0);
           	  	if ( dotCols>0.0 ) {
                                 ok = false;
@@ -408,7 +407,6 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
                 	igroup->colindex[group_index][gcount]=j;
                 	gcount++;
                         colcount++;
-//                        col_done[j-1]=1;  // EIGEN_UPDATE
                           col_done[j] = 1;
           	  }
    	}
@@ -434,15 +432,6 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 
     sprintf(workspace->text,"\nNumber of index sets for sparse finite differences = %i\n", igroup->number);
     psopt_print(workspace,workspace->text);
-// Now, lets print our groupings to check
-//    full(J).Print("Dummy J");
-//     for (l=0; l<(igroup->number); l++) {
-//          for(j=0; j< igroup->size[l]; j++ ) {
-//               sprintf(workspace->text, "\n colindex[%i][%i] = %i", l, j, igroup->colindex[l][j]);
-//          }
-//      }
-//      sprintf(workspace->text,"\n");
-//     exit(0);
 
 
 
@@ -552,8 +541,6 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
       for(i=0; i<nf; i++) { // EIGEN_UPDATE: index i shifted by -1
             if ( ( fabs(JacCol1(i,0)) +  fabs(JacCol2(i,0)) + fabs(JacCol3(i,0)) )>=tol ) {
               if ( fabs(JacCol1(i,0)-JacCol2(i,0))<=tol && fabs(JacCol1(i,0)-JacCol3(i,0))<=tol ) {
-//            if ( JacCol1(i,1)!=0.0 || JacCol2(i,1)!=0.0 || JacCol3(i,1)!=0.0 ) {
-//              if ( JacCol1(i,1)==JacCol2(i,1) && JacCol2(i,1)==JacCol3(i,1) ) {
                         // Constant Jacobian element detected
               		iArow[nzcount_A]=(int) i;
               		jAcol[nzcount_A]=(int) j;
@@ -658,7 +645,6 @@ void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), MatrixXd& x, Matri
     if( !(*trace_done) ) {
     	trace_on(itag);
     	for(i=0;i<n;i++) {
-//    		xad[i] <<= (x.GetPr())[i]; // EIGEN_UPDATE
             xad[i] <<= (&x(0))[i];
 	}
     	yad = (*fun)(xad, workspace);
@@ -667,7 +653,6 @@ void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), MatrixXd& x, Matri
         *trace_done = true;
     }
 
-//    gradient(itag,n,x.GetPr(),grad->GetPr());
     gradient(itag,n,&x(0),&(*grad)(0));
 
 }
@@ -710,7 +695,7 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
 	adouble *xad = workspace->xad;
 	adouble *gad = workspace->gad;
 	double  *g   = workspace->fg;
-//	double  *x   = xp.GetPr();
+
     double  *x   = &xp(0);
 
 	/* Tracing of function gg() */
@@ -732,7 +717,6 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
 
     for(j=0;j<nvars;j++)
     {
-//       Jctmp( jac_rind[j]+1, jac_cind[j]+1) = jac_values[j]; // EIGEN_UPDATE
          Jctmp( jac_rind[j], jac_cind[j]) = jac_values[j];
     }
 
@@ -744,7 +728,6 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
 	    MatrixXd& xub = *(workspace->xub);
 	    for(j=0;j<nvars;j++) { // EIGEN_UPDATE: index j shifted by -1
 	      JacobianColumn( gg_num, xp, xlb, xub,j, &JacCol1, workspace->grw, workspace);
-//	      Jctmp(colon(),j) = JacCol1;  // EIGEN_UPDATE
           long nrows = JacCol1.rows();
           Jctmp.block(0,j,nrows,1)= JacCol1;
 	    }
@@ -786,7 +769,6 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
        lam_phase_offset+= ncons_phase_i;
    }
 
-//   Jc = Jc(colon(1,icount-1), colon());
      Jc = Jc.block(0,0, icount-1, Jc.cols() );
 
    workspace->use_constraint_scaling = 1;
@@ -815,7 +797,6 @@ void compute_jacobian_of_residual_vector_with_respect_to_variables(MatrixXd& Jr,
 
 	for(j=0;j<nvar;j++) {  // EIGEN_UPDATE: index j shifted by -1
 	    JacobianColumn( rr_num, X, XL, XU, j, &Jcol, workspace->grw, workspace);
-//	    Jr(colon(),j) = Jcol;  // EIGEN_UPDATE
         Jr.block(0,j,Jcol.rows(), 1) = Jcol;
 	}
 }

@@ -59,7 +59,6 @@ void lagrange_interpolation(MatrixXd& y, MatrixXd& x, MatrixXd& pointx, MatrixXd
    for (i=0;i<n;i++) {
       for (j=0;j<n;j++) { // EIGEN_UPDATE: indices i and j shifted by -1
            if (i != j) {
-//                L(i,colon()) = ( L(i,colon())&(  x-pointx(j)*ones(1,length(x)) )  )/(pointx(i)-pointx(j));
                   L.row(i) = elemProduct( L.row(i), (  x-pointx(j)*ones(1,length(x)) )  )/(pointx(i)-pointx(j));
            }
       }
@@ -174,7 +173,6 @@ void linear_interpolation(MatrixXd& y, double x, MatrixXd& pointx, MatrixXd& poi
      }
   }
 
-//  y = pointy(colon(),j) + (x-pointx(j))*(pointy(colon(),j+1)-pointy(colon(),j))/(pointx(j+1)-pointx(j));
  y = pointy.col(j) + (x-pointx(j))*(pointy.col(j+1)-pointy.col(j))/(pointx(j+1)-pointx(j));
 
 }
@@ -254,12 +252,12 @@ void linear_interpolation(MatrixXd& y, MatrixXd& x, MatrixXd& pointx, MatrixXd& 
 
    	y.resize( pointy.rows(), length(x) );
 
-//		pyj  = pointy(colon(),j);
+
    	pyj  = pointy.col(j);
-//		pyj1 = pointy(colon(),j+1);
+ 
    	pyj1 = pointy.col(j+1);
 
-//		y(colon(),k) = pyj + (x(k)-pointx(j))*(pyj1-pyj)/(pointx(j+1)-pointx(j));
+
     	y.col(k) = pyj + (x(k)-pointx(j))*(pyj1-pyj)/(pointx(j+1)-pointx(j));
 
   }
@@ -309,10 +307,6 @@ void smooth_linear_interpolation(adouble* y, adouble& x, MatrixXd& Xdata, Matrix
 
   }
 
-//  Si = smooth_heaviside( (x-(Xdata(0)-100*a)), a ) - smooth_heaviside( (x-Xdata(0)), a );  // EIGEN_UPDATE
-//  *y+=Si*Ydata(1);
-//  Si = smooth_heaviside( (x-Xdata(n-1)), a ) - smooth_heaviside( (x-(Xdata(n-1)+100*a)), a ); // EIGEN_UPDATE
-//  *y+=Si*Ydata(n-1);   // EIGEN_UPDATE
 
 }
 
@@ -356,12 +350,6 @@ void smooth_linear_interpolation(adouble* y, adouble& x, adouble* Xdata, adouble
     *y += Si*Li;
 
   }
-
-
-//  Si = smooth_heaviside( (x-(Xdata[0]-100*a)), a ) - smooth_heaviside( (x-Xdata[0]), a );
-//  *y+=Si*Ydata[0];
-//  Si = smooth_heaviside( (x-Xdata[n-1]), a ) - smooth_heaviside( (x-(Xdata[n-1]+100*a)), a );
-//  *y+=Si*Ydata[n-1];
 
 }
 
@@ -664,24 +652,24 @@ void spline_second_derivative(MatrixXd& xdata, MatrixXd& ydata, int n,  MatrixXd
 {
       int i,j;
 
-//      double *c = d2y.GetPr(); // EIGEN_UPDATE
+
       double *c = &d2y(0);
       double hi;
       double him1;
       double alphai;
       double li = 0;
-//      double *x=xdata.GetPr();
+
       double *x=&xdata(0);
 
-//      double *y=ydata.GetPr();
+
       double *y=&ydata(0);
 
       MatrixXd MU(1,n);
       MatrixXd Z(1,n);
 
-//      double* mu= MU.GetPr();
+
       double* mu = &MU(0);
-//      double*  z= Z.GetPr();
+
       double* z  = &Z(0);
 
       mu[0] = 0.0;
@@ -751,11 +739,11 @@ void spline_interpolation(adouble* y, adouble& x, MatrixXd& Xdata, MatrixXd& Yda
    int kleft,kright,k;
    adouble h,A,B,C,D;
    MatrixXd D2Y(1,n);
-//   double* d2y = D2Y.GetPr();
+
    double* d2y = &D2Y(0);
-//   double *xdata = Xdata.GetPr();
+
    double *xdata = &Xdata(0);
-//   double *ydata = Ydata.GetPr();
+
    double *ydata = &Ydata(0);
    kleft=1;
 
@@ -792,14 +780,14 @@ void spline_interpolation(MatrixXd& Y, MatrixXd& X, MatrixXd& Xdata, MatrixXd& Y
 {
 
 
-//   double *xdata = Xdata.GetPr();
+
      double *xdata = &Xdata(0);
-//   double *ydata = Ydata.GetPr();
+
      double *ydata = &Ydata(0);
    int kleft,kright,k;
    double h,A,B,C,D;
    MatrixXd D2Y(1,n);
-//   double* d2y = D2Y.GetPr();
+
    double* d2y = &D2Y(0);
    int i;
 
@@ -891,10 +879,10 @@ void resample_trajectory(MatrixXd& Y,  MatrixXd& X, MatrixXd& Ydata, MatrixXd& X
     Yidata.resize(1,n);
 
     for(i=0;i<ny;i++) {
-//        Yidata = Ydata(i,colon());
+
          Yidata = Ydata.row(i);
       	spline_interpolation( Yi, X, Xdata, Yidata, n);
-//        Y(i,colon()) = Yi;
+
          Y.row(i) = Yi;
     }
 }

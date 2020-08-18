@@ -70,7 +70,7 @@ void euler_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* 
 
 	for(i=1;i<=nparam;i++)  param[i-1] = parameters(i);
 
-//	state_trajectory(colon(),1) = initial_state;
+
    state_trajectory.col(0) = initial_state;
 
 	for (k=0; k< nsteps; k++) // EIGEN_UPDATE
@@ -137,7 +137,7 @@ void rk4_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 	for(i=0;i<nparam;i++)  param[i-1] = parameters(i); // EIGEN_UPDATE
 
-//	state_trajectory(colon(),1) = initial_state;
+
    state_trajectory.col(0)= initial_state;
 
 	for (k=0; k< nsteps; k++)
@@ -259,7 +259,6 @@ void rkf_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 	for(i=0;i<nparam;i++)  param[i] = parameters(i); // EIGEN_UPDATE
 
-//	state_trajectory(colon(),1) = initial_state;
    state_trajectory.col(0) = initial_state;
 
 	time = time_vector(0);
@@ -385,13 +384,13 @@ void rkf_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 	     if ( maxR <= tolerance ) { // Approximation accepted
 	         time = time + h;
-//     	         state_trajectory(colon(),k+1) = state_trajectory(colon(),k) + (25.0/216.0)*K1 + (1408.0/2565.0)*K3 + (2197.0/4104.0)*K4 - (1.0/5.0)*K5;
+
             state_trajectory.col(k+1) = state_trajectory.col(k) + (25.0/216.0)*K1 + (1408.0/2565.0)*K3 + (2197.0/4104.0)*K4 - (1.0/5.0)*K5;
 		 new_time_vector(k+1) = time.value();
 		 timep = new_time_vector(k+1);
 		 if (ncontrols>0) {
 		    linear_interpolation(controlp, timep.value(), time_vector, control_trajectory, length(time_vector));
-//		    new_control_trajectory( colon(), k+1) = controlp;
+
 		    new_control_trajectory.col(k+1) = controlp;
 		 }
 		 k= k+1;

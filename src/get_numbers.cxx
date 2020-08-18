@@ -157,8 +157,7 @@ int get_max_nodes(Prob& problem,int iphase, Alg* algorithm)
     }
 
     else if (algorithm->mesh_refinement == "automatic" && !use_local_collocation(*algorithm) ) {
-//         int max_increment = (int) algorithm->mr_max_increment_factor*(problem.phase[iphase-1].current_number_of_intervals+1);
-//         retval = problem.phase[iphase-1].nodes(1) + (algorithm->mr_min_extrapolation_points-1)*(algorithm->mr_initial_increment);  //EIGEN_UPDATE
+
          retval = problem.phase[iphase-1].nodes(0) + (algorithm->mr_min_extrapolation_points-1)*(algorithm->mr_initial_increment);
          int count = retval;
          for (i=1;i<=(algorithm->mr_max_iterations-2);i++) {
@@ -172,7 +171,6 @@ int get_max_nodes(Prob& problem,int iphase, Alg* algorithm)
     }
 
     else if (algorithm->mesh_refinement == "automatic" && use_local_collocation(*algorithm) ) {
-//         int M = problem.phase[iphase-1].nodes(1);  // EIGEN_UPDATE
          int M = problem.phase[iphase-1].nodes(0);
 	      int mcount = M;
 	      for (i=1; i<= algorithm->mr_max_iterations;i++) {

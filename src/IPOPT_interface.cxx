@@ -116,7 +116,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
   m = workspace->ncons;
 
   MatrixXd *X0 = workspace->x0;
-//  double  *x  = X0->GetPr();
+
   double  *x  = &(*X0)(0);
 
   if( !useAutomaticDifferentiation(*workspace->algorithm) ) {
@@ -215,7 +215,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 	adouble *xad = workspace->xad;
 	adouble Lad;
 	double  obj_factor = 1.0;
-//	double *lambda = workspace->lambda->GetPr();
+
    double *lambda = &(*workspace->lambda)(0);
 	double  L;
    int nnz_hess;
@@ -230,8 +230,6 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
 	unsigned int *hess_ir = NULL;
  	unsigned int *hess_jc = NULL;
-
-//       sparse_hess(workspace->tag_hess, n,0,x,&nnz_hess,&workspace->hess_ir, &workspace->hess_jc,&hess_values);
 
 
 
@@ -292,9 +290,9 @@ bool IPOPT_PSOPT::get_bounds_info(Index n, Number* x_l, Number* x_u,
   assert(n == workspace->nvars);
   assert(m == workspace->ncons);
 
-//  double *xlb = (workspace->xlb)->GetPr();
+
     double *xlb = &(*workspace->xlb)(0);
-//  double *xub = (workspace->xub)->GetPr();
+
     double *xub = &(*workspace->xub)(0);
 
 
@@ -341,9 +339,6 @@ bool IPOPT_PSOPT::get_starting_point(Index n, bool init_x, Number* x,
 	  x[i] = x0[i];
   }
 
-//  for (i=0; i<workspace->ncons;i++) {
-//	  lambda[i]=(*workspace->lambda)(i+1);
-//  }
 
   return true;
 }
@@ -355,7 +350,6 @@ bool IPOPT_PSOPT::eval_f(Index n, const Number* x, bool new_x, Number& obj_value
 
   MatrixXd& X = *workspace->Xip;
 
-//  memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
   memcpy( &X(0), x, workspace->nvars*sizeof(double) );
 
   obj_value = ff_num(X, workspace);
@@ -372,7 +366,7 @@ bool IPOPT_PSOPT::eval_grad_f(Index n, const Number* x, bool new_x, Number* grad
 
   MatrixXd& GF = *workspace->GFip;
 
-//  memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
+
   memcpy( &X(0), x, workspace->nvars*sizeof(double) );
 
   if(!useAutomaticDifferentiation(*workspace->algorithm))
@@ -380,7 +374,6 @@ bool IPOPT_PSOPT::eval_grad_f(Index n, const Number* x, bool new_x, Number* grad
   else
      ScalarGradientAD( ff_ad, X, &GF, &workspace->trace_f_done, workspace->tag_f, workspace );
 
-//  memcpy( grad_f, GF.GetPr(), workspace->nvars*sizeof(double));
   memcpy( grad_f, &GF(0), workspace->nvars*sizeof(double));
 
   return true;
@@ -396,13 +389,11 @@ bool IPOPT_PSOPT::eval_g(Index n, const Number* x, bool new_x, Index m, Number* 
 
   MatrixXd& G  = *workspace->Gip;
 
-//  memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
   memcpy( &X(0), x, workspace->nvars*sizeof(double) );
 
   gg_num(X, &G, workspace);
 
-//  memcpy( g, G.GetPr(), workspace->ncons*sizeof(double) );
-    memcpy( g, &G(0), workspace->ncons*sizeof(double) );
+  memcpy( g, &G(0), workspace->ncons*sizeof(double) );
 
   return true;
 }
@@ -447,7 +438,6 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
 {
   MatrixXd& X = *workspace->Xip;
 
-//  double *xpr = workspace->xp->GetPr();
   double *xpr = &(*workspace->xp)(0); 
 
   int nnzA, nnzG, i;
@@ -497,15 +487,8 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
     // return the values of the jacobian of the constraints
     if (!useAutomaticDifferentiation(*workspace->algorithm)) {
 
-
-
-//          memcpy( X.GetPr(), x, workspace->nvars*sizeof(double) );
           memcpy( &X(0), x, workspace->nvars*sizeof(double) );
           
-//          ComputeJacobianNonZeros(gg_num, X, m, values, nele_jac, workspace->ir, workspace->jc, workspace->grw );
-
-
-
           // Compute by sparse finite differences only the non-constant Jacobian elements...
           EfficientlyComputeJacobianNonZeros(gg_num, X, m, values, workspace->jac_nnzG, workspace->iGrow,workspace->jGcol, workspace->igroup, workspace->grw, workspace );
 
@@ -573,10 +556,10 @@ void IPOPT_PSOPT::finalize_solution(SolverReturn status,
 
   Sol* solution = workspace->solution;
 
-//  memcpy( (workspace->x0)->GetPr(), x, n*sizeof(double) );
+
     memcpy( &(*workspace->x0)(0), x, n*sizeof(double) );
 
-//  memcpy( (workspace->lambda)->GetPr(), lambda, m*sizeof(double) );
+
     memcpy( &(*workspace->lambda)(0), lambda, m*sizeof(double) );
 
   for(int ii=0;ii<n;ii++) solution->xad[ii]=x[ii];
@@ -627,7 +610,6 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
 	double  obj_factor_d = obj_factor;
 	double*  lambda_d     = workspace->lambda_d;
 	double  L;
- //       int nnz_hess;
 	/* Tracing of Lagrangian function. It needs to be repeated because obj_factor and lambda change  */
 	trace_on(workspace->tag_hess);
 	for(i=0;i<n;i++)

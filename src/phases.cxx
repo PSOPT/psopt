@@ -181,7 +181,6 @@ void multi_segment_setup(Prob& problem, Alg& algorithm, MSdata& msdata)
 
      problem.phases(1).npath = msdata.npath;
 
-//   problem.phases(1).nodes = msdata.nodes(1,colon());  // EIGEN_UPDATE
      problem.phases(1).nodes = msdata.nodes.row(0); 
   
      problem.phases(1).nparameters = msdata.nparameters;
@@ -248,7 +247,7 @@ void  auto_phase_bounds(Prob& problem)
 {
 	int i;
 
-//   double dt;
+
 
    if (problem.nphases == 1) return;
 
@@ -256,7 +255,6 @@ void  auto_phase_bounds(Prob& problem)
 
 	if ( isEmpty(problem.bounds.lower.times) ) {
 
-//           dt = problem.phases(problem.nphases).bounds.upper.EndTime - problem.phases(1).bounds.lower.StartTime;
            t0 = problem.phases(1).bounds.lower.StartTime;
            tf = problem.phases(problem.nphases).bounds.upper.EndTime;
 
@@ -270,7 +268,6 @@ void  auto_phase_bounds(Prob& problem)
 	   problem.phases(problem.nphases).bounds.lower.EndTime = problem.bounds.lower.times(iend); //EIGEN_UPDATE
 	   problem.phases(problem.nphases).bounds.upper.EndTime = problem.bounds.upper.times(iend);
 
-//	   dt = problem.phases(problem.nphases).bounds.upper.EndTime - problem.phases(1).bounds.lower.StartTime;
       t0 = problem.phases(1).bounds.lower.StartTime;
       tf = problem.phases(problem.nphases).bounds.upper.EndTime;
 
@@ -340,12 +337,12 @@ void  auto_phase_guess(Prob& problem, MatrixXd& controls, MatrixXd& states, Matr
        int min_nodes = (problem.phases(i).nodes).minCoeff();
  	    problem.phases(i).guess.controls = zeros(problem.phases(i).ncontrols,min_nodes);
 	    for(j=0; j<problem.phases(i).ncontrols;j++) { // EIGEN_UPDATE
-//	         problem.phases(i).guess.controls(j,colon()) = linspace(controls(j,1), controls(j,"end"), min_nodes);
+
 	         problem.phases(i).guess.controls.row(j) = linspace(controls(j,0), controls(j,controls.cols()-1), min_nodes);
        }
 	    problem.phases(i).guess.states = zeros(problem.phases(i).nstates,min_nodes);
 	    for(j=0; j<problem.phases(i).nstates;j++) { // EIGEN_UPDATE
-//    	    	problem.phases(i).guess.states(j,colon()) = linspace(states(j,1), states(j,"end"), min_nodes);
+
     	    	problem.phases(i).guess.states.row(j) = linspace(states(j,0), states(j,states.cols()-1), min_nodes);
     	    	
 	    }
