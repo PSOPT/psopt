@@ -72,7 +72,6 @@ else()  # is it already installed locally by this file?
         find_package_handle_standard_args(adolc DEFAULT_MSG
                                         ${adolc_LIBRARIES} ${adolc_INCLUDE_DIRS})
     else()
-        message(STATUS "rgdfhnlldfgkj.")
         # handle the QUIETLY and REQUIRED arguments and set adolc_FOUND to TRUE
         # if all listed variables are TRUE
         find_package_handle_standard_args(adolc  DEFAULT_MSG
