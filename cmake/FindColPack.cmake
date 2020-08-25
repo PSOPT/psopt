@@ -11,8 +11,8 @@ pkg_check_modules(ColPack QUIET ColPack)
 set(ColPack_DEFINITIONS ${ColPack_CFLAGS_OTHER})
 
 find_path(ColPack_INCLUDE_DIR ColPack/ColPackHeaders.h
-          HINTS ${ColPack_INCLUDEDIR} ${ColPack_INCLUDE_DIRS}
-          PATH_SUFFIXES libxml2 )
+          HINTS ${ColPack_INCLUDE_DIR} ${ColPack_INCLUDE_DIRS}
+          PATH_SUFFIXES ColPack )
 
 find_library(ColPack_LIBRARY NAMES ColPack
              HINTS ${ColPack_LIBDIR} ${ColPack_LIBRARY_DIRS} )
@@ -25,5 +25,5 @@ find_package_handle_standard_args(ColPack  DEFAULT_MSG
 
 mark_as_advanced(ColPack_INCLUDE_DIR ColPack_LIBRARY )
 
-set(ColPack_LIBRARIES ${ColPackLIBRARY} )
+set(ColPack_LIBRARIES ${ColPack_LIBRARY} )
 set(ColPack_INCLUDE_DIRS ${ColPack_INCLUDE_DIR} )
