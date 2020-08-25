@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.10)
-project(PSOPT_SNOPT LANGUAGES CXX)
+project(PSOPT_SNOPT_interface LANGUAGES CXX)
 
 find_package(snopt7 REQUIRED)
 
@@ -12,3 +12,4 @@ PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
 target_link_directories(${PROJECT_NAME} PRIVATE snopt7)
+
