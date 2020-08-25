@@ -942,10 +942,11 @@ double Min(const MatrixXd& m)
 
 double Min(const MatrixXd& m, long* i)
 {
-	 long irow, icol;
-    double minval = m.minCoeff(&irow,&icol);
+	long irow, icol;
+
+	double minval = m.minCoeff(&irow,&icol);
     
-    *i = irow*icol-1;
+    *i = icol*m.rows()+irow;
     
     return minval;
 }
