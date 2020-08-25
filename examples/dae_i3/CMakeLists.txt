@@ -1,12 +1,12 @@
 cmake_minimum_required (VERSION 3.10)
-project(delay1 LANGUAGES CXX)
+project(dae_i3 LANGUAGES CXX)
 
-add_executable(${PROJECT_NAME} delay1.cxx)
+add_executable(${PROJECT_NAME} dae_i3.cxx)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(adolc adolc)
+find_package(adolc REQUIRED)
 pkg_check_modules(ipopt REQUIRED ipopt)
-pkg_check_modules(ColPack REQUIRED ColPack)
+find_package(ColPack REQUIRED)
 
 
 target_include_directories(${PROJECT_NAME}

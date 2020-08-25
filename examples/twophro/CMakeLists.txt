@@ -4,9 +4,9 @@ project(twophro LANGUAGES CXX)
 add_executable(${PROJECT_NAME} twophase_robot.cxx)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(adolc adolc)
+find_package(adolc REQUIRED)
 pkg_check_modules(ipopt REQUIRED ipopt)
-pkg_check_modules(ColPack REQUIRED ColPack)
+find_package(ColPack REQUIRED)
 
 
 target_include_directories(${PROJECT_NAME}
