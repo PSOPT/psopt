@@ -1,23 +1,14 @@
 cmake_minimum_required (VERSION 3.10)
 project(catmix LANGUAGES CXX)
 
-add_executable(${PROJECT_NAME} catmix.cxx)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(adolc adolc)
+find_package(adolc REQUIRED)
 pkg_check_modules(ipopt REQUIRED ipopt)
-pkg_check_modules(ColPack REQUIRED ColPack)
+find_package(ColPack REQUIRED)
 
+add_executable(${PROJECT_NAME} catmix.cxx)
 
-target_include_directories(${PROJECT_NAME}
-PUBLIC 
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include/>
-    $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
-PRIVATE 
-    ${ipopt_INCLUDE_DIRS}
-    ${adolc_INCLUDE_DIRS}
-    ${ColPack_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} PRIVATE ${ipopt_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PUBLIC PSOPT PRIVATE ${ipopt_LIBRARIES} adolc ColPack Eigen3::Eigen)
 
-set(CMAKE_CXX_FLAGS "-std=c++11 -g")
-
-target_link_libraries(${PROJECT_NAME} PUBLIC PSOPT PRIVATE -L${ipopt_LIBRARY_DIRS} ipopt adolc ColPack Eigen3::Eigen)
