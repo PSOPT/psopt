@@ -11,4 +11,3 @@ add_executable(${PROJECT_NAME} delay1.cxx)
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${ipopt_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC PSOPT PRIVATE ${ipopt_LIBRARIES} adolc ColPack Eigen3::Eigen)
-
