@@ -9,6 +9,8 @@ find_package(adolc REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ipopt REQUIRED ipopt)
 
+add_subdirectory(snopt-interface/)
+
 file(GLOB SRC src/*.cxx)
 file(GLOB HEADER include/*.h)
 
