@@ -13,4 +13,5 @@ target_link_libraries(${PROJECT_NAME} PRIVATE gfortran ${snopt7_LIBRARIES})
 
 if(${BUILD_EXAMPLES})
 	add_subdirectory(cppexamples/)
+	add_subdirectory(cexamples/)
 endif()
