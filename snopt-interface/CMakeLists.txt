@@ -4,7 +4,7 @@ project(PSOPT_SNOPT_interface LANGUAGES Fortran C CXX)
 file(GLOB SRC src/*.cpp src/*.c src/*.f90)
 file(GLOB HEADER include/*.h include/*.hpp)
 
-add_library(${PROJECT_NAME} STATIC ${SRC} ${HEADER})
+add_library(${PROJECT_NAME} OBJECT ${SRC} ${HEADER})
 target_include_directories(${PROJECT_NAME}
 PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>

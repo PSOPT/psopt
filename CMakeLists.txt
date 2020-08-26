@@ -6,21 +6,29 @@ option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(adolc REQUIRED)
+find_package(snopt7 QUIET)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ipopt REQUIRED ipopt)
-
-add_subdirectory(snopt-interface/)
+    
+# add SNOPT interface when possible
+if(${snopt7_FOUND})
+    message(STATUS "SNOPT (optional) found. SNOPT interface will be build.")
+    add_subdirectory(snopt-interface/)
+else()
+    message(STATUS "Could not find SNOPT (optional). SNOPT interface will not be build.")
+endif()
 
 file(GLOB SRC src/*.cxx)
 file(GLOB HEADER include/*.h)
 
-add_library(${PROJECT_NAME} ${SRC} ${HEADER})
+add_library(${PROJECT_NAME} $<TARGET_OBJECTS:PSOPT_SNOPT_interface> ${SRC} ${HEADER})
 target_include_directories(${PROJECT_NAME}
 PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include/>
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 PRIVATE 
     ${ipopt_INCLUDE_DIRS})
+
 target_link_libraries(${PROJECT_NAME} PUBLIC adolc ${ipopt_LIBRARIES} PRIVATE Eigen3::Eigen)
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF)
 
