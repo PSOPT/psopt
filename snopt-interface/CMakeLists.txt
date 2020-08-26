@@ -1,9 +1,7 @@
 cmake_minimum_required (VERSION 3.10)
-project(PSOPT_SNOPT_interface LANGUAGES CXX)
+project(PSOPT_SNOPT_interface LANGUAGES Fortran C CXX)
 
-find_package(snopt7 REQUIRED)
-
-file(GLOB SRC src/*.cpp)
+file(GLOB SRC src/*.cpp src/*.c src/*.f90)
 file(GLOB HEADER include/*.h include/*.hpp)
 
 add_library(${PROJECT_NAME} STATIC ${SRC} ${HEADER})
