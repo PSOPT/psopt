@@ -51,21 +51,21 @@ else()  # is it already installed locally by this file?
         
         execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
         RESULT_VARIABLE result
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/adolc-download )
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/adolc-download )
         if(result)
         message(FATAL_ERROR "CMake step for adolc failed: ${result}")
         endif()
         
         execute_process(COMMAND ${CMAKE_COMMAND} --build .
         RESULT_VARIABLE result
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/adolc-download )
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/adolc-download )
         if(result)
         message(FATAL_ERROR "Build step for adolc failed: ${result}")
         endif()
 
         add_library(adolc SHARED IMPORTED)
-        target_include_directories(adolc INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/adolc-build/include/)
-        set_target_properties(adolc PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/adolc-build/lib64)
+        target_include_directories(adolc INTERFACE ${CMAKE_BINARY_DIR}/adolc-build/include/)
+        set_target_properties(adolc PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/adolc-build/lib64)
     
         set(CMAKE_CXX_FLAGS "-std=c++11")
         
