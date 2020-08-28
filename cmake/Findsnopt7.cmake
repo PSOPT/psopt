@@ -15,4 +15,6 @@ find_package_handle_standard_args(snopt7  DEFAULT_MSG
 mark_as_advanced(snopt7_LIBRARY)
 set(snopt7_LIBRARIES ${snopt7_LIBRARY})
 
-message(STATUS "Found snopt7_cpp: ${snopt7_LIBRARY}")
+if(${snopt7_FOUND})
+    message(STATUS "Found snopt7_cpp: ${snopt7_LIBRARY}")
+endif()
