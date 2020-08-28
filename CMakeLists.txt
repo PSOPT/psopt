@@ -2,20 +2,18 @@ cmake_minimum_required (VERSION 3.10)
 project(PSOPT VERSION 5.00 LANGUAGES CXX)
 
 option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
+option(WITH_SNOPT_INTERFACE "Build interface for the SNOPT optimizer." OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(adolc REQUIRED)
-find_package(snopt7 QUIET)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ipopt REQUIRED ipopt)
-    
-# add SNOPT interface when possible
-if(${snopt7_FOUND})
-    message(STATUS "SNOPT (optional) found. SNOPT interface will be build.")
+
+if(${WITH_SNOPT_INTERFACE})
+    find_package(snopt7 REQUIRED)
+    message(STATUS "SNOPT7 found. SNOPT interface will be build.")
     add_subdirectory(snopt-interface/)
-else()
-    message(STATUS "Could not find SNOPT (optional). SNOPT interface will not be build.")
 endif()
 
 file(GLOB SRC src/*.cxx)
