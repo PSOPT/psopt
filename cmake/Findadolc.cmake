@@ -33,11 +33,11 @@ if(${adolc_FOUND}) # if Adolc could be found by pkgconfig
 else()  # is it already installed locally by this file?
     # sometimes, AdolC will be downloaded each time the user calls cmake. prevent this by searching compiled files in the build dir
     find_path(adolc_INCLUDE_DIR adolc.h
-            HINTS ${CMAKE_CURRENT_BINARY_DIR}/adolc-build/include/adolc
+            HINTS ${CMAKE_BINARY_DIR}/adolc-build/include/adolc
             NO_CMAKE_PATH)
 
     find_library(adolc_LIBRARY adolc
-                HINTS ${CMAKE_CURRENT_BINARY_DIR}/adolc-build/lib64
+                HINTS ${CMAKE_BINARY_DIR}/adolc-build/lib64
                 NO_CMAKE_PATH)
                 
     if(NOT EXISTS ${adolc_INCLUDE_DIR}) # if everything fails, download it
@@ -47,25 +47,25 @@ else()  # is it already installed locally by this file?
         find_package(Python2 REQUIRED COMPONENTS Development)
 
         # Download and unpack adolc at configure time
-        configure_file(CMakeLists-adolc.txt.in adolc-download/CMakeLists.txt)
+        configure_file(${CMAKE_SOURCE_DIR}/cmake/CMakeLists-adolc.txt.in adolc-download/CMakeLists.txt)
         
         execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
         RESULT_VARIABLE result
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/adolc-download )
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/adolc-download )
         if(result)
         message(FATAL_ERROR "CMake step for adolc failed: ${result}")
         endif()
         
         execute_process(COMMAND ${CMAKE_COMMAND} --build .
         RESULT_VARIABLE result
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/adolc-download )
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/adolc-download )
         if(result)
         message(FATAL_ERROR "Build step for adolc failed: ${result}")
         endif()
 
         add_library(adolc SHARED IMPORTED)
-        target_include_directories(adolc INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/adolc-build/include/)
-        set_target_properties(adolc PROPERTIES IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/adolc-build/lib64)
+        target_include_directories(adolc INTERFACE ${CMAKE_BINARY_DIR}/adolc-build/include/)
+        set_target_properties(adolc PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/adolc-build/lib64)
     
         set(CMAKE_CXX_FLAGS "-std=c++11")
         
