@@ -22,7 +22,7 @@ file(GLOB HEADER include/*.h)
 add_library(${PROJECT_NAME} $<$<BOOL:$<TARGET_EXISTS:PSOPT_SNOPT_interface>>:$<TARGET_OBJECTS:PSOPT_SNOPT_interface>> ${SRC} ${HEADER})
 target_include_directories(${PROJECT_NAME}
 PUBLIC 
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include/>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 PRIVATE 
     ${ipopt_INCLUDE_DIRS})
