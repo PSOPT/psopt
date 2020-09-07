@@ -8,6 +8,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(adolc REQUIRED)
 find_package(PkgConfig REQUIRED)
+pkg_check_modules(adolc REQUIRED adolc)
 pkg_check_modules(ipopt REQUIRED ipopt)
 
 if(${WITH_SNOPT_INTERFACE})
@@ -25,6 +26,7 @@ PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 PRIVATE 
+    ${adolc_INCLUDE_DIRS}
     ${ipopt_INCLUDE_DIRS})
 
 target_link_libraries(${PROJECT_NAME} PUBLIC adolc ${ipopt_LIBRARIES} PRIVATE Eigen3::Eigen)
