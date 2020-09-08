@@ -17,7 +17,7 @@ if(${adolc_FOUND}) # if Adolc could be found by pkgconfig
     find_path(adolc_INCLUDE_DIR NAMES adolc.h
             HINTS ${adolc_INCLUDE_DIR} ${adolc_INCLUDE_DIRS}
             PATH_SUFFIXES adolc)
-
+    
     find_library(adolc_LIBRARY NAMES adolc
                 HINTS ${adolc_LIBDIR} ${adolc_LIBRARY_DIRS} )
 
@@ -29,7 +29,6 @@ if(${adolc_FOUND}) # if Adolc could be found by pkgconfig
     mark_as_advanced(adolc_INCLUDE_DIR adolc_LIBRARY )
 
     set(adolc_LIBRARIES ${adolc_LIBRARY} )
-    set(adolc_INCLUDE_DIRS ${adolc_INCLUDE_DIR} )
 else()  # is it already installed locally by this file?
     # sometimes, AdolC will be downloaded each time the user calls cmake. prevent this by searching compiled files in the build dir
     find_path(adolc_INCLUDE_DIR adolc.h
@@ -78,7 +77,6 @@ else()  # is it already installed locally by this file?
         mark_as_advanced(adolc_INCLUDE_DIR adolc_LIBRARY )
 
         set(adolc_LIBRARIES ${adolc_LIBRARY} )
-        set(adolc_INCLUDE_DIRS ${adolc_INCLUDE_DIR} )
     endif()
 endif()
 

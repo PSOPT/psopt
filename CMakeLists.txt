@@ -25,7 +25,9 @@ PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 PRIVATE 
-    ${ipopt_INCLUDE_DIRS})
+    ${ipopt_INCLUDE_DIRS}
+    ${adolc_INCLUDE_DIRS}
+)
 
 target_link_libraries(${PROJECT_NAME} PUBLIC adolc ${ipopt_LIBRARIES} PRIVATE Eigen3::Eigen)
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF)
