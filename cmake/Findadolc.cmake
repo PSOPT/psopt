@@ -9,26 +9,10 @@
 find_package(PkgConfig)
 include(FindPackageHandleStandardArgs)
 
-pkg_check_modules(adolc QUIET adolc)
+pkg_check_modules(adolc QUIET IMPORTED_TARGET adolc)
 
 if(${adolc_FOUND}) # if Adolc could be found by pkgconfig
-    set(adolc_DEFINITIONS ${adolc_CFLAGS_OTHER})
-
-    find_path(adolc_INCLUDE_DIR NAMES adolc.h
-            HINTS ${adolc_INCLUDE_DIR} ${adolc_INCLUDE_DIRS}
-            PATH_SUFFIXES adolc)
-    
-    find_library(adolc_LIBRARY NAMES adolc
-                HINTS ${adolc_LIBDIR} ${adolc_LIBRARY_DIRS} )
-
-    # handle the QUIETLY and REQUIRED arguments and set adolc_FOUND to TRUE
-    # if all listed variables are TRUE
-    find_package_handle_standard_args(adolc  DEFAULT_MSG
-                                    adolc_LIBRARY adolc_INCLUDE_DIR)
-
-    mark_as_advanced(adolc_INCLUDE_DIR adolc_LIBRARY )
-
-    set(adolc_LIBRARIES ${adolc_LIBRARY} )
+    add_library(adolc ALIAS PkgConfig::adolc)
 else()  # is it already installed locally by this file?
     # sometimes, AdolC will be downloaded each time the user calls cmake. prevent this by searching compiled files in the build dir
     find_path(adolc_INCLUDE_DIR adolc.h
@@ -76,7 +60,9 @@ else()  # is it already installed locally by this file?
 
         mark_as_advanced(adolc_INCLUDE_DIR adolc_LIBRARY )
 
-        set(adolc_LIBRARIES ${adolc_LIBRARY} )
+        add_library(adolc SHARED IMPORTED)
+        target_include_directories(adolc INTERFACE ${adolc_INCLUDE_DIR})
+        set_target_properties(adolc PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/adolc-build/lib64)
     endif()
 endif()
 
