@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.12)
 project(PSOPT VERSION 5.00 LANGUAGES CXX)
 
 option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
@@ -23,6 +23,7 @@ PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
+
 
 target_link_libraries(${PROJECT_NAME} PRIVATE adolc PkgConfig::ipopt Eigen3::Eigen)
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF)
