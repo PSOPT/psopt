@@ -8,12 +8,9 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(adolc REQUIRED)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(adolc REQUIRED adolc)
-pkg_check_modules(ipopt REQUIRED ipopt)
+pkg_check_modules(ipopt REQUIRED IMPORTED_TARGET ipopt)
 
 if(${WITH_SNOPT_INTERFACE})
-    find_package(snopt7 REQUIRED)
-    message(STATUS "SNOPT7 found. SNOPT interface will be build.")
     add_subdirectory(snopt-interface/)
 endif()
 
@@ -25,11 +22,10 @@ target_include_directories(${PROJECT_NAME}
 PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
-PRIVATE 
-    ${adolc_INCLUDE_DIRS}
-    ${ipopt_INCLUDE_DIRS})
+)
 
-target_link_libraries(${PROJECT_NAME} PUBLIC adolc ${ipopt_LIBRARIES} PRIVATE Eigen3::Eigen)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE adolc PkgConfig::ipopt Eigen3::Eigen)
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF)
 
 if(${BUILD_EXAMPLES})
