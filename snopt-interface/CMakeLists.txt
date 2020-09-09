@@ -1,6 +1,9 @@
 cmake_minimum_required (VERSION 3.10)
 project(PSOPT_SNOPT_interface LANGUAGES Fortran C CXX)
 
+find_package(snopt7 REQUIRED)
+message(STATUS "SNOPT interface will be build.")
+
 file(GLOB SRC src/*.cpp src/*.c src/*.f90)
 file(GLOB HEADER include/*.h include/*.hpp)
 

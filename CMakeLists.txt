@@ -11,8 +11,6 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(ipopt REQUIRED IMPORTED_TARGET ipopt)
 
 if(${WITH_SNOPT_INTERFACE})
-    find_package(snopt7 REQUIRED)
-    message(STATUS "SNOPT7 found. SNOPT interface will be build.")
     add_subdirectory(snopt-interface/)
 endif()
 
