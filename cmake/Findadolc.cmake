@@ -9,7 +9,7 @@
 find_package(PkgConfig)
 include(FindPackageHandleStandardArgs)
 
-pkg_check_modules(adolc QUIET IMPORTED_TARGET adolc)
+pkg_check_modules(adolc QUIET IMPORTED_TARGET GLOBAL adolc)
 
 if(${adolc_FOUND}) # if Adolc could be found by pkgconfig
     add_library(adolc ALIAS PkgConfig::adolc)
