@@ -2,19 +2,17 @@
 #include <string.h>
 #include <iostream>
 
-#include "sntoyC.hpp"
 #include "snoptProblem.hpp"
 
 using namespace std;
 
-void toyusrfun ( int *mode,  int *nnObj, int *nnCon,
-		 int *nnJac, int *nnL,   int *negCon, double x[],
-		 double *fObj,  double gObj[],
-		 double fCon[], double gCon[], int *Status,
-		 char    *cu, int *lencu,
-		 int    iu[], int *leniu,
-		 double ru[], int *lenru )
-{
+void toyusrfun(int *mode,  int *nnObj, int *nnCon,
+	       int *nnJac, int *nnL,   int *negCon, double x[],
+	       double *fObj,  double gObj[],
+	       double fCon[], double gCon[], int *Status,
+	       char    *cu, int *lencu,
+	       int    iu[], int *leniu,
+	       double ru[], int *lenru) {
   //==================================================================
   // Computes the nonlinear objective and constraint terms for the toy
   // problem featured in the SnoptA users guide.
@@ -27,33 +25,34 @@ void toyusrfun ( int *mode,  int *nnObj, int *nnCon,
   //                x(1) >= 0.
   //
   //==================================================================
-
-  if ( *mode == 0 || *mode == 2 ) {
+  if (*mode == 0 || *mode == 2) {
     *fObj   =  0;
     fCon[0] =  x[0]*x[0] + 4*x[1]*x[1];
     fCon[1] = (x[0] - 2)*(x[0] - 2) + x[1]*x[1];
   }
 
-  if ( *mode == 1 || *mode == 2 ) {
+  if (*mode == 1 || *mode == 2) {
     // gObj not set; no nonlinear variables in objective
     gCon[0] = 2*x[0];
     gCon[1] = 2*(x[0] - 2);
     gCon[2] = 8*x[1];
     gCon[3] = 2*x[1];
   }
-
 }
 
-int main( int argc, char **argv)
-{
+int main(int argc, char **argv) {
   snoptProblemC ToyProb("ToyC");
 
-  int n     =  2;
-  int m     =  3;
-  int ne    =  5;
-  int nnCon =  2;
-  int nnObj =  0;
-  int nnJac =  2;
+  int n      =  2;
+  int m      =  3;
+  int ne     =  5;
+  int nnCon  =  2;
+  int nnObj  =  0;
+  int nnJac  =  2;
+  int negCon =  4; // size of gCon
+
+  int nS = 0, nInf;
+  double objective, sInf;
 
   int    *indJ = new int[ne];
   int    *locJ = new int[n+1];
@@ -80,13 +79,13 @@ int main( int argc, char **argv)
   bl[4] = -1e20;  bu[4] = 1e20;
 
   // Initialize states, x and multipliers
-  for ( int i = 0; i < n+m; i++ ) {
+  for (int i = 0; i < n+m; i++) {
     hs[i] = 0;
      x[i] = 0;
     rc[i] = 0;
   }
 
-  for ( int i = 0; i < m; i++ ) {
+  for (int i = 0; i < m; i++) {
     pi[i] = 0;
   }
 
@@ -117,17 +116,16 @@ int main( int argc, char **argv)
 
   locJ[2] = 5;
 
-  ToyProb.setProblemSize ( m, n, nnCon, nnJac, nnObj );
-  ToyProb.setObjective   ( iObj, ObjAdd );
-  ToyProb.setJ           ( ne, valJ, indJ, locJ );
-  ToyProb.setX           ( bl, bu, x, pi, rc, hs );
-  ToyProb.setUserFun     ( toyusrfun );
+  ToyProb.initialize     ("", 1);
 
-  ToyProb.setSpecsFile   ( "sntoy.spc" );
-  ToyProb.setIntParameter( "Verify level", 3 );
-  ToyProb.setIntParameter( "Derivative option", 3 );
+  ToyProb.setSpecsFile   ("sntoy.spc");
+  ToyProb.setIntParameter("Verify level", 3);
+  ToyProb.setIntParameter("Derivative option", 3);
 
-  ToyProb.solve          ( Cold );
+  ToyProb.solve          (Cold, m, n, ne, negCon,
+			  nnCon, nnObj, nnJac, iObj, ObjAdd, toyusrfun,
+			  valJ, indJ, locJ, bl, bu, hs, x, pi, rc,
+			  nS, nInf, sInf, objective);
 
   delete []indJ;  delete []locJ; delete []valJ;
 

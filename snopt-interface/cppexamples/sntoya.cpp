@@ -2,18 +2,16 @@
 #include <string.h>
 #include <iostream>
 
-#include "sntoyA.hpp"
 #include "snoptProblem.hpp"
 
 using namespace std;
 
-void toyusrf_(int    *Status, int *n,    double x[],
-	      int    *needF,  int *neF,  double F[],
-	      int    *needG,  int *neG,  double G[],
-	      char      *cu,  int *lencu,
-	      int    iu[],    int *leniu,
-	      double ru[],    int *lenru )
-{
+void toyusrf(int    *Status, int *n,    double x[],
+	     int    *needF,  int *neF,  double F[],
+	     int    *needG,  int *neG,  double G[],
+	     char      *cu,  int *lencu,
+	     int    iu[],    int *leniu,
+	     double ru[],    int *lenru) {
   //==================================================================
   // Computes the nonlinear objective and constraint terms for the toy
   // problem featured in the SnoptA users guide.
@@ -31,13 +29,12 @@ void toyusrf_(int    *Status, int *n,    double x[],
   F[2] = (x[0] - 2)*(x[0] - 2) + x[1]*x[1];
 }
 
-void toyusrfg_( int    *Status, int *n,    double x[],
-		int    *needF,  int *neF,  double F[],
-		int    *needG,  int *neG,  double G[],
-		char      *cu,  int *lencu,
-		int    iu[],    int *leniu,
-		double ru[],    int *lenru )
-{
+void toyusrfg(int    *Status, int *n,    double x[],
+	      int    *needF,  int *neF,  double F[],
+	      int    *needG,  int *neG,  double G[],
+	      char      *cu,  int *lencu,
+	      int    iu[],    int *leniu,
+	      double ru[],    int *lenru) {
   //==================================================================
   // Computes the nonlinear objective and constraint terms for the toy
   // problem featured in the SnoptA users guide.
@@ -54,14 +51,13 @@ void toyusrfg_( int    *Status, int *n,    double x[],
   // of the Jacobian.
   //==================================================================
 
-  if ( *needF > 0 ) {
+  if (*needF > 0) {
     F[0] =  x[1]; //  Objective row
     F[1] =  x[0]*x[0] + 4*x[1]*x[1];
     F[2] = (x[0] - 2)*(x[0] - 2) + x[1]*x[1];
   }
 
-
-  if ( *needG > 0 ) {
+  if (*needG > 0) {
     // iGfun[0] = 1
     // jGvar[0] = 0
     G[0] = 2*x[0];
@@ -80,14 +76,15 @@ void toyusrfg_( int    *Status, int *n,    double x[],
   }
 }
 
-
-int main( int argc, char **argv)
-{
+int main(int argc, char **argv) {
   snoptProblemA ToyProb;
 
   // Allocate and initialize;
   int n     =  2;
   int neF   =  3;
+
+  int nS = 0, nInf;
+  double sInf;
 
   double *x      = new double[n];
   double *xlow   = new double[n];
@@ -114,37 +111,31 @@ int main( int argc, char **argv)
 
   Flow[0] = -1e20; Flow[1] = -1e20; Flow[2] = -1e20;
   Fupp[0] =  1e20; Fupp[1] =   4.0; Fupp[2] =  5.0;
+  Fmul[0] =   0;   Fmul[0] =   0;   Fmul[0] =    0;
   x[0]    = 1.0;
   x[1]    = 1.0;
 
-
   // Load the data for ToyProb ...
+  ToyProb.initialize    ("", 1);      // no print file; summary on
+  ToyProb.setPrintFile  ("Toy0.out"); // oh wait, i want a print file
   ToyProb.setProbName   ("Toy0");
-  ToyProb.setPrintFile  ( "Toy0.out" );
-
-  ToyProb.setProblemSize( n, neF );
-  ToyProb.setObjective  ( ObjRow, ObjAdd );
-  ToyProb.setX          ( x, xlow, xupp, xmul, xstate );
-  ToyProb.setF          ( F, Flow, Fupp, Fmul, Fstate );
-
-  ToyProb.setUserFun    ( toyusrf_ );
-
 
   // snopta will compute the Jacobian by finite-differences.
-  // The user has the option of calling  snJac  to define the
+  // snJac will be called  to define the
   // coordinate arrays (iAfun,jAvar,A) and (iGfun, jGvar).
-  ToyProb.setIntParameter( "Derivative option", 0 );
-  ToyProb.setIntParameter( "Verify level ", 3 );
-
+  ToyProb.setIntParameter("Derivative option", 0);
+  ToyProb.setIntParameter("Verify level ", 3);
 
   // Solve the problem.
   // snJac is called implicitly in this case to compute the Jacobian.
-  ToyProb.solve( Cold );
+  ToyProb.solve(Cold, neF, n, ObjAdd, ObjRow, toyusrf,
+		xlow, xupp, Flow, Fupp,
+		x, xstate, xmul, F, Fstate, Fmul,
+		nS, nInf, sInf);
 
-
-  printf("\nSolving toy1 problem using derivatives...\n");
 
   // Reset the variables and solve ...
+  printf("\nSolving toy1 problem using derivatives...\n");
 
   int lenA   = 6;
   int *iAfun = new int[lenA];
@@ -182,34 +173,42 @@ int main( int argc, char **argv)
   A[0]     = 1.0;
   neA      = 1;
 
-  ToyProb.setProbName    ( "Toy1" );         // Give the problem a new name for Snopt.
+  ToyProb.setProbName    ("Toy1");         // Give the problem a new name for Snopt.
 
-  // neA and neG must be set here
-  ToyProb.setA           ( lenA, neA, iAfun, jAvar, A );
-  ToyProb.setG           ( lenG, neG, iGfun, jGvar );
+  ToyProb.setPrintFile   ("Toy1.out");
+  ToyProb.setSpecsFile   ("sntoya.spc");
+  ToyProb.setIntParameter("Derivative option", 1);
+  ToyProb.setIntParameter("Major Iteration limit", 250);
+  ToyProb.setIntParameter("Verify level ", 3);
 
-  ToyProb.setUserFun     ( toyusrfg_ );      // Sets the usrfun that supplies G and F.
+  ToyProb.solve(Cold, neF, n, ObjAdd, ObjRow, toyusrfg,
+		iAfun, jAvar, A, neA,
+		iGfun, jGvar, neG,
+		xlow, xupp, Flow, Fupp,
+		x, xstate, xmul,
+		F, Fstate, Fmul,
+		nS, nInf, sInf);
 
-  ToyProb.setPrintFile   ( "Toy1.out" );
-  ToyProb.setSpecsFile   ( "sntoya.spc" );
-  ToyProb.setIntParameter( "Derivative option", 1 );
-  ToyProb.setIntParameter( "Major Iteration limit", 250 );
-  ToyProb.setIntParameter( "Verify level ", 3 );
-  ToyProb.solve          ( Cold );
 
-  for (int i = 0; i < n; i++ ){
+  for (int i = 0; i < n; i++){
     cout << "x = " << x[i] << " xstate = " << xstate[i] << endl;
   }
-  for (int i = 0; i < neF; i++ ){
+  for (int i = 0; i < neF; i++){
     cout << "F = " << F[i] << " Fstate = " << Fstate[i] << endl;
   }
 
-  ToyProb.solve          ( Warm );
+  ToyProb.solve(Warm, neF, n, ObjAdd, ObjRow, toyusrfg,
+		iAfun, jAvar, A, neA,
+		iGfun, jGvar, neG,
+		xlow, xupp, Flow, Fupp,
+		x, xstate, xmul,
+		F, Fstate, Fmul,
+		nS, nInf, sInf);
 
-  for (int i = 0; i < n; i++ ){
+  for (int i = 0; i < n; i++){
     cout << "x = " << x[i] << " xstate = " << xstate[i] << endl;
   }
-  for (int i = 0; i < neF; i++ ){
+  for (int i = 0; i < neF; i++){
     cout << "F = " << F[i] << " Fstate = " << Fstate[i] << endl;
   }
 
@@ -222,5 +221,4 @@ int main( int argc, char **argv)
 
   delete []F;      delete []Flow;   delete []Fupp;
   delete []Fmul;   delete []Fstate;
-
 }

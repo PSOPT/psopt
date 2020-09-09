@@ -22,6 +22,10 @@ void usrFG(int    *Status, int *n,    double x[],
   int    nH    = *n / 3 - 1;
   double h     = tf / nH;
 
+  if (*Status == 2) {
+    std::cout << "Last call to usrFG iu[5]: " << iu[5] << std::endl;
+  }
+
   jx1    = 0;
   jx2    = jx1 + nH + 1;
   ju     = jx2 + nH + 1;
@@ -103,6 +107,26 @@ void usrFG(int    *Status, int *n,    double x[],
   }
 }
 
+void mySTOP
+( int *iAbort, int KTcond[], int *MjrPrt, int *minimz,
+  int *m, int *maxS, int *n, int *nb,
+  int *nnCon0, int *nnCon, int *nnObj0, int *nnObj, int *nS,
+  int *itn, int *nMajor, int *nMinor, int *nSwap,
+  double *condHz, int *iObj, double *sclObj, double *ObjAdd,
+  double *fObj, double *fMrt, double *PenNrm, double *step,
+  double *prInf, double *duInf, double *vimax, double *virel, int hs[],
+  int *ne, int *nlocJ, int locJ[], int indJ[], double Jcol[], int *negCon,
+  double Ascale[], double bl[], double bu[], double Fx[], double fCon[], double gCon[], double gObj[],
+  double yCon[], double pi[], double rc[], double rg[], double x[],
+  char cu[], int *lencu, int iu[], int *leniu, double ru[], int *lenru,
+  char cw[], int *lencw, int iw[], int *leniw, double rw[], int *lenrw ) {
+
+  std::cout << "hi from mystop fun" << std::endl;
+  iu[5] = 15;
+  std::cout << "bye from mystop fun" << std::endl;
+  iAbort = 0;
+}
+
 
 int main(int argc, char **argv) {
   snoptProblemA catmixa;
@@ -138,11 +162,18 @@ int main(int argc, char **argv) {
   int *iGfun = new int[lenG];
   int *jGvar = new int[lenG];
 
+  int iopt;
+  double ropt;
+
   int nS = 0, nInf = 0, neA = 0, neG = 0;
   int jx1, jx2, ju, ode1, ode2, Obj;
   double sInf;
 
   double inf = 1.0e20;
+
+  int    leniu = 100, lenru = 100;
+  int    iu[leniu];
+  double ru[lenru];
 
   jx1 = 0;
   jx2 = jx1 + nH + 1;
@@ -272,6 +303,21 @@ int main(int argc, char **argv) {
 
   catmixa.setPrintFile   ("catmix.out");  // ok now add a print file
   catmixa.setIntParameter("Verify level ", 3);
+  catmixa.setParameter("Sticky parameters yes");
+
+  catmixa.getIntParameter("Verify level", iopt);
+  std::cout << "Verify level set to: " << iopt << std::endl;
+
+
+  for (int i = 0; i < leniu; i++) {
+    iu[i] = 9;
+    ru[i] = 0.9;
+  }
+
+  catmixa.setUserI(iu, leniu);
+  catmixa.setUserR(ru, lenru);
+
+  catmixa.setSTOP(mySTOP);
 
   catmixa.solve          (Cold, nF, n, ObjAdd, ObjRow, usrFG,
 			  iAfun, jAvar, A, neA,
@@ -280,6 +326,11 @@ int main(int argc, char **argv) {
 			  x, xstate, xmul,
 			  F, Fstate, Fmul,
 			  nS, nInf, sInf);
+
+  catmixa.getRealParameter("Major optimality tolerance", ropt);
+  std::cout << "Opt tolerance was set to: " << ropt << std::endl;
+
+
 
   delete []iAfun;  delete []jAvar;  delete []A;
   delete []iGfun;  delete []jGvar;

@@ -65,8 +65,6 @@ void toyconB(int *mode,  int *nnCon, int *nnJac, int *negCon,
 /*--------------------------------------------------------------------*/
 
 int main(int argc, char **argv) {
-  snoptProblemB ToyProb("ToyB");
-
   int n      =  2;
   int m      =  3;
   int ne     =  5;
@@ -77,6 +75,13 @@ int main(int argc, char **argv) {
 
   int nS = 0, nInf;
   double objective, sInf;
+
+  int    leniw  = 1000;
+  int    lenrw  = 1000;
+  int    *iw    = new int[leniw];
+  double *rw    = new double[lenrw];
+
+  snoptProblemB ToyProb("ToyB", iw, leniw, rw, lenrw);
 
   int    *indJ = new int[ne];
   int    *locJ = new int[n+1];
@@ -147,6 +152,11 @@ int main(int argc, char **argv) {
   ToyProb.setIntParameter("Derivative option", 3);
 
   ToyProb.solve          (Cold, m, n, ne, negCon, nnCon, nnObj, nnJac,
+			  iObj, ObjAdd, toyconB, toyobjB,
+			  valJ, indJ, locJ, bl, bu, hs, x, pi, rc,
+			  nS, nInf, sInf, objective);
+
+  ToyProb.solve          (Warm, m, n, ne, negCon, nnCon, nnObj, nnJac,
 			  iObj, ObjAdd, toyconB, toyobjB,
 			  valJ, indJ, locJ, bl, bu, hs, x, pi, rc,
 			  nS, nInf, sInf, objective);

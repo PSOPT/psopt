@@ -107,6 +107,7 @@ void usrFG(int    *Status, int *n,    double x[],
 int main(int argc, char **argv) {
   snoptProblemA catmixa;
 
+  int iprint, isumm;
   int Cold  = 0;
 
   int nH    = 1000;
@@ -267,11 +268,13 @@ int main(int argc, char **argv) {
   Flow[ObjRow] = -inf;
   Fupp[ObjRow] =  inf;
 
-  catmixa.initialize     ("", 1);  // no print file, summary on
+  iprint = 0; // no print file
+  isumm  = 6; //  6 == summary to screen
+  catmixa.initialize     ("", iprint, "", isumm);
   catmixa.setProbName    ("catmix");
 
-  catmixa.setPrintFile   ("catmix.out");  // ok now add a print file
-  catmixa.setIntParameter("Verify level ", 3);
+  iprint = 9;  // set printfile now
+  catmixa.setPrintFile   ("catmixa2.out",iprint);
 
   catmixa.solve          (Cold, nF, n, ObjAdd, ObjRow, usrFG,
 			  iAfun, jAvar, A, neA,

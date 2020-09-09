@@ -3,17 +3,20 @@
 #include "snopt_cwrap.h"
 
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
-/*  toycon  toyobj  main                                                       */
+/*  toyusrfun    main                                                          */
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 
-void toycon
-( int *mode, int *nnCon, int *nnJac, int  *negCon,  double x[],
+void toyusrfun
+( int *mode, int *nnObj, int *nnCon, int *nnJac, int *nnL,
+  int  *negCon,  double x[],
+  double *fObj,  double gObj[],
   double  fCon[],  double gCon[],  int *nState,
   char   cu[], int   *lencu,
   int    iu[], int   *leniu,
   double ru[], int   *lenru )
 {
   if ( *mode == 0 || *mode == 2 ) {
+    *fObj = 0;
     fCon[0] = x[0] * x[0] + 4*x[1]*x[1];
     fCon[1] = (x[0] - 2)*(x[0] - 2) + x[1] * x[1];
   }
@@ -24,21 +27,6 @@ void toycon
 
     gCon[2] = 8.0 * x[1];
     gCon[3] = 2.0 * x[1];
-  }
-}
-
-void toyobj
-( int *mode, int *nnObj,  double x[],
-  double *fObj,  double gObj[], int *nState,
-  char   cu[], int   *lencu,
-  int    iu[], int   *leniu,
-  double ru[], int   *lenru )
-{
-  if ( *mode == 0 || *mode == 2 ) {
-    *fObj = 0;
-  }
-
-  if ( *mode == 0 || *mode == 2 ) {
   }
 }
 
@@ -59,17 +47,21 @@ int main( int argc , char* argv[] )
   int    iObj   =  2;
   double ObjAdd =  0;
 
+  int    leniw  = 2000;
+  int    lenrw  = 2000;
+  int    iw[2000];
+  double rw[2000];
+
   int    hs[5], locJ[3], indJ[5];
   double bl[5], bu[5], x[5], pi[3], rc[5], valJ[5];
 
   int    nS, nInf;
   double objective, sInf;
 
-  // snInit must be called first.
-  //   9, 6 are print and summary unit numbers (for Fortran).
-  //   6 == standard out
-  snInit( &toy, "ToyB", "ToyB.out", 1 );
 
+  // snInit must be called first.
+  //   last entry -> summary on if > 0, else summary off
+  snInitW( &toy, "ToyC", "ToyC.out", 1, iw, leniw, rw, lenrw );
 
   // User workspace allocated and set.
   //   May be accesed in the user-defined function toyusrfun.
@@ -132,12 +124,15 @@ int main( int argc , char* argv[] )
 
   nS   = 0;
 
-  info = snoptB( &toy, Cold, m, n, ne, nnCon, nnObj, nnJac,
+  info = solveC( &toy, Cold, m, n, ne, nnCon, nnObj, nnJac,
 		 iObj, ObjAdd,
-		 toycon, toyobj,
+		 toyusrfun,
 		 valJ, indJ, locJ,
 		 bl, bu, hs, x, pi, rc,
 		 &objective, &nS, &nInf, &sInf );
+
+  printf ("SNOPT Exit, INFO = %d\n", info );
+  printf ("Final nonlinear objective = %16.8f\n", objective );
 
   // Deallocate space.
   free( toy.iu );
