@@ -31,10 +31,6 @@ add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF)
 
 if(${BUILD_EXAMPLES})
 	add_subdirectory(examples/)
-    if(${WITH_SNOPT_INTERFACE})
-        add_subdirectory(snopt-interface/cppexamples/)
-        add_subdirectory(snopt-interface/cexamples/)
-    endif()
 endif()
 
 # INSTALLING and PAKAGING

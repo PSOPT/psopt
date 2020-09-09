@@ -11,4 +11,9 @@ PUBLIC
     $<INSTALL_INTERFACE:include/PSOPT/snopt>)
 target_link_libraries(${PROJECT_NAME} PRIVATE gfortran ${snopt7_LIBRARIES})
 
+if(${BUILD_EXAMPLES})
+    add_subdirectory(cppexamples/)
+    add_subdirectory(cexamples/)
+endif()
+
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/" DESTINATION "include/PSOPT/snopt")
