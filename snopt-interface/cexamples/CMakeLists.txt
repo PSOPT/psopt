@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.10)
-project(PSOPT_SNOPT_interface_C_examples LANGUAGES C)
+project(PSOPT_SNOPT_interface_C_examples LANGUAGES C Fortran)
 
 add_executable(toyB toyB.c)
 add_dependencies(toyB PSOPT_SNOPT_interface)

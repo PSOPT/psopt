@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.10)
-project(PSOPT_SNOPT_interface_CPP_examples LANGUAGES CXX)
+project(PSOPT_SNOPT_interface_CPP_examples LANGUAGES Fortran CXX)
 
 add_executable(sntoya sntoya.cpp sntoyA.hpp)
 add_dependencies(sntoya PSOPT_SNOPT_interface)
