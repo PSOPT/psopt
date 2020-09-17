@@ -29,15 +29,24 @@ e-mail:    v.m.becerra@ieee.org
 **********************************************************************************************/
 
 #include "psopt.h"
+#include "snopt_psopt.h"
 
 
 #ifdef USE_SNOPT
 
-static Workspace* workspace= NULL; // Temporary measure to get this file to compile.
-                                      // Consider changing to C++ interface to see if
-                                      // the same thing as IPOPT can be done with workspace.
 
-void snPSOPTusrf_(int    *Status, int *n,    double x[],
+// constructor
+snoptProbLocal::snoptProbLocal(Workspace *pr, void *user_data)
+{
+    workspace       = pr;
+    _user_data      = user_data;
+}
+
+//destructor
+snoptProbLocal::~snoptProbLocal()
+{}
+
+void snoptProbLocal::snPSOPTusrf_(int    *Status, int *n,    double x[],
 	     int    *needF,  int *neF,  double F[],
 	     int    *needG,  int *neG,  double G[],
 	     char       *cu,     int *lencu,
@@ -46,19 +55,17 @@ void snPSOPTusrf_(int    *Status, int *n,    double x[],
 
 {
 
-  workspace = tempsnoptworkspace;
 
   Alg& algorithm    = *workspace->algorithm;
 
-  MatrixXd&        X = *workspace->Xsnopt;
-  MatrixXd&        g = *workspace->gsnopt;
-  TripletSparseMatrix&  Ax = *workspace->Ax;
+  MatrixXd&              X = *workspace->Xsnopt;
+  MatrixXd&              g = *workspace->gsnopt;
   TripletSparseMatrix&  As = *workspace->As;
 
   int i;
 
 
-  memcpy( X.GetPr(), x, (*n)*sizeof(double) );
+  memcpy( &X(0), x, (*n)*sizeof(double) );
 
 
   if (*needF) {
@@ -73,30 +80,13 @@ void snPSOPTusrf_(int    *Status, int *n,    double x[],
 
   	//  assign g[i] to F[i]
   	for(i=1;i<(*neF);i++) {
-	   	F[i] = g(i);
+	   	F[i] = g(i-1);
   	}
-
-
-  	if (workspace->jac_done)
-  	{
-  		// Compute the linear part of the constraints:
-       			Ax = As*X;
-  		// Now subtract linear part of the constraints from F[i]
-  		// This is done to return only the nonlinear part of the constraint function, so
-  		// that SNOPT can handle separately the linear constraints.
-
-  		for(i=0; i<(*neF);i++) {
-         		F[i] -= Ax(i,1); // EIGEN_UPDATE
-   		}
-
-
-  	}
-
 
   }
 
 
-  if( useAutomaticDifferentiation(algorithm) && workspace->jac_done && *needG ) {
+  if( useAutomaticDifferentiation(algorithm)  && *needG ) {
 
 
         int nF = *neF;
@@ -108,19 +98,24 @@ void snPSOPTusrf_(int    *Status, int *n,    double x[],
         double *xvars = &X(0);
 
 
-
+       // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
        int options[4];
-       options[0]=0; options[1]=0; options[2]=0;options[3]=0;
-	    sparse_jac(workspace->tag_fg, nF, nvars, 0, xvars, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
+       int repeat = 1; // To use previously determined sparsity pattern.
+       options[0]=0; options[1]=0; options[2]=0;options[3]=0; 
+	    sparse_jac(workspace->tag_fg, nF, nvars, repeat, xvars, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
 
 
+        // Put the full Jacobian in the form of a triplet-based sparse matrix
+        TripletSparseMatrix GS2(workspace->G2, nF, nvars, workspace->F_nnz, (int*) workspace->iGfun2, (int*) workspace->jGvar2);
 
-        TripletSparseMatrix GS2(workspace->G2, nF, nvars, workspace->F_nnz, (int*) workspace->iGfun1, (int*) workspace->jGvar1);
 
+        // Subtract from the full Jacobian the matrix of constant coefficients calculated earlier
+        GS2 -= As;
+        // Use the indices for the nonlinear Jacobian obtained initially to gather the correct elements and store them in vector G.
 
-        // Copy the result into G[] using the right indices to send it back to SNOPT.
         for(k=0;k<(*neG);k++) {
-               G[k] = GS2(workspace->iGfun[k],workspace->jGvar[k]);
+               G[k] = GS2(workspace->iGfun1[k],workspace->jGvar1[k]);
+
         }
 
         if (workspace->enable_nlp_counters) {
@@ -128,7 +123,6 @@ void snPSOPTusrf_(int    *Status, int *n,    double x[],
         }
 
   }
-
 
 
 }
@@ -164,6 +158,27 @@ void fg_ad( adouble* x, adouble* fg, Workspace* workspace)
 }
 
 
+void fg_num(MatrixXd& x, MatrixXd* fg, Workspace* workspace)
+{
+
+   int j;
+
+   double fval;
+   MatrixXd g(workspace->ncons,1);
+   
+   fval = ff_num(x,workspace);
+
+   gg_num(x, &g, workspace);
+
+   (*fg)(0) = fval;
+
+   for(j=1; j<=workspace->ncons; j++)
+   {
+        (*fg)(j) = g(j-1);
+   }
+
+
+}
 
 #endif // USE_SNOPT
 

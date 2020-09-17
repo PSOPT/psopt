@@ -609,7 +609,7 @@ void sort_vector(MatrixXd& A, RowVectorXi& sindex)
    /* Returns the array of sorted indices  */
 
    double *a;
-   long   n = MAX(A.rows(), A.cols());
+   long   n = std::max(A.rows(), A.cols());
 
    if ( A.rows()!=1 && A.cols() != 1 ) {
 
@@ -664,7 +664,7 @@ void sort(MatrixXd& A)
 {
    double *a;
    RowVectorXi sindex;
-   long   n = MAX(A.rows(), A.cols());
+   long   n = std::max(A.rows(), A.cols());
 
    if ( A.rows()!=1 && A.cols() != 1 ) {
 

@@ -45,19 +45,19 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 
 #define CINDEX( i )    ((i)-1)
 
-#ifndef MAX
-#define MAX(a, b) ( (a)>(b)?  (a):(b) )
-#endif
-#ifndef MIN
-#define MIN(a, b) ( (a)<(b)?  (a):(b) )
-#endif
+//#ifndef MAX
+//#define std::max(a, b) ( (a)>(b)?  (a):(b) )
+//#endif
+//#ifndef MIN
+//#define std::min(a, b) ( (a)<(b)?  (a):(b) )
+//#endif
 
 #define MC_EPSILON 2.221e-16
 
 
-#undef max
-#undef min
-#undef abs
+//#undef max
+//#undef min
+//#undef abs
 
 
 #define FREE_ARG char*
@@ -70,6 +70,8 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 #include <string.h>
 #include <time.h>
 #include <assert.h>
+#include <memory>
+
 
 
 using namespace std;
@@ -195,6 +197,7 @@ struct alg_str {
   int       save_sparsity_pattern;
   int       nsteps_error_integration;
   int       parameter_estimation_norm;
+
 
 
   double    ode_tolerance;
@@ -445,7 +448,7 @@ public:
    adouble* xad;
    int      nlp_return_code;
    double   cpu_time;
-   bool     error_flag;
+   int      error_flag;
    string   error_msg;
    int       mesh_refinement_iterations;
    MeshStats*  mesh_stats;
@@ -597,13 +600,15 @@ public:
    unsigned int*      hess_jc;
    unsigned int*      iGfun;
    unsigned int*      jGvar;
-   unsigned int*      iGfun1;
-   unsigned int*      jGvar1;
-   unsigned int*      iGfun2;
-   unsigned int*      jGvar2;
+   int*      iGfun1;
+   int*      jGvar1;
+   unsigned  int*      iGfun2;
+   unsigned  int*      jGvar2;
    int       use_constraint_scaling;
    int       F_nnz;
    double*   G2;
+   double*   G3;
+   double*   G4;
    adouble*  xad;
    adouble*  gad;
    adouble**  states;
@@ -663,6 +668,9 @@ public:
   int tag_fg 	;
   int tag_gc    ;
   void *user_data;
+  
+// A persistent variable for warm starts in SNOPT7
+  int nS;  
 
 };
 
@@ -696,7 +704,7 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 
 void deleteIndexGroups(IGroup* igroup, int ncols );
 
-void psopt(Sol& solution, Prob& problem, Alg& algorithm);
+int psopt(Sol& solution, Prob& problem, Alg& algorithm);
 
 void psopt_level2_setup(Prob& problem, Alg& algorithm);
 
@@ -711,6 +719,8 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
 double ff( MatrixXd& x );
 
 void gg( MatrixXd& x, MatrixXd* g );
+
+void fg_num(MatrixXd& x, MatrixXd* fg, Workspace* workspace);
 
 void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace);
 
@@ -809,6 +819,11 @@ int NLP_interface(
 void ScalarGradient( double (*fun)(MatrixXd& x, Workspace*), MatrixXd& x,MatrixXd* grad, GRWORK* grw, Workspace* workspace );
 
 void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, int nf,
+                           int* nnzA, int* iArow, int* jAcol, double* Aij,
+                           int* nnzG, int* jGrow, int* jGcol,
+                           GRWORK* grw, Workspace* workspace);
+                           
+void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, int nf,
                            int* nnzA, int* iArow, int* jAcol, double* Aij,
                            int* nnzG, int* jGrow, int* jGcol,
                            GRWORK* grw, Workspace* workspace);
@@ -1222,29 +1237,6 @@ bool isEmpty(const MatrixXd& m);
 bool isSymmetric(const MatrixXd& m); 
 
 
-#ifdef USE_SNOPT
-extern "C" {
-void snPSOPTusrf_
-( int    *Status, int *n,    double x[],
-  int    *needF,  int *neF,  double F[],
-  int    *needG,  int *neG,  double G[],
-  char       *cu, int *lencu,
-  int    iu[],    int *leniu,
-  double ru[],    int *lenru );
-
-
-
-
-}
-
-
-extern Workspace* tempsnoptworkspace;
-
-
-
-#endif // USE_SNOPT
-
-
 
 #ifdef PACKAGE
 #undef PACKAGE
@@ -1352,7 +1344,7 @@ public:
       \param  A  sparse matrix to be transposed
       \return a temporary TripletSparseMatrix object with the result of the operation
   */
-   friend TripletSparseMatrix& tra(const TripletSparseMatrix& A);
+   friend TripletSparseMatrix tra(const TripletSparseMatrix& A);
 
   //! Extracts a specified column from a sparse matrix and returns a MatrixXd object.
   /**
@@ -1430,14 +1422,14 @@ public:
       \param B is a TripletSparseMatrix object.
       \return a temporary TripletSparseMatrix object with the result of the operation
   */
-   friend TripletSparseMatrix& elemProduct(const TripletSparseMatrix A, const TripletSparseMatrix& B);
+   friend TripletSparseMatrix elemProduct(const TripletSparseMatrix A, const TripletSparseMatrix& B);
   
   //! Creates a sparse identity matrix of specified dimension.
   /**
       \param  n: number of rows and columns of the sparse matrix to be created.
       \return A temporary TripletSparseMatrix object with the result of the operation
   */
-   friend TripletSparseMatrix& speye(int n);
+   friend TripletSparseMatrix speye(int n);
 
   
    friend double enorm(const TripletSparseMatrix& A);
@@ -1448,7 +1440,7 @@ public:
       \param  A is a TripletSparseMatrix object.
       \return a reference to a temporary TripletSparseMatrix object with the result of the operation.
   */
-   friend TripletSparseMatrix& Abs(const TripletSparseMatrix& A);
+   friend TripletSparseMatrix Abs(const TripletSparseMatrix& A);
  
 
    //! This function eliminates zero elements from a sparse matrix and deletes unnecessary storage.
@@ -1488,33 +1480,39 @@ public:
       \param rval:  sparse matrix located at the right hand side of the operator.
       \return Reference to a temporary TripletSparseMatrix object with the result of the operation
   */
-   TripletSparseMatrix& operator+ (const TripletSparseMatrix& rval) const;
+   TripletSparseMatrix operator+ (const TripletSparseMatrix& rval) const;
   //! Sparse matrix subtraction operator. The row and column sizes of the matrices being subtracted must be the same, otherwise an error is thrown.
   /**
       \param rval:  sparse matrix located at the right hand side of the operator.
       \return Reference to a temporary TripletSparseMatrix object with the result of the operation
   */
-   TripletSparseMatrix& operator - (const TripletSparseMatrix& rval) const;
+   TripletSparseMatrix operator - (const TripletSparseMatrix& rval) const;
   
   //! Computes the product of a sparse matrix (left hand side of the operator) times a real scalar (right hand side value).
   /**
       \param Arg: double value that will multiply each non-zero element of the sparse matrix.
       \return Reference to a temporary object with the result of the operation.
   */
-   TripletSparseMatrix& operator* (double Arg) const;
+   TripletSparseMatrix operator* (double Arg) const;
+//! Computes the product of a triplet sparse matrix (left hand side of the operator) by a MatrixXd object (right hand side of the operator).
+  /**
+      \param A:  MatrixXd object to be multiplied
+      \return Reference to a temporary object with the result of the operation.   
+  */    
+   TripletSparseMatrix operator* (const MatrixXd& A) const;
   //! Computes the product of a real value (left hand side of the operator) by a sparse matrix (right hand side of the operator).
   /**
       \param Arg: double value that will multiply each non-zero element of the sparse matrix.
       \param A:  TripletSparseMatrix object to be multiplied by a real value.
       \return Reference to a temporary object with the result of the operation.
   */
-   friend TripletSparseMatrix& operator *(double Arg, const TripletSparseMatrix& A);
+   friend TripletSparseMatrix operator *(double Arg, const TripletSparseMatrix& A);
   //! Computes the division of a sparse matrix (left hand side of the operator) by a real scalar (right hand side value).
   /**
       \param Arg: double value that will divide each non-zero element of the sparse matrix.
       \return Reference to a temporary object with the result of the operation.
   */
-   TripletSparseMatrix& operator/ (double Arg) const;
+   TripletSparseMatrix operator/ (double Arg) const;
 
   //! Sparse matrix assignment. The size of the left hand side object is modified if necessary, and the values of all non-zero real elements of the right hand side object and copied to the left hand side object.
   /**
@@ -1552,10 +1550,11 @@ public:
 
 
 void sp_error_message(const char *error_text);
-TripletSparseMatrix& elemProduct(const TripletSparseMatrix A, const TripletSparseMatrix& B);
-TripletSparseMatrix& tra(const TripletSparseMatrix& A);
-TripletSparseMatrix& speye(int n);
+TripletSparseMatrix elemProduct(const TripletSparseMatrix A, const TripletSparseMatrix& B);
+TripletSparseMatrix tra(const TripletSparseMatrix& A);
+TripletSparseMatrix speye(int n);
 double enorm(const TripletSparseMatrix& A);
-TripletSparseMatrix& Abs(const TripletSparseMatrix& A);
-TripletSparseMatrix& operator *(double Arg, const TripletSparseMatrix& A);
+TripletSparseMatrix Abs(const TripletSparseMatrix& A);
+TripletSparseMatrix operator *(double Arg, const TripletSparseMatrix& A);
+
 

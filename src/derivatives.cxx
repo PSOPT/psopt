@@ -503,10 +503,8 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
   long i,j;
   int nzcount_A=0;
   int nzcount_G=0;
-  double s = 1.0e6*sqrt(PSOPT_extras::GetEPS());
-//  double tol  = pow( MatrixXd::GetEPS(), 0.8)* MAX( 1.0, enorm(x) );
-  double tol  = 1.e-16*pow( PSOPT_extras::GetEPS(), 0.8)* MAX( 1.0, x.norm() );
-
+  double s = 0.1*std::max(1.0, x.norm());
+  double tol  = pow( PSOPT_extras::GetEPS(), 0.4)* std::max( 1.0, x.norm() );
 
 
 
@@ -521,19 +519,19 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
   for(j=0;j<nvars;j++) {   // EIGEN_UPDATE: j index shifted by -1.
 
      xp = x;
-#ifndef TESTING_HESSIAN
+
      clip_vector_given_bounds( xp, xlb, xub);
-#endif
+
      JacobianColumn( fun, xp, xlb, xub, j, &JacCol1,  grw, workspace);
      xp = x + 0.1*x.cwiseAbs() + s*ones(nvars,1);
-#ifndef TESTING_HESSIAN
+
      clip_vector_given_bounds( xp, xlb, xub);
-#endif
+
      JacobianColumn( fun, xp, xlb, xub, j, &JacCol2,  grw, workspace);
      xp = x - 0.15*x.cwiseAbs() - 1.1*s*ones(nvars,1);
-#ifndef TESTING_HESSIAN
+
      clip_vector_given_bounds( xp, xlb, xub);
-#endif
+
      JacobianColumn( fun, xp, xlb, xub,j, &JacCol3, grw, workspace);
 
 
@@ -542,16 +540,16 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
             if ( ( fabs(JacCol1(i,0)) +  fabs(JacCol2(i,0)) + fabs(JacCol3(i,0)) )>=tol ) {
               if ( fabs(JacCol1(i,0)-JacCol2(i,0))<=tol && fabs(JacCol1(i,0)-JacCol3(i,0))<=tol ) {
                         // Constant Jacobian element detected
-              		iArow[nzcount_A]=(int) i;
-              		jAcol[nzcount_A]=(int) j;
+              		      iArow[nzcount_A]=i;
+              		      jAcol[nzcount_A]=j;
                         Aij[nzcount_A]    = JacCol1(i,0);
 
                         nzcount_A++;
               }
               else {
 		       // Non-constant Jacobian element
-			jGrow[nzcount_G]= (int) i;
-                        jGcol[nzcount_G]= (int) j;
+			               jGrow[nzcount_G]= i;
+                        jGcol[nzcount_G]= j;
                         nzcount_G++;
               }
            }
@@ -566,6 +564,104 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
   workspace->jac_nnzG = nzcount_G;
 
 }
+
+
+void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, int nf,
+                           int* nnzA, int* iArow, int* jAcol, double* Aij,
+                           int* nnzG, int* jGrow, int* jGcol,
+                           GRWORK* grw, Workspace* workspace)
+{
+
+
+  long i,j;
+  int nzcount_A=0;
+  int nzcount_G=0;
+  int n     =  length(x);
+  int neF   =  nf;  
+  
+  double s = 0.01*std::max(1.0, x.norm());
+
+
+  MatrixXd& xp      = *workspace->xp;
+  MatrixXd& xlb     = *workspace->xlb;
+  MatrixXd& xub     = *workspace->xub;
+
+
+        int nF = neF;
+
+        int nvars = n;
+
+        int k;
+
+       xp = x;
+
+       clip_vector_given_bounds( xp, xlb, xub);
+
+       // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
+       int options[4];
+       int repeat = 1; // To use previously determined sparsity pattern.
+       options[0]=0; options[1]=0; options[2]=0;options[3]=0; 
+	    sparse_jac(workspace->tag_fg, nF, nvars, repeat, &xp(0), &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
+
+       xp = x + 0.05*x.cwiseAbs() + s*ones(nvars,1);
+       clip_vector_given_bounds( xp, xlb, xub);
+
+       // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
+
+	    sparse_jac(workspace->tag_fg, nF, nvars, repeat, &xp(0), &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G3, options);
+
+       xp = x - 0.06*x.cwiseAbs() - 0.95*s*ones(nvars,1);
+
+       clip_vector_given_bounds( xp, xlb, xub);
+       // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
+
+	    sparse_jac(workspace->tag_fg, nF, nvars, repeat, &xp(0), &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G4, options);
+
+
+        if (workspace->enable_nlp_counters) {
+             workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_jacobian_evals+=3;
+        }
+
+
+  
+
+    for(i=0; i<workspace->F_nnz; i++) { // EIGEN_UPDATE: index i shifted by -1
+//            if ( ( fabs(workspace->G2[i]) +  fabs(workspace->G3[i]) + fabs(workspace->G4[i])>=tol ) ) {
+//              if ( fabs(workspace->G2[i] - workspace->G3[i])<=tol && fabs(workspace->G2[i] - workspace->G4[i])<=tol ) {
+             if ( (workspace->G2[i] == workspace->G3[i] && workspace->G2[i] == workspace->G4[i]) ) {
+                        // Constant Jacobian element detected
+              		      iArow[nzcount_A]=workspace->iGfun2[i];
+              		      jAcol[nzcount_A]=workspace->jGvar2[i];
+                        Aij[nzcount_A]    = workspace->G2[i];
+                        nzcount_A++;
+              }
+              else {
+		       // Non-constant Jacobian element
+			               jGrow[nzcount_G]= workspace->iGfun2[i];
+                        jGcol[nzcount_G]= workspace->jGvar2[i];
+                        nzcount_G++;
+              }
+//           }
+      }
+
+  
+  *nnzA=nzcount_A;
+  *nnzG=nzcount_G;
+
+  workspace->jac_nnz  = nzcount_A + nzcount_G;
+  workspace->jac_nnzA = nzcount_A;
+  workspace->jac_nnzG = nzcount_G;
+  
+    
+//  cout << "\nneA = " << nzcount_A;
+//  cout << "\n[iArow , jAcol]";
+//  for(int iA=0; iA< nzcount_A; iA++ ) {
+//    cout << "\n[" << iArow[iA] << " , " << jAcol[iA] << "]";    
+// }
+
+}
+
+
 
 
 void ScalarGradient( double (*fun)(MatrixXd& x, Workspace* workspace), MatrixXd& x,
@@ -800,3 +896,4 @@ void compute_jacobian_of_residual_vector_with_respect_to_variables(MatrixXd& Jr,
         Jr.block(0,j,Jcol.rows(), 1) = Jcol;
 	}
 }
+

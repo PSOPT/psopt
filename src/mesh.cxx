@@ -121,13 +121,13 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 
 
 
-           yd = max( log(0.25*evec(length(evec)-1)), log(0.99*algorithm.ode_tolerance) );
+           yd = std::max( log(0.25*evec(length(evec)-1)), log(0.99*algorithm.ode_tolerance) );
 
            xd = (int) exp( (yd- theta(1))/theta(0) );
 
-			  max_increment = MAX( algorithm.mr_max_increment_factor*Ncurrent,1);
+			  max_increment = std::max( (int) algorithm.mr_max_increment_factor*Ncurrent, 1);
 
-			  Nd = min( Ncurrent + max_increment, max(xd,Ncurrent+1) );
+			  Nd = std::min( Ncurrent + max_increment, std::max( xd, (Ncurrent+1)  ) );
 
 			  sprintf(msg,"\nPhase %i: extrapolated number of nodes: %i, accepted number of nodes %d\n", iphase, xd, Nd);
 
@@ -238,9 +238,9 @@ void estimate_order_reduction(Prob& problem,Alg& algorithm,Sol& solution, Worksp
 	    rhat = p+1.0 - log(theta/eta)/(log(1.0+I));
 
 
-	    r = MIN(nint(rhat),p);
+	    r = std::min(nint(rhat),(double) p);
 
-	    r = max( 0, r );
+	    r = std::max( 0, r );
 
 	    order_reduction(k) = r;
 

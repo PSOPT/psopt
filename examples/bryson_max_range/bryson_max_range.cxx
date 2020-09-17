@@ -260,8 +260,8 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-    algorithm.mesh_refinement             = "automatic";
-    algorithm.collocation_method = "trapezoidal";
+//    algorithm.mesh_refinement             = "automatic";
+    algorithm.collocation_method          = "trapezoidal";
 //    algorithm.defect_scaling = "jacobian-based";
     algorithm.ode_tolerance               = 1.e-6;
 

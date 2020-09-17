@@ -169,8 +169,8 @@ int main(void)
     problem.phases(2).nevents   = 0;
     problem.phases(2).npath     = 0;
 
-    problem.phases(1).nodes     << 40;
-    problem.phases(2).nodes     << 40;
+    problem.phases(1).nodes     << 60;
+    problem.phases(2).nodes     << 60;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -288,7 +288,7 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-    algorithm.collocation_method          = "trapezoidal";
+    algorithm.collocation_method          = "Hermite-Simpson";
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
 

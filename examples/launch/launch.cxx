@@ -649,7 +649,7 @@ int main(void)
     algorithm.scaling                     	= "automatic";
     algorithm.derivatives                 	= "automatic";
     algorithm.nlp_iter_max                	= 1000;
-    algorithm.collocation_method             = "Chebyshev";
+    algorithm.collocation_method             = "Hermite-Simpson";
 //    algorithm.mesh_refinement              = "automatic";
 //    algorithm.ode_tolerance		 	         = 1.e-5;
 

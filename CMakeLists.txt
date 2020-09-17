@@ -28,9 +28,16 @@ PUBLIC
 target_link_libraries(${PROJECT_NAME} PRIVATE adolc PkgConfig::ipopt Eigen3::Eigen)
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF)
 
+if(${WITH_SNOPT_INTERFACE})
+    add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF -DUSE_SNOPT)
+endif()
+
 if(${BUILD_EXAMPLES})
 	add_subdirectory(examples/)
 endif()
+
+# set(CMAKE_CXX_FLAGS "-g")
+
 
 # INSTALLING and PAKAGING
 set(PACKAGE_FIND_NAME "${PROJECT_NAME}")

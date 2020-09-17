@@ -84,7 +84,7 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 		zupper = (problem.phase[i].bounds.upper.controls)(ii);
 		if ( zlower!=-INF && zupper!= INF ) {
 		   if (zlower !=0.0 || zupper!=0.0)
-		      control_scaling(ii) = 1.0/MAX( fabs(zlower), fabs(zupper));
+		      control_scaling(ii) = 1.0/std::max( fabs(zlower), fabs(zupper));
 		}
 		else if (zlower==-INF && zupper!=INF && zupper!=0.0)
 		      control_scaling(ii) = 1.0/fabs(zupper);
@@ -109,7 +109,7 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 			zupper = (problem.phase[i].bounds.upper.states)(ii);
 			if ( zlower!=-INF && zupper!= INF ) {
 			    if (zlower !=0.0 || zupper!=0.0)
-			        state_scaling(ii) = 1.0/MAX( fabs(zlower), fabs(zupper));
+			        state_scaling(ii) = 1.0/std::max( fabs(zlower), fabs(zupper));
 			}
 			else if (zlower==-INF && zupper!=INF && zupper!=0.0)
 			     state_scaling(ii) = 1.0/fabs(zupper);
@@ -132,7 +132,7 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 			zupper = (problem.phase[i].bounds.upper.parameters)(ii);
 			if ( zlower!=-INF && zupper!= INF ) {
 				if (zlower !=0.0 || zupper!=0.0)
-				param_scaling(ii) = 1.0/MAX( fabs(zlower), fabs(zupper));
+				param_scaling(ii) = 1.0/std::max( fabs(zlower), fabs(zupper));
 			}
 			else if (zlower==-INF && zupper!=INF && zupper!=0.0)
 				param_scaling(ii) = 1.0/fabs(zupper);
@@ -153,7 +153,7 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 		zupper = (problem.phase[i].bounds.upper.EndTime);
 		if ( zlower!=-INF && zupper!= INF ) {
 				if (zlower !=0.0 || zupper!=0.0)
-				problem.phase[i].scale.time = 1.0/MAX( fabs(zlower), fabs(zupper));
+				problem.phase[i].scale.time = 1.0/std::max( fabs(zlower), fabs(zupper));
 		}
 		else if (zlower==-INF && zupper!=INF && zupper!=0.0)
 				problem.phase[i].scale.time = 1.0/fabs(zupper);
@@ -241,10 +241,13 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
 
     int ncons = get_number_nlp_constraints(problem, workspace);
 
-    MatrixXd& JacCol1 = *workspace->JacCol1;
+//    MatrixXd& JacCol1 = *workspace->JacCol1;
     MatrixXd& xp      = *workspace->xp;
-    MatrixXd& jac_row_norm = *workspace->JacCol2;
+//    MatrixXd& jac_row_norm = *workspace->JacCol2;
     MatrixXd jtemp;
+    
+    MatrixXd JacCol1(ncons,1);
+    MatrixXd jac_row_norm(ncons,1);
 
     workspace->use_constraint_scaling = 0;
 

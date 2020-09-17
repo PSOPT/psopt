@@ -29,12 +29,21 @@ e-mail:    v.m.becerra@ieee.org
 **********************************************************************************************/
 
 
+
 #include "psopt.h"
+
 
 #ifdef USE_SNOPT
 #include "snoptProblem.hpp"
-Workspace* tempsnoptworkspace;
+#include "snopt_psopt.h"
+// Workspace* tempsnoptworkspace;
+
+Workspace* snoptProbLocal::workspace   = NULL;
+void*      snoptProbLocal::_user_data  = NULL;
+
 #endif
+
+
 
 
 int NLP_interface(
@@ -55,16 +64,21 @@ int NLP_interface(
 {
 
     Sol*  solution= workspace->solution;
+    Prob* problem = workspace->problem;
+    int use_sparse_jac_function = 1;
 
 
     if ( algorithm.nlp_method=="SNOPT" )
     {
 
+
 #ifdef USE_SNOPT
   // C++ interface to SNOPT.
-  snoptProblemA snprob;
+  // Create a new instance of snoptProbLocal
+  
+  snoptProbLocal snprob(workspace, user_data);
 
-  tempsnoptworkspace = workspace;
+
 
   // Allocate and initialize. 
   int n     =  length(*x0);
@@ -92,12 +106,7 @@ int NLP_interface(
   double *Fmul   = new double[neF];
   int    *Fstate = new int[neF];
 
-  // TODO: the below is for the old f2c interface and
-  // I don't know how to port it over to the C++ interface.
-  // integer nxnames = 1;
-  // integer nFnames = 1;
-  // char *xnames = (char*) my_calloc(nxnames*8, sizeof(char));
-  // char *Fnames = (char*) my_calloc(nFnames*8, sizeof(char));
+
 
   int    ObjRow = 0;
   double ObjAdd = 0;
@@ -108,11 +117,16 @@ int NLP_interface(
   int StartOption;
 
   double InfValue = 1.0e20;
-
+  
+  int nInf;
+  double sInf;
+  
+        
 
   memcpy(xlow, &(*xlb)(0), n*sizeof(double) );
 
-    memcpy(xupp, &(*xub)(0), n*sizeof(double) );
+  memcpy(xupp, &(*xub)(0), n*sizeof(double) );
+  
   for (int ix = 0; ix < n; ++ix) {
       x[ix]=0.0;
       xstate[ix]=0;
@@ -126,47 +140,37 @@ int NLP_interface(
 
 
   for (int iF = 1; iF < neF; ++iF) {
-     Fmul[iF] = (*lambda)(iF);
+     Fmul[iF] = (*lambda)(iF-1);
   }
 
   for (int iF = 0; iF < neF; ++ iF) {
-     Fstate[iF] = 0; // TODO why is this 0 and xstate is 3?
+     Fstate[iF] = 0; //  why is this 0 and xstate is 3?
   }
 
-  memcpy(x, x0->GetPr(), n*sizeof(double) );
+  memcpy(x, &(*x0)(0), n*sizeof(double) );
+  
+  
+  snprob.initialize    ("", 1);      
+  snprob.setPrintFile  ("snopt.out"); 
+  snprob.setProbName   ("psopt");  
 
-  snprob.setProbName(problem->name.c_str());
-  snprob.setPrintFile("snopt.out");
 
-  snprob.setProblemSize(n, neF);
-  snprob.setObjective(ObjRow, ObjAdd);
-  snprob.setX(x, xlow, xupp, xmul, xstate);
-  snprob.setF(F, Flow, Fupp, Fmul, Fstate);
-  snprob.setUserFun(snPSOPTusrf_);
 
-  // snopta will compute the Jacobian by finite-differences.
+
   int neA = -1;
   int neG = -1;
-  snprob.setA(lenA, neA, iAfun, jAvar, A);
-  snprob.setG(lenG, neG, iGfun, jGvar);
+
 
   workspace->jac_done = 0;
-
-  // computeJac will determine sparsity and will set neA and neG.  
-  snprob.computeJac(neA, neG);
-
-  for (int iG = 0; iG < neG; ++iG) {
-    workspace->iGfun[iG] = (unsigned int) iGfun[iG];
-    workspace->jGvar[iG] = (unsigned int) jGvar[iG];
-  }
-
-  (*workspace->Gsp).Resize(neF, n, neG);
-
+  
   if ( useAutomaticDifferentiation(algorithm) )
   {
+  	
+
      adouble* xad  = workspace->xad;
      adouble* fgad = workspace->fgad;
      double*    fg = workspace->fg;
+     int i;
 
      /* Tracing of function fg() */
      trace_on(workspace->tag_fg);
@@ -180,10 +184,11 @@ int NLP_interface(
      trace_off();
 
 
-
+    // Initial run of ADOL-C's sparse_jac() to detect full Jacobian structure 
+    int repeat = 0;
     int options[4];
     options[0]=0; options[1]=0; options[2]=0;options[3]=0;
-    sparse_jac(workspace->tag_fg, neF, n, 0, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
+    sparse_jac(workspace->tag_fg, neF, n, repeat, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
 
 
      sprintf(workspace->text,"\nJacobian sparsity detected using ADOLC:");
@@ -199,34 +204,85 @@ int NLP_interface(
      sprintf(workspace->text,"\n%i nonzero elements out of %li [ratio=%f]\n", workspace->F_nnz, n*neF, jsratio);
      psopt_print(workspace,workspace->text);
 
+     if (!use_sparse_jac_function) {
+        DetectJacobianSparsityAD(fg_num, *x0, neF,  &neA,  iAfun, jAvar, A,
+                                            &neG,  iGfun, jGvar, 
+                                            workspace->grw, workspace );
+     }
+     else {
+       snprob.computeJac(neF, n, snoptProbLocal::snPSOPTusrf_,
+		  x, xlow, xupp,
+		  iAfun, jAvar, A, neA,
+		  iGfun, jGvar, neG);     	                                          
+     }                                         
 
-      for (i=0;i<workspace->F_nnz;i++) {
-           workspace->iGfun1[i] = workspace->iGfun2[i];  
-        	  workspace->jGvar1[i] = workspace->jGvar2[i];
-      }
+  }
+  
+  else {
+   
+
+   if (use_sparse_jac_function) {
+      snprob.computeJac(neF, n, snoptProbLocal::snPSOPTusrf_,
+		  x, xlow, xupp,
+		  iAfun, jAvar, A, neA,
+		  iGfun, jGvar, neG);
+		  
+	}
+	else {
+
+     DetectJacobianSparsity(fg_num, *x0, neF,  &neA,  iAfun, jAvar, A,
+                                            &neG,  iGfun, jGvar, 
+                                            workspace->grw, workspace ); 
+                                            
+
+   }                          
 
   }
 
-
-  workspace->jac_done=1;
-
-  // Create and store matrix A (sparse).
+  int * iGfuni = new int[neG];
+  int * jGvari = new int[neG];  
+  
+  for (int iG = 0; iG < neG; iG++) {
+  	  if (use_sparse_jac_function) {
+        workspace->iGfun1[iG] = iGfun[iG]-1;
+        workspace->jGvar1[iG] = jGvar[iG]-1;
+        iGfuni[iG] = workspace->iGfun1[iG];
+        jGvari[iG] = workspace->jGvar1[iG];
+     } else {
+        iGfuni[iG] = iGfun[iG];
+        jGvari[iG] = jGvar[iG];
+     }
+  }
+  
+  // Create and store matrix A as a triplet based sparse matrix.
   int * iAfuni = new int[neA];
   int * jAvari = new int[neA];
+  
 
-  for (int iA = 0; iA < neA; ++iA) {
+  for (int iA = 0; iA < neA; iA++) {
+  	 if (use_sparse_jac_function) {
+       iAfuni[iA] = iAfun[iA]-1;
+       jAvari[iA] = jAvar[iA]-1;
+    } else {
        iAfuni[iA] = iAfun[iA];
        jAvari[iA] = jAvar[iA];
+    }
+
   }
 
   TripletSparseMatrix As(A, neF, n, neA, iAfuni, jAvari);
+  
 
-//  As.SaveSparsityPattern("SNOPT_Linear_pattern.txt");
 
   workspace->As = &As;
+  
+//  (*workspace->Gsp).resize(neF, n, neG);
+
+
+  workspace->jac_done=1;
+  
 
   // Set optimizer options.
-
   int derivative_option;
   if ( useAutomaticDifferentiation(algorithm) ) {
        derivative_option = 1;
@@ -234,14 +290,16 @@ int NLP_interface(
   else {
        derivative_option = 0;
   }
+    
   snprob.setIntParameter("Derivative option", derivative_option);
+
   snprob.setIntParameter("Verify level ", 3);
   snprob.setIntParameter("Major iterations limit",
 		  workspace->algorithm->nlp_iter_max);
   snprob.setIntParameter("Minor iterations limit",
 		  workspace->algorithm->nlp_iter_max);   
   snprob.setIntParameter("Iterations limit",
-		  50 * workspace->algorithm->nlp_iter_max);
+		  50 * workspace->algorithm->nlp_iter_max);	  		  
   snprob.setRealParameter("Major optimality tolerance",
 		  workspace->algorithm->nlp_tolerance);
   if (!algorithm.print_level) {
@@ -257,7 +315,30 @@ int NLP_interface(
   // Go for it
   // ---------
 
-  int inform = snprob.solve(StartOption);
+  // int inform = snprob.solve(StartOption);
+  int inform;
+  
+  if (useAutomaticDifferentiation(algorithm)) {
+  
+		
+		inform = snprob.solve(StartOption, neF, n, ObjAdd, ObjRow, snoptProbLocal::snPSOPTusrf_,
+		iAfuni, jAvari, A, neA,
+		iGfuni, jGvari, neG,
+		xlow, xupp, Flow, Fupp,
+		x, xstate, xmul,
+		F, Fstate, Fmul,
+		workspace->nS, nInf, sInf);		
+		
+		
+  }
+  else {
+        
+     inform = snprob.solve(StartOption, neF, n, ObjAdd, ObjRow, snoptProbLocal::snPSOPTusrf_,
+              xlow, xupp, Flow, Fupp,
+              x, xstate, xmul, F, Fstate, Fmul,
+              workspace->nS, nInf, sInf);
+              
+  }
 
   solution->nlp_return_code = int (inform/10);
 
@@ -268,7 +349,7 @@ int NLP_interface(
   for (int ix = 0; ix < n; ++ix) solution->xad[ix] = x[ix];
 
   for (int iF = 1; iF < neF; ++iF) {
-    (*lambda)(iF) = Fmul[iF];
+    (*lambda)(iF-1) = Fmul[iF];
   }
 
   // Delete allocated variables.
@@ -290,9 +371,6 @@ int NLP_interface(
   delete [] Fupp;
   delete [] Fmul;
   delete [] Fstate;
-
-  // TODO
-  tempsnoptworkspace = NULL;
 
   return 0;
 

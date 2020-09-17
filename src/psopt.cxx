@@ -36,7 +36,7 @@ e-mail:    v.m.becerra@ieee.org
 
 
 
-void psopt(Sol& solution, Prob& problem, Alg& algorithm)
+int psopt(Sol& solution, Prob& problem, Alg& algorithm)
 {
 
     try {
@@ -45,8 +45,10 @@ void psopt(Sol& solution, Prob& problem, Alg& algorithm)
     catch (ErrorHandler handler)
     {
            solution.error_msg = handler.error_message;
-           solution.error_flag = true;
+           solution.error_flag = 1;
     }
+    
+    return solution.error_flag;
 }
 
 
@@ -57,7 +59,9 @@ void psopt_main(Sol& solution, Prob& problem, Alg& algorithm)
 int MAX_STANDARD_PS_NODES = 200;
 
 
-Workspace* workspace = new Workspace;
+// unique_ptr<Workspace> workspace{ new Workspace{} }; 
+
+ Workspace* workspace = new Workspace;
 
 string startup_message= "\n *******************************************************************************\n * This is PSOPT, an optimal control solver based on pseudospectral and local  *\n * collocation methods, together with large scale nonlinear programming        *";
 

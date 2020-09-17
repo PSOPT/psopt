@@ -131,7 +131,7 @@ void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace
       solution.parameters[i].resize(nparam,1);
    }
 
-   solution.error_flag = false;
+   solution.error_flag = 0;
    solution.error_msg = "";
 
    solution.mesh_stats = new MeshStats[ get_number_of_mesh_refinement_iterations(problem,algorithm)];

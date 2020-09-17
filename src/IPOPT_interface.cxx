@@ -33,12 +33,6 @@ e-mail:    v.m.becerra@ieee.org
 
 
 
-
-
-
-
-
-
 // constructor
 IPOPT_PSOPT::IPOPT_PSOPT(Workspace *pr, void *user_data)
 {

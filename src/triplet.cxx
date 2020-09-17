@@ -104,7 +104,7 @@ void TripletSparseMatrix::resize(int nnew, int mnew, int nznew)
     RowIndxNew = new int[nznew];
     ColIndxNew = new int[nznew];
 
-    dmax = MIN( nznew, nz );
+    dmax = std::min( nznew, nz );
 
     if (a!= NULL)
     {
@@ -176,10 +176,6 @@ void TripletSparseMatrix::InsertNonZero(int i, int j, double val)
     int nznew=nz+1;
     int eflag = 0;
 
-    anew =  new double[nznew];
-    RowNew= new int[nznew];
-    ColNew= new int[nznew];
-
     for (k=0; k< nz; k++)
     {
         if (RowIndx[k]==i && ColIndx[k]==j) {
@@ -190,6 +186,11 @@ void TripletSparseMatrix::InsertNonZero(int i, int j, double val)
     }
 
     if (!eflag) {
+    	
+      anew =  new double[nznew];
+      RowNew= new int[nznew];
+      ColNew= new int[nznew];
+
     	memcpy(anew,   a,       nz*sizeof(double) );
     	memcpy(RowNew, RowIndx, nz*sizeof(int) );
     	memcpy(ColNew, ColIndx, nz*sizeof(int) );
@@ -204,17 +205,10 @@ void TripletSparseMatrix::InsertNonZero(int i, int j, double val)
     	nz = nznew;
     	asize = nznew;
 
-    	  RowIndx[nznew-1] = i;
-        ColIndx[nznew-1] = j;
-        a[nznew-1]       = val;
-    }
-
-    // Now resize the matrix if necessary
-    for (k=0;k<nz;k++) {
-        if (RowIndx[k]>n)
-           n = RowIndx[k];
-        if (ColIndx[k]>m)
-           m = ColIndx[k];
+    	RowIndx[nznew-1] = i;
+      ColIndx[nznew-1] = j;
+      a[nznew-1]       = val;
+      
     }
 
 }
@@ -232,7 +226,7 @@ TripletSparseMatrix& TripletSparseMatrix::operator += (const TripletSparseMatrix
     for (i=0; i<rval.nz; i++)
     {
         if ( (*this)(rval.RowIndx[i],rval.ColIndx[i])!=0.0 )
-               this->a[i] += rval.a[i];
+               (*this)(rval.RowIndx[i],rval.ColIndx[i]) += rval.a[i];
         else
                this->InsertNonZero( rval.RowIndx[i], rval.ColIndx[i], rval.a[i] );
     }
@@ -241,15 +235,13 @@ TripletSparseMatrix& TripletSparseMatrix::operator += (const TripletSparseMatrix
 }
 
 
-TripletSparseMatrix& TripletSparseMatrix::operator+ (const TripletSparseMatrix& Other_matrix) const
+TripletSparseMatrix TripletSparseMatrix::operator+ (const TripletSparseMatrix& Other_matrix) const
 {
-   TripletSparseMatrix* Result;
+   TripletSparseMatrix Result;
 
-   Result = new TripletSparseMatrix;
+   Result=(*this);
 
-   (*Result)=(*this);
-
-   return ((*Result)+=Other_matrix);
+   return ((Result)+=Other_matrix);
 
 }
 
@@ -263,7 +255,7 @@ TripletSparseMatrix& TripletSparseMatrix::operator -= (const TripletSparseMatrix
     for (i=0; i<rval.nz; i++)
     {
         if ( (*this)(rval.RowIndx[i],rval.ColIndx[i])!=0.0 )
-               this->a[i] -= rval.a[i];
+             (*this)(rval.RowIndx[i],rval.ColIndx[i]) -= rval.a[i];
         else
                this->InsertNonZero( rval.RowIndx[i], rval.ColIndx[i], -rval.a[i] );
     }
@@ -272,15 +264,14 @@ TripletSparseMatrix& TripletSparseMatrix::operator -= (const TripletSparseMatrix
 }
 
 
-TripletSparseMatrix& TripletSparseMatrix::operator- (const TripletSparseMatrix& Other_matrix) const
+TripletSparseMatrix TripletSparseMatrix::operator- (const TripletSparseMatrix& Other_matrix) const
 {
-   TripletSparseMatrix* Result;
 
-   Result = new TripletSparseMatrix;
+   TripletSparseMatrix Result;
 
-   (*Result)=(*this);
+   Result=(*this);
 
-   return ((*Result)-=Other_matrix);
+   return ((Result)-=Other_matrix);
 }
 
 
@@ -297,25 +288,51 @@ TripletSparseMatrix& TripletSparseMatrix::operator*= (double Arg)
 }
 
 
-TripletSparseMatrix& TripletSparseMatrix::operator* (double Arg) const
+TripletSparseMatrix TripletSparseMatrix::operator* (double Arg) const
 {
-   TripletSparseMatrix* Result;
+   TripletSparseMatrix Result;
 
-   Result = new TripletSparseMatrix;
+   (Result)=(*this);
 
-   (*Result)=(*this);
-
-   return ( (*Result)*=Arg );
+   return ( (Result)*=Arg );
 }
 
-TripletSparseMatrix& operator *(double Arg, const TripletSparseMatrix& A)
+TripletSparseMatrix operator *(double Arg, const TripletSparseMatrix& A)
 {
    return (A*Arg);
 }
 
 
+TripletSparseMatrix TripletSparseMatrix::operator* (const MatrixXd& A) const
+{
+  int k;
+  int i, j, icol, q;
+  MatrixXd x;
+  MatrixXd r(n,1);
+  TripletSparseMatrix sp(n, A.cols(), 0);
 
-TripletSparseMatrix& elemProduct(const TripletSparseMatrix A, const TripletSparseMatrix& B)
+
+  for (icol=0; icol<A.cols(); icol++) {
+     x = A.col(icol);
+     r.setZero();
+     for (k = 0; k < nz; k++) {
+         j    = ColIndx[k];
+         i    = RowIndx[k];
+         r(i) += a[k]*x(j);
+     }
+     for (q=0; q<length(r); q++) {
+        sp.InsertNonZero(q,icol, r(q) );
+     }
+  }
+
+  sp.Compress();
+
+  return (sp);
+
+}
+
+
+TripletSparseMatrix elemProduct(const TripletSparseMatrix A, const TripletSparseMatrix& B)
 {
           int i, j, k;
 
@@ -326,7 +343,7 @@ TripletSparseMatrix& elemProduct(const TripletSparseMatrix A, const TripletSpars
           int *RowIndx = A.GetRowIndx_C_Array();
           int *ColIndx = A.GetColIndx_C_Array();
 
-          TripletSparseMatrix *sp = new TripletSparseMatrix( A.rows(), B.cols(), 0 );
+          TripletSparseMatrix sp( A.rows(), B.cols(), 0 );
 
           if (A.rows() != B.rows() ||  A.cols() != B.cols())
                 sp_error_message("Inconsistent matrix dimensions in TripletSparseMatrix elemProduct()");
@@ -337,10 +354,10 @@ TripletSparseMatrix& elemProduct(const TripletSparseMatrix A, const TripletSpars
                 i = RowIndx[k];
                 j = ColIndx[k];
                 sum = a[k]*B(i,j);
-                if (sum!=0.0) sp->InsertNonZero(i, j, sum);
+                if (sum!=0.0) sp.InsertNonZero(i, j, sum);
           }
 
-          return (*sp);
+          return (sp);
 }
 
 
@@ -357,17 +374,17 @@ TripletSparseMatrix& TripletSparseMatrix::operator/= (double Arg)
    return (*this);
 }
 
-TripletSparseMatrix& TripletSparseMatrix::operator/ (double Arg) const
+TripletSparseMatrix TripletSparseMatrix::operator/ (double Arg) const
 {
-   TripletSparseMatrix* Result;
+   TripletSparseMatrix Result;
 
    if (Arg==0.0) sp_error_message("Division by zero in TripletSparseMatrix::operator/");
 
-   Result = new TripletSparseMatrix;
 
-   (*Result)=(*this);
 
-   return ( (*Result)/=Arg );
+   Result=(*this);
+
+   return ( (Result)/=Arg );
 }
 
 TripletSparseMatrix& TripletSparseMatrix::operator= (const TripletSparseMatrix& Other_matrix)
@@ -386,6 +403,12 @@ double& TripletSparseMatrix::operator() (int i,int j)
     int ii;
 
     int eflag = 0;
+    
+    if (i>=n || i<0 || j >=m || j<0 ) {
+
+         sp_error_message("Index out of range in operator TripletSparseMatrix::operator(int, int)");    
+    
+    } 
 
     for (k=0; k< nz; k++)
     {
@@ -397,20 +420,20 @@ double& TripletSparseMatrix::operator() (int i,int j)
 
     }
 
-    if( !eflag ) {
-
-    	for (k=0; k<nz; k++) {
-
-        	  if (RowIndx[k]==0 || ColIndx[k]==0) {
-           		RowIndx[k]=i;
-           		ColIndx[k]=j;
-                        ii=k;
-                        eflag=1;
-                        break;
-       		  }
-        }
-
-    }
+//    if( !eflag ) {
+//
+//    	for (k=0; k<nz; k++) {
+//
+//        	  if (RowIndx[k]==0 || ColIndx[k]==0) {
+//           		RowIndx[k]=i;
+//           		ColIndx[k]=j;
+//                        ii=k;
+//                        eflag=1;
+//                        break;
+//       		  }
+//        }
+//
+//    }
 
     if (!eflag) {
        this->InsertNonZero(i,j,0.0);
@@ -426,8 +449,8 @@ double TripletSparseMatrix::operator() (int row,int col) const
       int i;
       double retval = 0.0;
 
-      if ( (row>n) || (row<0) || (col<0) || (col>m) ) {
-          error_message("Out of range index in TripletSparseMatrix::operator()");
+      if ( (row>=n) || (row<0) || (col<0) || (col>=m) ) {
+          sp_error_message("Out of range index in TripletSparseMatrix::operator()");
       }
 
       for (i=0; i< nz; i++) {
@@ -497,7 +520,7 @@ void TripletSparseMatrix::Compress()
 
     for (i=0; i< nztemp; i++)
     {
-        if (fabs(a[i])<=(PSOPT_extras::GetEPS()) ) {
+        if (fabs(a[i])<=(1.1*PSOPT_extras::GetEPS()) ) {
              for(j=i; j<nztemp-1; j++)
 	     {
                     a[j] = a[j+1];
@@ -534,20 +557,20 @@ void TripletSparseMatrix::Compress()
 
 
 
-TripletSparseMatrix& speye(int n)
+TripletSparseMatrix speye(int n)
 {
 // Returns a sparse identity matrix
-     TripletSparseMatrix *sp = new TripletSparseMatrix;
+     TripletSparseMatrix sp;
      int i;
-     sp->resize(n, n, n);
+     sp.resize(n, n, n);
 
-     for (i=0;i<sp->GetNonZero();i++) {
-         sp->GetRowIndx_C_Array()[i]=i;
-         sp->GetColIndx_C_Array()[i]=i;
-         sp->GetPr()[i]=1.0;
+     for (i=0;i<sp.GetNonZero();i++) {
+         sp.GetRowIndx_C_Array()[i]=i;
+         sp.GetColIndx_C_Array()[i]=i;
+         sp.GetPr()[i]=1.0;
      }
 
-     return (*sp);
+     return (sp);
 }
 
 
@@ -593,10 +616,10 @@ void TripletSparseMatrix::Save(const char* fname) const
   {  sp_error_message( "Error opening file in TripletSparseMatrix::Save()"); }
 
 
-   fprintf(fp,"%li\t%li\t%li\n", n, m, nz);
+//   fprintf(fp,"%li\t%li\t%li\n", n, m, nz);
 
    for (k=0;k<nz;k++) {
-            fprintf(fp,"%li\t%li\t%e\n",  RowIndx[k], ColIndx[k], a[k] );
+            fprintf(fp,"%li\t%li\t%e\n",  RowIndx[k]+1, ColIndx[k]+1, a[k] );
    }
 
    fclose(fp);
@@ -605,17 +628,17 @@ void TripletSparseMatrix::Save(const char* fname) const
 
 
 
-TripletSparseMatrix& tra(const TripletSparseMatrix& A)
+TripletSparseMatrix tra(const TripletSparseMatrix& A)
 {
 // Returns a Sparse matrix object with the transposition of input sparse matrix A.
 
-   TripletSparseMatrix *sp = new TripletSparseMatrix(A.cols(), A.rows(), A.GetNonZero() );
+   TripletSparseMatrix sp(A.cols(), A.rows(), A.GetNonZero() );
 
-   memcpy(sp->RowIndx, A.ColIndx, A.nz*sizeof(int) );
-   memcpy(sp->ColIndx, A.RowIndx, A.nz*sizeof(int) );
-   memcpy(sp->a      , A.a,       A.nz*sizeof(double) );
+   memcpy(sp.RowIndx, A.ColIndx, A.nz*sizeof(int) );
+   memcpy(sp.ColIndx, A.RowIndx, A.nz*sizeof(int) );
+   memcpy(sp.a      , A.a,       A.nz*sizeof(double) );
 
-   return (*sp);
+   return (sp);
 
 }
 

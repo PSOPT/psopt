@@ -66,7 +66,6 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   workspace->prev_nodes   = new MatrixXd[nphases];
   workspace->Ax           = new TripletSparseMatrix;
   workspace->Gsp          = new TripletSparseMatrix;
-  workspace->As           = new TripletSparseMatrix;
   workspace->Xsnopt       = new MatrixXd;
   workspace->gsnopt       = new MatrixXd;
   workspace->Xip          = new MatrixXd;
@@ -135,11 +134,13 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   if ( algorithm.nlp_method == "SNOPT") {
   	workspace->iGfun     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->jGvar     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->iGfun1    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->jGvar1    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
+  	workspace->iGfun1    = new          int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
+  	workspace->jGvar1    = new          int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->iGfun2    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->jGvar2    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->G2        = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
+  	workspace->G3        = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
+  	workspace->G4        = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   }
   else {
   	workspace->iGfun     = NULL;
@@ -149,6 +150,8 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   	workspace->iGfun2    = NULL;
   	workspace->jGvar2    = NULL;
   	workspace->G2        = NULL;
+  	workspace->G3        = NULL;
+  	workspace->G4        = NULL;
   }
   workspace->xad       = new adouble[max_nvars];
   workspace->gad       = new adouble[max_ncons];
@@ -290,6 +293,8 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   workspace->tag_gc       = 5;
 
   workspace->user_data = problem.user_data;
+  
+  workspace->nS           = 0;
 
 }
 
@@ -313,10 +318,16 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
   (*workspace->grw->F2).resize( nlp_ncons, 1 );
   (*workspace->grw->F3).resize( nlp_ncons, 1 );
   (*workspace->grw->F4).resize( nlp_ncons, 1 );
-
-  workspace->JacCol1->resize(nlp_ncons,1);
-  workspace->JacCol2->resize(nlp_ncons,1);
-  workspace->JacCol3->resize(nlp_ncons,1);
+  if ( algorithm.nlp_method == "SNOPT") {
+    workspace->JacCol1->resize(nlp_ncons+1,1);
+    workspace->JacCol2->resize(nlp_ncons+1,1);
+    workspace->JacCol3->resize(nlp_ncons+1,1);
+  } 
+  else {
+    workspace->JacCol1->resize(nlp_ncons,1);
+    workspace->JacCol2->resize(nlp_ncons,1);
+    workspace->JacCol3->resize(nlp_ncons,1);  
+  }
   workspace->xp->resize(nvars,1);
   workspace->constraint_scaling->resize(nlp_ncons,1);
 
@@ -404,6 +415,8 @@ work_str::~work_str()
   }
 
   if (this->G2) delete [] this->G2;
+  if (this->G3) delete [] this->G3;
+  if (this->G4) delete [] this->G4;
   if (this->hess_ir) delete [] this->hess_ir;
   if (this->hess_jc) delete [] this->hess_jc;
   if (this->iArow) delete [] this->iArow;
@@ -485,7 +498,6 @@ work_str::~work_str()
   delete [] this->prev_param;
   delete [] this->prev_nodes;
   delete    this->Ax;
-  delete    this->As;
   delete    this->Gsp;
   delete    this->Xsnopt;
   delete    this->gsnopt;
