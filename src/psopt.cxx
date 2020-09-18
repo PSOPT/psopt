@@ -38,9 +38,11 @@ e-mail:    v.m.becerra@ieee.org
 
 int psopt(Sol& solution, Prob& problem, Alg& algorithm)
 {
+	
+	 unique_ptr<Workspace> workspace_up{ new Workspace{} }; 
 
     try {
-           psopt_main(solution, problem, algorithm );
+           psopt_main(solution, problem, algorithm, workspace_up );
     }
     catch (ErrorHandler handler)
     {
@@ -52,16 +54,14 @@ int psopt(Sol& solution, Prob& problem, Alg& algorithm)
 }
 
 
-void psopt_main(Sol& solution, Prob& problem, Alg& algorithm)
+void psopt_main(Sol& solution, Prob& problem, Alg& algorithm,  unique_ptr<Workspace>& workspace_up)
 {
 // PSOPT:  main algorithm
 
 int MAX_STANDARD_PS_NODES = 200;
 
 
-// unique_ptr<Workspace> workspace{ new Workspace{} }; 
-
- Workspace* workspace = new Workspace;
+Workspace* workspace = workspace_up.get();
 
 string startup_message= "\n *******************************************************************************\n * This is PSOPT, an optimal control solver based on pseudospectral and local  *\n * collocation methods, together with large scale nonlinear programming        *";
 
@@ -877,7 +877,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
   }
 
 
-  if (workspace) delete  workspace;
+//  if (workspace) delete  workspace;
   
   return;
 

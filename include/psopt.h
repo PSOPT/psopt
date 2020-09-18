@@ -986,7 +986,7 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace);
 
 void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
-void psopt_main(Sol& solution, Prob& problem, Alg& algorithm);
+void psopt_main(Sol& solution, Prob& problem, Alg& algorithm, unique_ptr<Workspace>& workspace_up);
 
 void clip_vector_given_bounds(MatrixXd& xp, MatrixXd& xlb, MatrixXd& xub);
 
