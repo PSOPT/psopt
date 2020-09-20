@@ -649,7 +649,7 @@ int main(void)
     algorithm.scaling                     	= "automatic";
     algorithm.derivatives                 	= "automatic";
     algorithm.nlp_iter_max                	= 1000;
-    algorithm.collocation_method             = "Hermite-Simpson";
+    algorithm.collocation_method             = "Chebyshev";
 //    algorithm.mesh_refinement              = "automatic";
 //    algorithm.ode_tolerance		 	         = 1.e-5;
 
@@ -714,7 +714,7 @@ int main(void)
 
     speed = sum_columns(elemProduct(v,v)).cwiseSqrt();
 
-    plot(t,altitude,problem.name, "time (s)", "position (km)");
+    plot(t,altitude,problem.name, "time (s)", "Altitude (km)");
 
 
     plot(t,speed,problem.name, "time (s)", "speed (m/s)");
@@ -722,8 +722,8 @@ int main(void)
     plot(t,u,problem.name,"time (s)", "u");
 
 
-    plot(t,altitude,problem.name, "time (s)", "position (km)", "alt",
-                                  "pdf", "launch_position.pdf");
+    plot(t,altitude,problem.name, "time (s)", "Altitude (km)", "alt",
+                                  "pdf", "launch_altitude.pdf");
 
     plot(t,speed,problem.name, "time (s)", "speed (m/s)", "speed",
                                "pdf", "launch_speed.pdf");

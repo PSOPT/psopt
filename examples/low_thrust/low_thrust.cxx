@@ -535,9 +535,9 @@ int main(void)
 
     MatrixXd param_guess = -25.0*ones(1,1);
 
-    u_guess    = load_data("U0.dat",ncontrols, nnodes );
-    x_guess    = load_data("X0.dat",nstates  , nnodes );
-    time_guess = load_data("T0.dat",1        , nnodes );
+    u_guess    = load_data("../../../examples/low_thrust/U0.dat",ncontrols, nnodes );
+    x_guess    = load_data("../../../examples/low_thrust/X0.dat",nstates  , nnodes );
+    time_guess = load_data("../../../examples/low_thrust/T0.dat",1        , nnodes );
 
     auto_phase_guess(problem, u_guess, x_guess, param_guess, time_guess);
 

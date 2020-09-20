@@ -179,7 +179,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 2;
     problem.phases(1).nevents   		= 6;
     problem.phases(1).npath         = 1;
-    problem.phases(1).nodes         << 30;
+    problem.phases(1).nodes         << 20;
 
     psopt_level2_setup(problem, algorithm);
 

@@ -147,7 +147,7 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
    int iphase = 1;
-   load_parameter_estimation_data(problem, iphase, "predator.dat");
+   load_parameter_estimation_data(problem, iphase, "../../../examples/predator/predator.dat");
 
    Print(problem.phases(1).observation_nodes, "observation nodes");
    Print(problem.phases(1).observations,"observations");
