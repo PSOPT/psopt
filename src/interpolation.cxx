@@ -281,7 +281,7 @@ void smooth_linear_interpolation(adouble* y, adouble& x, MatrixXd& Xdata, Matrix
      error_message("The legnth of vectors Xdata and Ydata must be the same in function smooth_linear_interpolation()");
   }
 
-  if( x.value() < Xdata(0) || x.value() > Xdata(length(Xdata)))
+  if( x.value() < Xdata(0) || x.value() > Xdata(length(Xdata)-1))
   {
       error_message("Extrapolation not allowed in function smooth_linear_interpolation()");
   }

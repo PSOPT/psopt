@@ -41,7 +41,7 @@ void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& 
 
   int  j, k;
   double delj;
-  MatrixXd sqreps;
+  double sqreps;
   double xs;
   long nf  = JacColumn->rows();
 
@@ -56,13 +56,13 @@ void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& 
   F1->resize(   nf, 1 );
   F2->resize(   nf, 1 );
 
-  sqreps=sqrt( PSOPT_extras::GetEPS() )*ones(nvar,1);
+  sqreps=sqrt( PSOPT_extras::GetEPS() );
   
   int tcount=0;
   
   for (int jj=0; jj<nvar; jj++){
 
-        if(  x(jj) <= (xub(jj)-sqreps(jj))||   x(jj)>=(xlb(jj)+sqreps(jj)) ) 
+        if(  x(jj) <= (xub(jj)-sqreps)||   x(jj)>=(xlb(jj)+sqreps) ) 
            tcount++; 
   }
 
@@ -73,7 +73,7 @@ void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& 
   }
 
   j = jCol;
-      delj = sqreps(0)*(1.+fabs(x(j)));
+      delj = sqreps*(1.+fabs(x(j)));
 //      delj = sqreps;
       xs   = x(j);
       if ((xs < xub(j)-delj && xs>xlb(j)+delj) || (xub(j)==xlb(j))) {
@@ -503,8 +503,9 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
   long i,j;
   int nzcount_A=0;
   int nzcount_G=0;
-  double s = 0.1*std::max(1.0, x.norm());
-  double tol  = pow( PSOPT_extras::GetEPS(), 0.4)* std::max( 1.0, x.norm() );
+//  double s = 0.1*std::max(1.0, x.norm());
+  double s = 1.0e6*sqrt(PSOPT_extras::GetEPS());
+  double tol  = 1.e-16*pow( PSOPT_extras::GetEPS(), 0.8)* std::max( 1.0, x.norm() );
 
 
 

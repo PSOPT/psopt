@@ -239,10 +239,10 @@ int main(void)
 
     problem.phases(1).nstates   = 4;
     problem.phases(1).ncontrols = 1;
-    problem.phases(1).nevents   = 7;
+    problem.phases(1).nevents   = 7;  
     problem.phases(1).npath     = 0;
 
-    problem.phases(1).nodes     = (RowVectorXi(2) << 30, 60).finished();
+    problem.phases(1).nodes     = (RowVectorXi(1) << 30).finished();
 
 
     psopt_level2_setup(problem, algorithm);
@@ -477,12 +477,12 @@ int main(void)
     x 		= solution.get_states_in_phase(1);
     u 		= solution.get_controls_in_phase(1);
     t 		= solution.get_time_in_phase(1);
-    H           = solution.get_dual_hamiltonian_in_phase(1);
+    H       = solution.get_dual_hamiltonian_in_phase(1);
 
     MatrixXd h     = x.row(0); 
     MatrixXd v     = x.row(1); 
     MatrixXd gamma = x.row(2); 
-    MatrixXd w     = x.row(4); 
+    MatrixXd w     = x.row(3); 
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Save solution data to files if desired ////////////////////////
@@ -575,23 +575,23 @@ void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta, Const
   j=NTAB;                                       // setting up for binary search
   while (j<=i+1) {
     k=(i+j)/2;                                              // integer division
-    if (h < htab(k)) {
+    if (h < htab(k-1)) {
       j=k;
     } else {
        i=k;
     }
   }
 
-  tgrad=gtab(i);                                     // i will be in 1...NTAB-1
-  tbase=ttab(i);
-  deltah=h-htab(i);
+  tgrad=gtab(i-1);                                     // i will be in 1...NTAB-1
+  tbase=ttab(i-1);
+  deltah=h-htab(i-1);
   tlocal=tbase+tgrad*deltah;
-  *theta=tlocal/ttab(1);                                    // temperature ratio
+  *theta=tlocal/ttab(0);                                    // temperature ratio
 
   if (tgrad == 0.0) {                                  //  pressure ratio
-    *delta=ptab(i)*exp(-GMR*deltah/tbase);
+    *delta=ptab(i-1)*exp(-GMR*deltah/tbase);
   } else {
-    *delta=ptab(i)*pow(tbase/tlocal, GMR/tgrad);
+    *delta=ptab(i-1)*pow(tbase/tlocal, GMR/tgrad);
   }
 
   *sigma=(*delta)/(*theta);                                           // density ratio

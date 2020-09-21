@@ -296,6 +296,7 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
+    algorithm.collocation_method          = "trapezoidal";
 //    algorithm.defect_scaling              = "jacobian-based";    
 
 ////////////////////////////////////////////////////////////////////////////
