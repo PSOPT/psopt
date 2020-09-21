@@ -1189,10 +1189,9 @@ void error_message(const char *input_text);
 void tic(void);
 double toc();
 
-// Functions to be implemented.
-void sort_vector(MatrixXd& A, RowVectorXi& sindex); // careful with passing object as reference to be modified. See documentation.
+void sort_vector(MatrixXd& A, RowVectorXi& sindex);
 void sort(MatrixXd& m);
-void rearrange_vector(MatrixXd& A, RowVectorXi& sindex); // careful with passing object as reference. See documentation.
+void rearrange_vector(MatrixXd& A, RowVectorXi& sindex);
 void Save(const MatrixXd& m, const char* filename);
 void Print(const MatrixXd& m, const char* text);
 MatrixXd linspace(double X1, double X2, long N);
@@ -1222,7 +1221,6 @@ MatrixXd log(const MatrixXd& m);
 MatrixXd log10(const MatrixXd& m);
 MatrixXd sqrt(const MatrixXd& m);
 long length(const MatrixXd& m);
-// long end(const MatrixXd& m) { return (length(m)-1); }
 double Max(const MatrixXd& m);
 double Max(const MatrixXd& m, long* i);
 double Min(const MatrixXd& m);
