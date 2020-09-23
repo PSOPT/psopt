@@ -1258,8 +1258,6 @@ using namespace Ipopt;
 
 //! TripletSparseMatrix class
 /**
-    A C++ class for sparse numerical linear algebra with interfaces to
-    a number of CXSparse and LUSOL functions
 */
 class TripletSparseMatrix {
 protected:
