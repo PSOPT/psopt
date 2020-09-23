@@ -29,6 +29,7 @@ PSOPT is an open source optimal control package written in C++ that uses direct 
 
 The implementation has the following features:
 
+- Choice between Legendre, Chebyshev, trapezoidal, or Hermite-Simpson based collocation
 - Automatic scaling
 - Automatic first and second derivatives using the ADOL-C library
 - Numerical differentiation by using sparse finite differences
