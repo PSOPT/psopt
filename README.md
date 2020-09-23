@@ -8,9 +8,9 @@ Copyright (C) 2009-2020 Victor M. Becerra
 Introduction
 ------------
 
-This is the PSOPT library, a software tool for computational optimal control
+This is the PSOPT library, a software tool for computational [optimal control](http://www.scholarpedia.org/article/Optimal_control)
 
-PSOPT is an open source optimal control package written in C++ that uses direct collocation methods. These methods solve optimal control problems by approximating the time-dependent variables using global or local polynomials. This allows to discretize the differential equations and continuous constraints over a grid of nodes, and to compute any integrals associated with the problem using well known quadrature formulas. Nonlinear programming then is used to find local optimal solutions. PSOPT is able to deal with problems with the following characteristics:
+PSOPT is an open source optimal control package written in C++ that uses direct collocation methods. These methods solve optimal control problems by approximating the time-dependent variables using global or local polynomials. This allows to discretize the differential equations and continuous constraints over a grid of nodes, and to compute any integrals associated with the problem using well known quadrature formulas. [Nonlinear programming](https://en.wikipedia.org/wiki/Nonlinear_programming) then is used to find local optimal solutions. PSOPT is able to deal with problems with the following characteristics:
 
 -  Single or multiphase problems
 -  Continuous time nonlinear dynamics
@@ -36,7 +36,7 @@ The implementation has the following features:
 - Automatic identification of the Jacobian and Hessian sparsity.
 - DAE formulation, so that differential and algebraic constraints can be implemented in the same C++ function.
 
-The PSOPT interface uses both Eigen3 (a linear algebra template library) and ADOL-C.
+The PSOPT interface uses both Eigen3 (a linear algebra template library) and ADOL-C (an automatic differentiation library).
 
 The PSOPT project webpage is <http://psopt.org>. The first release of PSOPT was published in 2009. This is release 5 of PSOPT.
 
@@ -61,18 +61,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA,
 or visit http://www.gnu.org/licenses/
 
 Author:    Professor Victor M. Becerra
+
 Address:   University of Portsmouth
+
            School of Energy and Electronic Engineering
+           
            Portsmouth PO1 3DJ
+           
            United Kingdom
+
 e-mail:    v.m.becerra@ieee.org
 
 
 Getting Started
 ---------------
 
-Please consult the detailed installation instructions in the PSOPT PDF documentation
-in the PSOPT documentation. In the following, we only summarize some main points.
+Please consult the detailed installation instructions in the [PSOPT PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf). In the following, we only summarize some main points.
 
 ### Dependencies
 
@@ -105,7 +109,7 @@ Getting Help
 * **[PSOPT Documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf)** with installation instructions, background theory, examples and much more
  * **[Issue tracking system](https://github.com/PSOPT/psopt/issues/)**: If you believe you found a **bug** in the code, please use the issue tracking system.
    Please include as much information as possible, and if possible some (ideally simple) example code so that we can reproduce the error.
- * **[Mailing list](http://groups.google.com/group/psopt-users-group)**: subscribe to get notifications about updates and to post questions and comments regarding Ipopt
+ * **[Mailing list](http://groups.google.com/group/psopt-users-group)**: subscribe to receive notifications about updates and to post questions and comments about PSOPT.
 
 
 Please Cite Us
