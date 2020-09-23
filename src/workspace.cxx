@@ -376,6 +376,11 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
 }
 
 
+work_str::work_str(Prob& problem, Alg& algorithm, Sol& solution)
+{
+    initialize_workspace_vars(problem, algorithm, solution, this);
+}
+
 
 work_str::~work_str()
 {

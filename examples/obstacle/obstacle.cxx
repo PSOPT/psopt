@@ -158,7 +158,7 @@ int main(void)
     problem.phases(1).ncontrols 						= 1;
     problem.phases(1).nevents   						= 4;
     problem.phases(1).npath                     = 2;
-    problem.phases(1).nodes                     = (RowVectorXi(3) << 60, 80, 100).finished();
+    problem.phases(1).nodes                     = (RowVectorXi(2) << 60, 80).finished();
 
     psopt_level2_setup(problem, algorithm);
 
@@ -250,9 +250,8 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-    algorithm.collocation_method          = "Hermite-Simpson";
-//    algorithm.mesh_refinement             = "automatic";
-    algorithm.ode_tolerance               = 1.0e-2;
+    algorithm.collocation_method          = "Legendre";
+
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   /////////////////
