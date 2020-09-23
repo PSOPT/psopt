@@ -503,7 +503,7 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
   long i,j;
   int nzcount_A=0;
   int nzcount_G=0;
-//  double s = 0.1*std::max(1.0, x.norm());
+
   double s = 1.0e6*sqrt(PSOPT_extras::GetEPS());
   double tol  = 1.e-16*pow( PSOPT_extras::GetEPS(), 0.8)* std::max( 1.0, x.norm() );
 
@@ -539,7 +539,7 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
 
       for(i=0; i<nf; i++) { // EIGEN_UPDATE: index i shifted by -1
             if ( ( fabs(JacCol1(i,0)) +  fabs(JacCol2(i,0)) + fabs(JacCol3(i,0)) )>=tol ) {
-              if ( fabs(JacCol1(i,0)-JacCol2(i,0))<=tol && fabs(JacCol1(i,0)-JacCol3(i,0))<=tol ) {
+         	if ( fabs(JacCol1(i,0)-JacCol2(i,0))==0.0 && fabs(JacCol1(i,0)-JacCol3(i,0))==0.0 ) {
                         // Constant Jacobian element detected
               		      iArow[nzcount_A]=i;
               		      jAcol[nzcount_A]=j;
@@ -580,7 +580,7 @@ void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), M
   int n     =  length(x);
   int neF   =  nf;  
   
-  double s = 0.01*std::max(1.0, x.norm());
+  double s = 1.0e6*sqrt(PSOPT_extras::GetEPS());
 
 
   MatrixXd& xp      = *workspace->xp;
