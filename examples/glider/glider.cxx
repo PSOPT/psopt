@@ -176,7 +176,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 1;
     problem.phases(1).nevents   		= 7;
     problem.phases(1).npath     		= 0;
-    problem.phases(1).nodes         = (RowVectorXi(4) << 30, 40, 50, 80).finished();            // = "[30 40 50 80]";
+    problem.phases(1).nodes         = (RowVectorXi(5) << 30, 40, 50, 120, 150).finished();       
 
 
     psopt_level2_setup(problem, algorithm);
@@ -252,6 +252,7 @@ int main(void)
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
     algorithm.nlp_method                  = "IPOPT";
+    algorithm.collocation_method          = "trapezoidal";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
 

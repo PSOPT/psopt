@@ -516,6 +516,7 @@ typedef struct {
 
 class work_str {
 public:
+   work_str(Prob& problem, Alg& algorithm, Sol& solution);
    ~work_str();
    long unsigned int nphases;
 

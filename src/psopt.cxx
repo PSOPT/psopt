@@ -39,7 +39,11 @@ e-mail:    v.m.becerra@ieee.org
 int psopt(Sol& solution, Prob& problem, Alg& algorithm)
 {
 	
-	 unique_ptr<Workspace> workspace_up{ new Workspace{} }; 
+	 unique_ptr<Workspace> workspace_up{ new Workspace{problem, algorithm,solution} }; 
+
+
+    initialize_solution(solution,problem,algorithm, workspace_up.get() );
+
 
     try {
            psopt_main(solution, problem, algorithm, workspace_up );
@@ -114,10 +118,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
   validate_user_input(problem,algorithm, workspace);
 
   PSOPT_extras::SetPrintLevel( algorithm.print_level );
-
-  initialize_solution(solution,problem,algorithm, workspace);
-
-  initialize_workspace_vars(problem,algorithm,solution, workspace);
 
 
   if (problem.integrand_cost == NULL )  {
