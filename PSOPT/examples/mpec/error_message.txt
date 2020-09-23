@@ -1,7 +1,0 @@
-
-**** Run time error
-**** To trace this error, set up your debugger to break at
-**** function 'error_message', then do a backtrace.
-**** A diagnostic message is given below:
-**** ====> Infeasible control variable bounds supplied by the user in phase 0 <====
-

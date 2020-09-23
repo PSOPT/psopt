@@ -7,13 +7,12 @@
 
 using namespace std;
 
-void usrFG( int    *Status, int *n,    double x[],
-	    int    *needF,  int *lenF,  double F[],
-	    int    *needG,  int *lenG,  double G[],
-	    char      *cu,  int *lencu,
-	    int    iu[],    int *leniu,
-	    double ru[],    int *lenru )
-{
+void usrFG(int    *Status, int *n,    double x[],
+	   int    *needF,  int *lenF,  double F[],
+	   int    *needG,  int *lenG,  double G[],
+	   char      *cu,  int *lencu,
+	   int    iu[],    int *leniu,
+	   double ru[],    int *lenru) {
   int neG = 0;
   int jx1, jx2, ju, ode1, ode2, ObjRow;
   double alpha = 0.0, tf = 1.0;
@@ -37,11 +36,11 @@ void usrFG( int    *Status, int *n,    double x[],
 
       // subject to ode1 {i in 0..(nh-1]}
       F[ode1+i] = x[jx1+i+1] - x[jx1+i]
-	- 0.5*h*(  x[ju+i]  *(10.0*x[jx2+i]   - x[jx1+i])
+	- 0.5*h*( x[ju+i]  *(10.0*x[jx2+i]   - x[jx1+i])
 		    + x[ju+i+1]*(10.0*x[jx2+i+1] - x[jx1+i+1]));
       // subject to ode2 {i in 0..[nh-1]}
       F[ode2+i] = x[jx2+i+1] - x[jx2+i]
-	- 0.5*h*( x[ju+i]  *(x[jx1+i]   - 10.0*x[jx2+i])
+	- 0.5*h*(x[ju+i]  *(x[jx1+i]   - 10.0*x[jx2+i])
 		   - (1.0-x[ju+i])  *x[jx2+i]
 		   +x[ju+i+1]*(x[jx1+i+1] - 10.0*x[jx2+i+1])
 		   - (1.0-x[ju+i+1])*x[jx2+i+1]);
@@ -105,8 +104,7 @@ void usrFG( int    *Status, int *n,    double x[],
 }
 
 
-int main( int argc, char **argv)
-{
+int main(int argc, char **argv) {
   snoptProblemA catmixa;
 
   int Cold  = 0;
@@ -140,8 +138,9 @@ int main( int argc, char **argv)
   int *iGfun = new int[lenG];
   int *jGvar = new int[lenG];
 
-  int neA = 0, neG = 0;
+  int nS = 0, nInf = 0, neA = 0, neG = 0;
   int jx1, jx2, ju, ode1, ode2, Obj;
+  double sInf;
 
   double inf = 1.0e20;
 
@@ -268,25 +267,19 @@ int main( int argc, char **argv)
   Flow[ObjRow] = -inf;
   Fupp[ObjRow] =  inf;
 
+  catmixa.initialize     ("", 1);  // no print file, summary on
+  catmixa.setProbName    ("catmix");
 
-  catmixa.setProbName    ( "catmix" );
+  catmixa.setPrintFile   ("catmix.out");  // ok now add a print file
+  catmixa.setIntParameter("Verify level ", 3);
 
-  catmixa.setProblemSize( n, nF );
-  catmixa.setUserFun    ( usrFG );
-  catmixa.setX          ( x, xlow, xupp, xmul, xstate );
-  catmixa.setF          ( F, Flow, Fupp, Fmul, Fstate );
-
-  catmixa.setObjective  ( ObjRow, ObjAdd );
-
-  // neA and neG must be set here
-  catmixa.setA           ( lenA, neA, iAfun, jAvar, A );
-  catmixa.setG           ( lenG, neG, iGfun, jGvar );
-
-  catmixa.setPrintFile   ( "catmix.out" );
-//  catmixa.setSpecsFile   ( "catmix.spc" );
-
-  catmixa.setIntParameter( "Verify level ", 3 );
-  catmixa.solve          ( Cold );
+  catmixa.solve          (Cold, nF, n, ObjAdd, ObjRow, usrFG,
+			  iAfun, jAvar, A, neA,
+			  iGfun, jGvar, neG,
+			  xlow, xupp, Flow, Fupp,
+			  x, xstate, xmul,
+			  F, Fstate, Fmul,
+			  nS, nInf, sInf);
 
   delete []iAfun;  delete []jAvar;  delete []A;
   delete []iGfun;  delete []jGvar;

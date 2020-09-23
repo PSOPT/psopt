@@ -58,19 +58,18 @@ int main( int argc , char* argv[] )
   int    nnJac  =  2;
   int    iObj   =  2;
   double ObjAdd =  0;
-  double objective;
+
+  int    hs[5], locJ[3], indJ[5];
+  double bl[5], bu[5], x[5], pi[3], rc[5], valJ[5];
+
+  int    nS, nInf;
+  double objective, sInf;
 
   // snInit must be called first.
   //   9, 6 are print and summary unit numbers (for Fortran).
   //   6 == standard out
-  snInit ( &toy, "ToyB", "ToyB.out", 9, 6 );
+  snInit( &toy, "ToyB", "ToyB.out", 1 );
 
-  // Set the problem size and other data.
-  // This will allocate arrays inside snProblem struct.
-  setProblemSize ( &toy, m, n, ne, nnCon, nnJac, nnObj );
-  setObjective   ( &toy, iObj, ObjAdd );
-  setFuncon      ( &toy, (snConB) toycon );
-  setFunobj      ( &toy, (snObjB) toyobj );
 
   // User workspace allocated and set.
   //   May be accesed in the user-defined function toyusrfun.
@@ -81,61 +80,68 @@ int main( int argc , char* argv[] )
 
 
   // Set bounds
-  toy.bl[0] =     0;  toy.bu[0] = 1e20;
-  toy.bl[1] = -1e20;  toy.bu[1] = 1e20;
-  toy.bl[2] = -1e20;  toy.bu[2] =    4;
-  toy.bl[3] = -1e20;  toy.bu[3] =    5;
-  toy.bl[4] = -1e20;  toy.bu[4] = 1e20;
+  bl[0] =     0;  bu[0] = 1e20;
+  bl[1] = -1e20;  bu[1] = 1e20;
+  bl[2] = -1e20;  bu[2] =    4;
+  bl[3] = -1e20;  bu[3] =    5;
+  bl[4] = -1e20;  bu[4] = 1e20;
 
 
   // Initialize states, x and multipliers
   for ( i = 0; i < n+m; i++ ) {
-    toy.hs[i] = 0;
-    toy.x[i]  = 0;
-    toy.rc[i] = 0;
+    hs[i] = 0;
+    x[i]  = 0;
+    rc[i] = 0;
   }
 
   for ( i = 0; i < m; i++ ) {
-    toy.pi[i] = 0;
+    pi[i] = 0;
   }
 
-  toy.x[0] = 1.0;
-  toy.x[1] = 1.0;
+  x[0] = 1.0;
+  x[1] = 1.0;
 
   // Set up the Jacobian matrix
   // Column 1
-  toy.locJ[0] = 0;
+  locJ[0] = 0;
 
-  toy.indJ[0] = 0;
-  toy.valJ[0] = 0;
+  indJ[0] = 0;
+  valJ[0] = 0;
 
-  toy.indJ[1] = 1;
-  toy.valJ[1] = 0;
+  indJ[1] = 1;
+  valJ[1] = 0;
 
   // Column 2
-  toy.locJ[1] = 2;
+  locJ[1] = 2;
 
-  toy.indJ[2] = 0;
-  toy.valJ[2] = 0;
+  indJ[2] = 0;
+  valJ[2] = 0;
 
-  toy.indJ[3] = 1;
-  toy.valJ[3] = 0;
+  indJ[3] = 1;
+  valJ[3] = 0;
 
-  toy.indJ[4] = 2;
-  toy.valJ[4] = 1;
+  indJ[4] = 2;
+  valJ[4] = 1;
 
-  toy.locJ[2] = 5;
+  locJ[2] = 5;
 
   // Read options, set options.
-  info = setSpecsfile   ( &toy, "sntoy.spc" );
+  info = setSpecsfile( &toy, "sntoy.spc" );
   setIntParameter( &toy, "Verify level", 3 );
   setIntParameter( &toy, "Derivative option", 3 );
 
-  info = solveB( &toy, Cold, &objective );
+  nS   = 0;
+
+  info = snoptB( &toy, Cold, m, n, ne, nnCon, nnObj, nnJac,
+		 iObj, ObjAdd,
+		 toycon, toyobj,
+		 valJ, indJ, locJ,
+		 bl, bu, hs, x, pi, rc,
+		 &objective, &nS, &nInf, &sInf );
 
   // Deallocate space.
-  free ( toy.iu );
-  deleteSNOPT ( &toy );
+  free( toy.iu );
+  deleteSNOPT( &toy );
 
   return 0;
 }

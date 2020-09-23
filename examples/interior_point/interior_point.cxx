@@ -1,0 +1,299 @@
+//////////////////////////////////////////////////////////////////////////
+//////////////////         interior_point.cxx    /////////////////////////
+//////////////////////////////////////////////////////////////////////////
+////////////////           PSOPT  Example             ////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+//////// Title: Problem with interior point constraint    ////////////////
+//////// Last modified: 05 January 2009                   ////////////////
+//////// Reference:     Miser Manual                      ////////////////
+//////// (See PSOPT handbook for full reference)          ////////////////
+//////////////////////////////////////////////////////////////////////////
+////////     Copyright (c) Victor M. Becerra, 2009        ////////////////
+//////////////////////////////////////////////////////////////////////////
+//////// This is part of the PSOPT software library, which ///////////////
+//////// is distributed under the terms of the GNU Lesser  ///////////////
+//////// General Public License (LGPL)                     ///////////////
+//////////////////////////////////////////////////////////////////////////
+
+#include "psopt.h"
+
+//////////////////////////////////////////////////////////////////////////
+///////////////////  Define the end point (Mayer) cost function //////////
+//////////////////////////////////////////////////////////////////////////
+
+adouble endpoint_cost(adouble* initial_states, adouble* final_states,
+                      adouble* parameters,adouble& t0, adouble& tf,
+                      adouble* xad, int iphase, Workspace* workspace)
+{
+   return 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+///////////////////  Define the integrand (Lagrange) cost function  ////////
+//////////////////////////////////////////////////////////////////////////
+
+adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
+                     adouble& time, adouble* xad, int iphase, Workspace* workspace)
+{
+     adouble x = states[0];
+     adouble u = controls[0];
+
+     adouble L =   x*x + u*u;
+
+     return L;
+}
+
+
+//////////////////////////////////////////////////////////////////////////
+///////////////////  Define the DAE's ////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+void dae(adouble* derivatives, adouble* path, adouble* states,
+         adouble* controls, adouble* parameters, adouble& time,
+         adouble* xad, int iphase, Workspace* workspace)
+{
+    adouble x = states[0];
+    adouble u = controls[0];
+
+    adouble xdot =  u;
+
+    derivatives[0] = xdot;
+}
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Define the events function ////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+void events(adouble* e, adouble* initial_states, adouble* final_states,
+            adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
+            int iphase, Workspace* workspace)
+{
+    adouble xi = initial_states[0];
+    adouble xf = final_states[0];
+    adouble x075;
+
+    if (iphase == 1) {
+       xi = initial_states[0];
+       x075 = final_states[0];
+       e[0] = xi;
+       e[1] = x075;
+    }
+
+
+    if (iphase == 2) {
+       xf = final_states[0];
+       e[0] = xf;
+    }
+
+}
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////  Define the phase linkages function ///////////////////
+///////////////////////////////////////////////////////////////////////////
+
+void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
+{
+   int index = 0;
+
+   auto_link(linkages, &index, xad, 1, 2, workspace );
+
+}
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Define the main routine ///////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+int main(void)
+{
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Declare key structures ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    Alg  algorithm;
+    Sol  solution;
+    Prob problem;
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Register problem name  ////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    problem.name        	= "Problem with interior point constraint";
+    problem.outfilename         = "ipc.txt";
+
+////////////////////////////////////////////////////////////////////////////
+////////////  Define problem level constants & do level 1 setup ////////////
+////////////////////////////////////////////////////////////////////////////
+
+    problem.nphases   			= 2;
+    problem.nlinkages                   = 2;
+
+    psopt_level1_setup(problem);
+
+
+/////////////////////////////////////////////////////////////////////////////
+/////////   Define phase related information &  do level 2 setup ////////////
+/////////////////////////////////////////////////////////////////////////////
+
+    problem.phases(1).nstates   		= 1;
+    problem.phases(1).ncontrols 		= 1;
+    problem.phases(1).nevents   		= 2;
+    problem.phases(1).npath     		= 0;
+    problem.phases(1).nodes         << 20;
+
+    problem.phases(2).nstates   		= 1;
+    problem.phases(2).ncontrols 		= 1;
+    problem.phases(2).nevents   		= 1;
+    problem.phases(2).npath     		= 0;
+    problem.phases(2).nodes         << 20;
+
+    psopt_level2_setup(problem, algorithm);
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Enter problem bounds information //////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    double xi   = 1;
+    double x075 = 0.9;
+    double xf   = 0.75;
+
+    /////////////  Phase 1 bounds ///////////////////
+
+    problem.phases(1).bounds.lower.states(0) = -1.0;
+    problem.phases(1).bounds.upper.states(0) =  1.0;
+
+
+    problem.phases(1).bounds.lower.controls(0) = -1.0;
+    problem.phases(1).bounds.upper.controls(0) =  1.0;
+
+
+    problem.phases(1).bounds.lower.events(0) = xi;
+    problem.phases(1).bounds.upper.events(0) = xi;
+
+    problem.phases(1).bounds.lower.events(1) = x075;
+    problem.phases(1).bounds.upper.events(1) = x075;
+
+    problem.phases(1).bounds.lower.StartTime    = 0.0;
+    problem.phases(1).bounds.upper.StartTime    = 0.0;
+
+    problem.phases(1).bounds.lower.EndTime      = 0.75;
+    problem.phases(1).bounds.upper.EndTime      = 0.75;
+
+    /////////////// Phase 2 bounds /////////////////
+
+    problem.phases(2).bounds.lower.states(0) = -1.0;
+    problem.phases(2).bounds.upper.states(0) =  1.0;
+
+    problem.phases(2).bounds.lower.controls(0) = -1.0;
+    problem.phases(2).bounds.upper.controls(0) =  1.0;
+
+
+    problem.phases(2).bounds.lower.events(0) = xf;
+    problem.phases(2).bounds.upper.events(0) = xf;
+
+
+    problem.phases(2).bounds.lower.StartTime    = 0.75;
+    problem.phases(2).bounds.upper.StartTime    = 0.75;
+
+    problem.phases(2).bounds.lower.EndTime      = 1.0;
+    problem.phases(2).bounds.upper.EndTime      = 1.0;
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Register problem functions  ///////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+
+    problem.integrand_cost 	= &integrand_cost;
+    problem.endpoint_cost 	= &endpoint_cost;
+    problem.dae 		= &dae;
+    problem.events 		= &events;
+    problem.linkages		= &linkages;
+
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Define & register initial guess ///////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+
+    /////////////// Phase 1 initial guess /////////////////////////
+
+    problem.phases(1).guess.controls       =  zeros(1,20);
+    problem.phases(1).guess.states         =  linspace(xi,x075, 20);
+    problem.phases(1).guess.time           =  linspace(0.0, 0.75 , 20);
+
+    /////////////// Phase 2 initial guess //////////////////////////
+
+
+    problem.phases(2).guess.controls       =  zeros(1,20);
+    problem.phases(2).guess.states         =  linspace(x075,xf, 20);
+    problem.phases(2).guess.time           =  linspace(0.75, 1.0 , 20);
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Enter algorithm options  //////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    algorithm.nlp_method                  = "IPOPT";
+    algorithm.scaling                     = "automatic";
+    algorithm.derivatives                 = "automatic";
+    algorithm.nlp_iter_max                = 1000;
+    algorithm.nlp_tolerance               = 1.e-6;
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////  Now call PSOPT to solve the problem   //////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    psopt(solution, problem, algorithm);
+
+////////////////////////////////////////////////////////////////////////////
+///////////  Extract relevant variables from solution structure   //////////
+////////////////////////////////////////////////////////////////////////////
+
+    MatrixXd x, u, t1, t2, t;
+    
+    t1 = solution.get_time_in_phase(1);
+    t2 = solution.get_time_in_phase(2);
+    int nn = length(t1)+ length(t2);
+    
+    x.resize(1,nn);
+    u.resize(1,nn);
+    t.resize(1,nn);
+
+
+    x << solution.get_states_in_phase(1)   , solution.get_states_in_phase(2);
+    u << solution.get_controls_in_phase(1) , solution.get_controls_in_phase(2);
+    t << t1, t2;
+
+
+////////////////////////////////////////////////////////////////////////////
+///////////  Save solution data to files if desired ////////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    Save(x,"x.dat");
+    Save(u,"u.dat");
+    Save(t,"t.dat");
+
+////////////////////////////////////////////////////////////////////////////
+///////////  Plot some results if desired (requires gnuplot) ///////////////
+////////////////////////////////////////////////////////////////////////////
+
+    plot(t,x,problem.name + ": state", "time (s)", "state", "x");
+
+    plot(t,u,problem.name + ": control", "time (s)", "control", "u");
+
+    plot(t,x,problem.name + ": state", "time (s)", "state", "x",
+                            "pdf", "ipc_state.pdf");
+
+    plot(t,u,problem.name + ": control", "time (s)", "control", "u", "pdf",
+                            "ipc_control.pdf");
+
+}
+
+////////////////////////////////////////////////////////////////////////////
+///////////////////////      END OF FILE     ///////////////////////////////
+////////////////////////////////////////////////////////////////////////////
