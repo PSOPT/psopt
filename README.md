@@ -97,7 +97,7 @@ Moreover, PSOPT is built using [CMake](https://cmake.org/download/). CMake is an
 
 ### Build
 
-After installation of dependencies, a typical PSOPT build and installation on a Unix-like operating system follows these steps (please see the PDF documentation for futher details):
+After installation of dependencies, a typical PSOPT build and installation on a Unix-like operating system follows these steps (please see the [PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for futher details):
 
 1. Download and extract the installation archive from the GItHub project page. Alternatively, the source code can be cloned using git, by issuing the following command: 
          `git clone https://github.com/PSOPT/psopt.git`
