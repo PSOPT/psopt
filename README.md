@@ -101,9 +101,9 @@ After installation of dependencies, a typical PSOPT build and installation on a 
 
 1. Download and extract the installation archive from the GItHub project page. Alternatively, the source code can be cloned using git, by issuing the following command: 
          `git clone https://github.com/PSOPT/psopt.git`
-2.  `mkdir build; cd build`
+2. `cd psopt; mkdir build; cd build`
 3. `cmake -DBUILD_EXAMPLES=ON .. $ make`
-4.  `sudo make install`
+4. `sudo make install`
 
 Please note that the minimum version of CMake that is required by the build process is 3.12. Earlier versions of CMake are not suitable.
 
