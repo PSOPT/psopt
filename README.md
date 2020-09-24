@@ -105,6 +105,7 @@ After installation of dependencies, a typical PSOPT build and installation on a 
 3. `cmake -DBUILD_EXAMPLES=ON .. $ make`
 4.  `sudo make install`
 
+Please note that the minimum version of CMake that is required by the build process is 3.12. Earlier versions of CMake are not suitable.
 
 Getting Help
 ------------
