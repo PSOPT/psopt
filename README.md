@@ -107,7 +107,7 @@ After installation of dependencies, a typical PSOPT build and installation on a 
 
 Please note that the minimum version of CMake that is required by the build process is 3.12. Earlier versions of CMake are not suitable.
 
-If you use Ubuntu 20.04, all dependencies plus GNUplot can be installed as follows:
+If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies plus GNUplot can simply be installed as follows:
 
 1. `sudo apt-get install libboost-dev`
 2. `sudo apt-get install libboost-system-dev`
