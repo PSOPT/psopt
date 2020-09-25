@@ -109,11 +109,11 @@ Please note that the minimum version of CMake that is required by the build proc
 
 If you use Ubuntu 20.04, all dependencies plus GNUplot can be installed as follows:
 
-`sudo apt-get install libboost-dev`
-`sudo apt-get install libboost-system-dev`
-`sudo apt-get install coinor-libipopt-dev`
-`sudo apt-get install libadolc-dev`
-`sudo apt-get install gnuplot`
+1. `sudo apt-get install libboost-dev`
+2. `sudo apt-get install libboost-system-dev`
+3. `sudo apt-get install coinor-libipopt-dev`
+4. `sudo apt-get install libadolc-dev`
+5. `sudo apt-get install gnuplot`
 
 Getting Help
 ------------
