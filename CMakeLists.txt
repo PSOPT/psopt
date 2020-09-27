@@ -3,6 +3,7 @@ project(PSOPT VERSION 5.0.0 LANGUAGES CXX)
 
 option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
 option(WITH_SNOPT_INTERFACE "Build interface for the SNOPT optimizer." OFF)
+option(BUILD_TESTS "Build tests for PSOPT." OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Eigen3 REQUIRED NO_MODULE)
@@ -37,7 +38,9 @@ if(${BUILD_EXAMPLES})
 	add_subdirectory(examples/)
 endif()
 
-# set(CMAKE_CXX_FLAGS "-g")
+if(${BUILD_TESTS})
+	add_subdirectory(tests/)
+endif()
 
 
 # INSTALLING and PAKAGING
