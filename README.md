@@ -102,7 +102,7 @@ After installation of dependencies, a typical PSOPT build and installation on a 
 1. Download and extract the installation archive from the GItHub project page. Alternatively, the source code can be cloned using git, by issuing the following command: 
          `git clone https://github.com/PSOPT/psopt.git`
 2. `cd psopt; mkdir build; cd build`
-3. `cmake -DBUILD_EXAMPLES=ON ..
+3. `cmake -DBUILD_EXAMPLES=ON ..`
 4. `make`
 4. `sudo make install`
 
