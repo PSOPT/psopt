@@ -115,6 +115,7 @@ If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies 
 3. `sudo apt-get install coinor-libipopt-dev`
 4. `sudo apt-get install libadolc-dev`
 5. `sudo apt-get install gnuplot`
+6. `sudo apt-get install libeigen3-dev`
 
 Getting Help
 ------------
