@@ -76,7 +76,7 @@ Address:
 e-mail:    v.m.becerra@ieee.org
 
 
-Getting Started
+Getting started
 ---------------
 
 Please consult the detailed installation instructions in the [PSOPT PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf). In the following, we only summarize some main points.
@@ -116,8 +116,9 @@ If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies 
 4. `sudo apt-get install libadolc-dev`
 5. `sudo apt-get install gnuplot`
 6. `sudo apt-get install libeigen3-dev`
+7. `sudo apt-get install libblas-dev`
 
-Getting Help
+Getting help
 ------------
 
 * **[PSOPT Documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf)** with installation instructions, background theory, examples and much more
@@ -126,12 +127,23 @@ Getting Help
  * **[Mailing list](http://groups.google.com/group/psopt-users-group)**: subscribe to receive notifications about updates and to post questions and comments about PSOPT.
 
 
-Please Cite Us
---------------
+Please acknowlddge this work
+----------------------------
 
 This software is provided for free in the hope that it may be useful to others, and we would very much like to hear about your experience with it. If you find PSOPT helpful for your work or research, please emai the author at v.m.becerra@ieee.org  to incorporate a feature on the PSOPT web page.
 
 Given that a great deal of time and effort has gone into PSOPT's development, **please cite the following publication if you are using PSOPT for your own research**:
 
 * Becerra, V.M. (2010). [**Solving complex optimal control problems at no cost with PSOPT**](https://ieeexplore.ieee.org/document/5612676). Proc. IEEE Multi-conference on Systems and Control, Yokohama, Japan, September 7-10, 2010, pp. 1391-1396.
+
+[**BibTex entry:]
+
+@INPROCEEDINGS{5612676,  
+author={V. M. {Becerra}},  
+booktitle={2010 IEEE International Symposium on Computer-Aided Control System Design},   
+title={Solving complex optimal control problems at no cost with PSOPT},   
+year={2010},    
+pages={1391-1396},  
+doi={10.1109/CACSD.2010.5612676}}
+
 
