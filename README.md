@@ -136,10 +136,10 @@ Given that a great deal of time and effort has gone into PSOPT's development, **
 
 * Becerra, V.M. (2010). [**Solving complex optimal control problems at no cost with PSOPT**](https://ieeexplore.ieee.org/document/5612676). Proc. IEEE Multi-conference on Systems and Control, Yokohama, Japan, September 7-10, 2010, pp. 1391-1396.
 
-[**BibTex entry:]
+[**BibTex entry:**]
 
 @INPROCEEDINGS{5612676,  
-author={V. M. {Becerra}},  
+author={V. M. Becerra},  
 booktitle={2010 IEEE International Symposium on Computer-Aided Control System Design},   
 title={Solving complex optimal control problems at no cost with PSOPT},   
 year={2010},    
