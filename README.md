@@ -117,6 +117,7 @@ If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies 
 5. `sudo apt-get install gnuplot`
 6. `sudo apt-get install libeigen3-dev`
 7. `sudo apt-get install libblas-dev`
+7. `sudo apt-get install liblapack-dev`
 
 Getting help
 ------------
