@@ -21,6 +21,8 @@ Address:   University of Portsmouth
            United Kingdom
 e-mail:    v.m.becerra@ieee.org
 **********************************************************************************************/
+#ifndef PSOPT_H
+#define PSOPT_H
 
 #include <Eigen/Dense>
 
@@ -1554,4 +1556,4 @@ double enorm(const TripletSparseMatrix& A);
 TripletSparseMatrix Abs(const TripletSparseMatrix& A);
 TripletSparseMatrix operator *(double Arg, const TripletSparseMatrix& A);
 
-
+#endif
