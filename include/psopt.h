@@ -796,9 +796,10 @@ void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspac
 void get_scaled_decision_variables_and_bounds(MatrixXd& x, MatrixXd& xlb, MatrixXd& xub, Workspace* workspace);
 
 
-
-#define INF  (1.0e19)
-#define inf  (1.0e19)
+namespace PSOPT {
+    constexpr double INF = 1.0e19;
+    constexpr double inf = 1.0e19;
+}
 
 static const double pi = 3.141592653589793;
 

@@ -82,13 +82,13 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 	   {
 		zlower = (problem.phase[i].bounds.lower.controls)(ii);
 		zupper = (problem.phase[i].bounds.upper.controls)(ii);
-		if ( zlower!=-INF && zupper!= INF ) {
+		if ( zlower!=-PSOPT::INF && zupper!= PSOPT::INF ) {
 		   if (zlower !=0.0 || zupper!=0.0)
 		      control_scaling(ii) = 1.0/std::max( fabs(zlower), fabs(zupper));
 		}
-		else if (zlower==-INF && zupper!=INF && zupper!=0.0)
+		else if (zlower==-PSOPT::INF && zupper!=PSOPT::INF && zupper!=0.0)
 		      control_scaling(ii) = 1.0/fabs(zupper);
-		else if (zupper==INF && zlower!=-INF && zlower!=0.0)
+		else if (zupper==PSOPT::INF && zlower!=-PSOPT::INF && zlower!=0.0)
 		       control_scaling(ii) = 1.0/fabs(zlower);
 	   }
 	}
@@ -107,13 +107,13 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 		{
 			zlower = (problem.phase[i].bounds.lower.states)(ii);
 			zupper = (problem.phase[i].bounds.upper.states)(ii);
-			if ( zlower!=-INF && zupper!= INF ) {
+			if ( zlower!=-PSOPT::INF && zupper!= PSOPT::INF ) {
 			    if (zlower !=0.0 || zupper!=0.0)
 			        state_scaling(ii) = 1.0/std::max( fabs(zlower), fabs(zupper));
 			}
-			else if (zlower==-INF && zupper!=INF && zupper!=0.0)
+			else if (zlower==-PSOPT::INF && zupper!=PSOPT::INF && zupper!=0.0)
 			     state_scaling(ii) = 1.0/fabs(zupper);
-			else if (zupper==INF && zlower!=-INF && zlower!=0.0)
+			else if (zupper==PSOPT::INF && zlower!=-PSOPT::INF && zlower!=0.0)
 			     state_scaling(ii) = 1.0/fabs(zlower);
 		}
 	}
@@ -130,13 +130,13 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 		{
 			zlower = (problem.phase[i].bounds.lower.parameters)(ii);
 			zupper = (problem.phase[i].bounds.upper.parameters)(ii);
-			if ( zlower!=-INF && zupper!= INF ) {
+			if ( zlower!=-PSOPT::INF && zupper!= PSOPT::INF ) {
 				if (zlower !=0.0 || zupper!=0.0)
 				param_scaling(ii) = 1.0/std::max( fabs(zlower), fabs(zupper));
 			}
-			else if (zlower==-INF && zupper!=INF && zupper!=0.0)
+			else if (zlower==-PSOPT::INF && zupper!=PSOPT::INF && zupper!=0.0)
 				param_scaling(ii) = 1.0/fabs(zupper);
-			else if (zupper==INF && zlower!=-INF && zlower!=0.0)
+			else if (zupper==PSOPT::INF && zlower!=-PSOPT::INF && zlower!=0.0)
 				param_scaling(ii) = 1.0/fabs(zlower);
 
 		}
@@ -151,13 +151,13 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 
 		zlower = (problem.phase[i].bounds.lower.StartTime);
 		zupper = (problem.phase[i].bounds.upper.EndTime);
-		if ( zlower!=-INF && zupper!= INF ) {
+		if ( zlower!=-PSOPT::INF && zupper!= PSOPT::INF ) {
 				if (zlower !=0.0 || zupper!=0.0)
 				problem.phase[i].scale.time = 1.0/std::max( fabs(zlower), fabs(zupper));
 		}
-		else if (zlower==-INF && zupper!=INF && zupper!=0.0)
+		else if (zlower==-PSOPT::INF && zupper!=PSOPT::INF && zupper!=0.0)
 				problem.phase[i].scale.time = 1.0/fabs(zupper);
-		else if (zupper==INF && zlower!=-INF && zlower!=0.0)
+		else if (zupper==PSOPT::INF && zlower!=-PSOPT::INF && zlower!=0.0)
 				problem.phase[i].scale.time = 1.0/fabs(zlower);
 
 	}
@@ -210,7 +210,7 @@ void determine_objective_scaling(MatrixXd& X,Sol& solution, Prob& problem, Alg& 
 
         nrm_g = (GF).norm();
 
-   if ( nrm_g != 0.0 && nrm_g < INF)
+   if ( nrm_g != 0.0 && nrm_g < PSOPT::INF)
 	      problem.scale.objective = 1/nrm_g;
 	else
 	      problem.scale.objective = 1.0;
