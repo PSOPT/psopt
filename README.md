@@ -39,7 +39,7 @@ The implementation has the following features:
 
 The PSOPT interface uses both Eigen3 (a linear algebra template library) and ADOL-C (an automatic differentiation library).
 
-The PSOPT project webpage is <http://psopt.org>. The first release of PSOPT was published in 2009. This is release 5 of PSOPT.
+The first release of PSOPT was published in 2009. This is release 5 of PSOPT.
 
 
 License
