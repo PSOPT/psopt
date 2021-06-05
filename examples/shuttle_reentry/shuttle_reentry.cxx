@@ -18,6 +18,9 @@
 
 #include "psopt.h"
 
+using namespace PSOPT;
+
+
 //////////////////////////////////////////////////////////////////////////
 //////////////////    Define some local macros      //////////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -259,7 +262,7 @@ int main(void)
     double betaU  = DEG2RAD( 1.0)  ;
 
     double qU     = 70.0;
-    double qL     = -PSOPT::INF;
+    double qL     = -inf;
 
 
     double h0      =  260000.0     ;

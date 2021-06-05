@@ -18,6 +18,7 @@
 
 #include "psopt.h"
 
+using namespace PSOPT;
 
 
 // Set CASE below to 1: 6000 s maneouvre, or to 2: 7200 maneouvre

@@ -18,6 +18,7 @@
 
 #include "psopt.h"
 
+using namespace PSOPT;
   
 
 
@@ -154,14 +155,14 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    problem.phases(1).bounds.lower.states(0) = -PSOPT::inf;
-    problem.phases(1).bounds.lower.states(1) = -PSOPT::inf;
-    problem.phases(1).bounds.lower.states(2) = -PSOPT::inf;
+    problem.phases(1).bounds.lower.states(0) = -inf;
+    problem.phases(1).bounds.lower.states(1) = -inf;
+    problem.phases(1).bounds.lower.states(2) = -inf;
 
 
-    problem.phases(1).bounds.upper.states(0) = PSOPT::inf;
-    problem.phases(1).bounds.upper.states(1) = PSOPT::inf;
-    problem.phases(1).bounds.upper.states(2) = PSOPT::inf;
+    problem.phases(1).bounds.upper.states(0) = inf;
+    problem.phases(1).bounds.upper.states(1) = inf;
+    problem.phases(1).bounds.upper.states(2) = inf;
 
     problem.phases(1).bounds.lower.controls(0) =  0.0;
     problem.phases(1).bounds.upper.controls(0) =  10.0;

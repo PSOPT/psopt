@@ -32,6 +32,7 @@ e-mail:    v.m.becerra@ieee.org
 
 using namespace std;
 using namespace Eigen;
+using namespace PSOPT;
 
 adouble dot(adouble* x, adouble* y, int n)
 {

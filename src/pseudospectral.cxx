@@ -33,6 +33,8 @@ e-mail:    v.m.becerra@ieee.org
 
 using namespace Eigen;
 
+using namespace PSOPT;
+
 double delta(long l, long N)
 {
       double delta_l;

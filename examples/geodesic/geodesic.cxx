@@ -18,6 +18,8 @@
 
 #include "psopt.h"
 
+using namespace PSOPT;
+
 typedef struct {
    double V;           
    double a;

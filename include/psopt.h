@@ -26,6 +26,15 @@ e-mail:    v.m.becerra@ieee.org
 
 #include <Eigen/Dense>
 
+#include <limits>
+using std::numeric_limits;
+
+namespace PSOPT {
+    constexpr double inf        =   std::numeric_limits<double>::infinity();
+    constexpr double pi         =   4.0*atan(1.0);
+}
+
+
 // using namespace Eigen;
 using Eigen::MatrixXd;
 using Eigen::RowVectorXi;
@@ -47,19 +56,6 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 
 #define CINDEX( i )    ((i)-1)
 
-//#ifndef MAX
-//#define std::max(a, b) ( (a)>(b)?  (a):(b) )
-//#endif
-//#ifndef MIN
-//#define std::min(a, b) ( (a)<(b)?  (a):(b) )
-//#endif
-
-#define MC_EPSILON 2.221e-16
-
-
-//#undef max
-//#undef min
-//#undef abs
 
 
 #define FREE_ARG char*
@@ -89,6 +85,7 @@ using namespace std;
 
 #include <string>
 using std::string;
+
 
 class TripletSparseMatrix;
 
@@ -796,13 +793,6 @@ void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspac
 void get_scaled_decision_variables_and_bounds(MatrixXd& x, MatrixXd& xlb, MatrixXd& xub, Workspace* workspace);
 
 
-namespace PSOPT {
-    constexpr double INF = 1.0e19;
-    constexpr double inf = 1.0e19;
-}
-
-static const double pi = 3.141592653589793;
-
 int NLP_interface(
          Alg& algorithm,
          MatrixXd* x0,
@@ -1167,7 +1157,7 @@ public:
 
    static void SetStartTicks(clock_t st) { start_clock=st; }
 
-   static double GetEPS() { return MC_EPSILON ; }
+   static double GetEPS() { return std::numeric_limits<double>::epsilon();  }
 
    static void SetPrintLevel( int plevel );
 
