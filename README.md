@@ -2,7 +2,7 @@
 PSOPT
 =====
 
-Copyright (C) 2009-2020 Victor M. Becerra
+Copyright (C) 2009-2021 Victor M. Becerra
 
 
 Introduction
