@@ -41,7 +41,7 @@ The PSOPT interface uses both Eigen3 (a linear algebra template library) and ADO
 
 The first release of PSOPT was published in 2009. This is release 5 of PSOPT. 
 
-The PSOPT website is [http://psopt.net](http://psopt.net).
+The PSOPT website is [http://www.psopt.net](http://www.psopt.net).
 
 
 License
