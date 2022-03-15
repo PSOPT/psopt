@@ -297,6 +297,10 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
 			}
 
 
+			///Bug fix
+			free(jac_rind); free(jac_cind); free(jac_values);
+
+
      }
      else {
 

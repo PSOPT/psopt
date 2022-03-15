@@ -181,6 +181,9 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 		workspace->iGrow[i] = jac_rind[i];
 	}
 
+  ///Bug fix
+  free(jac_rind); free(jac_cind); free(jac_values);
+
         sprintf(workspace->text,"\nJacobian sparsity detected using ADOLC:");
         psopt_print(workspace,workspace->text);
 
@@ -521,6 +524,11 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
 
                 values[i] = jac_values[i];
 	    }
+
+      ///Bug fix
+      free(jac_rind); free(jac_cind); free(jac_values);
+
+
 
     }
 
