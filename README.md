@@ -121,6 +121,23 @@ If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies 
 7. `sudo apt-get install libblas-dev`
 7. `sudo apt-get install liblapack-dev`
 
+
+If you use [OpenSuse Leap 15.4](https://get.opensuse.org/leap/15.4/), all dependencies plus GNUplot can be installed as follows:
+
+1. `sudo zypper install git`
+2. `sudo zypper install gnuplot`
+3. `sudo zypper install libboost_system1_66_0-devel`
+4. `sudo zypper install eigen3-devel`
+5. `sudo zypper install ColPack-devel`
+6. `sudo zypper install adolc-devel`
+7. `sudo zypper install blas-devel`
+8. `sudo zypper install lapack-devel`
+9. `sudo zypper ar -f https://download.opensuse.org/repositories/science/15.4/ science`
+10. `sudo zypper install Ipopt-devel`
+11. `sudo zypper install cmake`
+12. `sudo zypper install gcc-c++`
+
+
 Getting help
 ------------
 
