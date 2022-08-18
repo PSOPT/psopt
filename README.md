@@ -119,7 +119,7 @@ If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies 
 12. `sudo apt-get install libblas-dev`
 13. `sudo apt-get install liblapack-dev`
 
-If you use [Debien 11.4.0](https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/)), all dependencies plus GNUplot can simply be installed as follows:
+If you use [Debien 11.4.0](https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/), all dependencies plus GNUplot can simply be installed as follows:
 
 
 1. `su`
