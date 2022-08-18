@@ -119,7 +119,7 @@ If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies 
 12. `sudo apt-get install libblas-dev`
 13. `sudo apt-get install liblapack-dev`
 
-'''Please note''' that a runtime error related to the `adolc` library is currently reported when building PSOPT under Ubuntu 22.04. It is suggested to avoid this version of Ubuntu for the moment. This is probably due to a misconfiguration of the `libadolc-dev` package in Ubuntu 22.04.
+**Please note** that a runtime error related to the `adolc` library is currently reported when building PSOPT under Ubuntu 22.04. It is suggested to avoid this version of Ubuntu for the moment. This is probably due to a misconfiguration of the `libadolc-dev` package in Ubuntu 22.04.
 
 If you use [Debian 11.4.0](https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/), all dependencies plus GNUplot can simply be installed as follows:
 
