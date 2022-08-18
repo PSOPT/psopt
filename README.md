@@ -99,27 +99,24 @@ Moreover, PSOPT is built using [CMake](https://cmake.org/download/). CMake is an
 
 ### Build
 
-After installation of dependencies, a typical PSOPT build and installation on a Unix-like operating system follows these steps (please see the [PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for futher details):
-
-1. Download and extract the installation archive from the GItHub project page. Alternatively, the source code can be cloned using git, by issuing the following command: 
-         `git clone https://github.com/PSOPT/psopt.git`
-2. `cd psopt; mkdir build; cd build`
-3. `cmake -DBUILD_EXAMPLES=ON ..`
-4. `make`
-4. `sudo make install`
 
 Please note that the minimum version of CMake that is required by the build process is 3.12. Earlier versions of CMake are not suitable.
 
 If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies plus GNUplot can simply be installed as follows:
 
-1. `sudo apt-get install libboost-dev`
-2. `sudo apt-get install libboost-system-dev`
-3. `sudo apt-get install coinor-libipopt-dev`
-4. `sudo apt-get install libadolc-dev`
-5. `sudo apt-get install gnuplot`
-6. `sudo apt-get install libeigen3-dev`
-7. `sudo apt-get install libblas-dev`
-7. `sudo apt-get install liblapack-dev`
+
+1. `sudo apt-get install git`
+2. `sudo apt-get install cmake`
+3. `sudo apt-get install gfortran`
+4. `sudo apt-get install g++`
+5. `sudo apt-get install libboost-dev`
+6. `sudo apt-get install libboost-system-dev`
+7. `sudo apt-get install coinor-libipopt-dev`
+8. `sudo apt-get install libadolc-dev`
+9. `sudo apt-get install gnuplot`
+10. `sudo apt-get install libeigen3-dev`
+11. `sudo apt-get install libblas-dev`
+12. `sudo apt-get install liblapack-dev`
 
 
 If you use [OpenSuse Leap 15.4](https://get.opensuse.org/leap/15.4/), all dependencies plus GNUplot can be installed as follows:
@@ -136,6 +133,20 @@ If you use [OpenSuse Leap 15.4](https://get.opensuse.org/leap/15.4/), all depend
 10. `sudo zypper install Ipopt-devel`
 11. `sudo zypper install cmake`
 12. `sudo zypper install gcc-c++`
+
+
+After installation of dependencies, a typical PSOPT build and installation on a suitable version of Linux (such as Ubuntu 20.04 or OpenSUSE Leap 15.4), or other Unix-like operating system, follows the following steps (please see the [PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for futher details):
+
+1. `git clone https://github.com/PSOPT/psopt.git`
+2. `cd psopt; mkdir build; cd build`
+3. `cmake -DBUILD_EXAMPLES=ON ..`
+4. `make`
+5. `sudo make install`
+
+Note that the executable code for the examples is built inside the folder `psopt/build/examples`. For example, you can run the 'launch' example, by entering the following commands, after the installation.
+
+1. `cd ./examples/launch`
+2. `./launch`
 
 
 Getting help
