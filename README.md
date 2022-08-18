@@ -112,11 +112,30 @@ If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies 
 5. `sudo apt-get install libboost-dev`
 6. `sudo apt-get install libboost-system-dev`
 7. `sudo apt-get install coinor-libipopt-dev`
-8. `sudo apt-get install libadolc-dev`
-9. `sudo apt-get install gnuplot`
-10. `sudo apt-get install libeigen3-dev`
-11. `sudo apt-get install libblas-dev`
-12. `sudo apt-get install liblapack-dev`
+8. `sudo apt-get install libcolpack-dev`
+9. `sudo apt-get install libadolc-dev`
+10. `sudo apt-get install gnuplot`
+11. `sudo apt-get install libeigen3-dev`
+12. `sudo apt-get install libblas-dev`
+13. `sudo apt-get install liblapack-dev`
+
+If you use [Debien 11.4.0](https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/)), all dependencies plus GNUplot can simply be installed as follows:
+
+
+1. `su`
+2. `apt-get install git`
+3. `apt-get install cmake`
+4. `apt-get install gfortran`
+5. `apt-get install g++`
+6. `apt-get install libboost-dev`
+7. `apt-get install libboost-system-dev`
+8. `apt-get install coinor-libipopt-dev`
+9. `apt-get install libcolpack-dev`
+10. `apt-get install libadolc-dev`
+11. `apt-get install gnuplot`
+12. `apt-get install libeigen3-dev`
+13. `apt-get install libblas-dev`
+14. `apt-get install liblapack-dev`
 
 
 If you use [OpenSuse Leap 15.4](https://get.opensuse.org/leap/15.4/), all dependencies plus GNUplot can be installed as follows:
@@ -135,7 +154,7 @@ If you use [OpenSuse Leap 15.4](https://get.opensuse.org/leap/15.4/), all depend
 12. `sudo zypper install gcc-c++`
 
 
-After installation of dependencies, a typical PSOPT build and installation on a suitable version of Linux (such as Ubuntu 20.04 or OpenSUSE Leap 15.4), or other Unix-like operating system, follows the following steps (please see the [PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for futher details):
+After installation of dependencies, a typical PSOPT build and installation on a suitable version of Linux (such as Ubuntu 20.04, Debian 11.4.0 or OpenSUSE Leap 15.4), or other Unix-like operating system, follows the following steps (please see the [PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for futher details):
 
 1. `git clone https://github.com/PSOPT/psopt.git`
 2. `cd psopt; mkdir build; cd build`
