@@ -208,12 +208,12 @@ Given that a great deal of time and effort has gone into PSOPT's development, **
 
 **BibTex entry:**
 
-@INPROCEEDINGS{5612676,  
-author={V. M. Becerra},  
-booktitle={2010 IEEE International Symposium on Computer-Aided Control System Design},   
-title={Solving complex optimal control problems at no cost with PSOPT},   
-year={2010},    
-pages={1391-1396},  
-doi={10.1109/CACSD.2010.5612676}}
+            @INPROCEEDINGS{5612676,  
+            author={V. M. Becerra},  
+            booktitle={2010 IEEE International Symposium on Computer-Aided Control System Design},          
+            title={Solving complex optimal control problems at no cost with PSOPT},   
+            year={2010},    
+            pages={1391-1396},  
+            doi={10.1109/CACSD.2010.5612676}}
 
 
