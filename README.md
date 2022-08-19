@@ -156,7 +156,7 @@ If you use [OpenSuse Leap 15.4](https://get.opensuse.org/leap/15.4/), all depend
 12. `sudo zypper install gcc-c++`
 
 
-If you use [Arch Linux 2022.08.05](`https://archlinux.org/download`) or [Manjaro 21.3.7](`https://manjaro.org/download`), all dependencies plus GNUplot can be installed as follows:
+If you use [Arch Linux 2022.08.05](https://archlinux.org/download) or [Manjaro 21.3.7](https://manjaro.org/download), all dependencies plus GNUplot can be installed as follows:
 
 1. `sudo pacman -Syu`
 2. `sudo pacman -S git base-devel`
@@ -167,10 +167,10 @@ If you use [Arch Linux 2022.08.05](`https://archlinux.org/download`) or [Manjaro
 7. `git clone https://aur.archlinux.org/yay.git`
 8. `cd yay`
 9. `makepkg -si;cd ..`
-11.`yay -S openblas-lapack`
-12.`yay -S coin-or-ipopt`
-13.`yay -S colpack`
-14.`yay -S adol-c`
+10. `yay -S openblas-lapack`
+11. `yay -S coin-or-ipopt`
+12. `yay -S colpack`
+13. `yay -S adol-c`
 
 
 After installation of dependencies, a typical PSOPT build and installation on a suitable version of Linux (such as Ubuntu 20.04, Debian 11.4.0 or OpenSUSE Leap 15.4), or other Unix-like operating system, follows the following steps (please see the [PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for futher details):
