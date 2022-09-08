@@ -56,14 +56,14 @@ You should create a file called adolc.pc with the following content and copy it 
 
 **/usr/lib/pkgconfig/adolc.pc**
 
-prefix=/usr/
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-Name: adolc
-Version: 2.6.3
-Description: Algorithmic Differentiation Library for C/C++
-Requires:
-Libs: -L${libdir} -ladolc -Wl,-rpath,${libdir}
--L${libdir} -lColPack -Wl,-rpath,${libdir}
-Cflags: -I${includedir}
+            prefix=/usr/
+            exec_prefix=${prefix}
+            libdir=${exec_prefix}/lib
+            includedir=${prefix}/include
+            Name: adolc
+            Version: 2.6.3
+            Description: Algorithmic Differentiation Library for C/C++
+            Requires:
+            Libs: -L${libdir} -ladolc -Wl,-rpath,${libdir}
+            -L${libdir} -lColPack -Wl,-rpath,${libdir}
+            Cflags: -I${includedir}
