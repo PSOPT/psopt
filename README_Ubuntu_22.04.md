@@ -51,3 +51,19 @@ Then, you can run the following commands to download, compile and install PSOPT.
 3. `cmake -DBUILD_EXAMPLES=ON ..`
 4. `make`
 5. `sudo make install`
+
+You should create a file called adolc.pc with the following content and copy it to the folder /usr/lib/pkgconfig
+
+**/usr/lib/pkgconfig/adolc.pc**
+
+prefix=/usr/
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+Name: adolc
+Version: 2.6.3
+Description: Algorithmic Differentiation Library for C/C++
+Requires:
+Libs: -L${libdir} -ladolc -Wl,-rpath,${libdir}
+-L${libdir} -lColPack -Wl,-rpath,${libdir}
+Cflags: -I${includedir}
