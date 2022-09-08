@@ -2,7 +2,7 @@ PSOPT installation on Ubuntu 22.04
 =====
 
 
-With Ubuntu 22.04, a runtime error related to the `adolc` library is currently reported when executing PSOPT code. Here are the specific instructions that are needed to install PSOPT under Ubuntu 22.04.
+With [Ubuntu 22.04](https://releases.ubuntu.com/22.04/), a runtime error related to the `adolc` library is currently reported when executing PSOPT code if you follow the instructions that work for Ubuntu 20.04. Here are the specific instructions that are needed to install PSOPT under Ubuntu 22.04.
 
 
 First, you should run the following from a terminal window to install some packages that are required:
