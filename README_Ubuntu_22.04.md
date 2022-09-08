@@ -44,13 +44,6 @@ Second, you should run the following commands to download, compile and install a
 21. `sudo cp -r $HOME/adolc_base/include/* /usr/include/`
 22. `cd $HOME`
 
-Then, you can run the following commands to download, compile and install PSOPT.
-
-1. `git clone https://github.com/PSOPT/psopt.git`
-2. `cd psopt; mkdir build; cd build`
-3. `cmake -DBUILD_EXAMPLES=ON ..`
-4. `make`
-5. `sudo make install`
 
 You should create a file called `adolc.pc` with the following content and copy it to the folder `/usr/lib/pkgconfig`
 
@@ -84,3 +77,11 @@ You should also create a file called `ColPack.pc` with the following content and
             Libs: -L${libdir} -lColPack -Wl,-rpath,${libdir}
             -L${libdir} -Wl,-rpath,${libdir}
             Cflags: -I${includedir}
+
+Then, you can run the following commands to download, compile and install PSOPT.
+
+1. `git clone https://github.com/PSOPT/psopt.git`
+2. `cd psopt; mkdir build; cd build`
+3. `cmake -DBUILD_EXAMPLES=ON ..`
+4. `make`
+5. `sudo make install`
