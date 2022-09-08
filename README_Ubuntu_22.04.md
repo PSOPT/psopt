@@ -52,9 +52,9 @@ Then, you can run the following commands to download, compile and install PSOPT.
 4. `make`
 5. `sudo make install`
 
-You should create a file called adolc.pc with the following content and copy it to the folder /usr/lib/pkgconfig
+You should create a file called `adolc.pc` with the following content and copy it to the folder `/usr/lib/pkgconfig`
 
-**/usr/lib/pkgconfig/adolc.pc**
+**adolc.pc**
 
             prefix=/usr/
             exec_prefix=${prefix}
@@ -66,4 +66,21 @@ You should create a file called adolc.pc with the following content and copy it 
             Requires:
             Libs: -L${libdir} -ladolc -Wl,-rpath,${libdir}
             -L${libdir} -lColPack -Wl,-rpath,${libdir}
+            Cflags: -I${includedir}
+            
+            
+You should also create a file called `ColPack.pc` with the following content and copy it to the folder `/usr/lib/pkgconfig`
+
+**ColPack.pc**
+
+            prefix=/usr
+            exec_prefix=${prefix}
+            libdir=${exec_prefix}/lib
+            includedir=${prefix}/include/ColPack
+            Name: ColPack
+            Version: 1.0.10
+            Description: Graph Coloring Library
+            Requires:
+            Libs: -L${libdir} -lColPack -Wl,-rpath,${libdir}
+            -L${libdir} -Wl,-rpath,${libdir}
             Cflags: -I${includedir}
