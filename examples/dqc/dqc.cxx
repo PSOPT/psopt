@@ -1,10 +1,10 @@
 //////////////////////////////////////////////////////////////////////////
-////////////////               dqr.cxx               /////////////////////
+////////////////               dqc.cxx               /////////////////////
 //////////////////////////////////////////////////////////////////////////
 ////////////////           PSOPT  Example            /////////////////////
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
-//////// Title:         Double-Integrator Quadratic Oscillator (DQR)  ////
+//////// Title:         Double-Integrator Quadratic Control (DQC)  ////
 //////// Last modified: 05 May 2023                       ////////////////
 //////// Reference:     Ross (2015)                       ////////////////
 //////// (See PSOPT handbook for full reference)          ////////////////
@@ -282,16 +282,16 @@ int main(void)
     plot(t,H,problem.name+": Hamiltonian", "time (s)", "Hamiltonian","H");
 
     plot(t,x,problem.name+": states", "time (s)", "states","x v",
-                             "pdf", "dqr_states.pdf");
+                             "pdf", "dqc_states.pdf");
 
     plot(t,u,problem.name+": controls","time (s)", "controls", "u",
-                             "pdf", "dqr_controls.pdf");
+                             "pdf", "dqc_controls.pdf");
 
     plot(t,lambda,problem.name+": lambda", "time (s)", "lambda","lambda_x lambda_v",
-         "pdf", "dqr_lambda.pdf");
+         "pdf", "dqc_lambda.pdf");
 
     plot(t,H,problem.name+": Hamiltonian","time (s)", "Hamiltonian", "H",
-         "pdf", "dqr_H.pdf");
+         "pdf", "dqc_H.pdf");
 }
 
 ////////////////////////////////////////////////////////////////////////////
