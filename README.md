@@ -166,12 +166,10 @@ If you use [Arch Linux 2022.08.05](https://archlinux.org/download) or [Manjaro 2
 6. `sudo pacman -S boost`
 7. `sudo pacman -S blas`
 8. `sudo pacman -S lapack`
-9. `git clone https://aur.archlinux.org/yay.git`
-10. `cd yay`
-11. `makepkg -si;cd ..`
-12. `yay -S coin-or-ipopt`
-13. `yay -S colpack`
-14. `yay -S adol-c`
+9. `sudo pacman -S yay`
+10. `yay -S coin-or-ipopt`
+11. `yay -S colpack`
+12. `yay -S adol-c`
 
 
 After installation of dependencies, a typical PSOPT build and installation on a suitable version of Linux (such as Ubuntu 20.04, Debian 11.4.0 or OpenSUSE Leap 15.4, Arch Linux 2022.08.05 or Manjaro 21.3.7), or other Unix-like operating system, follows the steps given below (please see the [PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for futher details):
