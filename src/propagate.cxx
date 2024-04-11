@@ -135,7 +135,7 @@ void rk4_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* st
 
 	int i, k;
 
-	for(i=0;i<nparam;i++)  param[i-1] = parameters(i); // EIGEN_UPDATE
+	for(i=0;i<nparam;i++)  param[i] = parameters(i); // EIGEN_UPDATE
 
 
    state_trajectory.col(0)= initial_state;
