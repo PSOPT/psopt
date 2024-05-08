@@ -68,7 +68,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
     if (iphase < 4)
       retval = 0.0;
 
-    if (iphase== 4)
+    if (iphase == 4)
       retval = -mass_tf;
 
     return retval;

@@ -1,0 +1,22 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build with Make",
+            "type": "shell",
+            "command": "make debug",
+            "args": [],
+            "options": {
+                "cwd": "${workspaceFolder}/build/"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated"
+            }
+        }
+    ]
+}
