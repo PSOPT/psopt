@@ -243,8 +243,8 @@ int main(void)
     problem.phases(2).ncontrols 		= 2;
     problem.phases(2).nevents   		= 2;
 
-    problem.phases(1).nodes      << 400; 
-    problem.phases(2).nodes      << 400; 
+    problem.phases(1).nodes      << 80; 
+    problem.phases(2).nodes      << 80; 
     
 
     psopt_level2_setup(problem, algorithm);
@@ -268,7 +268,7 @@ int main(void)
     CONSTANTS.J2 = 0.00108263;
     CONSTANTS.r0 = 6378 *1000;
     CONSTANTS.S_ref = 19.86;
-    CONSTANTS.rho0 = 3;
+    CONSTANTS.rho0 = 1.2092;
     CONSTANTS.Omega = 7.29211585e-5; // Earth rotation rate (rad/s);
     CONSTANTS.h_0 = 0;
     CONSTANTS.Scale_Height = 8.5*1000;
@@ -319,7 +319,7 @@ int main(void)
     double theta_0 = 4.2368;
     double phi_0   = -0.8145;
     double v_0     = 11055;
-    double gamma_0 = -0.097;// -0.1031;
+    double gamma_0 = -0.1031;
     double azim_0  = 0;
     double p0_0    = CONSTANTS.rho0;
     problem.phases(iphase).bounds.lower.events << r_0, theta_0, phi_0, v_0, gamma_0, azim_0, p0_0;  
