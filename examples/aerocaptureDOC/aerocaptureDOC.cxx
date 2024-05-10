@@ -327,15 +327,15 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
 
    Constants_& CONSTANTS = *( (Constants_ *) workspace->problem->user_data );
     adouble fval;
-     adouble r_exit = final_states[0];
+    adouble r_exit = final_states[0];
          adouble v_exit_x = final_states[3]*sin(final_states[4]);
-         adouble v_exit_y = final_states[3]*cos(final_states[4])*cos(final_states[5]);
-         adouble v_exit_z = final_states[3]*cos(final_states[4])*sin(final_states[5]);
+         adouble v_exit_y = final_states[3]*cos(final_states[4])*cos(M_PI/2-final_states[5])+final_states[0]*CONSTANTS.Omega*cos(final_states[2]);
+         adouble v_exit_z = final_states[3]*cos(final_states[4])*sin(M_PI/2-final_states[5]);
          adouble v_exit = sqrt(v_exit_x*v_exit_x + v_exit_y*v_exit_y+v_exit_z*v_exit_z);
          adouble gamma_exit_d_1 = final_states[3]*cos(final_states[4]);
-         adouble gamma_exit_d_2 = 2*CONSTANTS.Omega*final_states[0]*final_states[3]*cos(final_states[4])*cos(final_states[5])*cos(final_states[2]);
+         adouble gamma_exit_d_2 = 2*CONSTANTS.Omega*final_states[0]*final_states[3]*cos(final_states[4])*cos(M_PI/2-final_states[5])*cos(final_states[2]);
          adouble gamma_exit_d_3 = CONSTANTS.Omega*final_states[0]*cos(final_states[2]);
-         adouble gamma_exit = atan(final_states[3]*final_states[4]/(sqrt(gamma_exit_d_1*gamma_exit_d_1+gamma_exit_d_2+gamma_exit_d_3*gamma_exit_d_3)));
+         adouble gamma_exit = atan(final_states[3]*sin(final_states[4])/(sqrt(gamma_exit_d_1*gamma_exit_d_1+gamma_exit_d_2+gamma_exit_d_3*gamma_exit_d_3)));
     
 
        
@@ -579,13 +579,13 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
    if (iphase==2) {
          adouble r_exit = final_states[0];
          adouble v_exit_x = final_states[3]*sin(final_states[4]);
-         adouble v_exit_y = final_states[3]*cos(final_states[4])*cos(final_states[5]);
-         adouble v_exit_z = final_states[3]*cos(final_states[4])*sin(final_states[5]);
+         adouble v_exit_y = final_states[3]*cos(final_states[4])*cos(M_PI/2-final_states[5])+final_states[0]*CONSTANTS.Omega*cos(final_states[2]);
+         adouble v_exit_z = final_states[3]*cos(final_states[4])*sin(M_PI/2-final_states[5]);
          adouble v_exit = sqrt(v_exit_x*v_exit_x + v_exit_y*v_exit_y+v_exit_z*v_exit_z);
          adouble gamma_exit_d_1 = final_states[3]*cos(final_states[4]);
-         adouble gamma_exit_d_2 = 2*CONSTANTS.Omega*final_states[0]*final_states[3]*cos(final_states[4])*cos(final_states[5])*cos(final_states[2]);
+         adouble gamma_exit_d_2 = 2*CONSTANTS.Omega*final_states[0]*final_states[3]*cos(final_states[4])*cos(M_PI/2-final_states[5])*cos(final_states[2]);
          adouble gamma_exit_d_3 = CONSTANTS.Omega*final_states[0]*cos(final_states[2]);
-         adouble gamma_exit = atan(final_states[3]*final_states[4]/(sqrt(gamma_exit_d_1*gamma_exit_d_1+gamma_exit_d_2+gamma_exit_d_3*gamma_exit_d_3)));
+         adouble gamma_exit = atan(final_states[3]*sin(final_states[4])/(sqrt(gamma_exit_d_1*gamma_exit_d_1+gamma_exit_d_2+gamma_exit_d_3*gamma_exit_d_3)));
     
         
          e[0] = final_states[0];
@@ -673,8 +673,8 @@ int main(void)
     problem.phases(2).ncontrols 		= 4;
     problem.phases(2).nevents   		= 14;
 
-    problem.phases(1).nodes      << 80; 
-    problem.phases(2).nodes      << 80; 
+    problem.phases(1).nodes      << 400; 
+    problem.phases(2).nodes      << 400; 
     
 
     psopt_level2_setup(problem, algorithm);
@@ -800,8 +800,8 @@ int main(void)
     iphase =  2;
 
     double r_f = 121900 + 6378 *1000 ;
-    double ra_f_min = CONSTANTS.target_ap-5;
-    double ra_f_max = CONSTANTS.target_ap+5;
+    double ra_f_min = CONSTANTS.target_ap-500;
+    double ra_f_max = CONSTANTS.target_ap+500;
 
     bank_min  = CONSTANTS.bank_min;
     bank_max  = CONSTANTS.bank_max;
@@ -1097,9 +1097,9 @@ int main(void)
 // ///////////  Save solution data to files if desired ////////////////////////
 // ////////////////////////////////////////////////////////////////////////////
 
-    Save(x, "x.dat");
-    Save(u,"u.dat");
-    Save(t,"t.dat");
+    Save(x, "x_dens.dat");
+    Save(u,"u_dens.dat");
+    Save(t,"t_dens.dat");
 
 // ////////////////////////////////////////////////////////////////////////////
 // ///////////  Plot some results if desired (requires gnuplot) ///////////////
