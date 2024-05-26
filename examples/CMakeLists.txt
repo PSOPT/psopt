@@ -2,6 +2,7 @@ cmake_minimum_required (VERSION 3.10)
 project(PSOPT_EXAMPLES LANGUAGES CXX)
 
 add_subdirectory(aerocaptureDOC/)
+add_subdirectory(aerocaptureDOC_Large/)
 add_subdirectory(aerocaptureNoDOC/)
 
 # add_subdirectory(alpine/)

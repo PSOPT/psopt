@@ -280,7 +280,7 @@ void rhs(const vector<double>& y, vector<double>& dydt, const double t, Constant
                 s71, s72, s73, s74; 
 
     // Perform matrix multiplication
-    aDot_matrix1 = a_matrix * s_matrix;
+    aDot_matrix1 =   s_matrix * a_matrix;
     
     dydt[ 0 ] = rdot;
     dydt[ 1 ] = thetadot;
@@ -673,8 +673,8 @@ int main(void)
     problem.phases(2).ncontrols 		= 4;
     problem.phases(2).nevents   		= 14;
 
-    problem.phases(1).nodes      << 400; 
-    problem.phases(2).nodes      << 400; 
+    problem.phases(1).nodes      << 250; 
+    problem.phases(2).nodes      << 250; 
     
 
     psopt_level2_setup(problem, algorithm);
