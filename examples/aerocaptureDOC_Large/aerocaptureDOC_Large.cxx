@@ -80,8 +80,8 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
 adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
                      adouble& time, adouble* xad, int iphase, Workspace* workspace)
 {
-    double q = 1e-3;
-    double r = 1e2;
+    double q = 1e-4;
+    double r = 1;
     adouble runCost =q*( states[13]*states[13]+states[20]*states[20]) + r *(controls[1]*controls[1] + controls[2]*controls[2] +controls[3]*controls[3]+controls[4]*controls[4]+controls[5]*controls[5]+controls[6]*controls[6]+controls[7]*controls[7]);
     return  runCost;
 }
@@ -334,8 +334,8 @@ int main(void)
     problem.phases(2).ncontrols 		= 8;
     problem.phases(2).nevents   		= 16;
 
-    problem.phases(1).nodes      << 50; 
-    problem.phases(2).nodes      << 50; 
+    problem.phases(1).nodes      << 150; 
+    problem.phases(2).nodes      << 150; 
     
 
     psopt_level2_setup(problem, algorithm);
@@ -398,51 +398,51 @@ int main(void)
 
     double bank_min  = 15*M_PI/180;
     double bank_max  = 165*M_PI/180;
-    double k1_min   =-1e-5;
-    double k1_max   = 1e-5; 
-    double k2_min   =-1e-5;
-    double k2_max   = 1e-5; 
-    double k3_min   =-1e-5;
-    double k3_max   = 1e-5; 
-    double k4_min   =-1e-5;
-    double k4_max   = 1e-5; 
-    double k5_min   =-1e-5;
-    double k5_max   = 1e-5; 
-    double k6_min   =-1e-5;
-    double k6_max   = 1e-5; 
-    double k7_min   =-1e-5;
-    double k7_max   = 1e-5; 
-
-
-    double a41_min  =10*-1.01528000000000;
-    double a42_min  =10*-0.431156000000000;
-    double a43_min  =10*-101.275000000000;
-    double a44_min  =10*-13.0960000000000;
-    double a45_min  =10*-920965;
-    double a46_min  =10*-5049.03000000000;
-    double a47_min  =10*-10161.9000000000;
-    double a51_min  =10*-4.40308000000000e-05;
-    double a52_min  =10*-3.73145000000000e-05;
-    double a53_min  =10*-0.00251662000000000;
-    double a54_min  =10*-0.000372154000000000;
-    double a55_min  =10*-32.9471000000000;
-    double a56_min  =10*-0.318531000000000;
-    double a57_min  =10*-0.517590000000000;
+    double k1_min   =-1*1e-5;
+    double k1_max   = 1*1e-5; 
+    double k2_min   =-1*1e-5;
+    double k2_max   = 1*1e-5; 
+    double k3_min   =-1*1e-5;
+    double k3_max   = 1*1e-5; 
+    double k4_min   =-1*1e-5;
+    double k4_max   = 1*1e-5; 
+    double k5_min   =-1*1e-5;
+    double k5_max   = 1*1e-5; 
+    double k6_min   =-1*1e-5;
+    double k6_max   = 1*1e-5; 
+    double k7_min   =-1*1e-5;
+    double k7_max   = 1*1e-5; 
     
-    double a41_max  =10*1.01528000000000;
-    double a42_max  =10*0.431156000000000;
-    double a43_max  =10*101.275000000000;
-    double a44_max  =10*13.0960000000000;
-    double a45_max  =10*920965;
-    double a46_max  =10*5049.03000000000;
-    double a47_max  =10*10161.9000000000;
-    double a51_max  =10*4.40308000000000e-05;
-    double a52_max  =10*3.73145000000000e-05;
-    double a53_max  =10*0.00251662000000000;
-    double a54_max  =10*0.000372154000000000;
-    double a55_max  =10*32.9471000000000;
-    double a56_max  =10*0.318531000000000;
-    double a57_max  =10*0.517590000000000;
+    double mult = 4;
+    double a41_min  =mult*-1.01528000000000;
+    double a42_min  =mult*-0.431156000000000;
+    double a43_min  =mult*-101.275000000000;
+    double a44_min  =mult*-13.0960000000000;
+    double a45_min  =mult*-920965;
+    double a46_min  =mult*-5049.03000000000;
+    double a47_min  =mult*-10161.9000000000;
+    double a51_min  =mult*-4.40308000000000e-05;
+    double a52_min  =mult*-3.73145000000000e-05;
+    double a53_min  =mult*-0.00251662000000000;
+    double a54_min  =mult*-0.000372154000000000;
+    double a55_min  =mult*-32.9471000000000;
+    double a56_min  =mult*-0.318531000000000;
+    double a57_min  =mult*-0.517590000000000;
+    
+    double a41_max  =mult*1.01528000000000;
+    double a42_max  =mult*0.431156000000000;
+    double a43_max  =mult*101.275000000000;
+    double a44_max  =mult*13.0960000000000;
+    double a45_max  =mult*920965;
+    double a46_max  =mult*5049.03000000000;
+    double a47_max  =mult*10161.9000000000;
+    double a51_max  =mult*4.40308000000000e-05;
+    double a52_max  =mult*3.73145000000000e-05;
+    double a53_max  =mult*0.00251662000000000;
+    double a54_max  =mult*0.000372154000000000;
+    double a55_max  =mult*32.9471000000000;
+    double a56_max  =mult*0.318531000000000;
+    double a57_max  =mult*0.517590000000000;
     
     problem.phases(iphase).bounds.lower.states   << r_min, theta_min, phi_min, v_min, gamma_min, azim_min, p0_min, a41_min, a42_min, a43_min, a44_min, a45_min, a46_min, a47_min, a51_min, a52_min, a53_min, a54_min, a55_min, a56_min, a57_min;
     problem.phases(iphase).bounds.upper.states   << r_max, theta_max, phi_max, v_max, gamma_max, azim_max, p0_max, a41_max, a42_max, a43_max, a44_max, a45_max, a46_max, a47_max, a51_max, a52_max, a53_max, a54_max, a55_max, a56_max, a57_max;
@@ -495,7 +495,7 @@ int main(void)
     double a55_0    = 1;
     double a56_0    = 0;
     double a57_0    = 0;
-    
+
 
 
     problem.phases(iphase).bounds.lower.states   << r_min, theta_min, phi_min, v_min, gamma_min, azim_min, p0_min, a41_min, a42_min, a43_min, a44_min, a45_min, a46_min, a47_min, a51_min, a52_min, a53_min, a54_min, a55_min, a56_min, a57_min;
@@ -601,12 +601,12 @@ int main(void)
 
 
     algorithm.nlp_iter_max                = 5000;
-    algorithm.nlp_tolerance               = 1e-1;
+    algorithm.nlp_tolerance               = 1e-4;
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.jac_sparsity_ratio          = 0.20;
-    algorithm.collocation_method          = "Legendre";
+    algorithm.collocation_method          = "trapezoidal";//"Legendre";
     algorithm.diff_matrix                 = "central-differences";
     algorithm.mesh_refinement             = "automatic";
     algorithm.mr_max_increment_factor     = 0.3;
