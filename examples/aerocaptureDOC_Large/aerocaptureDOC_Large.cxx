@@ -80,7 +80,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
 adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
                      adouble& time, adouble* xad, int iphase, Workspace* workspace)
 {
-    double q = 1e-4;
+    double q = 1e-1;
     double r = 1;
     adouble runCost =q*( states[13]*states[13]+states[20]*states[20]) + r *(controls[1]*controls[1] + controls[2]*controls[2] +controls[3]*controls[3]+controls[4]*controls[4]+controls[5]*controls[5]+controls[6]*controls[6]+controls[7]*controls[7]);
     return  runCost;
@@ -398,22 +398,22 @@ int main(void)
 
     double bank_min  = 15*M_PI/180;
     double bank_max  = 165*M_PI/180;
-    double k1_min   =-1*1e-5;
-    double k1_max   = 1*1e-5; 
-    double k2_min   =-1*1e-5;
-    double k2_max   = 1*1e-5; 
-    double k3_min   =-1*1e-5;
-    double k3_max   = 1*1e-5; 
-    double k4_min   =-1*1e-5;
-    double k4_max   = 1*1e-5; 
-    double k5_min   =-1*1e-5;
-    double k5_max   = 1*1e-5; 
-    double k6_min   =-1*1e-5;
-    double k6_max   = 1*1e-5; 
-    double k7_min   =-1*1e-5;
-    double k7_max   = 1*1e-5; 
+    double k1_min   =-1*1e-5*0;
+    double k1_max   = 1*1e-5*0; 
+    double k2_min   =-1*1e-5*0;
+    double k2_max   = 1*1e-5*0; 
+    double k3_min   =-1*1e-5*0;
+    double k3_max   = 1*1e-5*0; 
+    double k4_min   =-1*1e-5*0;
+    double k4_max   = 1*1e-5*0; 
+    double k5_min   =-1*1e-5*0;
+    double k5_max   = 1*1e-5*0; 
+    double k6_min   =-1*1e-5*0;
+    double k6_max   = 1*1e-5*0; 
+    double k7_min   =-1*1e-5*0;
+    double k7_max   = 1*1e-5*0; 
     
-    double mult = 4;
+    double mult = 5;
     double a41_min  =mult*-1.01528000000000;
     double a42_min  =mult*-0.431156000000000;
     double a43_min  =mult*-101.275000000000;
@@ -601,12 +601,12 @@ int main(void)
 
 
     algorithm.nlp_iter_max                = 5000;
-    algorithm.nlp_tolerance               = 1e-4;
+    algorithm.nlp_tolerance               = 1e-6;
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.jac_sparsity_ratio          = 0.20;
-    algorithm.collocation_method          = "trapezoidal";//"Legendre";
+    algorithm.collocation_method          = "Hermite-Simpson";//"Legendre";
     algorithm.diff_matrix                 = "central-differences";
     algorithm.mesh_refinement             = "automatic";
     algorithm.mr_max_increment_factor     = 0.3;
