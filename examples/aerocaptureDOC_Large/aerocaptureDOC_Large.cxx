@@ -80,7 +80,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
 adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
                      adouble& time, adouble* xad, int iphase, Workspace* workspace)
 {
-    double q = 1e-1;
+    double q = 1e-3;
     double r = 1;
     adouble runCost =q*( states[13]*states[13]+states[20]*states[20]) + r *(controls[1]*controls[1] + controls[2]*controls[2] +controls[3]*controls[3]+controls[4]*controls[4]+controls[5]*controls[5]+controls[6]*controls[6]+controls[7]*controls[7]);
     return  runCost;
@@ -334,8 +334,8 @@ int main(void)
     problem.phases(2).ncontrols 		= 8;
     problem.phases(2).nevents   		= 16;
 
-    problem.phases(1).nodes      << 150; 
-    problem.phases(2).nodes      << 150; 
+    problem.phases(1).nodes      << 80; 
+    problem.phases(2).nodes      << 80; 
     
 
     psopt_level2_setup(problem, algorithm);
@@ -410,10 +410,10 @@ int main(void)
     double k5_max   = 1*1e-5*0; 
     double k6_min   =-1*1e-5*0;
     double k6_max   = 1*1e-5*0; 
-    double k7_min   =-1*1e-5*0;
-    double k7_max   = 1*1e-5*0; 
+    double k7_min   = 25;
+    double k7_max   = 25; 
     
-    double mult = 5;
+    double mult = 10;
     double a41_min  =mult*-1.01528000000000;
     double a42_min  =mult*-0.431156000000000;
     double a43_min  =mult*-101.275000000000;
@@ -568,7 +568,7 @@ int main(void)
     u_guess.row(4)  =1e-6*ones(1,nnodes);
     u_guess.row(5)  =1e-6*ones(1,nnodes);
     u_guess.row(6)  =1e-6*ones(1,nnodes);
-    u_guess.row(7)  =1e-6*ones(1,nnodes);
+    u_guess.row(7)  =20*ones(1,nnodes);
     problem.phases(iphase).guess.controls       = u_guess;
     problem.phases(iphase).guess.states         = x_guess;
     problem.phases(iphase).guess.time           = linspace(0.0,110.0,nnodes);
@@ -588,7 +588,7 @@ int main(void)
     u_guess.row(4)  =1e-6*ones(1,nnodes);
     u_guess.row(5)  =1e-6*ones(1,nnodes);
     u_guess.row(6)  =1e-6*ones(1,nnodes);
-    u_guess.row(7)  =1e-6*ones(1,nnodes);
+    u_guess.row(7)  =20*ones(1,nnodes);
     problem.phases(iphase).guess.controls       = u_guess;
     problem.phases(iphase).guess.states         = x_guess;
     problem.phases(iphase).guess.time           = linspace(110,300,nnodes);
@@ -652,9 +652,9 @@ int main(void)
 // ///////////  Save solution data to files if desired ////////////////////////
 // ////////////////////////////////////////////////////////////////////////////
 
-    Save(x, "x.dat");
-    Save(u,"u.dat");
-    Save(t,"t.dat");
+    Save(x, "x_DOC.dat");
+    Save(u,"u_DOC.dat");
+    Save(t,"t_DOC.dat");
 
 // ////////////////////////////////////////////////////////////////////////////
 // ///////////  Plot some results if desired (requires gnuplot) ///////////////
