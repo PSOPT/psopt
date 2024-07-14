@@ -413,19 +413,19 @@ int main(void)
 
     double bank_min  = 15*M_PI/180;
     double bank_max  = 165*M_PI/180;
-    double k1_min   = -5*1e-4;
-    double k1_max   = 5*1e-4; 
+    double k1_min   = -1*1e-4;
+    double k1_max   = 1*1e-4; 
     double k2_min   = 0*-1*1e-5;
     double k2_max   = 0*1*1e-5; 
     double k3_min   = 0*-1*1e-5;
     double k3_max   = 0*1*1e-5; 
-    double k4_min   = -5*1e-4;
-    double k4_max   = 5*1e-4; 
+    double k4_min   = -1*1e-4;
+    double k4_max   = 1*1e-4; 
     double k5_min   = -1*1e-4;
     double k5_max   = 1*1e-4; 
     double k6_min   = 0*-1*1e-5;
     double k6_max   = 0*1*1e-5; 
-    double k7_min   = -2.5;
+    double k7_min   = -0.5;
     double k7_max   = 0.5; 
     
     double mult = 20;
