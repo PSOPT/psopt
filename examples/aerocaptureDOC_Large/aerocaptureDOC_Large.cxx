@@ -413,19 +413,19 @@ int main(void)
 
     double bank_min  = 15*M_PI/180;
     double bank_max  = 165*M_PI/180;
-    double k1_min   = -1*1e-4;
-    double k1_max   = 1*1e-4; 
+    double k1_min   = -5*1e-4;
+    double k1_max   = 5*1e-4; 
     double k2_min   = 0*-1*1e-5;
     double k2_max   = 0*1*1e-5; 
     double k3_min   = 0*-1*1e-5;
     double k3_max   = 0*1*1e-5; 
-    double k4_min   = -1*1e-4;
-    double k4_max   = 1*1e-4; 
+    double k4_min   = -5*1e-4;
+    double k4_max   = 5*1e-4; 
     double k5_min   = -1*1e-4;
     double k5_max   = 1*1e-4; 
     double k6_min   = 0*-1*1e-5;
     double k6_max   = 0*1*1e-5; 
-    double k7_min   = -0.5;
+    double k7_min   = -2.5;
     double k7_max   = 0.5; 
     
     double mult = 20;
@@ -667,21 +667,22 @@ int main(void)
 // ///////////  Save solution data to files if desired ////////////////////////
 // ////////////////////////////////////////////////////////////////////////////
 
-    Save(x, "x_DOC.dat");
-    Save(u,"u_DOC.dat");
-    Save(t,"t_DOC.dat");
+    Save(x, "x_DOC_nom.dat");
+    Save(u,"u_DOC_nom.dat");
+    Save(t,"t_DOC_nom.dat");
 
 // ////////////////////////////////////////////////////////////////////////////
 // ///////////  Plot some results if desired (requires gnuplot) ///////////////
 // ////////////////////////////////////////////////////////////////////////////
-     MatrixXd r, v, b, k;
+     MatrixXd r, v, b, k1, k2;
     
     r = x.block(0,0,1,x.cols())/1000; 
     r.array() -= CONSTANTS.Re/1000;
     v = x.block(3,0,1,x.cols())/1000; 
 
     b = u.block(0,0,1,u.cols()); 
-    k = u.block(1,0,7,u.cols());
+    k1 = u.block(1,0,6,u.cols());
+    k2 = u.block(1,0,7,u.cols());
 
     plot(t,r,problem.name, "time (s)", "Raduis (km)");
 
@@ -694,10 +695,16 @@ int main(void)
     plot(t,b*180/M_PI,problem.name,"time (s)", "u (dimensionless)", "Bank",
                                "pdf", "bank_control.pdf");
 
-    plot(t,k,problem.name,"time (s)", "Gains");
+    plot(t,k1,problem.name,"time (s)", "Gains_1_6");
     
-    plot(t,k,problem.name,"time (s)", "u (dimensionless)", "Gains",
+    plot(t,k1,problem.name,"time (s)", "u (dimensionless)", "Gains_1_6",
                                "pdf", "gains_control.pdf");
+
+    plot(t,k2,problem.name,"time (s)", "Gains_1_7");
+    
+    plot(t,k2,problem.name,"time (s)", "u (dimensionless)", "Gains_1_7",
+                               "pdf", "gains_control.pdf");
+                               
 
 }
 ////////////////////////////////////////////////////////////////////////////
