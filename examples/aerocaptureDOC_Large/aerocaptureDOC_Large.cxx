@@ -413,20 +413,20 @@ int main(void)
 
     double bank_min  = 15*M_PI/180;
     double bank_max  = 165*M_PI/180;
-    double k1_min   = -1*1e-4;
-    double k1_max   = 1*1e-4; 
-    double k2_min   = 0*-1*1e-5;
-    double k2_max   = 0*1*1e-5; 
-    double k3_min   = 0*-1*1e-5;
-    double k3_max   = 0*1*1e-5; 
-    double k4_min   = -1*1e-4;
-    double k4_max   = 1*1e-4; 
-    double k5_min   = -1*1e-4;
-    double k5_max   = 1*1e-4; 
-    double k6_min   = 0*-1*1e-5;
-    double k6_max   = 0*1*1e-5; 
-    double k7_min   = -0.5;
-    double k7_max   = 0.5; 
+    double k1_min   = 0.0;//-1*1e-4;
+    double k1_max   = 0.0;//1*1e-4; 
+    double k2_min   = 0.0;//0*-1*1e-5;
+    double k2_max   = 0.0;//0*1*1e-5; 
+    double k3_min   = 0.0;//0*-1*1e-5;
+    double k3_max   = 0.0;//0*1*1e-5; 
+    double k4_min   = 0.0;//-1*1e-4;
+    double k4_max   = 0.0;//1*1e-4; 
+    double k5_min   = 0.0;//-1*1e-4;
+    double k5_max   = 0.0;//1*1e-4; 
+    double k6_min   = 0.0;//0*-1*1e-5;
+    double k6_max   = 0.0;//0*1*1e-5; 
+    double k7_min   = 0.0;//-0.5;
+    double k7_max   = 0.0;//0.5; 
     
     double mult = 20;
     double a41_min  =mult*-1.01528000000000;
@@ -616,7 +616,7 @@ int main(void)
 
 
     algorithm.nlp_iter_max                = 5000;
-    algorithm.nlp_tolerance               = 1e-5;
+    algorithm.nlp_tolerance               = 1e-6;
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
@@ -645,6 +645,7 @@ int main(void)
 
     MatrixXd x_ph1, x_ph2, u_ph1, u_ph2;
     MatrixXd t_ph1, t_ph2;
+    MatrixXd lamda_ph1, lamda_ph2, lamda;
 
     x_ph1 = solution.get_states_in_phase(1);
     x_ph2 = solution.get_states_in_phase(2);
@@ -655,21 +656,27 @@ int main(void)
     t_ph1 = solution.get_time_in_phase(1);
     t_ph2 = solution.get_time_in_phase(2);
 
+    lamda_ph1 = solution.get_dual_costates_in_phase(1);
+    lamda_ph2 = solution.get_dual_costates_in_phase(2);
+
     x.resize(nstates, x_ph1.cols()+ x_ph2.cols());
     u.resize(ncontrols, u_ph1.cols() + u_ph2.cols());
     t.resize(1, t_ph1.cols()+ t_ph2.cols());
+    lamda.resize(nstates, lamda_ph1.cols()+ lamda_ph2.cols());
 
     x << x_ph1, x_ph2; 
     u << u_ph1, u_ph2;
     t << t_ph1, t_ph2;
+    lamda << lamda_ph1, lamda_ph2;
 
 // ////////////////////////////////////////////////////////////////////////////
 // ///////////  Save solution data to files if desired ////////////////////////
 // ////////////////////////////////////////////////////////////////////////////
 
-    Save(x, "x_DOC_nom.dat");
-    Save(u,"u_DOC_nom.dat");
-    Save(t,"t_DOC_nom.dat");
+    Save(x, "x_DOC_noGain.dat");
+    Save(u,"u_DOC_noGain.dat");
+    Save(t,"t_DOC_noGain.dat");
+    Save(x, "lamda_DOC_noGain.dat");
 
 // ////////////////////////////////////////////////////////////////////////////
 // ///////////  Plot some results if desired (requires gnuplot) ///////////////
