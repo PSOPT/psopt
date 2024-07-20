@@ -676,7 +676,7 @@ int main(void)
     Save(x, "x_DOC_noGain.dat");
     Save(u,"u_DOC_noGain.dat");
     Save(t,"t_DOC_noGain.dat");
-    Save(x, "lamda_DOC_noGain.dat");
+    Save(lamda, "lamda_DOC_noGain.dat");
 
 // ////////////////////////////////////////////////////////////////////////////
 // ///////////  Plot some results if desired (requires gnuplot) ///////////////
