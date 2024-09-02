@@ -5,11 +5,11 @@
 //////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////
 //////// Title:   two burn orbit transfer problem         ////////////////
-//////// Last modified: 07 February 2010                  ////////////////
+//////// Last modified: 02 September 2024                 ////////////////
 //////// Reference:     Betts  (2001)             	  ////////////////
 //////// (See PSOPT handbook for full reference)           ////////////////
 //////////////////////////////////////////////////////////////////////////
-////////     Copyright (c) Victor M. Becerra, 2010        ////////////////
+////////     Copyright (c) Victor M. Becerra, 2024        ////////////////
 //////////////////////////////////////////////////////////////////////////
 //////// This is part of the PSOPT software library, which ////////////////
 //////// is distributed under the terms of the GNU Lesser ////////////////
@@ -19,7 +19,6 @@
 #include "psopt.h"
 
 using namespace PSOPT;
-
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -145,6 +144,8 @@ adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
 {
     return  0.0;
 }
+
+
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -403,6 +404,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    }
 
 
+
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -602,6 +604,7 @@ int main(void)
     psopt_level2_setup(problem, algorithm);
 
 
+
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter problem bounds information //////////////////////
 ////////////////////////////////////////////////////////////////////////////
@@ -788,12 +791,11 @@ int main(void)
 ///////////////////  Register problem functions  ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-
     problem.integrand_cost 			= &integrand_cost;
-    problem.endpoint_cost 				= &endpoint_cost;
+    problem.endpoint_cost 			= &endpoint_cost;
     problem.dae             			= &dae;
     problem.events 						= &events;
-    problem.linkages						= &linkages;
+    problem.linkages					= &linkages;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Define & register initial guess ///////////////////////
@@ -807,109 +809,101 @@ int main(void)
 
     // Phase 1
 
-    nnodes    							= problem.phases(1).nodes(0);
-    nstates                     	= problem.phases(1).nstates;
-    iphase = 1;
+    iphase     = 1;
+    nnodes    	= problem.phases(iphase).nodes(0);
+    nstates    = problem.phases(iphase).nstates;
+
 
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(0.0,2690,nnodes);
 
-    xini.resize(6,1);
-    xini(0)= pti; xini(1)=fti;xini(2)=gti;xini(3)=hti;xini(4)=kti;xini(5)=Lti;
+    x_guess.row(0) = pti*ones(1,nnodes);
+    x_guess.row(1) = fti*ones(1,nnodes);
+    x_guess.row(2) = gti*ones(1,nnodes);
+    x_guess.row(3) = hti*ones(1,nnodes);
+    x_guess.row(4) = kti*ones(1,nnodes);
+    x_guess.row(5) = Lti*ones(1,nnodes);
 
 
-
-    rk4_propagate( dae, u_guess, time_guess, xini, param_guess, problem, iphase, x_guess, NULL);
-
-//    tra(x_guess).Print("x_guess(iphase=1)");
-
-    xfinal = x_guess.col(nnodes-1); 
-
-    problem.phases(1).guess.states = x_guess;
-    problem.phases(1).guess.time   = time_guess;
+    problem.phases(iphase).guess.states = x_guess;
+    problem.phases(iphase).guess.time   = time_guess;
 
 
 
 
     // Phase 2
+    iphase        = 2;
+    nnodes        = problem.phases(iphase).nodes(0);
+    nstates       = problem.phases(iphase).nstates;
+    ncontrols     = problem.phases(iphase).ncontrols;
 
-    nnodes    			           = problem.phases(2).nodes(0);
-    nstates                     = problem.phases(2).nstates;
-    ncontrols                   = problem.phases(2).ncontrols;
-    iphase = 2;
 
     u_guess    =  zeros(ncontrols,nnodes);
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(2690,2840,nnodes);
 
-    xini.resize(7,1);
-    xini(0)= xfinal(0); xini(1)=xfinal(1);xini(2)=xfinal(2);xini(3)=xfinal(3);xini(4)=xfinal(4);xini(5)=xfinal(5);
-    xini(6)= wti;
+    x_guess.row(0) = pti*ones(1,nnodes);
+    x_guess.row(1) = fti*ones(1,nnodes);
+    x_guess.row(2) = gti*ones(1,nnodes);
+    x_guess.row(3) = hti*ones(1,nnodes);
+    x_guess.row(4) = kti*ones(1,nnodes);
+    x_guess.row(5) = Lti*ones(1,nnodes);
+
 
     u_guess.row(0) =  0.148637e-2*D2R*ones(1,nnodes);
     u_guess.row(1) = -9.08446*D2R*ones(1,nnodes);
 
-    rk4_propagate( dae, u_guess, time_guess, xini, param_guess, problem, iphase, x_guess, NULL);
-
-//    tra(x_guess).Print("x_guess(iphase=2)");
 
 
-    xfinal = x_guess.col(nnodes-1); 
-    double wtf2__ = xfinal(6);
-
-    problem.phases(2).guess.states   = x_guess;
-    problem.phases(2).guess.controls = u_guess;
-    problem.phases(2).guess.time     = time_guess;
+    problem.phases(iphase).guess.states   = x_guess;
+    problem.phases(iphase).guess.controls = u_guess;
+    problem.phases(iphase).guess.time     = time_guess;
 
     // Phase 3
+    iphase     = 3;
+    nnodes     = problem.phases(iphase).nodes(0);
+    nstates    = problem.phases(iphase).nstates;
 
-    nnodes    			           = problem.phases(3).nodes(0);
-    nstates                     = problem.phases(3).nstates;
-    iphase = 3;
 
 
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(2840,21650,nnodes);
+    
+    x_guess.row(0) = pti*ones(1,nnodes);
+    x_guess.row(1) = fti*ones(1,nnodes);
+    x_guess.row(2) = gti*ones(1,nnodes);
+    x_guess.row(3) = hti*ones(1,nnodes);
+    x_guess.row(4) = kti*ones(1,nnodes);
+    x_guess.row(5) = Lti*ones(1,nnodes);
 
-
-    xini.resize(6,1);
-    xini(0)= xfinal(0); xini(1)=xfinal(1);xini(2)=xfinal(2);xini(3)=xfinal(3);xini(4)=xfinal(4);xini(5)=xfinal(5);
-
-    rk4_propagate( dae, u_guess, time_guess, xini, param_guess, problem, iphase, x_guess, NULL);
-
-//    tra(x_guess).Print("x_guess(iphase=3)");
-
-    xfinal = x_guess.col(nnodes-1); 
-
-    problem.phases(3).guess.states = x_guess;
-    problem.phases(3).guess.time   = time_guess;
+    problem.phases(iphase).guess.states = x_guess;
+    problem.phases(iphase).guess.time   = time_guess;
 
     // Phase 4
+    iphase       = 4;
+    nnodes       = problem.phases(iphase).nodes(0);
+    nstates      = problem.phases(iphase).nstates;
+    ncontrols    = problem.phases(iphase).ncontrols;
 
-    nnodes    			           = problem.phases(4).nodes(0);
-    nstates                     = problem.phases(4).nstates;
-    ncontrols                   = problem.phases(4).ncontrols;
-    iphase = 4;
 
     u_guess    =  zeros(ncontrols,nnodes);
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(21650,21700,nnodes);
+    
+    x_guess.row(0) = pti*ones(1,nnodes);
+    x_guess.row(1) = fti*ones(1,nnodes);
+    x_guess.row(2) = gti*ones(1,nnodes);
+    x_guess.row(3) = hti*ones(1,nnodes);
+    x_guess.row(4) = kti*ones(1,nnodes);
+    x_guess.row(5) = Lti*ones(1,nnodes);    
 
     u_guess.row(0) =  -0.136658e-2*D2R*ones(1,nnodes);
     u_guess.row(1) =       49.7892*D2R*ones(1,nnodes);
 
-    xini.resize(7,1);
-    xini(0)= xfinal(0); xini(1)=xfinal(1);xini(2)=xfinal(2);xini(3)=xfinal(3);xini(4)=xfinal(4);xini(5)=xfinal(5);
-    xini(6)= wtf2__;
 
-    rk4_propagate( dae, u_guess, time_guess, xini, param_guess, problem, iphase, x_guess, NULL);
-
-//    tra(x_guess).Print("x_guess(iphase=4)");
-
-
-    problem.phases(4).guess.states   = x_guess;
-    problem.phases(4).guess.controls = u_guess;
-    problem.phases(4).guess.time     = time_guess;
+    problem.phases(iphase).guess.states   = x_guess;
+    problem.phases(iphase).guess.controls = u_guess;
+    problem.phases(iphase).guess.time     = time_guess;
 
 
 
@@ -922,20 +916,15 @@ int main(void)
     algorithm.nlp_tolerance               = 1.e-6;
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
-    algorithm.derivatives                 = "automatic";
-    algorithm.defect_scaling              = "jacobian-based";
-    algorithm.jac_sparsity_ratio          =  0.11;
     algorithm.collocation_method          = "trapezoidal";
-//    algorithm.diff_matrix                 = "central-differences";
     algorithm.mesh_refinement             = "automatic";
-    algorithm.mr_max_iterations           = 5;
+    algorithm.mr_max_iterations           = 6;
     algorithm.ode_tolerance               = 1.0e-6;
+    algorithm.derivatives                 = "automatic";
 
-
-
-////////////////////////////////////////////////////////////////////////////
-///////////////////  Now call PSOPT to solve the problem   //////////////////
-////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////  Now call PSOPT to solve the actual optimal control problem   //////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
     psopt(solution, problem, algorithm);
 
@@ -996,7 +985,7 @@ int main(void)
     MatrixXd x4 = x.row(3); 
     MatrixXd x5 = x.row(4); 
     MatrixXd x6 = x.row(5); 
-//    MatrixXd x7 = x(7,colon());
+
     MatrixXd theta_phase2;
     MatrixXd theta_phase4;
     MatrixXd phi_phase2;
