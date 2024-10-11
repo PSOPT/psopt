@@ -30,8 +30,8 @@ e-mail:    v.m.becerra@ieee.org
 using std::numeric_limits;
 
 namespace PSOPT {
-    constexpr double inf        =   std::numeric_limits<double>::infinity();
-    constexpr double pi         =   4.0*atan(1.0);
+    constexpr double inf    = std::numeric_limits<double>::infinity();
+    const double pi         = 4.0*atan(1.0);
 }
 
 
@@ -192,6 +192,7 @@ struct alg_str {
   string    ipopt_linear_solver;
   double    jac_sparsity_ratio;
   double    hess_sparsity_ratio;
+  double    objective_scaling;
   int       print_level; // 1: detailed output on screen and files (default), 0: no output
   int       save_sparsity_pattern;
   int       nsteps_error_integration;
@@ -1057,35 +1058,6 @@ double nint(double x);
 int get_iphase_offset(Prob& problem, int iphase,Workspace* workspace);
 
 adouble ff_ad(adouble* xad, Workspace* workspace);
-
-
-void rk4_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* states,
-         adouble* controls, adouble* parameters, adouble& time,
-        adouble* xad, int iphase, Workspace* workspace),
-        MatrixXd& control_trajectory,
-        MatrixXd& time_vector,
-        MatrixXd& initial_state,
-	MatrixXd& parameters,
-        Prob & problem,
-        int iphase,
-        MatrixXd& state_trajectory, Workspace* workspace);
-
-void rkf_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* states,
-         adouble* controls, adouble* parameters, adouble& time,
-        adouble* xad, int iphase, Workspace* workspace),
-        MatrixXd& control_trajectory,
-        MatrixXd& time_vector,
-        MatrixXd& initial_state,
-	MatrixXd& parameters,
-        double tolerance,
-        double hmin,
-	double hmax,
-        Prob & problem,
-        int iphase,
-        MatrixXd& state_trajectory,
-        MatrixXd& new_time_vector,
-	MatrixXd& new_control_trajectory, Workspace* workspace);
-
 
 void auto_split_observations(Prob& problem, MatrixXd& observation_nodes, MatrixXd& observations);
 

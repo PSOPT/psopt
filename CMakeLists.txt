@@ -25,7 +25,7 @@ PUBLIC
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE adolc PkgConfig::ipopt Eigen3::Eigen)
+target_link_libraries(${PROJECT_NAME} PRIVATE adolc Eigen3::Eigen PUBLIC PkgConfig::ipopt)
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF)
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_delegating_constructors)
