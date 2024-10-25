@@ -116,7 +116,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   problem.bounds.upper.linkage.resize(nlinkages,1);
 
   problem.bounds.lower.linkage.setZero();
-  problem.bounds.lower.linkage.setZero();
+  problem.bounds.upper.linkage.setZero();
 
 
   problem.endpoint_cost               = NULL;
@@ -138,6 +138,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.nlp_tolerance               = 1.e-6;
   algorithm.jac_sparsity_ratio  	       = 0.5;
   algorithm.hess_sparsity_ratio 	       = 0.2;
+  algorithm.objective_scaling 	        = -1;
   algorithm.hessian                     = "limited-memory";
   algorithm.collocation_method          = "Legendre";
   algorithm.diff_matrix                 = "standard";
@@ -162,4 +163,3 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
 
   return;
 }
-

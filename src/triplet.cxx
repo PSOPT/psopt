@@ -155,11 +155,11 @@ TripletSparseMatrix::TripletSparseMatrix( const TripletSparseMatrix& A) // copy 
 TripletSparseMatrix::~TripletSparseMatrix()
 {
     if (a!=NULL)
- 	delete a;
+ 	delete [] a;
     if (RowIndx!= NULL)
-        delete RowIndx;
+        delete [] RowIndx;
     if (ColIndx!= NULL)
-        delete ColIndx;
+        delete [] ColIndx;
 
 }
 
@@ -471,15 +471,15 @@ void TripletSparseMatrix::Print(const char* text)
    int i;
 
    fprintf(stderr,"\nSparse matrix %s",text);
-   fprintf(stderr,"\nNumber of rows: %li", n);
-   fprintf(stderr,"\nNumber of columns: %li", m);
-   fprintf(stderr,"\nNumber of non-zero elements: %li", nz);
+   fprintf(stderr,"\nNumber of rows: %d", n);
+   fprintf(stderr,"\nNumber of columns: %d", m);
+   fprintf(stderr,"\nNumber of non-zero elements: %d", nz);
    if (n*m!=0) fprintf(stderr,"\nDensity: %lf%%", (  ((double) nz*100)/(double) (n*m)  ) );
    if (nz>0) fprintf(stderr,"\n(Row,Col)\tValue");
 
    for (i=0; i<nz; i++)
    {
-       fprintf(stderr,"\n(%li,%li)\t\t%e", RowIndx[i], ColIndx[i], a[i]);
+       fprintf(stderr,"\n(%d,%d)\t\t%e", RowIndx[i], ColIndx[i], a[i]);
 
    }
    fprintf(stderr,"\n");
@@ -619,7 +619,7 @@ void TripletSparseMatrix::Save(const char* fname) const
 //   fprintf(fp,"%li\t%li\t%li\n", n, m, nz);
 
    for (k=0;k<nz;k++) {
-            fprintf(fp,"%li\t%li\t%e\n",  RowIndx[k]+1, ColIndx[k]+1, a[k] );
+            fprintf(fp,"%d\t%d\t%e\n",  RowIndx[k]+1, ColIndx[k]+1, a[k] );
    }
 
    fclose(fp);

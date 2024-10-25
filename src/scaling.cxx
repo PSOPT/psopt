@@ -217,8 +217,10 @@ void determine_objective_scaling(MatrixXd& X,Sol& solution, Prob& problem, Alg& 
 
   }
 
-
-
+  if (algorithm.objective_scaling != -1) {
+    problem.scale.objective = algorithm.objective_scaling;
+  }
+  printf("Using objective scaling: %e\n", problem.scale.objective);
 }
 
 
