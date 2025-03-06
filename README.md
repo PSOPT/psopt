@@ -2,7 +2,7 @@
 PSOPT
 =====
 
-Copyright (C) 2009-2022 Victor M. Becerra
+Copyright (C) 2009-2025 Victor M. Becerra
 
 
 Introduction
@@ -69,7 +69,7 @@ Address:
             
            University of Portsmouth
 
-           School of Energy and Electronic Engineering
+           School of Electrical and Mechanical Engineering
            
            Portsmouth PO1 3DJ
            
@@ -81,109 +81,325 @@ e-mail:    v.m.becerra@ieee.org
 Getting started
 ---------------
 
-Please consult the detailed installation instructions in the [PSOPT PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf). In the following, we only summarize some main points.
+Please consult the software documentation in the [PSOPT PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf). 
 
-### Dependencies
-
-PSOPT requires the following libraries:
-
-1. [IPOPT](https://github.com/coin-or/Ipopt )
-2. [ADOL-C](https://github.com/coin-or/ADOL-C)
-3. [EIGEN3](http://eigen.tuxfamily.org/)
-
-Optionally, the user may wish to employ the following software
-1. [SNOPT](http://www.sbsi-sol-optimize.com/manuals/SNOPT-Manual.pdf)
-2. [GNUplot](http://www.gnuplot.info)
-
-Moreover, PSOPT is built using [CMake](https://cmake.org/download/). CMake is an open-source, cross-platform family of tools designed to build, test and package software. The build process also requires the [pkg-config](https://www.freedesktop.org/wiki/Software/pkg-config/) tool.  
-
-### Build
+<u>**PSOPT Installation**</u>
 
 
-Please note that the minimum version of CMake that is required by the build process is 3.12. Earlier versions of CMake are not suitable.
 
-If you use [Ubuntu 20.04](https://releases.ubuntu.com/20.04/), all dependencies plus GNUplot can simply be installed as follows:
-
-
-1. `sudo apt-get install git`
-2. `sudo apt-get install cmake`
-3. `sudo apt-get install gfortran`
-4. `sudo apt-get install g++`
-5. `sudo apt-get install libboost-dev`
-6. `sudo apt-get install libboost-system-dev`
-7. `sudo apt-get install coinor-libipopt-dev`
-8. `sudo apt-get install libcolpack-dev`
-9. `sudo apt-get install libadolc-dev`
-10. `sudo apt-get install gnuplot`
-11. `sudo apt-get install libeigen3-dev`
-12. `sudo apt-get install libblas-dev`
-13. `sudo apt-get install liblapack-dev`
-
-**Please note** that a runtime error related to the `adolc` library is currently reported when executing PSOPT under [Ubuntu 22.04](https://releases.ubuntu.com/22.04/) if the above instructions are followed. To avoid this, you can follow the [special instructions given here for Ubuntu 22.04](https://github.com/PSOPT/psopt/blob/master/README_Ubuntu_22.04.md).
-
-If you use [Debian 11.4.0](https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/), all dependencies plus GNUplot can simply be installed as follows:
+PSOPT relies on three main software packages to perform a number of tasks. Some of these packages have their own dependencies.
 
 
-1. `su`
-2. `apt-get install git`
-3. `apt-get install cmake`
-4. `apt-get install gfortran`
-5. `apt-get install g++`
-6. `apt-get install libboost-dev`
-7. `apt-get install libboost-system-dev`
-8. `apt-get install coinor-libipopt-dev`
-9. `apt-get install libcolpack-dev`
-10. `apt-get install libadolc-dev`
-11. `apt-get install gnuplot`
-12. `apt-get install libeigen3-dev`
-13. `apt-get install libblas-dev`
-14. `apt-get install liblapack-dev`
+
+**IPOPT**
 
 
-If you use [OpenSuse Leap 15.4](https://get.opensuse.org/leap/15.4/), all dependencies plus GNUplot can be installed as follows:
 
-1. `sudo zypper install git`
-2. `sudo zypper install gnuplot`
-3. `sudo zypper install libboost_system1_66_0-devel`
-4. `sudo zypper install eigen3-devel`
-5. `sudo zypper install ColPack-devel`
-6. `sudo zypper install adolc-devel`
-7. `sudo zypper install blas-devel`
-8. `sudo zypper install lapack-devel`
-9. `sudo zypper ar -f https://download.opensuse.org/repositories/science/15.4/ science`
-10. `sudo zypper install Ipopt-devel`
-11. `sudo zypper install cmake`
-12. `sudo zypper install gcc-c++`
+IPOPT is an open-source C++ package for large-scale nonlinear optimization, which uses an interior point method. It is the default nonlinear programming algorithm used by PSOPT. IPOPT can be easily installed using a package manager in some, but not all, Linux distributions.
 
+​	•	IPOPT repository:
 
-If you use [Arch Linux 2022.08.05](https://archlinux.org/download) or [Manjaro 21.3.7](https://manjaro.org/download), all dependencies plus GNUplot can be installed as follows:
+​	https://github.com/coin-or/Ipopt
 
-1. `sudo pacman -Syu`
-2. `sudo pacman -S git base-devel`
-3. `sudo pacman -S cmake`
-4. `sudo pacman -S gnuplot`
-5. `sudo pacman -S eigen`
-6. `sudo pacman -S boost`
-7. `sudo pacman -S blas`
-8. `sudo pacman -S lapack`
-9. `sudo pacman -S yay`
-10. `yay -S coin-or-ipopt`
-11. `yay -S colpack`
-12. `yay -S adol-c`
+​	•	Version 3.12.12 is tested, but other versions may work.
+
+​	https://www.coin-or.org/download/source/Ipopt/
+
+​	•	Installation guide:
+
+​	https://coin-or.github.io/Ipopt/INSTALL.html
 
 
-After installation of dependencies, a typical PSOPT build and installation on a suitable version of Linux (such as Ubuntu 20.04, Debian 11.4.0 or OpenSUSE Leap 15.4, Arch Linux 2022.08.05 or Manjaro 21.3.7), or other Unix-like operating system, follows the steps given below (please see the [PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for futher details):
 
-1. `git clone https://github.com/PSOPT/psopt.git`
-2. `cd psopt; mkdir build; cd build`
-3. `cmake -DBUILD_EXAMPLES=ON ..`
-4. `make`
-5. `sudo make install`
+**ADOL-C**
 
-Note that the executable code for the examples is built inside the folder `psopt/build/examples`. For example, you can run the 'launch' example, by entering the following commands, after the installation.
 
-1. `cd ./examples/launch`
-2. `./launch`
+
+ADOL-C is a library for automatic differentiation of C++ code. It computes gradients and sparse Jacobians required by **PSOPT**.
+
+A suitable version of ADOL-C can be easily installed using a package manager in some, but not all, Linux distributions. In some platforms, it may be necessary to manually install Adol-c and ColPack. The following command should allow a manual installation on various platforms:
+
+```
+$ wget --continue archive.ubuntu.com/ubuntu/pool/universe/a/adolc/adolc_2.7.2.orig.tar.xz 
+$ tar -xf adolc_2.7.2.orig.tar.xz
+$ cd ADOL-C-2.7.2
+$ mkdir ./ThirdParty
+$ cd ./ThirdParty
+$ wget --continue http://archive.ubuntu.com/ubuntu/pool/universe/c/colpack/colpack_1.0.10.orig.tar.gz
+$ tar zxvf colpack_1.0.10.orig.tar.gz
+$ mv ColPack-1.0.10 ColPack
+$ cd ColPack
+$ autoreconf -fi
+$ ./configure --prefix=/usr/local
+$ make
+$ sudo make install
+$ cd ../..
+$ autoreconf -fi
+$ ./configure --prefix=/usr/local --enable-sparse --with- colpack=/usr/local
+$ make
+$ sudo make install
+```
+
+**EIGEN3**
+
+
+
+[Eigen](http://eigen.tuxfamily.org/) is a lightweight, powerful linear algebra package for C++. Eigen is available on most major Linux distributions.
+
+
+
+If necessary, Eigen can also be installed using CMake:
+
+```
+$ wget --continue https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.gz
+$ tar zxvf eigen-3.3.7.tar.gz
+$ cd eigen-3.3.7
+$ mkdir build
+$ cd build
+$ cmake ..
+$ sudo make install
+```
+
+
+
+The following optional libraries can be employed for additional functionality.
+
+**SNOPT**
+
+
+
+[SNOPT](http://www.sbsi-sol-optimize.com/manuals/SNOPT-Manual.pdf) is an optimization algorithm for large-scale nonlinearly constrained problems based on sequential quadratic programming.
+
+
+
+**GNUplot**
+
+
+
+[GNUplot](http://www.gnuplot.info) is a portable, interactive data and function plotting utility. GNU plot is available on most Linux distributions. PSOPT includes a number of functions that allow to easily plot results using GNUplot.
+
+
+
+**Building PSOPT**
+
+
+
+PSOPT relies on [CMake](https://cmake.org/download/)  and '[pkg-config](https://en.wikipedia.org/wiki/Pkg-config)' for configuring builds, and on 'make' for managing compilation and linking.
+
+CMake is an open-source tool for managing software builds. PSOPT requires CMake 3.12 or later. 
+
+pkg-config is a helper tool used to provide the necessary details for compiling and linking a program to a library. It ensures that PSOPT’s dependencies are found correctly. pkg-config is available on most major Linux distributions. In particular, the build process expects to see pkg-config configuration files for IPOPT, ColPack and ADOL-C. These configuration files are usually installed under /usr/local/lib/pkgconfig or /usr/lib/pkgconfig. If these configuration files are not created during the build process for the above libraries, they can be created manually and be placed at the correct folder. If the pkg-config configuration files are being created manually, the contents of these files on the authors' computer are provided below as examples. Please note that the paths that are given in these files depend on the actual location where the different libraries have been installed.
+
+For IPOPT (filename: ipopt.pc):
+
+	prefix=/usr/local
+	exec_prefix=${prefix}
+	libdir=${exec_prefix}/lib
+	includedir=${prefix}/include/coin-or
+	Name: IPOPT
+	Description: Interior Point Optimizer
+	URL: https://github.com/coin-or/Ipopt
+	Version: 3.13.2
+	Cflags: -I${includedir}
+	Libs: -L${libdir} -lipopt
+	Requires.private: coinhsl coinmumps 
+
+
+
+For ColPack (filename: ColPack.pc):
+
+```
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/ColPack
+
+Name: ColPack
+Version: 1.0.10 
+Description: Graph Coloring Library 
+Requires: 
+Libs: -L${libdir} -lColPack -Wl,-rpath,${libdir} -Wl,-rpath,${libdir} 
+Cflags: -I${includedir}
+```
+
+For ADOL-C (filename: adolc.pc):
+
+
+
+```
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: adolc
+Version: 2.6.3
+Description: Algorithmic Differentiation Library for C/C++
+Requires: 
+Libs: -L${libdir} -ladolc -Wl,-rpath,${libdir} -lColPack -Wl,-rpath,${libdir} 
+Cflags: -I${includedir}
+\end{verbatim}
+```
+
+​	
+
+For EIGEN3 (filename: eigen3.pc):
+
+```
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: Eigen3
+Version: 3.3.77
+Description: Numerical linear algebra library for C++
+Requires: 
+Libs:  -Wl,-rpath,${libdir} -L$${libdir}  
+Cflags: -I${includedir} -std=c++11
+```
+
+For SNOPT (filename: snopt7.pc):
+	
+
+```
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/snopt7
+
+Name: SNOPT7
+Version: 7
+Description: SNOPT NONLINEAR PROGRAMMING LIBRARY 
+Requires: 
+Libs: -L${libdir} -lsnopt7_cpp -Wl,-rpath,${libdir} -Wl,-rpath,${libdir} 
+Cflags: -I${includedir}
+```
+
+
+
+**Tested Platforms**
+
+PSOPT has been successfully compiled on:
+
+​	•	Ubuntu Linux 24.04 LTS
+
+​	•	OpenSUSE Linux 15.5 Leap and Tumbleweed
+
+​	•	Arch Linux (latest versions as of 2025)
+
+​	•	Manjaro Linux  (latest versions as of 2025)
+
+​	•	MacOS Sequoia (MacPorts on Intel CPU)
+
+
+
+**Installing Dependencies**
+
+
+
+For **Ubuntu 24.04**:
+
+```
+$ sudo apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
+  coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev
+```
+
+
+
+Note that Adol-c and ColPack needs to be manually installed on the latest version of Ubuntu (version 24.04). See the instructions above.
+
+
+
+For **Debian 12.9.0**:
+
+```
+$ su
+$ apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
+  coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev
+```
+
+Note that Adol-c and ColPack needs to be manually installed on the latest version of Debian (version 11.9). See the instructions above.
+
+
+
+For **OpenSUSE Leap 15.5 and Tumbleweed**:
+
+```
+$ sudo zypper install git gnuplot libboost_system1_66_0-devel eigen3-devel ColPack-devel \
+  adolc-devel blas-devel lapack-devel Ipopt-devel cmake gcc-c++
+```
+
+For **Arch Linux / Manjaro**:
+
+```
+$ sudo pacman -Syu
+$ sudo pacman -S git base-devel cmake gnuplot eigen boost blas lapack yay
+$ yay -S coin-or-ipopt colpack adol-c
+```
+
+
+
+The use of the tool **yay** requires AUR support to be enabled on the package manager. On ARM64, it may be necessary to install [Anaconda]([https://www.anaconda.com/download), which provides gklib and IPOPT, as the installation script for IPOPT provided by AUR currently fails to build using yay.
+
+
+
+For **MacOS**
+
+It is also possible to build PSOPT on some versions of MacOS. This can be done by using MacPorts, which is an is an open-source system for compiling, installing, and upgrading open-source software on MacOS. 
+
+To use MacPorts, download and install MacPorts from:
+
+https://www.macports.org/install.php
+
+To install the PSOPT dependencies, issue the following commands from a terminal window:
+
+```
+sudo port install cmake
+sudo port install eigen3
+sudo port install git
+sudo port install ipopt
+sudo port install ADOL-C
+sudo port install gnuplot
+```
+
+The above is working with MacOS Sequoia with an Intel processor (date: 16 Feb 2025). Currently, there are issues with the ARM64 (M1 and above) processors that have MacOS Sequoia. The installation might work with previous versions of MacOS on ARM64. 
+
+
+
+**Building and Installing PSOPT**
+
+Once all dependencies are installed, PSOPT can be downloaded from GitHub, and built using CMake using the following commands.
+
+```
+$ git clone https://github.com/PSOPT/psopt.git
+$ cd psopt
+$ mkdir build
+$ cd build
+$ cmake -DBUILD_EXAMPLES=ON ..
+$ make
+$ sudo make install
+```
+
+If using SNOPT:
+
+```
+$ cmake -DBUILD_EXAMPLES=ON -DWITH_SNOPT_INTERFACE=ON ..
+```
+
+For debugging:
+
+```
+$ cmake -DBUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Debug ..
+```
+
+After installation, run at least one example to check that the build is working correctly:
+
+```
+$ cd build/examples/launch
+$ ./launch
+```
+
 
 
 Getting help
