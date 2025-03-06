@@ -78,22 +78,16 @@ Address:
 e-mail:    v.m.becerra@ieee.org
 
 
-Getting started
----------------
+Installing PSOPT
+----------------
 
 Please consult the software documentation in the [PSOPT PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf). 
 
-<u>**PSOPT Installation**</u>
-
-
-
-PSOPT relies on three main software packages to perform a number of tasks. Some of these packages have their own dependencies.
+PSOPT relies on three main software packages to perform a number of tasks: IPOPT, ADOL-C and EIGEN3. Some of these packages have their own dependencies.
 
 
 
 **IPOPT**
-
-
 
 IPOPT is an open-source C++ package for large-scale nonlinear optimization, which uses an interior point method. It is the default nonlinear programming algorithm used by PSOPT. IPOPT can be easily installed using a package manager in some, but not all, Linux distributions.
 
@@ -112,8 +106,6 @@ IPOPT is an open-source C++ package for large-scale nonlinear optimization, whic
 
 
 **ADOL-C**
-
-
 
 ADOL-C is a library for automatic differentiation of C++ code. It computes gradients and sparse Jacobians required by **PSOPT**.
 
@@ -141,8 +133,6 @@ $ sudo make install
 ```
 
 **EIGEN3**
-
-
 
 [Eigen](http://eigen.tuxfamily.org/) is a lightweight, powerful linear algebra package for C++. Eigen is available on most major Linux distributions.
 
