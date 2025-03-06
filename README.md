@@ -81,7 +81,7 @@ e-mail:    v.m.becerra@ieee.org
 Installing PSOPT
 ----------------
 
-Please consult the software documentation in the [PSOPT PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf). 
+Please consult the [PSOPT PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for further details on the software functionality and how to use it. 
 
 PSOPT relies on three main software packages to perform a number of tasks: IPOPT, ADOL-C and EIGEN3. Some of these packages have their own dependencies.
 
