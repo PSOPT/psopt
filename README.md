@@ -109,7 +109,7 @@ IPOPT is an open-source C++ package for large-scale nonlinear optimization, whic
 
 ADOL-C is a library for automatic differentiation of C++ code. It computes gradients and sparse Jacobians required by **PSOPT**.
 
-A suitable version of ADOL-C can be easily installed using a package manager in some, but not all, Linux distributions. In some platforms, it may be necessary to manually install Adol-c and ColPack. The following command should allow a manual installation on various platforms:
+A suitable version of ADOL-C can be easily installed using a package manager in some, but not all, Linux distributions. In some platforms, it may be necessary to manually install Adol-c and ColPack. The following commands should allow to perform a manual installation on various platforms:
 
 ```
 $ wget --continue archive.ubuntu.com/ubuntu/pool/universe/a/adolc/adolc_2.7.2.orig.tar.xz 
@@ -127,7 +127,7 @@ $ make
 $ sudo make install
 $ cd ../..
 $ autoreconf -fi
-$ ./configure --prefix=/usr/local --enable-sparse --with- colpack=/usr/local
+$ ./configure --prefix=/usr/local --enable-sparse --with-colpack=/usr/local
 $ make
 $ sudo make install
 ```
