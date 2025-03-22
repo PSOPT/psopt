@@ -39,7 +39,7 @@ The implementation has the following features:
 
 The PSOPT interface uses both Eigen3 (a linear algebra template library) and ADOL-C (an automatic differentiation library).
 
-The first release of PSOPT was published in 2009. This is release 5 of PSOPT. 
+The first release of PSOPT was published in 2009. 
 
 The PSOPT website is [http://www.psopt.net](http://www.psopt.net).
 
@@ -78,10 +78,23 @@ Address:
 e-mail:    v.m.becerra@ieee.org
 
 
+Rolling Release
+===============
+
+From March 2025 PSOPT features a rolling release mode. Rolling release  is a concept in software development of frequently delivering updates to applications. This is in contrast to a standard or point release development model which uses software versions which replace the previous version. Users can download the latest source code from the GitHub repository. The documentation will also be updated  on a rolling release basis.
+
+PSOPT documentation
+-------------------
+
+Please consult the [PSOPT User Manual (in PDF format)](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_RR.pdf) for further details on the software functionality and how to use it. 
+
+There is also a [PSOPT Application Examples Document (in PDF format)](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Application_Examples_Document_RR.pdf), which contains several application examples in various engineering/scientific domains, including their C++ code and results. 
+
+
 Installing PSOPT
 ----------------
 
-Please consult the [PSOPT PDF documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf) for further details on the software functionality and how to use it. 
+Please consult the [PSOPT User Manual](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_RR.pdf) for further details on the software functionality and how to use it. 
 
 PSOPT relies on three main software packages to perform a number of tasks: IPOPT, ADOL-C and EIGEN3. Some of these packages have their own dependencies.
 
