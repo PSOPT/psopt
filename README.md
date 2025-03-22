@@ -410,7 +410,7 @@ $ ./launch
 Getting help
 ------------
 
-* **[PSOPT Documentation](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_R5.pdf)** with information about the functionality and use of the software, background theory, and more.
+* **[PSOPT Documentation](https://github.com/PSOPT/psopt/blob/master/doc/))** with information about the functionality and use of the software, background theory, examples, and more.
  * **[Issue tracking system](https://github.com/PSOPT/psopt/issues/)**: If you believe you found a **bug** in the code, please use the issue tracking system.
    Please include as much information as possible, and if possible some example code so that we can reproduce the error.
  * **[Mailing list](http://groups.google.com/group/psopt-users-group)**: subscribe to receive notifications about updates and to post questions and comments about PSOPT.
