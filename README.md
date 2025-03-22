@@ -419,7 +419,7 @@ Getting help
 Please acknowledge this work
 ----------------------------
 
-This software is provided for free in the hope that it may be useful to others, and we would very much like to hear about your experience with it. If you find PSOPT helpful for your work or research, please emai the author at v.m.becerra@ieee.org  to incorporate a feature on the PSOPT web page.
+This software is provided for free in the hope that it may be useful to others, and we would very much like to hear about your experience with it. If you find PSOPT helpful for your work or research, please email the author at v.m.becerra@ieee.org  to incorporate a feature on the PSOPT web page.
 
 Given that a great deal of time and effort has gone into PSOPT's development, **please cite the following publication if you are using PSOPT for your own research**:
 
