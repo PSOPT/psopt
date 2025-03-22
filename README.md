@@ -90,6 +90,8 @@ Please consult the [PSOPT User Manual (in PDF format)](https://github.com/PSOPT/
 
 There is also a [PSOPT Application Examples Document (in PDF format)](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Application_Examples_Document_RR.pdf), which contains several application examples in various engineering/scientific domains, including their C++ code and results. 
 
+Installation instructions are given below.
+
 
 Installing PSOPT
 ----------------
