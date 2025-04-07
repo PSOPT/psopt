@@ -611,7 +611,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
          }
 
 
-		offset = lam_phase_offset+nstates*(norder+1);
+		offset = lam_phase_offset+1+nstates*(norder+1);
 	
 		if (   algorithm.nlp_method == "IPOPT"   ) {
 	                solution.dual.costates[i] = -solution.dual.costates[i];
