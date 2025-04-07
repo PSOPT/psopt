@@ -760,7 +760,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
          if (algorithm.scaling=="automatic") {
              for (k=0;k<norder+1;k++) { //EIGEN_UPDATE: k index shifted by -1
 
-                    solution.dual.path[i].block(0,k,npath,1)  =solution.dual.path[i].block(0,k,npath,1).cwiseProduct( (*workspace->constraint_scaling).block(offset+(k-1)*npath,0,npath,1) );
+                    solution.dual.path[i].block(0,k,npath,1)  =solution.dual.path[i].block(0,k,npath,1).cwiseProduct( (*workspace->constraint_scaling).block(offset+(k)*npath,0,npath,1) );
   	         }
          }
          solution.dual.path[i] /= problem.scale.objective;
