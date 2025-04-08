@@ -337,9 +337,11 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
   workspace->x0->resize(nvars,1);
   workspace->lambda->resize(nlp_ncons,1);
 
-  workspace->xlb->resize(nvars,1);
-  workspace->xub->resize(nvars,1);
-  
+  // workspace->xlb->resize(nvars,1);
+  // workspace->xub->resize(nvars,1);
+ *workspace->xlb = MatrixXd::Zero(nvars,1);
+ *workspace->xub = MatrixXd::Zero(nvars,1);
+
   workspace->nphases = problem.nphases;
 
   for(i=0; i< problem.nphases; i++)

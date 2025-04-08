@@ -30,8 +30,12 @@ e-mail:    v.m.becerra@ieee.org
 using std::numeric_limits;
 
 namespace PSOPT {
-    constexpr double inf        =   std::numeric_limits<double>::infinity();
-    constexpr double pi         =   3.141592653589793;
+//    constexpr double inf        =   std::numeric_limits<double>::infinity();
+//    constexpr double pi         =   3.141592653589793;
+
+    constexpr double inf    = std::numeric_limits<double>::infinity();
+    const double pi         = 4.0*atan(1.0);
+
 }
 
 
@@ -1057,35 +1061,6 @@ double nint(double x);
 int get_iphase_offset(Prob& problem, int iphase,Workspace* workspace);
 
 adouble ff_ad(adouble* xad, Workspace* workspace);
-
-
-void rk4_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* states,
-         adouble* controls, adouble* parameters, adouble& time,
-        adouble* xad, int iphase, Workspace* workspace),
-        MatrixXd& control_trajectory,
-        MatrixXd& time_vector,
-        MatrixXd& initial_state,
-	MatrixXd& parameters,
-        Prob & problem,
-        int iphase,
-        MatrixXd& state_trajectory, Workspace* workspace);
-
-void rkf_propagate( void (*dae)(adouble* derivatives, adouble* path, adouble* states,
-         adouble* controls, adouble* parameters, adouble& time,
-        adouble* xad, int iphase, Workspace* workspace),
-        MatrixXd& control_trajectory,
-        MatrixXd& time_vector,
-        MatrixXd& initial_state,
-	MatrixXd& parameters,
-        double tolerance,
-        double hmin,
-	double hmax,
-        Prob & problem,
-        int iphase,
-        MatrixXd& state_trajectory,
-        MatrixXd& new_time_vector,
-	MatrixXd& new_control_trajectory, Workspace* workspace);
-
 
 void auto_split_observations(Prob& problem, MatrixXd& observation_nodes, MatrixXd& observations);
 

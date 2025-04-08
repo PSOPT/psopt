@@ -259,7 +259,8 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 	psopt_print(workspace,msg);
 	sprintf(msg,"\n_____________________________Statistics per phase______________________________");
 	psopt_print(workspace,msg);
-	sprintf(msg,"\nPhase\t\tNodes\t\tMax ODE Error\tMin ODE error\tMean ODE Error", workspace->current_mesh_refinement_iteration );
+//	sprintf(msg,"\nPhase\t\tNodes\t\tMax ODE Error\tMin ODE error\tMean ODE Error", workspace->current_mesh_refinement_iteration );
+	sprintf(msg,"\nPhase\t\tNodes\t\tMax ODE Error\tMin ODE error\tMean ODE Error");
 	psopt_print(workspace,msg);
 
    solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = 0;

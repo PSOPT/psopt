@@ -1,5 +1,6 @@
 cmake_minimum_required (VERSION 3.12)
-project(PSOPT VERSION 5.0.3 LANGUAGES CXX)
+string(TIMESTAMP BUILD_DATE "%Y.%m.%d")
+project(PSOPT VERSION ${BUILD_DATE} LANGUAGES CXX)
 
 option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
 option(WITH_SNOPT_INTERFACE "Build interface for the SNOPT optimizer." OFF)
@@ -25,7 +26,7 @@ PUBLIC
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE adolc PkgConfig::ipopt Eigen3::Eigen)
+target_link_libraries(${PROJECT_NAME} PRIVATE adolc Eigen3::Eigen PUBLIC PkgConfig::ipopt)
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF)
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_delegating_constructors)

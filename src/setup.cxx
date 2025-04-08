@@ -116,7 +116,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   problem.bounds.upper.linkage.resize(nlinkages,1);
 
   problem.bounds.lower.linkage.setZero();
-  problem.bounds.lower.linkage.setZero();
+  problem.bounds.upper.linkage.setZero();
 
 
   problem.endpoint_cost               = NULL;
