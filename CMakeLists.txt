@@ -5,6 +5,7 @@ project(PSOPT VERSION ${BUILD_DATE} LANGUAGES CXX)
 option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
 option(WITH_SNOPT_INTERFACE "Build interface for the SNOPT optimizer." OFF)
 option(BUILD_TESTS "Build tests for PSOPT." OFF)
+option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but generates PDFs)" OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Eigen3 REQUIRED NO_MODULE)
@@ -21,7 +22,7 @@ file(GLOB HEADER include/*.h)
 
 add_library(${PROJECT_NAME} $<$<BOOL:$<TARGET_EXISTS:PSOPT_SNOPT_interface>>:$<TARGET_OBJECTS:PSOPT_SNOPT_interface>> ${SRC} ${HEADER})
 target_include_directories(${PROJECT_NAME}
-PUBLIC 
+PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
@@ -33,6 +34,10 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_delegating_constructors)
 
 if(${WITH_SNOPT_INTERFACE})
     add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF -DUSE_SNOPT)
+endif()
+
+if(${HEADLESS})
+    add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_VERSION}" -DHAVE_CSTDDEF -DHEADLESS)
 endif()
 
 if(${BUILD_EXAMPLES})

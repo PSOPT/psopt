@@ -115,6 +115,19 @@ void plot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const cha
 
          gscript = fopen("gnuplot.scp","w");
 
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
+
+
+
          if (terminal!=NULL) fprintf(gscript,"\nset terminal %s", terminal);
 
          if (output!=NULL) fprintf(gscript,"\nset output \"%s\"", output);
@@ -223,6 +236,17 @@ void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, cons
          Save(XY, "XY.dat");
 
          gscript = fopen("gnuplot.scp","w");
+
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
 
          if (terminal!=NULL) fprintf(gscript,"\nset terminal %s", terminal);
 
@@ -357,6 +381,17 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
          Save(XY, "XY1.dat");
 
          gscript = fopen("gnuplot.scp","w");
+
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
 
          if (terminal!=NULL) fprintf(gscript,"\nset terminal %s", terminal);
 
@@ -511,6 +546,17 @@ void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const
 
          gscript = fopen("gnuplot.scp","w");
 
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
+
          if (terminal!=NULL) fprintf(gscript,"\nset terminal %s", terminal);
 
          if (output!=NULL) fprintf(gscript,"\nset output \"%s\"", output);
@@ -664,6 +710,17 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
          Save(XY,"XY1.dat");
 
          gscript = fopen("gnuplot.scp","w");
+
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
 
          if (terminal!=NULL) fprintf(gscript,"\nset terminal %s", terminal);
 
@@ -862,6 +919,17 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const string& title,  c
 
          gscript = fopen("gnuplot.scp","w");
 
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
+
          if (terminal!=NULL) fprintf(gscript,"\nset terminal %s", terminal);
 
          if (output!=NULL) fprintf(gscript,"\nset output \"%s\"", output);
@@ -961,6 +1029,17 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
          Save(XY,"XY.dat");
 
          gscript = fopen("gnuplot.scp","w");
+
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
 
          if (terminal!=NULL) fprintf(gscript,"\nset terminal %s", terminal);
 
@@ -1126,6 +1205,17 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
          Save(XY,"XY.dat");
 
          gscript = fopen("gnuplot.scp","w");
+
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
 
          if (terminal!=NULL) fprintf(gscript,"\nset terminal %s", terminal);
 
@@ -1350,13 +1440,24 @@ void surf(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const stri
          for (i=0; i<length(X); i++) {
 				for(j=0;j<length(Y);j++) {
                     fprintf(datafile,"%f  %f  %f\n",X(i),Y(j), z(i,j) );
-	         } 
+	         }
 		      fprintf(datafile,"\n");
 	      }
 
          fclose(datafile);
 
          gscript = fopen("gnuplot.scp","w");
+
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
 
          if (gscript==NULL) error_message("surf(): error creating gnuplot script file");
 
@@ -1415,7 +1516,7 @@ void plot3(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const str
          if (z.rows()>1 && z.cols()>1) error_message("plot3(): MatrixXd object z must be a vector");
 
 
-         X = stack_columns(x); 
+         X = stack_columns(x);
 
 
          Y = stack_columns(y);
@@ -1454,6 +1555,17 @@ void plot3(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const str
          fclose(datafile);
 
          gscript = fopen("gnuplot.scp","w");
+
+         #ifdef HEADLESS
+
+         char rnd_filename[20];
+         srand((unsigned)time(NULL));  // Seed random number generator
+         int num = rand() % 9999 + 1;  // Random number between 1 and 9999
+         snprintf(rnd_filename, sizeof(rnd_filename), "plot_%d.pdf", num);
+         if (terminal==NULL)   fprintf(gscript,"\nset terminal %s", "pdf"); // Send output to pdf if headless is true
+         if (output==NULL)  fprintf(gscript,"\nset output \"%s\"", rnd_filename);
+
+         #endif // HEADLESS
 
          if (gscript==NULL) error_message("surf(): error creating gnuplot script file");
 
