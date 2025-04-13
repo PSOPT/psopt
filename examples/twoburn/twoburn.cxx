@@ -637,6 +637,8 @@ int main(void)
     double gtf = 0.0;
     double htf = 0.0;
     double ktf = 0.0;
+    
+    double Ltf = 9.4;
 
     double D2R = pi/180.0;
 
@@ -719,7 +721,7 @@ int main(void)
     problem.phases(2).bounds.upper.EndTime      = 3100;
 
 
-    // BOUNDS FOR PHASE 
+    // BOUNDS FOR PHASE 3
     problem.phases(3).bounds.lower.states(0) = 10.e6;
     problem.phases(3).bounds.lower.states(1) = -1;
     problem.phases(3).bounds.lower.states(2) = -1;
@@ -817,12 +819,19 @@ int main(void)
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(0.0,2690,nnodes);
 
-    x_guess.row(0) = pti*ones(1,nnodes);
-    x_guess.row(1) = fti*ones(1,nnodes);
-    x_guess.row(2) = gti*ones(1,nnodes);
-    x_guess.row(3) = hti*ones(1,nnodes);
-    x_guess.row(4) = kti*ones(1,nnodes);
-    x_guess.row(5) = Lti*ones(1,nnodes);
+//    x_guess.row(0) = pti*ones(1,nnodes);
+//    x_guess.row(1) = fti*ones(1,nnodes);
+//    x_guess.row(2) = gti*ones(1,nnodes);
+//    x_guess.row(3) = hti*ones(1,nnodes);
+//    x_guess.row(4) = kti*ones(1,nnodes);
+//    x_guess.row(5) = Lti*ones(1,nnodes);
+    
+    x_guess.row(0) = linspace(pti, pti+ (ptf-pti)/4.0, nnodes);
+    x_guess.row(1) = linspace(fti, fti+ (ftf-fti)/4.0, nnodes);
+    x_guess.row(2) = linspace(gti, gti+ (gtf-gti)/4.0, nnodes);
+    x_guess.row(3) = linspace(hti, hti+ (htf-hti)/4.0, nnodes);
+    x_guess.row(4) = linspace(kti, kti+ (ktf-kti)/4.0, nnodes);
+    x_guess.row(5) = linspace(Lti, Lti+ (Ltf-Lti)/4.0, nnodes);
 
 
     problem.phases(iphase).guess.states = x_guess;
@@ -842,12 +851,20 @@ int main(void)
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(2690,2840,nnodes);
 
-    x_guess.row(0) = pti*ones(1,nnodes);
-    x_guess.row(1) = fti*ones(1,nnodes);
-    x_guess.row(2) = gti*ones(1,nnodes);
-    x_guess.row(3) = hti*ones(1,nnodes);
-    x_guess.row(4) = kti*ones(1,nnodes);
-    x_guess.row(5) = Lti*ones(1,nnodes);
+//    x_guess.row(0) = pti*ones(1,nnodes);
+//    x_guess.row(1) = fti*ones(1,nnodes);
+//    x_guess.row(2) = gti*ones(1,nnodes);
+//    x_guess.row(3) = hti*ones(1,nnodes);
+//    x_guess.row(4) = kti*ones(1,nnodes);
+//    x_guess.row(5) = Lti*ones(1,nnodes);
+    
+    x_guess.row(0) = linspace(pti+ (ptf-pti)/4.0, pti+ 2.0*(ptf-pti)/4.0,nnodes);
+    x_guess.row(1) = linspace(fti+ (ftf-fti)/4.0, fti+ 2.0*(ftf-fti)/4.0,nnodes);
+    x_guess.row(2) = linspace(gti+ (gtf-gti)/4.0, gti+ 2.0*(gtf-gti)/4.0,nnodes);
+    x_guess.row(3) = linspace(hti+ (htf-hti)/4.0, hti+ 2.0*(htf-hti)/4.0,nnodes);
+    x_guess.row(4) = linspace(kti+ (ktf-kti)/4.0, kti+ 2.0*(ktf-kti)/4.0,nnodes);
+    x_guess.row(5) = linspace(Lti+ (Ltf-Lti)/4.0, Lti+ 2.0*(Ltf-Lti)/4.0,nnodes);
+    x_guess.row(6) = linspace(wti, wtf2,nnodes);
 
 
     u_guess.row(0) =  0.148637e-2*D2R*ones(1,nnodes);
@@ -869,13 +886,20 @@ int main(void)
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(2840,21650,nnodes);
     
-    x_guess.row(0) = pti*ones(1,nnodes);
-    x_guess.row(1) = fti*ones(1,nnodes);
-    x_guess.row(2) = gti*ones(1,nnodes);
-    x_guess.row(3) = hti*ones(1,nnodes);
-    x_guess.row(4) = kti*ones(1,nnodes);
-    x_guess.row(5) = Lti*ones(1,nnodes);
+//    x_guess.row(0) = pti*ones(1,nnodes);
+//    x_guess.row(1) = fti*ones(1,nnodes);
+//    x_guess.row(2) = gti*ones(1,nnodes);
+//    x_guess.row(3) = hti*ones(1,nnodes);
+//    x_guess.row(4) = kti*ones(1,nnodes);
+//    x_guess.row(5) = Lti*ones(1,nnodes);
 
+    x_guess.row(0) = linspace(pti+ 2.0*(ptf-pti)/4.0, pti+ 3.0*(ptf-pti)/4.0,nnodes);
+    x_guess.row(1) = linspace(fti+ 2.0*(ftf-fti)/4.0, fti+ 3.0*(ftf-fti)/4.0,nnodes);
+    x_guess.row(2) = linspace(gti+ 2.0*(gtf-gti)/4.0, gti+ 3.0*(gtf-gti)/4.0,nnodes);
+    x_guess.row(3) = linspace(hti+ 2.0*(htf-hti)/4.0, hti+ 3.0*(htf-hti)/4.0,nnodes);
+    x_guess.row(4) = linspace(kti+ 2.0*(ktf-kti)/4.0, kti+ 3.0*(ktf-kti)/4.0,nnodes);
+    x_guess.row(5) = linspace(Lti+ 2.0*(Ltf-Lti)/4.0, Lti+ 3.0*(Ltf-Lti)/4.0,nnodes);
+    
     problem.phases(iphase).guess.states = x_guess;
     problem.phases(iphase).guess.time   = time_guess;
 
@@ -890,12 +914,22 @@ int main(void)
     x_guess    =  zeros(nstates,nnodes);
     time_guess =  linspace(21650,21700,nnodes);
     
-    x_guess.row(0) = pti*ones(1,nnodes);
-    x_guess.row(1) = fti*ones(1,nnodes);
-    x_guess.row(2) = gti*ones(1,nnodes);
-    x_guess.row(3) = hti*ones(1,nnodes);
-    x_guess.row(4) = kti*ones(1,nnodes);
-    x_guess.row(5) = Lti*ones(1,nnodes);    
+//    x_guess.row(0) = pti*ones(1,nnodes);
+//   x_guess.row(1) = fti*ones(1,nnodes);
+//    x_guess.row(2) = gti*ones(1,nnodes);
+//    x_guess.row(3) = hti*ones(1,nnodes);
+//    x_guess.row(4) = kti*ones(1,nnodes);
+//    x_guess.row(5) = Lti*ones(1,nnodes);
+    
+    x_guess.row(0) = linspace(pti+ 3.0*(ptf-pti)/4.0, ptf,nnodes);
+    x_guess.row(1) = linspace(fti+ 3.0*(ftf-fti)/4.0, ftf,nnodes);
+    x_guess.row(2) = linspace(gti+ 3.0*(gtf-gti)/4.0, gtf,nnodes);
+    x_guess.row(3) = linspace(hti+ 3.0*(htf-hti)/4.0, htf,nnodes);
+    x_guess.row(4) = linspace(kti+ 3.0*(ktf-kti)/4.0, ktf,nnodes);
+    x_guess.row(5) = linspace(Lti+ 3.0*(Ltf-Lti)/4.0, Ltf,nnodes);
+    x_guess.row(6) = linspace(wtf2, wtf4,nnodes);
+
+    
 
     u_guess.row(0) =  -0.136658e-2*D2R*ones(1,nnodes);
     u_guess.row(1) =       49.7892*D2R*ones(1,nnodes);
