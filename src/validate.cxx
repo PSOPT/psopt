@@ -34,7 +34,6 @@ e-mail:    v.m.becerra@ieee.org
 
 void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 {
-    char m[500];
     int i;
 
     if (algorithm.nlp_method != "IPOPT" && algorithm.nlp_method != "SNOPT" )
@@ -50,7 +49,7 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     if (algorithm.hessian != "exact" && algorithm.hessian!="limited-memory")
        error_message("Incorrect algorithm.hessian option specified. Valid options are \"limited-memory\" and \"exact\" ");
     if (algorithm.hessian == "exact" && algorithm.nlp_method !="IPOPT") {
-       sprintf(workspace->text,"\n*** Warning: the 'exact' algorithm.hessian option is only available with the IPOPT solver");
+       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the 'exact' algorithm.hessian option is only available with the IPOPT solver");
        psopt_print(workspace,workspace->text);
     }
     if (algorithm.diff_matrix != "standard" && algorithm.diff_matrix!="diff_matrix" && algorithm.diff_matrix!="central-differences" &&  algorithm.diff_matrix!="reduced-roundoff" )
@@ -58,7 +57,7 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
 
     if (algorithm.hessian == "exact" && algorithm.derivatives !="automatic") {
-       sprintf(workspace->text,"\n*** Warning: the 'exact' algorithm.hessian option is only available with automatic derivatives");
+       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the 'exact' algorithm.hessian option is only available with automatic derivatives");
        psopt_print(workspace,workspace->text);
     }
     if (algorithm.nlp_tolerance <= 0)
@@ -123,38 +122,38 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
          if (problem.phase[i].ncontrols>0 && (problem.phase[i].bounds.lower.controls.array() >  problem.phase[i].bounds.upper.controls.array() ).any() )
          {
-                sprintf(m,"Infeasible control variable bounds supplied by the user in phase %i",i);
- 		error_message(m);
+                snprintf(workspace->text,sizeof(workspace->text),"Infeasible control variable bounds supplied by the user in phase %i",i);
+ 		error_message(workspace->text);
          }
 
          if (problem.phase[i].nstates>0 && ( problem.phase[i].bounds.lower.states.array() >  problem.phase[i].bounds.upper.states.array() ).any() )
          {
-                sprintf(m,"Infeasible state variable bounds supplied by the user in phase %i",i);
- 		error_message(m);
+                snprintf(workspace->text,sizeof(workspace->text),"Infeasible state variable bounds supplied by the user in phase %i",i);
+ 		error_message(workspace->text);
          }
 
          if (problem.phase[i].nevents>0 && ( problem.phase[i].bounds.lower.events.array() >  problem.phase[i].bounds.upper.events.array() ).any() )
          {
-                sprintf(m,"Infeasible event bounds supplied by the user in phase %i",i);
- 		error_message(m);
+                snprintf(workspace->text,sizeof(workspace->text),"Infeasible event bounds supplied by the user in phase %i",i);
+ 		error_message(workspace->text);
          }
 
          if (problem.phase[i].nparameters>0 && ( problem.phase[i].bounds.lower.parameters.array() >  problem.phase[i].bounds.upper.parameters.array() ).any() )
          {
-                sprintf(m,"Infeasible static parameter bounds supplied by the user in phase %i",i);
- 		error_message(m);
+                snprintf(workspace->text,sizeof(workspace->text),"Infeasible static parameter bounds supplied by the user in phase %i",i);
+ 		error_message(workspace->text);
          }
 
          if ( problem.phase[i].bounds.lower.StartTime >  problem.phase[i].bounds.upper.StartTime  )
          {
-                sprintf(m,"Infeasible start time bounds supplied by the user in phase %i",i);
- 		error_message(m);
+                snprintf(workspace->text,sizeof(workspace->text),"Infeasible start time bounds supplied by the user in phase %i",i);
+ 		error_message(workspace->text);
          }
 
          if ( problem.phase[i].bounds.lower.EndTime >  problem.phase[i].bounds.upper.EndTime  )
          {
-                sprintf(m,"Infeasible end time bounds supplied by the user in phase %i",i);
- 		error_message(m);
+                snprintf(workspace->text,sizeof(workspace->text),"Infeasible end time bounds supplied by the user in phase %i",i);
+ 		error_message(workspace->text);
          }
 
 	 if ( problem.phase[i].nobserved >  0  )
@@ -162,20 +161,20 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
 //	        if ( problem.phase[i].observation_nodes(1) != problem.phase[i].bounds.lower.StartTime && problem.phase[i].observation_nodes(1) != problem.phase[i].bounds.upper.StartTime )
 //		{
-//                 sprintf(m,"Initial observation time must be equal to start time in phase %i",i);
-// 		  error_message(m);
+//                 snprintf(workspace->text,sizeof(workspace->text),"Initial observation time must be equal to start time in phase %i",i);
+// 		  error_message(workspace->text);
 //		}
 
 //	        if ( fabs( problem.phase[i].observation_nodes("end") - problem.phase[i].bounds.lower.EndTime ) > 0.0001 && fabs(problem.phase[i].observation_nodes("end") - problem.phase[i].bounds.upper.EndTime )>0.0001 )
 //		{
-//		  sprintf(m,"Final observation time must be equal to end time in phase %i",i+1);
-// 		  error_message(m);
+//		  snprintf(workspace->text,sizeof(workspace->text),"Final observation time must be equal to end time in phase %i",i+1);
+// 		  error_message(workspace->text);
 //		}
 
 	        if ( problem.phase[i].nsamples != length( problem.phase[i].observation_nodes)  )
 		{
-		  sprintf(m,"Length of observation nodes vector in phase %i must be equal to problem.phases(%i).nsamples",i+1, i+1);
- 		  error_message(m);
+		  snprintf(workspace->text,sizeof(workspace->text),"Length of observation nodes vector in phase %i must be equal to problem.phases(%i).nsamples",i+1, i+1);
+ 		  error_message(workspace->text);
 		}
 
 		if (  isEmpty( problem.phase[i].residual_weights ) ) {
@@ -184,14 +183,14 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
 		if ( problem.phase[i].nsamples !=  problem.phase[i].residual_weights.cols() )
 		{
-		  sprintf(m,"The number of columns of the residual weight vector in phase %i must be equal to problem.phases(%i).nsamples",i+1, i+1);
- 		  error_message(m);
+		  snprintf(workspace->text,sizeof(workspace->text),"The number of columns of the residual weight vector in phase %i must be equal to problem.phases(%i).nsamples",i+1, i+1);
+ 		  error_message(workspace->text);
 		}
 
 		if ( problem.phase[i].nobserved !=  problem.phase[i].residual_weights.rows() )
 		{
-		  sprintf(m,"The number of rows of the residual weight vector in phase %i must be equal to the number of observed variables", i+1 );
- 		  error_message(m);
+		  snprintf(workspace->text,sizeof(workspace->text),"The number of rows of the residual weight vector in phase %i must be equal to the number of observed variables", i+1 );
+ 		  error_message(workspace->text);
 		}
 
 		if (  isEmpty(problem.phase[i].covariance)  ) {
@@ -200,20 +199,20 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
 		if ( problem.phase[i].nobserved !=  problem.phase[i].covariance.rows() && problem.phase[i].nobserved !=  problem.phase[i].covariance.cols()  )
 		{
-		  sprintf(m,"The number of rows and columns of matrix problem.phases(%i).covariance must be equal to problem.phases(%i).nobserved",i+1, i+1);
- 		  error_message(m);
+		  snprintf(workspace->text,sizeof(workspace->text),"The number of rows and columns of matrix problem.phases(%i).covariance must be equal to problem.phases(%i).nobserved",i+1, i+1);
+ 		  error_message(workspace->text);
 		}
 
 		if ( !isSymmetric(problem.phase[i].covariance)  )
 		{
-		  sprintf(m,"Matrix problem.phases(%i).covariance must be symmetric",i+1);
- 		  error_message(m);
+		  snprintf(workspace->text,sizeof(workspace->text),"Matrix problem.phases(%i).covariance must be symmetric",i+1);
+ 		  error_message(workspace->text);
 		}
 
 		if ( problem.phase[i].regularization_factor< 0  )
 		{
-		  sprintf(m,"problem.phases(%i).regularization_factor must be positive",i+1);
- 		  error_message(m);
+		  snprintf(workspace->text,sizeof(workspace->text),"problem.phases(%i).regularization_factor must be positive",i+1);
+ 		  error_message(workspace->text);
 		}
 
 		problem.integrand_cost 	= NULL;
@@ -228,14 +227,14 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
    if (problem.nlinkages>0 && ( problem.bounds.lower.linkage.array() >  problem.bounds.upper.linkage.array() ).any() )
    {
-         sprintf(m,"Infeasible phase linkage bounds supplied by the user");
-         error_message(m);
+         snprintf(workspace->text,sizeof(workspace->text),"Infeasible phase linkage bounds supplied by the user");
+         error_message(workspace->text);
    }
 
    if ( length(problem.bounds.lower.times) !=  length(problem.bounds.upper.times) || (!isEmpty(problem.bounds.lower.times) && length(problem.bounds.lower.times)!=problem.nphases+1) )
    {
-         sprintf(m,"Incorrect length of problem.bounds.lower.times or problem.bounds.upper.times");
-         error_message(m);
+         snprintf(workspace->text,sizeof(workspace->text),"Incorrect length of problem.bounds.lower.times or problem.bounds.upper.times");
+         error_message(workspace->text);
    }
 
    if ( !isEmpty(problem.bounds.lower.times) ) {

@@ -207,7 +207,6 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 	int n = algorithm.nsteps_error_integration;
 	adouble* xad = workspace->xad;
 	MatrixXd eta;
-	char msg[100];
 
 	MatrixXd states;
 	MatrixXd Xdot;
@@ -255,13 +254,13 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 	double mv;
 
 	psopt_print(workspace,"\n*******************************************************************************");
-        sprintf(msg,"\n                 Evaluation of mesh refinement iteration %i                     \n", workspace->current_mesh_refinement_iteration );
-	psopt_print(workspace,msg);
-	sprintf(msg,"\n_____________________________Statistics per phase______________________________");
-	psopt_print(workspace,msg);
-//	sprintf(msg,"\nPhase\t\tNodes\t\tMax ODE Error\tMin ODE error\tMean ODE Error", workspace->current_mesh_refinement_iteration );
-	sprintf(msg,"\nPhase\t\tNodes\t\tMax ODE Error\tMin ODE error\tMean ODE Error");
-	psopt_print(workspace,msg);
+        snprintf(workspace->text,sizeof(workspace->text),"\n                 Evaluation of mesh refinement iteration %i                     \n", workspace->current_mesh_refinement_iteration );
+	psopt_print(workspace,workspace->text);
+	snprintf(workspace->text,sizeof(workspace->text),"\n_____________________________Statistics per phase______________________________");
+	psopt_print(workspace,workspace->text);
+//	snprintf(workspace->text,sizeof(workspace->text),,"\nPhase\t\tNodes\t\tMax ODE Error\tMin ODE error\tMean ODE Error", workspace->current_mesh_refinement_iteration );
+	snprintf(workspace->text,sizeof(workspace->text),"\nPhase\t\tNodes\t\tMax ODE Error\tMin ODE error\tMean ODE Error");
+	psopt_print(workspace,workspace->text);
 
    solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = 0;
 	solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].nnodes = 0;
@@ -302,8 +301,8 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 		emax_history( workspace->current_mesh_refinement_iteration-1, 0) = (double) solution.nodes[iphase-1].size();
 
 		emax_history( workspace->current_mesh_refinement_iteration-1, 1) = solution.relative_errors[iphase-1].maxCoeff();
-		sprintf(msg,"\n%i\t\t%li\t\t%e\t%e\t%e", iphase, length(solution.nodes[iphase-1]), Max(solution.relative_errors[iphase-1]),  Min(solution.relative_errors[iphase-1]), mv );
-		psopt_print(workspace,msg);
+		snprintf(workspace->text,sizeof(workspace->text),"\n%i\t\t%li\t\t%e\t%e\t%e", iphase, length(solution.nodes[iphase-1]), Max(solution.relative_errors[iphase-1]),  Min(solution.relative_errors[iphase-1]), mv );
+		psopt_print(workspace,workspace->text);
 
 
       if ( emax_history( workspace->current_mesh_refinement_iteration-1, 1)>solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max )
@@ -319,24 +318,24 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 	solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].ncons = get_number_nlp_constraints(problem, workspace );
 
 	int jj = workspace->current_mesh_refinement_iteration-1;
-	sprintf(msg,"\n\n_____________________________Overall Statistics________________________________");
-	psopt_print(workspace,msg);
-	sprintf(msg,"\n\nTotal Nodes\tNVARS\t\tNCONS\t\tN Obj Eval\tN Cons Eval");
-	psopt_print(workspace,msg);
+	snprintf(workspace->text,sizeof(workspace->text),"\n\n_____________________________Overall Statistics________________________________");
+	psopt_print(workspace,workspace->text);
+	snprintf(workspace->text,sizeof(workspace->text),"\n\nTotal Nodes\tNVARS\t\tNCONS\t\tN Obj Eval\tN Cons Eval");
+	psopt_print(workspace,workspace->text);
 
-	sprintf(msg,"\n%i\t\t%i\t\t%i\t\t%i\t\t%i", solution.mesh_stats[jj].nnodes, solution.mesh_stats[jj].nvars,
+	snprintf(workspace->text,sizeof(workspace->text),"\n%i\t\t%i\t\t%i\t\t%i\t\t%i", solution.mesh_stats[jj].nnodes, solution.mesh_stats[jj].nvars,
 		solution.mesh_stats[jj].ncons, solution.mesh_stats[jj].n_obj_evals, solution.mesh_stats[jj].n_con_evals
 		);
-	psopt_print(workspace,msg);
+	psopt_print(workspace,workspace->text);
 
-	sprintf(msg,"\n\nN Jac Eval\tN Hes Eval\tN ODE RHS\tMax ODE Error\tNLP CPU (sec)");
-	psopt_print(workspace,msg);
+	snprintf(workspace->text,sizeof(workspace->text),"\n\nN Jac Eval\tN Hes Eval\tN ODE RHS\tMax ODE Error\tNLP CPU (sec)");
+	psopt_print(workspace,workspace->text);
 
-	sprintf(msg,"\n%i\t\t%i\t\t%i\t\t%e\t%e",
+	snprintf(workspace->text,sizeof(workspace->text),"\n%i\t\t%i\t\t%i\t\t%e\t%e",
 		solution.mesh_stats[jj].n_jacobian_evals, solution.mesh_stats[jj].n_hessian_evals,
 		solution.mesh_stats[jj].n_ode_rhs_evals, solution.mesh_stats[jj].epsilon_max,
 		solution.mesh_stats[jj].CPU_time);
-	psopt_print(workspace,msg);
+	psopt_print(workspace,workspace->text);
 
         psopt_print(workspace,"\n*******************************************************************************\n\n");
 

@@ -213,7 +213,7 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
      int lam_phase_offset = 0;
 
 
-     sprintf(workspace->text,"\nHot starting solution\n");
+     snprintf(workspace->text,sizeof(workspace->text),"\nHot starting solution\n");
      psopt_print(workspace,workspace->text);
 
      x0.resize(workspace->nvars,1);

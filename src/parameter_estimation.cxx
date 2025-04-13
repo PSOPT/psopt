@@ -420,11 +420,9 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 
       double alpha;
 
-      char* msg = new char[100];
+      snprintf(workspace->text,sizeof(workspace->text),"\n>>> Performing statistical analysis of estimated parameters...");
 
-      sprintf(msg,"\n>>> Performing statistical analysis of estimated parameters...");
-
-	  psopt_print(workspace,msg);
+	  psopt_print(workspace,workspace->text);
 
 
       for(i=0;i< problem.nphases; i++)

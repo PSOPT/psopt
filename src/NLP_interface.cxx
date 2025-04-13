@@ -191,17 +191,17 @@ int NLP_interface(
     sparse_jac(workspace->tag_fg, neF, n, repeat, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
 
 
-     sprintf(workspace->text,"\nJacobian sparsity detected using ADOLC:");
+     snprintf(workspace->text,sizeof(workspace->text),"\nJacobian sparsity detected using ADOLC:");
      psopt_print(workspace,workspace->text);
 
      double jsratio = (double) ((double)  workspace->F_nnz/((double) (n*neF)));
 
      if (jsratio > workspace->algorithm->jac_sparsity_ratio) {
-           sprintf(workspace->text, "increase algorithm.jac_sparsity_ratio to just above %f", jsratio);
+           snprintf(workspace->text,sizeof(workspace->text), "increase algorithm.jac_sparsity_ratio to just above %f", jsratio);
            error_message(workspace->text);
      }
 
-     sprintf(workspace->text,"\n%i nonzero elements out of %li [ratio=%f]\n", workspace->F_nnz, n*neF, jsratio);
+     snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %li [ratio=%f]\n", workspace->F_nnz, n*neF, jsratio);
      psopt_print(workspace,workspace->text);
 
      if (!use_sparse_jac_function) {
@@ -375,7 +375,7 @@ int NLP_interface(
   return 0;
 
 #else
-        sprintf(workspace->text,"\nSNOPT method has been specified but not linked");
+        snprintf(workspace->text,sizeof(workspace->text),"\nSNOPT method has been specified but not linked");
         error_message(workspace->text);
 #endif
 
@@ -452,7 +452,7 @@ int NLP_interface(
     }
 
     else {
-        sprintf(workspace->text,"\n Incorrect NLP method has been specified");
+        snprintf(workspace->text,sizeof(workspace->text),"\n Incorrect NLP method has been specified");
         error_message(workspace->text);
     }
 

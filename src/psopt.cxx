@@ -69,7 +69,7 @@ Workspace* workspace = workspace_up.get();
 
 string startup_message= "\n *******************************************************************************\n * This is PSOPT, an optimal control solver based on pseudospectral and local  *\n * collocation methods, together with large scale nonlinear programming        *";
 
-sprintf(workspace->text, "%s %s %s", "\n *******************************************************************************\n * PSOPT release number: ", PSOPT_RELEASE_STRING, "                                                 *");
+snprintf(workspace->text,sizeof(workspace->text), "%s %s %s", "\n *******************************************************************************\n * PSOPT release number: ", PSOPT_RELEASE_STRING, "                                                 *");
 
 string release_message= workspace->text;
 
@@ -106,13 +106,13 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 
 
-  sprintf(workspace->text,"%s",startup_message.c_str());
+  snprintf(workspace->text,sizeof(workspace->text),"%s",startup_message.c_str());
   psopt_print(workspace,workspace->text);
-  sprintf(workspace->text,"%s",release_message.c_str());
+  snprintf(workspace->text,sizeof(workspace->text),"%s",release_message.c_str());
   psopt_print(workspace,workspace->text);
-  sprintf(workspace->text,"%s",license_notice.c_str());
+  snprintf(workspace->text,sizeof(workspace->text),"%s",license_notice.c_str());
   psopt_print(workspace,workspace->text);
-  sprintf(workspace->text,"%s",contact_notice.c_str());
+  snprintf(workspace->text,sizeof(workspace->text),"%s",contact_notice.c_str());
   psopt_print(workspace,workspace->text);
 
   validate_user_input(problem,algorithm, workspace);
@@ -324,34 +324,34 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     //       and the vec(.) operator stacks the columns of a matrix one below the next
 
 
-    sprintf(workspace->text,"\nProblem:\t\t\t\t\t\t%s", problem.name.c_str());
+    snprintf(workspace->text,sizeof(workspace->text),"\nProblem:\t\t\t\t\t\t%s", problem.name.c_str());
     psopt_print(workspace,workspace->text);
 
 
-    sprintf(workspace->text, "\nThis is mesh refinement iteration:\t\t\t%i", iter_nodes);
+    snprintf(workspace->text,sizeof(workspace->text), "\nThis is mesh refinement iteration:\t\t\t%i", iter_nodes);
     psopt_print(workspace,workspace->text);
     if ( use_global_collocation(algorithm) ) {
-      sprintf(workspace->text, "\nCollocation method:\t\t\t\t\t%s", algorithm.collocation_method.c_str());
+      snprintf(workspace->text,sizeof(workspace->text), "\nCollocation method:\t\t\t\t\t%s", algorithm.collocation_method.c_str());
       psopt_print(workspace,workspace->text);
     }
     else {
-      sprintf(workspace->text, "\nCollocation method:\t\t\t\t\t%s", workspace->differential_defects.c_str());
+      snprintf(workspace->text,sizeof(workspace->text), "\nCollocation method:\t\t\t\t\t%s", workspace->differential_defects.c_str());
       psopt_print(workspace,workspace->text);
     }
     if ( use_global_collocation(algorithm) ) {
-	  sprintf(workspace->text, "\nDifferentiation matrix:\t\t\t\t\t%s", algorithm.diff_matrix.c_str());
+	  snprintf(workspace->text,sizeof(workspace->text), "\nDifferentiation matrix:\t\t\t\t\t%s", algorithm.diff_matrix.c_str());
 	  psopt_print(workspace,workspace->text);
     }
 
-    sprintf(workspace->text, "\nNumber of NLP variables\t\t\t\t\t%i", workspace->nvars );
+    snprintf(workspace->text,sizeof(workspace->text), "\nNumber of NLP variables\t\t\t\t\t%i", workspace->nvars );
     psopt_print(workspace,workspace->text);
-    sprintf(workspace->text, "\nNumber of NLP nonlinear constraints:\t\t\t%i", nlp_ncons);
+    snprintf(workspace->text,sizeof(workspace->text), "\nNumber of NLP nonlinear constraints:\t\t\t%i", nlp_ncons);
     psopt_print(workspace,workspace->text);
     for(i=1;i<=problem.nphases;i++) {
-      sprintf(workspace->text, "\nNumber of nodes phase %i:\t\t\t\t%i", i,problem.phases(i).current_number_of_intervals+1);
+      snprintf(workspace->text,sizeof(workspace->text), "\nNumber of nodes phase %i:\t\t\t\t%i", i,problem.phases(i).current_number_of_intervals+1);
       psopt_print(workspace,workspace->text);
     }
-    sprintf(workspace->text,"\n");
+    snprintf(workspace->text,sizeof(workspace->text),"\n");
     psopt_print(workspace,workspace->text);
 
     workspace->enable_nlp_counters = true;
@@ -370,7 +370,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     solution.cost = ff_num(x0, workspace)/problem.scale.objective;
 
-    sprintf(workspace->text,"\nReturned (unscaled) cost function value: %e", solution.cost);
+    snprintf(workspace->text,sizeof(workspace->text),"\nReturned (unscaled) cost function value: %e", solution.cost);
     psopt_print(workspace,workspace->text);
     x_phase_offset   = 0;
     lam_phase_offset = 0;

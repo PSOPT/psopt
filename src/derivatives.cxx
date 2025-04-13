@@ -430,7 +430,7 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 
 
 
-    sprintf(workspace->text,"\nNumber of index sets for sparse finite differences = %i\n", igroup->number);
+    snprintf(workspace->text,sizeof(workspace->text),"\nNumber of index sets for sparse finite differences = %i\n", igroup->number);
     psopt_print(workspace,workspace->text);
 
 

@@ -126,17 +126,17 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
      if (jsratio > workspace->algorithm->jac_sparsity_ratio)
      {
-           sprintf(workspace->text, "increase algorithm.jac_sparsity_ratio to just above %f", jsratio);
+           snprintf(workspace->text,sizeof(workspace->text), "increase algorithm.jac_sparsity_ratio to just above %f", jsratio);
            error_message(workspace->text);
      }
 
-     sprintf(workspace->text,"\nJacobian sparsity detected numerically:");
+     snprintf(workspace->text,sizeof(workspace->text),"\nJacobian sparsity detected numerically:");
      psopt_print(workspace,workspace->text);
-     sprintf(workspace->text,"\n*** %i nonzero elements out of %i [ratio=%f]", nnz, n*m, jsratio );
+     snprintf(workspace->text,sizeof(workspace->text),"\n*** %i nonzero elements out of %i [ratio=%f]", nnz, n*m, jsratio );
      psopt_print(workspace,workspace->text);
-     sprintf(workspace->text,"\n*** %i nonzero elements are constant", nnzA );
+     snprintf(workspace->text,sizeof(workspace->text),"\n*** %i nonzero elements are constant", nnzA );
      psopt_print(workspace,workspace->text);
-     sprintf(workspace->text,"\n*** %i nonzero elements are not constant", nnzG );
+     snprintf(workspace->text,sizeof(workspace->text),"\n*** %i nonzero elements are not constant", nnzG );
      psopt_print(workspace,workspace->text);
 
 
@@ -184,17 +184,17 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
   ///Bug fix
   free(jac_rind); free(jac_cind); free(jac_values);
 
-        sprintf(workspace->text,"\nJacobian sparsity detected using ADOLC:");
+        snprintf(workspace->text,sizeof(workspace->text),"\nJacobian sparsity detected using ADOLC:");
         psopt_print(workspace,workspace->text);
 
         jsratio = (double) ((double)  nnz/((double) (n*m)));
 
         if (jsratio > workspace->algorithm->jac_sparsity_ratio) {
-           sprintf(workspace->text, "increase algorithm.jac_sparsity_ratio to just above %f", jsratio);
+           snprintf(workspace->text,sizeof(workspace->text), "increase algorithm.jac_sparsity_ratio to just above %f", jsratio);
            error_message(workspace->text);
         }
 
-        sprintf(workspace->text,"\n%i nonzero elements out of %i [ratio=%f]\n", nnz, n*m, jsratio);
+        snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %i [ratio=%f]\n", nnz, n*m, jsratio);
         psopt_print(workspace,workspace->text);
 
   } // end if (autoderiv)
@@ -241,15 +241,15 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 		workspace->hess_jc[i] = hess_jc[i];
     }
 
-       sprintf(workspace->text,"\nHessian sparsity detected using ADOLC:");
+       snprintf(workspace->text,sizeof(workspace->text),"\nHessian sparsity detected using ADOLC:");
        psopt_print(workspace,workspace->text);
        double hsratio = (double) ((double)  nnz_hess/((double) (n*n)));
        if (hsratio > workspace->algorithm->hess_sparsity_ratio) {
-            sprintf(workspace->text, "increase algorithm.hess_sparsity_ratio to just above %f", hsratio);
+            snprintf(workspace->text,sizeof(workspace->text), "increase algorithm.hess_sparsity_ratio to just above %f", hsratio);
             error_message(workspace->text);
        }
 
-       sprintf(workspace->text,"\n%i nonzero elements out of %i [ratio = %f] \n", nnz_hess, n*n, hsratio );
+       snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %i [ratio = %f] \n", nnz_hess, n*n, hsratio );
        psopt_print(workspace,workspace->text);
 
        nnz_h_lag = nnz_hess;

@@ -37,7 +37,7 @@ void psopt_print(Workspace* workspace, const char* msg)
     if (workspace->algorithm->print_level) {
          fprintf(stderr,"%s", msg);
     }
-    sprintf(workspace->text,"%s"," ");
+    snprintf(workspace->text,sizeof(workspace->text),"%s"," ");
 }
 
 

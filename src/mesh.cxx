@@ -44,7 +44,6 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 	int i;
 	MatrixXd y, yls;
 	int xd;
-	char msg[100];
 	int max_increment;
 	double yerror;
 
@@ -115,9 +114,9 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 
            yerror = (y-yls).norm();
 
-			  sprintf(msg, "\nLeast squares problem solved for global mesh refinement. Norm of residual = %e", yerror);
+			  snprintf(workspace->text,sizeof(workspace->text), "\nLeast squares problem solved for global mesh refinement. Norm of residual = %e", yerror);
 
-			  psopt_print(workspace,msg);
+			  psopt_print(workspace,workspace->text);
 
 
 
@@ -129,17 +128,17 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 
 			  Nd = std::min( Ncurrent + max_increment, std::max( xd, (Ncurrent+1)  ) );
 
-			  sprintf(msg,"\nPhase %i: extrapolated number of nodes: %i, accepted number of nodes %d\n", iphase, xd, Nd);
+			  snprintf(workspace->text,sizeof(workspace->text),"\nPhase %i: extrapolated number of nodes: %i, accepted number of nodes %d\n", iphase, xd, Nd);
 
 		    }
 
 		    else {
 			// Take a cautious step forward and hope for the best
 			Nd = Ncurrent + 1;
-			sprintf(msg,"\nPhase %i: cautious step forward, next number of nodes %d\n", iphase, Nd);
+			snprintf(workspace->text,sizeof(workspace->text),"\nPhase %i: cautious step forward, next number of nodes %d\n", iphase, Nd);
 		    }
 
-		    psopt_print(workspace,msg);
+		    psopt_print(workspace,workspace->text);
 
 	            problem.phase[iphase-1].current_number_of_intervals = Nd-1;
 
