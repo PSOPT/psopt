@@ -409,9 +409,11 @@ $ ./launch
 Running PSOPT on a docker container
 ----------------
 
-A Docker container file (Dockerfile) is provided in the current distributions of PSOPT. This is an alternative way of installing and running PSOPT.
-
 Docker containers are lightweight, standalone, executable software packages that include everything needed to run an application, such as code, runtime, libraries, and system tools. To use dockers, you need to install the docker software. For instance, you can install Docker Desktop for [Windows 11](https://docs.docker.com/desktop/setup/install/windows-install/) and [MacOS](https://docs.docker.com/desktop/setup/install/mac-install/) or various distributions of [Linux](https://docs.docker.com/desktop/setup/install/linux/).
+
+The current distribution of PSOPT provides a Docker container file (Dockerfile). This provides an alternative way of installing and running PSOPT. 
+
+As it is not easy to get a docker to display graphical output (such as GNUplot plots), it is best to run PSOPT in headless mode (no graphical output), and visualise any graphical output from the host operating system. 
 
 The steps to create a docker container and run PSOPT on the container are as follows:
 
