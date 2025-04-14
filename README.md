@@ -413,7 +413,7 @@ Docker containers are relatively small, standalone, executable software packages
 
 The current distribution of PSOPT provides a Docker container file (Dockerfile). This provides an alternative way of installing and running PSOPT. 
 
-As it is not easy to get a docker to display graphical output (such as GNUplot plots), it is best to run PSOPT in headless mode (no graphical output) within the docker container, and visualise any graphical output from the host operating system by opening any PDF files that may be have been produced by PSOPT.
+As it is not easy to get a docker to display graphical output (such as GNUplot plots), it is best to run PSOPT in headless mode (no graphical output) within the docker container, and visualise any graphical output from the host operating system (e.g. by opening any PDF files that PSOPT may have produced).
 
 The steps to create a docker container and run PSOPT on the container are as follows:
 
