@@ -406,18 +406,18 @@ $ ./launch
 ```
 
 
-Docker container
+Running PSOPT on a docker container
 ----------------
 
 A Docker container file (Dockerfile) is provided in the current distributions of PSOPT. This is an alternative way of installing and running PSOPT.
 
-Docker containers are lightweight, standalone, executable software packages that include everything needed to run an application, such as code, runtime, libraries, and system tools. To use dockers, you need to install the docker software. For instance, you can install Docker Desktop for [Windows 11[(https://docs.docker.com/desktop/setup/install/windows-install/) and [MacOS](https://docs.docker.com/desktop/setup/install/mac-install/) or various distributions of [Linux](https://docs.docker.com/desktop/setup/install/linux/).
+Docker containers are lightweight, standalone, executable software packages that include everything needed to run an application, such as code, runtime, libraries, and system tools. To use dockers, you need to install the docker software. For instance, you can install Docker Desktop for [Windows 11](https://docs.docker.com/desktop/setup/install/windows-install/) and [MacOS](https://docs.docker.com/desktop/setup/install/mac-install/) or various distributions of [Linux](https://docs.docker.com/desktop/setup/install/linux/).
 
-The steps to run PSOPT on a docker container are as follows:
+The steps to create a docker container and run PSOPT on the container are as follows:
 
-1. Download [Dockerfile](https://github.com/PSOPT/psopt/blob/master/Dockerfile) from the PSOPT distribution, and place it in a folder.
+1. Download [Dockerfile](https://github.com/PSOPT/psopt/blob/master/Dockerfile) from the PSOPT distribution, and place it in a folder. This Dockerfile uses [archlinux](https://hub.docker.com/_/archlinux/) as the base.
 
-2. The command to build the docker container is as follows: 
+2. In your terminal, cd to the same folder where the Dockerfile is. The command to build the docker container (including PSOPT) is as follows: 
 ```
 $ docker build --no-cache -t psopt-archlinux:latest .
 ```
@@ -426,14 +426,14 @@ $ docker build --no-cache -t psopt-archlinux:latest .
 ```
 $ docker run -it psopt-archlinux:latest 
 ```
-This lands you in the main psopt folder. From there cd to 'build/examples' to run particular examples, etc.
+This will land you in the main 'psopt' folder. From there cd to 'build/examples' to run particular examples, etc.
 
-4. Alternatively, use the command to run the docker container interactively with a data connection to the host 
+4. Alternatively, you can use the following command to run the docker container interactively with a data connection to the host 
 ```
 $ docker run -it --rm -v "$(pwd):/data" psopt-archlinux:latest
 ```
 From within the container, cd to 'build/examples' to run particular examples, etc.
-Output files need to be copied manually to the folder /data from within the container. The copied files (e.g. pdfs or .txt files) appear within the working directory of the host (this is the directory from which you executed the 'docker run' command.
+Output files need to be copied manually to the folder /data from within the container. The copied files (e.g. pdfs or .txt files) appear within the working directory of the host, which is the directory from which you executed the 'docker run' command.
 
 Getting help
 ------------
