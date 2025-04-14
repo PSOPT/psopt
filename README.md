@@ -406,18 +406,18 @@ $ ./launch
 ```
 
 
-Running PSOPT on a docker container
+Running PSOPT witin a docker container
 ----------------
 
-Docker containers are lightweight, standalone, executable software packages that include everything needed to run an application, such as code, runtime, libraries, and system tools. To use dockers, you need to install the docker software. For instance, you can install Docker Desktop for [Windows 11](https://docs.docker.com/desktop/setup/install/windows-install/), [MacOS](https://docs.docker.com/desktop/setup/install/mac-install/), and various distributions of [Linux](https://docs.docker.com/desktop/setup/install/linux/).
+Docker containers are relatively small, standalone, executable software packages that include everything needed to run an application, such as code, runtime, libraries, and system tools. Containers are a form of operating system virtualisation. To use dockers containers, you need to install suitable software.  For instance, you can install Docker Desktop for [Windows 11](https://docs.docker.com/desktop/setup/install/windows-install/), [MacOS](https://docs.docker.com/desktop/setup/install/mac-install/), and various distributions of [Linux](https://docs.docker.com/desktop/setup/install/linux/).
 
 The current distribution of PSOPT provides a Docker container file (Dockerfile). This provides an alternative way of installing and running PSOPT. 
 
-As it is not easy to get a docker to display graphical output (such as GNUplot plots), it is best to run PSOPT in headless mode (no graphical output), and visualise any graphical output from the host operating system. 
+As it is not easy to get a docker to display graphical output (such as GNUplot plots), it is best to run PSOPT in headless mode (no graphical output) within the docker container, and visualise any graphical output from the host operating system by opening any PDF files that may be have been produced by PSOPT.
 
 The steps to create a docker container and run PSOPT on the container are as follows:
 
-1. Download [Dockerfile](https://github.com/PSOPT/psopt/blob/master/Dockerfile) from the PSOPT distribution, and place it in a folder. This Dockerfile uses [archlinux](https://hub.docker.com/_/archlinux/) as the base.
+1. Download [Dockerfile](https://github.com/PSOPT/psopt/blob/master/Dockerfile) from the PSOPT distribution, and place it in a folder. This Dockerfile uses [archlinux](https://hub.docker.com/_/archlinux/) as the base. This file clones the latest source code for PSOPT available from GitHub. If you have created your own version (for instance, to include your own examples or cases), you can modify the Dockerfile to copy your own source tree.
 
 2. In your terminal, cd to the same folder where the Dockerfile is. The command to build the docker container (including PSOPT) is as follows: 
 ```
@@ -435,7 +435,7 @@ This will land you in the main 'psopt' folder. From there cd to 'build/examples'
 $ docker run -it --rm -v "$(pwd):/data" psopt-archlinux:latest
 ```
 From within the container, cd to 'build/examples' to run particular examples, etc.
-Output files need to be copied manually to the folder /data from within the container. The copied files (e.g. pdfs or .txt files) appear within the working directory of the host, which is the directory from which you executed the 'docker run' command.
+Any output files must be manually copied to the folder /data from within the container. The copied files (e.g. PDFs or .txt files) appear within the working directory of the host, which is the directory from which you executed the 'docker run' command.
 
 Getting help
 ------------
