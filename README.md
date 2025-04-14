@@ -409,7 +409,7 @@ $ ./launch
 Running PSOPT on a docker container
 ----------------
 
-Docker containers are lightweight, standalone, executable software packages that include everything needed to run an application, such as code, runtime, libraries, and system tools. To use dockers, you need to install the docker software. For instance, you can install Docker Desktop for [Windows 11](https://docs.docker.com/desktop/setup/install/windows-install/) and [MacOS](https://docs.docker.com/desktop/setup/install/mac-install/) or various distributions of [Linux](https://docs.docker.com/desktop/setup/install/linux/).
+Docker containers are lightweight, standalone, executable software packages that include everything needed to run an application, such as code, runtime, libraries, and system tools. To use dockers, you need to install the docker software. For instance, you can install Docker Desktop for [Windows 11](https://docs.docker.com/desktop/setup/install/windows-install/), [MacOS](https://docs.docker.com/desktop/setup/install/mac-install/), and various distributions of [Linux](https://docs.docker.com/desktop/setup/install/linux/).
 
 The current distribution of PSOPT provides a Docker container file (Dockerfile). This provides an alternative way of installing and running PSOPT. 
 
