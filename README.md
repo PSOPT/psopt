@@ -79,7 +79,7 @@ e-mail:    v.m.becerra@ieee.org
 
 
 Rolling Release
-===============
+---------------
 
 From March 2025 PSOPT features a rolling release mode. Rolling release  is a concept in software development of frequently delivering updates to applications. This is in contrast to a standard or point release development model which uses software versions which replace the previous version. Users can download the latest source code from the GitHub repository. The documentation will also be updated  on a rolling release basis.
 
@@ -406,6 +406,34 @@ $ ./launch
 ```
 
 
+Docker container
+----------------
+
+A Docker container file (Dockerfile) is provided in the current distributions of PSOPT. This is an alternative way of installing and running PSOPT.
+
+Docker containers are lightweight, standalone, executable software packages that include everything needed to run an application, such as code, runtime, libraries, and system tools. To use dockers, you need to install the docker software. For instance, you can install Docker Desktop for [Windows 11[(https://docs.docker.com/desktop/setup/install/windows-install/) and [MacOS](https://docs.docker.com/desktop/setup/install/mac-install/) or various distributions of [Linux](https://docs.docker.com/desktop/setup/install/linux/).
+
+The steps to run PSOPT on a docker container are as follows:
+
+1. Download [Dockerfile](https://github.com/PSOPT/psopt/blob/master/Dockerfile) from the PSOPT distribution, and place it in a folder.
+
+2. The command to build the docker container is as follows: 
+```
+$ docker build --no-cache -t psopt-archlinux:latest .
+```
+
+3. Issue the following command to run the docker container interactively:
+```
+$ docker run -it psopt-archlinux:latest 
+```
+This lands you in the main psopt folder. From there cd to 'build/examples' to run particular examples, etc.
+
+4. Alternatively, use the command to run the docker container interactively with a data connection to the host 
+```
+$ docker run -it --rm -v "$(pwd):/data" psopt-archlinux:latest
+```
+From within the container, cd to 'build/examples' to run particular examples, etc.
+Output files need to be copied manually to the folder /data from within the container. The copied files (e.g. pdfs or .txt files) appear within the working directory of the host (this is the directory from which you executed the 'docker run' command.
 
 Getting help
 ------------
