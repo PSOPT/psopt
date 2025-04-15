@@ -431,11 +431,14 @@ $ docker run -it psopt-archlinux:latest
 This will land you in the main 'psopt' folder. From there cd to 'build/examples' to run particular examples, etc.
 
 4. Alternatively, you can use the following command to run the docker container interactively with a data connection to the host 
+
 ```
-$ docker run -it --rm -v "$(pwd):/data" psopt-archlinux:latest
+$ docker run -it --rm -v "$HOME/data:/data" psopt-archlinux:latest 
 ```
+Here, the shared folder is "$HOME/data" as seen from the host, and "/data" as seen from the container.
+
 From within the container, cd to 'build/examples' to run particular examples, etc.
-Any output files must be manually copied to the folder /data from within the container. The copied files (e.g. PDFs or .txt files) appear within the working directory of the host, which is the directory from which you executed the 'docker run' command.
+Any output files must be manually copied to the folder /data from within the container. The copied files (e.g. PDFs or .txt files) appear within the corresponding directory of the host ($HOME/data). The host can send files to the container via the same folder.
 
 Getting help
 ------------
