@@ -415,11 +415,11 @@ The current distribution of PSOPT provides a Docker container file (Dockerfile).
 
 The following are opportunities provided by the use of docker containers with PSOPT.
 
--**Reproducible Environments:** A Docker container ensures everyone—whether on Linux, macOS, or Windows—runs PSOPT with the same OS libraries, compiler, and dependencies, eliminating configuration mismatches.
+-**Reproducible Environments:** A Docker container ensures PSOPT is run with the same OS libraries, compiler, and dependencies, eliminating configuration mismatches, regardless of the host OS.
 
--**Easier Setup:** Users avoid manually installing IPOPT, ADOL-C, COLPACK, EIGEN3, and other dependencies. A single docker pull or docker build command spins up a ready-to-run PSOPT environment.
+-**Easier Setup:** Users avoid manually installing IPOPT, ADOL-C, COLPACK, EIGEN3, and other dependencies. A single docker build command spins up a ready-to-run PSOPT environment.
 
--**Continuous Integration (CI) Testing:** Automated pipelines (GitHub Actions, GitLab CI, etc.) can pull and test PSOPT in a Docker image, allowing fast and consistent builds without manually setting up each build agent. 
+-**Continuous Integration (CI) Testing:** Automated pipelines (e.g. GitHub Actions) can pull and test PSOPT in a Docker image, allowing fast and consistent builds.
 
 -**Cloud or HPC Deployment:** Clusters often support container-based workloads. Docker images simplify running large-scale optimal control problems in cloud services or high-performance computing environments.
 
