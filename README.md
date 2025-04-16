@@ -413,6 +413,16 @@ Docker containers are relatively small, standalone, executable software packages
 
 The current distribution of PSOPT provides a Docker container file (Dockerfile). This provides an alternative way of installing and running PSOPT. 
 
+The following are opportunities provided by the use of docker containers with PSOPT.
+
+**Reproducible Environments:** A Docker container ensures everyone—whether on Linux, macOS, or Windows—runs PSOPT with the same OS libraries, compiler, and dependencies, eliminating configuration mismatches.
+
+**Easier Setup:** Users avoid manually installing IPOPT, ADOL-C, COLPACK, EIGEN3, and other dependencies. A single docker pull or docker build command spins up a ready-to-run PSOPT environment.
+
+**Continuous Integration (CI) Testing:** Automated pipelines (GitHub Actions, GitLab CI, etc.) can pull and test PSOPT in a Docker image, allowing fast and consistent builds without manually setting up each build agent. 
+
+**Cloud or HPC Deployment:** Clusters often support container-based workloads. Docker images simplify running large-scale optimal control problems in cloud services or high-performance computing environments.
+
 As it is not easy to get a docker to display graphical output (such as GNUplot plots), it is best to run PSOPT in headless mode (no graphical output) within the docker container, and visualise any graphical output from the host operating system (e.g. by opening any PDF files that PSOPT may have produced).
 
 The steps to create a docker container and run PSOPT on the container are as follows:
