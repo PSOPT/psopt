@@ -127,24 +127,24 @@ ADOL-C is a library for automatic differentiation of C++ code. It computes gradi
 A suitable version of ADOL-C can be easily installed using a package manager in some, but not all, Linux distributions. In some platforms, it may be necessary to manually install Adol-c and ColPack. The following commands should allow to perform a manual installation on various platforms:
 
 ```
-$ wget --continue archive.ubuntu.com/ubuntu/pool/universe/a/adolc/adolc_2.7.2.orig.tar.xz 
-$ tar -xf adolc_2.7.2.orig.tar.xz
-$ cd ADOL-C-2.7.2
-$ mkdir ./ThirdParty
-$ cd ./ThirdParty
-$ wget --continue http://archive.ubuntu.com/ubuntu/pool/universe/c/colpack/colpack_1.0.10.orig.tar.gz
-$ tar zxvf colpack_1.0.10.orig.tar.gz
-$ mv ColPack-1.0.10 ColPack
-$ cd ColPack
-$ autoreconf -fi
-$ ./configure --prefix=/usr/local
-$ make
-$ sudo make install
-$ cd ../..
-$ autoreconf -fi
-$ ./configure --prefix=/usr/local --enable-sparse --with-colpack=/usr/local
-$ make
-$ sudo make install
+wget --continue archive.ubuntu.com/ubuntu/pool/universe/a/adolc/adolc_2.7.2.orig.tar.xz 
+tar -xf adolc_2.7.2.orig.tar.xz
+cd ADOL-C-2.7.2
+mkdir ./ThirdParty
+cd ./ThirdParty
+wget --continue http://archive.ubuntu.com/ubuntu/pool/universe/c/colpack/colpack_1.0.10.orig.tar.gz
+tar zxvf colpack_1.0.10.orig.tar.gz
+mv ColPack-1.0.10 ColPack
+cd ColPack
+autoreconf -fi
+./configure --prefix=/usr/local
+make
+sudo make install
+cd ../..
+autoreconf -fi
+./configure --prefix=/usr/local --enable-sparse --with-colpack=/usr/local
+make
+sudo make install
 ```
 
 **EIGEN3**
@@ -156,13 +156,13 @@ $ sudo make install
 If necessary, Eigen can also be installed using CMake:
 
 ```
-$ wget --continue https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.gz
-$ tar zxvf eigen-3.3.7.tar.gz
-$ cd eigen-3.3.7
-$ mkdir build
-$ cd build
-$ cmake ..
-$ sudo make install
+wget --continue https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.gz
+tar zxvf eigen-3.3.7.tar.gz
+cd eigen-3.3.7
+mkdir build
+cd build
+cmake ..
+sudo make install
 ```
 
 
@@ -306,7 +306,7 @@ PSOPT has been successfully compiled on:
 For **Ubuntu 24.04**:
 
 ```
-$ sudo apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
+sudo apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
   coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev
 ```
 
@@ -319,8 +319,8 @@ Note that Adol-c and ColPack needs to be manually installed on the latest versio
 For **Debian 12.9.0**:
 
 ```
-$ su
-$ apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
+su
+apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
   coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev
 ```
 
@@ -331,16 +331,16 @@ Note that Adol-c and ColPack needs to be manually installed on the latest versio
 For **OpenSUSE Leap 15.5 and Tumbleweed**:
 
 ```
-$ sudo zypper install git gnuplot libboost_system1_66_0-devel eigen3-devel ColPack-devel \
+sudo zypper install git gnuplot libboost_system1_66_0-devel eigen3-devel ColPack-devel \
   adolc-devel blas-devel lapack-devel Ipopt-devel cmake gcc-c++
 ```
 
 For **Arch Linux / Manjaro**:
 
 ```
-$ sudo pacman -Syu
-$ sudo pacman -S git base-devel cmake gnuplot eigen boost blas lapack yay
-$ yay -S coin-or-ipopt colpack adol-c
+sudo pacman -Syu
+sudo pacman -S git base-devel cmake gnuplot eigen boost blas lapack yay
+yay -S coin-or-ipopt colpack adol-c
 ```
 
 
@@ -377,32 +377,32 @@ The above is working with MacOS Sequoia with an Intel processor (date: 16 Feb 20
 Once all dependencies are installed, PSOPT can be downloaded from GitHub, and built using CMake using the following commands.
 
 ```
-$ git clone https://github.com/PSOPT/psopt.git
-$ cd psopt
-$ mkdir build
-$ cd build
-$ cmake -DBUILD_EXAMPLES=ON ..
-$ make
-$ sudo make install
+git clone https://github.com/PSOPT/psopt.git
+cd psopt
+mkdir build
+cd build
+cmake -DBUILD_EXAMPLES=ON ..
+make
+sudo make install
 ```
 
 If using SNOPT:
 
 ```
-$ cmake -DBUILD_EXAMPLES=ON -DWITH_SNOPT_INTERFACE=ON ..
+cmake -DBUILD_EXAMPLES=ON -DWITH_SNOPT_INTERFACE=ON ..
 ```
 
 For debugging:
 
 ```
-$ cmake -DBUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Debug ..
+cmake -DBUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Debug ..
 ```
 
 After installation, run at least one example to check that the build is working correctly:
 
 ```
-$ cd build/examples/launch
-$ ./launch
+cd build/examples/launch
+./launch
 ```
 
 
@@ -415,13 +415,13 @@ The current distribution of PSOPT provides a Docker container file (Dockerfile).
 
 The following are opportunities provided by the use of docker containers with PSOPT.
 
-**Reproducible Environments:** A Docker container ensures everyone—whether on Linux, macOS, or Windows—runs PSOPT with the same OS libraries, compiler, and dependencies, eliminating configuration mismatches.
+-**Reproducible Environments:** A Docker container ensures everyone—whether on Linux, macOS, or Windows—runs PSOPT with the same OS libraries, compiler, and dependencies, eliminating configuration mismatches.
 
-**Easier Setup:** Users avoid manually installing IPOPT, ADOL-C, COLPACK, EIGEN3, and other dependencies. A single docker pull or docker build command spins up a ready-to-run PSOPT environment.
+-**Easier Setup:** Users avoid manually installing IPOPT, ADOL-C, COLPACK, EIGEN3, and other dependencies. A single docker pull or docker build command spins up a ready-to-run PSOPT environment.
 
-**Continuous Integration (CI) Testing:** Automated pipelines (GitHub Actions, GitLab CI, etc.) can pull and test PSOPT in a Docker image, allowing fast and consistent builds without manually setting up each build agent. 
+-**Continuous Integration (CI) Testing:** Automated pipelines (GitHub Actions, GitLab CI, etc.) can pull and test PSOPT in a Docker image, allowing fast and consistent builds without manually setting up each build agent. 
 
-**Cloud or HPC Deployment:** Clusters often support container-based workloads. Docker images simplify running large-scale optimal control problems in cloud services or high-performance computing environments.
+-**Cloud or HPC Deployment:** Clusters often support container-based workloads. Docker images simplify running large-scale optimal control problems in cloud services or high-performance computing environments.
 
 As it is not easy to get a docker to display graphical output (such as GNUplot plots), it is best to run PSOPT in headless mode (no graphical output) within the docker container, and visualise any graphical output from the host operating system (e.g. by opening any PDF files that PSOPT may have produced).
 
@@ -431,19 +431,19 @@ The steps to create a docker container and run PSOPT on the container are as fol
 
 2. In your terminal, cd to the same folder where the Dockerfile is. The command to build the docker container (including PSOPT) is as follows: 
 ```
-$ docker build --no-cache -t psopt-archlinux:latest .
+docker build --no-cache -t psopt-archlinux:latest .
 ```
 
 3. Issue the following command to run the docker container interactively:
 ```
-$ docker run -it psopt-archlinux:latest 
+docker run -it psopt-archlinux:latest 
 ```
 This will land you in the main 'psopt' folder. From there cd to 'build/examples' to run particular examples, etc.
 
 4. Alternatively, you can use the following command to run the docker container interactively with a data connection to the host 
 
 ```
-$ docker run -it --rm -v "$HOME/data:/data" psopt-archlinux:latest 
+docker run -it --rm -v "$HOME/data:/data" psopt-archlinux:latest 
 ```
 Here, the shared folder is "$HOME/data" as seen from the host, and "/data" as seen from the container.
 
