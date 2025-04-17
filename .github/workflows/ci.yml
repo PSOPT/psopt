@@ -1,3 +1,25 @@
+# .github/workflows/ci.yml
+name: Build‑and‑test
+
+# ────────  TRIGGERS  ───────────────────────────────────────────────
+on:
+  push:                         # run when someone pushes commits …
+    branches: [master]            # … to the main branch only
+  pull_request:                 # run for every PR targeting this repo
+    branches: [master]
+  workflow_dispatch:            # adds a “Run workflow” button in the Actions tab
+  schedule:                     # nightly build at 02:30 UTC
+    - cron: '30 2 * * *'
+# ───────────────────────────────────────────────────────────────────
+
+jobs:
+  build:
+    runs-on: archlinux-latest
+    steps:
+      - uses: actions/checkout@v4
+      # … rest of the job …
+
+
 env:
   EXAMPLES: "twoburn,low_thrust,zpm,shuttle_reentry,launch"
   REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03"   # <‑‑ your true numbers
