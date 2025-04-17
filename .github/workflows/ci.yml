@@ -1,0 +1,28 @@
+env:
+  EXAMPLES: "twoburn,low_thrust,zpm,shuttle_reentry,launch"
+  REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03"   # <‑‑ your true numbers
+
+steps:
+  - name: Checkout
+    uses: actions/checkout@v4
+
+  - name: Configure
+    run: cmake -B build -DBUILD_EXAMPLES=ON -DHEADLESS=ON -DCMAKE_BUILD_TYPE=${{matrix.build_type}}
+
+  - name: Build
+    run: cmake --build build -j$(nproc)
+
+  - name: Run selected examples & parse results
+    run: |
+      python .github/scripts/run_examples.py \
+        --exe-dir build/examples \
+        --summary build/test_summary.json
+
+  - name: Upload solution files & summary
+    if: always()
+    uses: actions/upload-artifact@v4
+    with:
+      name: psopt-logs
+      path: |
+        build/examples/**/psopt_solution_*.txt
+        build/test_summary.json
