@@ -53,10 +53,12 @@ jobs:
          ldd  build/examples/twoburn/twoburn || true        
 
       - name: Run selected examples & parse results
+        env:
+         LD_LIBRARY_PATH: ${{ github.workspace }}/build/lib   # ← add this
         run: |
-          python .github/scripts/run_examples.py \
-            --exe-dir build/examples \
-            --summary build/test_summary.json
+         python .github/scripts/run_examples.py \
+         --exe-dir build/examples \
+         --summary build/test_summary.json
 
       - name: Upload solution files & summary
         if: always()
