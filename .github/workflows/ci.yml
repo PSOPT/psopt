@@ -47,6 +47,9 @@ jobs:
       - name: Build
         run: cmake --build build -j$(nproc)
         
+      - name: Install python inside CI container
+        run: pacman -Sy --noconfirm python
+        
       - name: Debug one executable
         run: |
          file build/examples/twoburn/twoburn
