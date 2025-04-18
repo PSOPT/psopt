@@ -1,50 +1,56 @@
 # .github/workflows/ci.yml
 name: Build‑and‑test
 
-# ────────  TRIGGERS  ───────────────────────────────────────────────
+# ────────── TRIGGERS ──────────────────────────────────────────────
 on:
-  push:                         # run when someone pushes commits …
-    branches: [master]            # … to the main branch only
-  pull_request:                 # run for every PR targeting this repo
-    branches: [master]
-  workflow_dispatch:            # adds a “Run workflow” button in the Actions tab
-  schedule:                     # nightly build at 02:30 UTC
+  push:
+    branches: [master]           # run on pushes to master
+  pull_request:
+    branches: [master]           # run on PRs targeting master
+  workflow_dispatch:             # manual “Run workflow” button
+  schedule:                      # nightly 02:30 UTC
     - cron: '30 2 * * *'
-# ───────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────
 
 jobs:
   build:
-    runs-on: archlinux-latest
+    runs-on: ubuntu-latest       # GitHub‑hosted runner
+    # Use your pre‑built Manjaro/Arch container so pacman/yay are available
+    container:
+      image: ghcr.io/psopt/psopt-ci:latest    # <- change if necessary
+
+    strategy:
+      matrix:
+        build_type: [Release]    # add Debug if desired
+
+    env:
+      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch"
+      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03"
+
     steps:
       - uses: actions/checkout@v4
-      # … rest of the job …
 
+      - name: Configure
+        run: >
+          cmake -B build
+                -DBUILD_EXAMPLES=ON
+                -DHEADLESS=ON
+                -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
-env:
-  EXAMPLES: "twoburn,low_thrust,zpm,shuttle_reentry,launch"
-  REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03"   # <‑‑ your true numbers
+      - name: Build
+        run: cmake --build build -j$(nproc)
 
-steps:
-  - name: Checkout
-    uses: actions/checkout@v4
+      - name: Run selected examples & parse results
+        run: |
+          python .github/scripts/run_examples.py \
+            --exe-dir build/examples \
+            --summary build/test_summary.json
 
-  - name: Configure
-    run: cmake -B build -DBUILD_EXAMPLES=ON -DHEADLESS=ON -DCMAKE_BUILD_TYPE=${{matrix.build_type}}
-
-  - name: Build
-    run: cmake --build build -j$(nproc)
-
-  - name: Run selected examples & parse results
-    run: |
-      python .github/scripts/run_examples.py \
-        --exe-dir build/examples \
-        --summary build/test_summary.json
-
-  - name: Upload solution files & summary
-    if: always()
-    uses: actions/upload-artifact@v4
-    with:
-      name: psopt-logs
-      path: |
-        build/examples/**/psopt_solution_*.txt
-        build/test_summary.json
+      - name: Upload solution files & summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: psopt-logs
+          path: |
+            build/examples/**/psopt_solution_*.txt
+            build/test_summary.json
