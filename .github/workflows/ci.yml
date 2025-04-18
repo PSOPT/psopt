@@ -46,6 +46,11 @@ jobs:
 
       - name: Build
         run: cmake --build build -j$(nproc)
+        
+      - name: Debug one executable
+        run: |
+         file build/examples/twoburn/twoburn
+         ldd  build/examples/twoburn/twoburn || true        
 
       - name: Run selected examples & parse results
         run: |
