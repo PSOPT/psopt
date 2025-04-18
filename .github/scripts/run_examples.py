@@ -104,18 +104,18 @@ def main():
         tol    = default_tol(ref, args.tol) if ref is not None else None
 
 # ───────── cost‑closeness check (relative unless ref≈0) ──────────
-if ref is not None and result["cost"] is not None:
-    eps = 1e-12                     # threshold for “too small to divide by”
-    if abs(ref) < eps:              # reference is zero → use absolute diff
-        rel_err   = None
-        abs_err   = abs(result["cost"] - ref)
-        result["cost_pass"] = abs_err <= tol       # tol interpreted ABSOLUTELY
-    else:                           # normal relative‑error check
-        rel_err   = abs(result["cost"] - ref) / abs(ref)
-        result["cost_pass"] = rel_err <= tol       # tol interpreted RELATIVELY
-    result["rel_error"] = rel_err                  # may be None if abs test
-else:
-    result["cost_pass"] = (ref is None)            # no reference ⇒ skip
+    if ref is not None and result["cost"] is not None:
+        eps = 1e-12                     # threshold for “too small to divide by”
+        if abs(ref) < eps:              # reference is zero → use absolute diff
+            rel_err   = None
+            abs_err   = abs(result["cost"] - ref)
+            result["cost_pass"] = abs_err <= tol       # tol interpreted ABSOLUTELY
+        else:                           # normal relative‑error check
+            rel_err   = abs(result["cost"] - ref) / abs(ref)
+            result["cost_pass"] = rel_err <= tol       # tol interpreted RELATIVELY
+        result["rel_error"] = rel_err                  # may be None if abs test
+    else:
+        result["cost_pass"] = (ref is None)            # no reference ⇒ skip
 # ─────────────────────────────────────────────────────────────────
 
 
