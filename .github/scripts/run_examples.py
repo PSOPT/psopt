@@ -98,26 +98,25 @@ def main():
 
     summary, all_ok = {}, True
     for ex in examples:
-        exe = ex_dir / ex / ex          # ./build/examples/twoburn/twoburn
+        exe = ex_dir / ex / ex                  # ./build/examples/twoburn/twoburn
         result = run_example(exe, ex)
         ref    = ref_map.get(ex)
         tol    = default_tol(ref, args.tol) if ref is not None else None
 
-# ───────── cost‑closeness check (relative unless ref≈0) ──────────
-    if ref is not None and result["cost"] is not None:
-        eps = 1e-12                     # threshold for “too small to divide by”
-        if abs(ref) < eps:              # reference is zero → use absolute diff
-            rel_err   = None
-            abs_err   = abs(result["cost"] - ref)
-            result["cost_pass"] = abs_err <= tol       # tol interpreted ABSOLUTELY
-        else:                           # normal relative‑error check
-            rel_err   = abs(result["cost"] - ref) / abs(ref)
-            result["cost_pass"] = rel_err <= tol       # tol interpreted RELATIVELY
-        result["rel_error"] = rel_err                  # may be None if abs test
-    else:
-        result["cost_pass"] = (ref is None)            # no reference ⇒ skip
-# ─────────────────────────────────────────────────────────────────
-
+        # ───── cost‑closeness check  (relative unless |ref| very small) ─────
+        if ref is not None and result["cost"] is not None:
+            eps = 1e-12                         # avoid divide‑by‑zero
+            if abs(ref) < eps:                  # use absolute error
+                abs_err = abs(result["cost"] - ref)
+                result["rel_error"] = None
+                result["cost_pass"] = abs_err <= tol        # tol = ABS limit
+            else:                               # relative error
+                rel_err = abs(result["cost"] - ref) / abs(ref)
+                result["rel_error"] = rel_err
+                result["cost_pass"] = rel_err <= tol        # tol = REL limit
+        else:
+            result["cost_pass"] = (ref is None)             # no ref ⇒ skip
+        # ─────────────────────────────────────────────────────────────────────
 
         # overall pass flag
         result["passed"] = result["solver_ok"] and result["cost_pass"]
