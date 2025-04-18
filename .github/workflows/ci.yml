@@ -1,6 +1,11 @@
 # .github/workflows/ci.yml
 name: Build‑and‑test
 
+permissions:
+  contents: read      # already default, but keep explicit
+  packages: read      # ✔ allows pulling private GHCR images
+
+
 # ────────── TRIGGERS ──────────────────────────────────────────────
 on:
   push:
