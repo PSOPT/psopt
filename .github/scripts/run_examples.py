@@ -13,7 +13,7 @@ comma‑separated environment variables or CLI flags:
   EXAMPLES="twoburn,low_thrust,zpm,shuttle_reentry,launch"
   REF_COSTS="-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03"
 
-Tolerance is relative  (`abs(cost-ref)/abs(cost) <= tol`) where the default
+Tolerance is relative  (`abs(cost-ref)/abs(cost) <= tol`) where the default value
 is 0.01 
 """
 
