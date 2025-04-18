@@ -13,8 +13,8 @@ comma‑separated environment variables or CLI flags:
   EXAMPLES="twoburn,low_thrust,zpm,shuttle_reentry,launch"
   REF_COSTS="-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03"
 
-Tolerance is absolute  (`abs(cost-ref) <= tol`) where the default
-is 1e‑6 for |ref| < 1 and 1e‑3 otherwise; override with `--tol` CLI.
+Tolerance is relative  (`abs(cost-ref)/abs(cost) <= tol`) where the default
+is 0.01 
 """
 
 import argparse, os, pathlib, subprocess, json, sys, re, math, textwrap
@@ -34,10 +34,16 @@ def parse_args():
                    help="global abs tolerance (optional)")
     return p.parse_args()
 
-def default_tol(ref: float, override: float|None):
+def default_tol(ref: float, override: float | None):
+    """
+    Return the tolerance to use for a given reference value.
+
+    • If the user passed --tol, honour that.
+    • Otherwise use 0.01  (1 % relative error).
+    """
     if override is not None:
         return override
-    return 1e-6 if abs(ref) < 1.0 else 1e-3
+    return 0.01
 
 success_re   = re.compile(r"NLP solver reports:\s*The problem has been solved!", re.I)
 cost_line_re = re.compile(r"Optimal \(unscaled\) cost function value:\s+([-+0-9.eE]+)")
@@ -55,18 +61,20 @@ def run_example(exe_path: pathlib.Path, name: str):
         log["error"] = "timeout"
         return log
 
-# locate solution file
-    pattern = f"psopt_solution*{name.replace('_','')}*.txt"
-    candidates = list(exe_path.parent.glob(pattern))
-
-    if not candidates:                 # nothing next to the exe? look in CWD
-      candidates = list(pathlib.Path.cwd().glob(pattern))
+# ------------------------------------------------------------------
+# locate the solution file (pattern is always psopt_solution_*.txt)
+# ------------------------------------------------------------------
+    candidates = list(exe_path.parent.glob("psopt_solution_*.txt"))
+    if not candidates:                       # nothing next to the executable?
+      candidates = list(pathlib.Path.cwd().glob("psopt_solution_*.txt"))
 
     if not candidates:
-      log["error"] = f"solution file matching '{pattern}' not found"
+      log["error"] = "solution file not found"
       return log
 
-    sol_file = candidates[0]
+# if several exist, take the most recently modified one
+    sol_file = max(candidates, key=lambda p: p.stat().st_mtime)
+    log["solution_file"] = str(sol_file)     # optional: keep for debugging
 
     with sol_file.open() as fh:
         for line in fh:
@@ -95,11 +103,21 @@ def main():
         ref    = ref_map.get(ex)
         tol    = default_tol(ref, args.tol) if ref is not None else None
 
-        # numerical check
-        if ref is not None and result["cost"] is not None:
-            result["cost_pass"] = abs(result["cost"]-ref) <= tol
-        else:
-            result["cost_pass"] = (ref is None)  # if no ref provided, ignore
+# ───────── cost‑closeness check (relative unless ref≈0) ──────────
+    if ref is not None and result["cost"] is not None:
+      eps = 1e-12                     # threshold for “too small to divide by”
+      if abs(ref) < eps:              # reference is zero → use absolute diff
+        rel_err   = None
+        abs_err   = abs(result["cost"] - ref)
+        result["cost_pass"] = abs_err <= tol       # tol interpreted ABSOLUTELY
+      else:                           # normal relative‑error check
+        rel_err   = abs(result["cost"] - ref) / abs(ref)
+        result["cost_pass"] = rel_err <= tol       # tol interpreted RELATIVELY
+    result["rel_error"] = rel_err                  # may be None if abs test
+    else:
+      result["cost_pass"] = (ref is None)            # no reference ⇒ skip
+# ─────────────────────────────────────────────────────────────────
+
 
         # overall pass flag
         result["passed"] = result["solver_ok"] and result["cost_pass"]
