@@ -55,11 +55,19 @@ def run_example(exe_path: pathlib.Path, name: str):
         log["error"] = "timeout"
         return log
 
-    # locate solution file
-    sol_file = exe_path.parent / f"psopt_solution_{name}.txt"
-    if not sol_file.exists():
-        log["error"] = "solution file missing"
-        return log
+# locate solution file
+pattern = f"psopt_solution*{name.replace('_','')}*.txt"
+candidates = list(exe_path.parent.glob(pattern))
+
+if not candidates:                 # nothing next to the exe? look in CWD
+    candidates = list(pathlib.Path.cwd().glob(pattern))
+
+if not candidates:
+    log["error"] = f"solution file matching '{pattern}' not found"
+    return log
+
+sol_file = candidates[0]
+
 
     with sol_file.open() as fh:
         for line in fh:
