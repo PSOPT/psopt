@@ -46,7 +46,8 @@ def run_example(exe_path: pathlib.Path, name: str):
     log = {"passed": False, "cost": None, "elapsed_s": None, "solver_ok": False}
     start = datetime.now()
     try:
-        subprocess.run([str(exe_path)], check=True, timeout=600)   # 10 min timeout
+        subprocess.run([str(exe_path)], check=True, timeout=600, cwd=exe_path.parent)
+ # 10 min timeout
     except subprocess.CalledProcessError as e:
         log["error"] = f"exited with code {e.returncode}"
         return log
