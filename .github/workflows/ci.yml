@@ -76,57 +76,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ① download the artefact produced by the build job
+      # ① Download the artifact from the build job into tmp_summary/
       - uses: actions/download-artifact@v4
         with:
           name: psopt-logs
-          path: tmp_summary           # now holds build/test_summary.json
+          path: tmp_summary
 
-      # ②‑a (optional) build / refresh index.html for a human‑readable table
-      - name: Build dashboard
+      # ② Save the summary, dashboard & badge into an “upload” folder
+      - name: Stage files for gh-pages
         run: |
-          python - <<'PY'
-          import json, pathlib, textwrap, sys
-          matches = list(pathlib.Path('tmp_summary').rglob('test_summary.json'))
-          if not matches:
-              print("::error ::test_summary.json not found in tmp_summary")
-              sys.exit(1)
+          mkdir -p upload
+          # find and copy test_summary.json
+          SUMMARY=$(find tmp_summary -type f -name 'test_summary.json' | head -n1)
+          if [ -z "$SUMMARY" ]; then
+            echo "::error ::test_summary.json not found under tmp_summary/"
+            exit 1
+          fi
+          cp "$SUMMARY" upload/test_summary.json
+          # copy index.html (if it exists)
+          cp tmp_summary/index.html upload/ 2>/dev/null || true
+          # copy the badge JSON
+          cp tmp_summary/examples_badge.json upload/ || exit 1
 
-          js = json.load(open(matches[0]))
-          rows = '\n'.join(
-              f"{k:<20} │ {'✅' if v['passed'] else '❌'} │ cost = {v['cost']}"
-              for k,v in js.items())
-          html = textwrap.dedent(f"""
-            <!DOCTYPE html><meta charset='utf-8'>
-            <h2>Latest PSOPT Example Results</h2>
-            <pre>{rows}</pre>
-            """)
-          pathlib.Path('tmp_summary/index.html').write_text(html)
-          PY
-
-
-      # ②‑b generate examples_badge.json
-      - name: Build badge JSON
-        run: |
-          python - <<'PY'
-          import json, pathlib, sys
-          summary_files = list(pathlib.Path('tmp_summary').rglob('test_summary.json'))
-          if not summary_files:
-              print("::error ::test_summary.json not found")
-              sys.exit(1)
-          data = json.load(open(summary_files[0]))
-          total  = len(data)
-          passed = sum(1 for v in data.values() if v.get("passed"))
-          badge  = {
-              "schemaVersion": 1,
-              "label": "examples",
-              "message": f"{passed}/{total} pass",
-              "color": "green" if passed == total else "red"
-          }
-          pathlib.Path('tmp_summary/examples_badge.json').write_text(json.dumps(badge))
-          PY
-
-      # ③ ─ check out (or create) the gh‑pages branch
+      # ③ Checkout or create the gh-pages branch (this will delete tmp_summary/)
       - name: Checkout (create if missing)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -138,35 +110,19 @@ jobs:
             git checkout gh-pages
             git reset --hard origin/gh-pages
           else
-            echo "gh-pages branch does not exist – creating it"
             git checkout --orphan gh-pages
             rm -rf *
-            git rm -rf . || true
           fi
 
-
-      # ④ copy artefacts & commit if they changed
+      # ④ Copy the staged files into artifacts/ and commit
       - name: Copy & commit artefacts
         run: |
           mkdir -p artifacts
-
-          # — find the summary json anywhere in tmp_summary/ —
-          SUMMARY=$(find tmp_summary -type f -name 'test_summary.json' | head -n1)
-          if [ -z "$SUMMARY" ]; then
-            echo "::error ::test_summary.json not found under tmp_summary/"
-            exit 1
-          fi
-          cp "$SUMMARY" artifacts/test_summary.json
-
-          # — copy the dashboard and badge if they exist —
-          cp tmp_summary/index.html artifacts/ 2>/dev/null || true
-          cp tmp_summary/examples_badge.json artifacts/
-
-          # — set commit identity —
+          cp upload/* artifacts/
+          # set commit identity
           git config user.name  "github-actions"
           git config user.email "github-actions@github.com"
-
-          # — commit only if something changed —
+          # commit if changed
           if git diff --quiet artifacts/; then
             echo "No changes to commit."
           else
