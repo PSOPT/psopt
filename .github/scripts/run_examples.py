@@ -115,8 +115,9 @@ def main():
                 result["rel_error"] = rel_err
                 result["cost_pass"] = rel_err <= tol        # tol = REL limit
         else:
-            result["cost_pass"] = (ref is None)             # no ref ⇒ skip
+            result["cost_pass"] = (ref is None)             # no reference ⇒ skip
         # ─────────────────────────────────────────────────────────────────────
+
 
         # overall pass flag
         result["passed"] = result["solver_ok"] and result["cost_pass"]
