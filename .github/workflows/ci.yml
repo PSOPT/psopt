@@ -101,23 +101,15 @@ jobs:
           path: tmp_summary
 
       # ③ Copy JSON, HTML, and badge directly into artifacts/
-      - name: Populate artifacts folder
+      - name: Copy & commit artefacts
         run: |
           mkdir -p artifacts
 
-          # Copy test_summary.json
+          # Copy summary, dashboard & badge (as before)...
           SUMMARY=$(find tmp_summary -type f -name 'test_summary.json' | head -n1)
-          if [ -z "$SUMMARY" ]; then
-            echo "::error ::test_summary.json not found"
-            exit 1
-          fi
           cp "$SUMMARY" artifacts/test_summary.json
-
-          # Copy index.html if present
           INDEX=$(find tmp_summary -type f -name 'index.html' | head -n1)
           [ -n "$INDEX" ] && cp "$INDEX" artifacts/index.html
-
-          # Copy examples_badge.json if present
           BADGE=$(find tmp_summary -type f -name 'examples_badge.json' | head -n1)
           [ -n "$BADGE" ] && cp "$BADGE" artifacts/examples_badge.json
 
@@ -125,11 +117,11 @@ jobs:
           git config user.name  "github-actions"
           git config user.email "github-actions@github.com"
 
-          # Commit & push if there are changes
-          if git diff --quiet artifacts/; then
-            echo "No changes to commit."
-          else
-            git add artifacts/*
-            git commit -m "chore: update dashboard and badge [skip ci]"
-            git push origin gh-pages
-          fi
+          # Stage everything under artifacts/
+          git add artifacts/*
+
+          # Commit if there is anything new or changed
+          git commit -m "chore: update dashboard and badge [skip ci]" || echo "No changes to commit."
+
+          # Push if the commit succeeded (i.e. there was something to push)
+          git push origin gh-pages || echo "Nothing to push."
