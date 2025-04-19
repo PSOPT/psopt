@@ -118,7 +118,6 @@ def main():
             result["cost_pass"] = (ref is None)             # no reference ⇒ skip
         # ─────────────────────────────────────────────────────────────────────
 
-
         # overall pass flag
         result["passed"] = result["solver_ok"] and result["cost_pass"]
         if not result["passed"]:
