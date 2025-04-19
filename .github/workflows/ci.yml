@@ -86,8 +86,13 @@ jobs:
       - name: Build dashboard
         run: |
           python - <<'PY'
-          import json, pathlib, textwrap
-          js = json.load(open('tmp_summary/build/test_summary.json'))
+          import json, pathlib, textwrap, sys
+          matches = list(pathlib.Path('tmp_summary').rglob('test_summary.json'))
+          if not matches:
+              print("::error ::test_summary.json not found in tmp_summary")
+              sys.exit(1)
+
+          js = json.load(open(matches[0]))
           rows = '\n'.join(
               f"{k:<20} │ {'✅' if v['passed'] else '❌'} │ cost = {v['cost']}"
               for k,v in js.items())
@@ -98,6 +103,7 @@ jobs:
             """)
           pathlib.Path('tmp_summary/index.html').write_text(html)
           PY
+
 
       # ②‑b generate examples_badge.json
       - name: Build badge JSON
