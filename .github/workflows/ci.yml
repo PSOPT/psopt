@@ -75,12 +75,12 @@ jobs:
     if: ${{ needs.build.result == 'success' }}
     runs-on: ubuntu-latest
 
-    # ← override only for this job:
     permissions:
       contents: write
-      packages: read      # keep the same for packages
+      packages: read
+
     steps:
-      # ③ Checkout the gh-pages branch, with credentials persisted
+      # 1) Check out gh-pages and persist GITHUB_TOKEN so we can push
       - name: Checkout gh-pages
         uses: actions/checkout@v4
         with:
@@ -89,36 +89,53 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-
-      # ② Download the artifact from the build job
-      - name: Download test summary artifact
+      # 2) Download the test_summary.json artefact
+      - name: Download summary
         uses: actions/download-artifact@v4
         with:
           name: psopt-logs
           path: tmp_summary
 
-      # ③ Copy JSON, HTML, and badge directly into artifacts/
-      - name: Copy & commit artefacts
+      # 3) Copy test_summary.json into artifacts/
+      - name: Copy test_summary.json
         run: |
           mkdir -p artifacts
-
-          # Copy summary, dashboard & badge (as before)...
           SUMMARY=$(find tmp_summary -type f -name 'test_summary.json' | head -n1)
+          if [ -z "$SUMMARY" ]; then
+            echo "::error ::test_summary.json not found"
+            exit 1
+          fi
           cp "$SUMMARY" artifacts/test_summary.json
-          INDEX=$(find tmp_summary -type f -name 'index.html' | head -n1)
-          [ -n "$INDEX" ] && cp "$INDEX" artifacts/index.html
-          BADGE=$(find tmp_summary -type f -name 'examples_badge.json' | head -n1)
-          [ -n "$BADGE" ] && cp "$BADGE" artifacts/examples_badge.json
 
-          # Set commit identity
+      # 4) Generate examples_badge.json from test_summary.json
+      - name: Build badge JSON
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          data = json.load(open('artifacts/test_summary.json'))
+          total  = len(data)
+          passed = sum(1 for v in data.values() if v.get("passed"))
+          badge  = {
+            "schemaVersion": 1,
+            "label": "examples",
+            "message": f"{passed}/{total} passed",
+            "color": "green" if passed == total else "red"
+          }
+          pathlib.Path('artifacts/examples_badge.json').write_text(json.dumps(badge))
+          PY
+
+      # 5) (Optional) Copy your index.html if you have one
+      - name: Copy dashboard HTML
+        run: |
+          if [ -f tmp_summary/index.html ]; then
+            cp tmp_summary/index.html artifacts/index.html
+          fi
+
+      # 6) Commit & push any changes
+      - name: Commit & push artifacts
+        run: |
           git config user.name  "github-actions"
           git config user.email "github-actions@github.com"
-
-          # Stage everything under artifacts/
           git add artifacts/*
-
-          # Commit if there is anything new or changed
-          git commit -m "chore: update dashboard and badge [skip ci]" || echo "No changes to commit."
-
-          # Push if the commit succeeded (i.e. there was something to push)
+          git commit -m "chore: update test artifacts [skip ci]" || echo "No changes to commit."
           git push origin gh-pages || echo "Nothing to push."
