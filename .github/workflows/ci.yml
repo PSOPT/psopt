@@ -140,7 +140,8 @@ jobs:
           else
             echo "gh-pages branch does not exist – creating it"
             git checkout --orphan gh-pages
-            git rm -rf .
+            rm -rf *
+            git rm -rf . || true
           fi
 
 
@@ -151,6 +152,10 @@ jobs:
           cp tmp_summary/build/test_summary.json artifacts/
           cp tmp_summary/index.html             artifacts/  || true
           cp tmp_summary/examples_badge.json    artifacts/
+          # ---- set commit identity exactly once for this job ----
+          git config user.name  "github-actions"
+          git config user.email "github-actions@github.com"
+          # -------------------------------------------------------          
           if git diff --quiet artifacts/ ; then
             echo "No changes to commit."
           else
