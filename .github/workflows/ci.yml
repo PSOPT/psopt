@@ -76,74 +76,68 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # ① ─ download the artefact produced by the build job
-    - uses: actions/download-artifact@v4
-      with:
-        name: psopt-logs
-        path: tmp_summary           # contains build/test_summary.json
+      # ① download the artefact produced by the build job
+      - uses: actions/download-artifact@v4
+        with:
+          name: psopt-logs
+          path: tmp_summary           # now holds build/test_summary.json
 
-    # ②‑a ─ (optional) build / refresh index.html for a human‑readable table
-    - name: Build dashboard
-      run: |
-        python - <<'PY'
-        import json, pathlib, textwrap
-        js = json.load(open('tmp_summary/build/test_summary.json'))
-        rows = '\n'.join(
-            f"{k:<20} │ {'✅' if v['passed'] else '❌'} │ cost = {v['cost']}"
-            for k,v in js.items())
-        html = textwrap.dedent(f"""
-          <!DOCTYPE html><meta charset='utf-8'>
-          <h2>Latest PSOPT Example Results</h2>
-          <pre>{rows}</pre>
-          """)
-        pathlib.Path('tmp_summary/index.html').write_text(html)
-        PY
-- name: Build badge JSON
-  run: |
-    python - <<'PY'
-    import json, pathlib, sys
+      # ②‑a (optional) build / refresh index.html for a human‑readable table
+      - name: Build dashboard
+        run: |
+          python - <<'PY'
+          import json, pathlib, textwrap
+          js = json.load(open('tmp_summary/build/test_summary.json'))
+          rows = '\n'.join(
+              f"{k:<20} │ {'✅' if v['passed'] else '❌'} │ cost = {v['cost']}"
+              for k,v in js.items())
+          html = textwrap.dedent(f"""
+            <!DOCTYPE html><meta charset='utf-8'>
+            <h2>Latest PSOPT Example Results</h2>
+            <pre>{rows}</pre>
+            """)
+          pathlib.Path('tmp_summary/index.html').write_text(html)
+          PY
 
-    # search for test_summary.json inside tmp_summary/
-    summary_files = list(pathlib.Path('tmp_summary').rglob('test_summary.json'))
-    if not summary_files:
-        print("::error ::test_summary.json not found in downloaded artifact")
-        sys.exit(1)
+      # ②‑b generate examples_badge.json
+      - name: Build badge JSON
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          summary_files = list(pathlib.Path('tmp_summary').rglob('test_summary.json'))
+          if not summary_files:
+              print("::error ::test_summary.json not found")
+              sys.exit(1)
+          data = json.load(open(summary_files[0]))
+          total  = len(data)
+          passed = sum(1 for v in data.values() if v.get("passed"))
+          badge  = {
+              "schemaVersion": 1,
+              "label": "examples",
+              "message": f"{passed}/{total} pass",
+              "color": "green" if passed == total else "red"
+          }
+          pathlib.Path('tmp_summary/examples_badge.json').write_text(json.dumps(badge))
+          PY
 
-    summary_path = summary_files[0]          # take the first match
-    data = json.load(open(summary_path, 'r'))
+      # ③ check out (or create) the gh‑pages branch
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
-    total  = len(data)
-    passed = sum(1 for v in data.values() if v.get("passed"))
-    badge  = {
-        "schemaVersion": 1,
-        "label": "examples",
-        "message": f"{passed}/{total} pass",
-        "color": "green" if passed == total else "red"
-    }
-
-    out = pathlib.Path('tmp_summary/examples_badge.json')
-    out.write_text(json.dumps(badge))
-    print(f"Wrote badge JSON to {out}")
-    PY
-
-    # ③ ─ check out (or create) the gh‑pages branch
-    - uses: actions/checkout@v4
-      with:
-        ref: gh-pages
-        token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0
-
-    # ④ ─ copy artefacts & commit if they changed
-    - name: Copy & commit artefacts
-      run: |
-        mkdir -p artifacts
-        cp tmp_summary/build/test_summary.json artifacts/
-        cp tmp_summary/index.html             artifacts/  || true
-        cp tmp_summary/examples_badge.json    artifacts/
-        if git diff --quiet artifacts/ ; then
-          echo "No changes to commit."
-        else
-          git add artifacts/*
-          git commit -m "chore: update dashboard and badge [skip ci]"
-          git push origin gh-pages
-        fi
+      # ④ copy artefacts & commit if they changed
+      - name: Copy & commit artefacts
+        run: |
+          mkdir -p artifacts
+          cp tmp_summary/build/test_summary.json artifacts/
+          cp tmp_summary/index.html             artifacts/  || true
+          cp tmp_summary/examples_badge.json    artifacts/
+          if git diff --quiet artifacts/ ; then
+            echo "No changes to commit."
+          else
+            git add artifacts/*
+            git commit -m "chore: update dashboard and badge [skip ci]"
+            git push origin gh-pages
+          fi
