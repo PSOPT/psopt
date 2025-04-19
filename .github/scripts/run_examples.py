@@ -39,11 +39,11 @@ def default_tol(ref: float, override: float | None):
     Return the tolerance to use for a given reference value.
 
     • If the user passed --tol, honour that.
-    • Otherwise use 0.01  (1 % relative error).
+    • Otherwise use 0.0001  (0.01 % relative error).
     """
     if override is not None:
         return override
-    return 0.01
+    return 0.0001
 
 success_re   = re.compile(r"NLP solver reports:\s*The problem has been solved!", re.I)
 cost_line_re = re.compile(r"Optimal \(unscaled\) cost function value:\s+([-+0-9.eE]+)")

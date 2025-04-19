@@ -29,8 +29,8 @@ jobs:
         build_type: [Release]    # add Debug if desired
 
     env:
-      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch"
-      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03"
+      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch,manutec,notorious"
+      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,8.806615e-01"
 
     steps:
       - uses: actions/checkout@v4
