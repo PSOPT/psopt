@@ -107,58 +107,17 @@ jobs:
           fi
           cp "$SUMMARY" artifacts/test_summary.json
 
-      # 3b) Build a human‑readable HTML table
-      - name: Build HTML report
+      - name: Build Markdown report
         run: |
           python3 - <<'PY'
-          import json, pathlib, textwrap
-
-          # Load the JSON you just copied
+          import json, pathlib
           data = json.load(open('artifacts/test_summary.json'))
-
-          # Build table rows
-          rows = "\n".join(
-              f"  <tr>"
-              f"<td>{name}</td>"
-              f"<td>{'✅' if info['passed'] else '❌'}</td>"
-              f"<td>{info['cost']}</td>"
-              f"<td>{info['elapsed_s']:.2f}</td>"
-              f"</tr>"
-              for name, info in data.items()
-          )
-
-          # Wrap it in a full HTML page
-          html = textwrap.dedent(f\"\"\"
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="utf-8">
-              <title>PSOPT CI Report</title>
-              <style>
-                table {{ border-collapse: collapse; width: 100%; }}
-                th, td {{ border: 1px solid #ccc; padding: 0.5em; text-align: left; }}
-                th {{ background: #f5f5f5; }}
-              </style>
-            </head>
-            <body>
-              <h1>PSOPT Examples Test Summary</h1>
-              <table>
-                <thead>
-                  <tr><th>Example</th><th>Passed</th><th>Cost</th><th>Time (s)</th></tr>
-                </thead>
-                <tbody>
-          {rows}
-                </tbody>
-              </table>
-            </body>
-            </html>
-          \"\"\")
-
-          # Write it out
-          pathlib.Path('artifacts/index.html').write_text(html)
-          print("👉 Generated artifacts/index.html")
+          lines = ["# PSOPT CI Examples Test Summary", "", "| Example | Passed | Cost | Time (s) |", "|---|---|---|---|"]
+          for name, info in data.items():
+              lines.append(f"| {name} | {'✅' if info['passed'] else '❌'} | {info['cost']} | {info['elapsed_s']:.2f} |")
+          pathlib.Path('artifacts/README.md').write_text("\n".join(lines))
+          print("👉 Generated artifacts/README.md")
           PY
-
       # 4) Generate examples_badge.json from test_summary.json
       - name: Build badge JSON
         run: |
