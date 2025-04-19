@@ -149,14 +149,25 @@ jobs:
       - name: Copy & commit artefacts
         run: |
           mkdir -p artifacts
-          cp tmp_summary/build/test_summary.json artifacts/
-          cp tmp_summary/index.html             artifacts/  || true
-          cp tmp_summary/examples_badge.json    artifacts/
-          # ---- set commit identity exactly once for this job ----
+
+          # — find the summary json anywhere in tmp_summary/ —
+          SUMMARY=$(find tmp_summary -type f -name 'test_summary.json' | head -n1)
+          if [ -z "$SUMMARY" ]; then
+            echo "::error ::test_summary.json not found under tmp_summary/"
+            exit 1
+          fi
+          cp "$SUMMARY" artifacts/test_summary.json
+
+          # — copy the dashboard and badge if they exist —
+          cp tmp_summary/index.html artifacts/ 2>/dev/null || true
+          cp tmp_summary/examples_badge.json artifacts/
+
+          # — set commit identity —
           git config user.name  "github-actions"
           git config user.email "github-actions@github.com"
-          # -------------------------------------------------------          
-          if git diff --quiet artifacts/ ; then
+
+          # — commit only if something changed —
+          if git diff --quiet artifacts/; then
             echo "No changes to commit."
           else
             git add artifacts/*
