@@ -126,12 +126,23 @@ jobs:
           pathlib.Path('tmp_summary/examples_badge.json').write_text(json.dumps(badge))
           PY
 
-      # ③ check out (or create) the gh‑pages branch
-      - uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
+      # ③ ─ check out (or create) the gh‑pages branch
+      - name: Checkout (create if missing)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git init .
+          git remote add origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}
+          git fetch origin gh-pages || true
+          if git show-ref --quiet refs/remotes/origin/gh-pages; then
+            git checkout gh-pages
+            git reset --hard origin/gh-pages
+          else
+            echo "gh-pages branch does not exist – creating it"
+            git checkout --orphan gh-pages
+            git rm -rf .
+          fi
+
 
       # ④ copy artefacts & commit if they changed
       - name: Copy & commit artefacts
