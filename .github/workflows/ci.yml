@@ -75,6 +75,10 @@ jobs:
     if: ${{ needs.build.result == 'success' }}
     runs-on: ubuntu-latest
 
+    # ← override only for this job:
+    permissions:
+      contents: write
+      packages: read      # keep the same for packages
     steps:
       # ③ Checkout the gh-pages branch, with credentials persisted
       - name: Checkout gh-pages
