@@ -76,44 +76,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ① Download the artifact from the build job into tmp_summary/
-      - uses: actions/download-artifact@v4
-        with:
-          name: psopt-logs
-          path: tmp_summary
-
-      # ② Save the summary, dashboard & badge into an “upload” folder
-      - name: Stage files for gh-pages
-        run: |
-          mkdir -p upload
-
-          # — find & copy test_summary.json —
-          SUMMARY=$(find tmp_summary -type f -name 'test_summary.json' | head -n1)
-          if [ -z "$SUMMARY" ]; then
-            echo "::error ::test_summary.json not found under tmp_summary/"
-            exit 1
-          fi
-          cp "$SUMMARY" upload/test_summary.json
-
-          # — find & copy index.html (optional) —
-          INDEX=$(find tmp_summary -type f -name 'index.html' | head -n1)
-          if [ -n "$INDEX" ]; then
-            cp "$INDEX" upload/index.html
-          else
-            echo "No index.html found; skipping dashboard."
-          fi
-
-          # — find & copy examples_badge.json (optional) —
-          BADGE=$(find tmp_summary -type f -name 'examples_badge.json' | head -n1)
-          if [ -n "$BADGE" ]; then
-            cp "$BADGE" upload/examples_badge.json
-          else
-            echo "No examples_badge.json found; skipping badge."
-          fi
-
-
-      # ③ Checkout or create the gh-pages branch (this will delete tmp_summary/)
-      - name: Checkout (create if missing)
+      # ① Checkout or create the gh-pages branch
+      - name: Checkout gh-pages (create if missing)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -126,17 +90,42 @@ jobs:
           else
             git checkout --orphan gh-pages
             rm -rf *
+            git clean -ffd
           fi
 
-      # ④ Copy the staged files into artifacts/ and commit
-      - name: Copy & commit artefacts
+      # ② Download the artifact from the build job
+      - name: Download test summary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: psopt-logs
+          path: tmp_summary
+
+      # ③ Copy JSON, HTML, and badge directly into artifacts/
+      - name: Populate artifacts folder
         run: |
           mkdir -p artifacts
-          cp upload/* artifacts/
-          # set commit identity
+
+          # Copy test_summary.json
+          SUMMARY=$(find tmp_summary -type f -name 'test_summary.json' | head -n1)
+          if [ -z "$SUMMARY" ]; then
+            echo "::error ::test_summary.json not found"
+            exit 1
+          fi
+          cp "$SUMMARY" artifacts/test_summary.json
+
+          # Copy index.html if present
+          INDEX=$(find tmp_summary -type f -name 'index.html' | head -n1)
+          [ -n "$INDEX" ] && cp "$INDEX" artifacts/index.html
+
+          # Copy examples_badge.json if present
+          BADGE=$(find tmp_summary -type f -name 'examples_badge.json' | head -n1)
+          [ -n "$BADGE" ] && cp "$BADGE" artifacts/examples_badge.json
+
+          # Set commit identity
           git config user.name  "github-actions"
           git config user.email "github-actions@github.com"
-          # commit if changed
+
+          # Commit & push if there are changes
           if git diff --quiet artifacts/; then
             echo "No changes to commit."
           else
