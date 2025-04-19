@@ -71,3 +71,53 @@ jobs:
           path: |
             build/examples/**/psopt_solution_*.txt
             build/test_summary.json
+  publish:
+    needs: build
+    if: ${{ needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1 · download artefact from build job
+      - uses: actions/download-artifact@v4
+        with:
+          name: psopt-logs
+          path: tmp_summary
+
+      # 2 · generate/refresh index.html  ←───────────── ➋
+      - name: Build simple dashboard
+        run: |
+          python - <<'PY'
+          import json, pathlib, textwrap
+          js = json.load(open('tmp_summary/build/test_summary.json'))
+          rows = '\n'.join(
+              f"{k:<20} │ {'✅' if v['passed'] else '❌'} │ cost = {v['cost']}"
+              for k,v in js.items())
+          html = textwrap.dedent(f"""
+            <!DOCTYPE html><meta charset='utf-8'>
+            <h2>Latest PSOPT Example Results</h2>
+            <pre>{rows}</pre>
+            """)
+          out = pathlib.Path('tmp_summary/index.html')
+          out.write_text(html)
+          PY
+
+      # 3 · check out gh‑pages branch
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      # 4 · copy artefacts and commit
+      - name: Copy & commit artefacts
+        run: |
+          mkdir -p artifacts
+          cp tmp_summary/build/test_summary.json artifacts/
+          cp tmp_summary/index.html             artifacts/
+          if git diff --quiet artifacts/ ; then
+            echo "Nothing new to commit."
+          else
+            git add artifacts/*
+            git commit -m "chore: update dashboard [skip ci]"
+            git push origin gh-pages
+          fi
