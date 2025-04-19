@@ -479,3 +479,7 @@ Given that a great deal of time and effort has gone into PSOPT's development, **
             doi={10.1109/CACSD.2010.5612676}}
 
 
+Automated Test Report from GitHub Actions
+==========================================
+
+![PSOPT examples](https://img.shields.io/endpoint?url=https://<user>.github.io/<repo>/artifacts/examples_badge.json)
