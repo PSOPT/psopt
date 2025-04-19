@@ -98,7 +98,6 @@ jobs:
           """)
         pathlib.Path('tmp_summary/index.html').write_text(html)
         PY
-
 # ②‑b ─ generate examples_badge.json
 - name: Build badge JSON
   run: |
