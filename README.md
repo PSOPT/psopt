@@ -486,7 +486,5 @@ This automated test is based on seven selected examples from the PSOPT distribut
 
 ![PSOPT examples](https://img.shields.io/endpoint?url=https://psopt.github.io/psopt/artifacts/examples_badge.json)
 
-<iframe 
-  src="https://psopt.github.io/psopt/artifacts/README.md" 
-  style="border:1px solid #ccc; width:100%; height:500px;">
-</iframe>
+[View the full PSOPT CI Test Summary](https://psopt.github.io/psopt/artifacts/README.md)
+
