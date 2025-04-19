@@ -86,17 +86,31 @@ jobs:
       - name: Stage files for gh-pages
         run: |
           mkdir -p upload
-          # find and copy test_summary.json
+
+          # — find & copy test_summary.json —
           SUMMARY=$(find tmp_summary -type f -name 'test_summary.json' | head -n1)
           if [ -z "$SUMMARY" ]; then
             echo "::error ::test_summary.json not found under tmp_summary/"
             exit 1
           fi
           cp "$SUMMARY" upload/test_summary.json
-          # copy index.html (if it exists)
-          cp tmp_summary/index.html upload/ 2>/dev/null || true
-          # copy the badge JSON
-          cp tmp_summary/examples_badge.json upload/ || exit 1
+
+          # — find & copy index.html (optional) —
+          INDEX=$(find tmp_summary -type f -name 'index.html' | head -n1)
+          if [ -n "$INDEX" ]; then
+            cp "$INDEX" upload/index.html
+          else
+            echo "No index.html found; skipping dashboard."
+          fi
+
+          # — find & copy examples_badge.json (optional) —
+          BADGE=$(find tmp_summary -type f -name 'examples_badge.json' | head -n1)
+          if [ -n "$BADGE" ]; then
+            cp "$BADGE" upload/examples_badge.json
+          else
+            echo "No examples_badge.json found; skipping badge."
+          fi
+
 
       # ③ Checkout or create the gh-pages branch (this will delete tmp_summary/)
       - name: Checkout (create if missing)
