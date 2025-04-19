@@ -100,22 +100,34 @@ jobs:
         pathlib.Path('tmp_summary/index.html').write_text(html)
         PY
 
-    # ②‑b ─ generate `examples_badge.json`  ←──────────── add THIS step
-    - name: Build badge JSON
-      run: |
-        python - <<'PY'
-        import json, pathlib
-        data = json.load(open('tmp_summary/build/test_summary.json'))
-        total  = len(data)
-        passed = sum(1 for v in data.values() if v["passed"])
-        badge = {
-          "schemaVersion": 1,
-          "label": "examples",
-          "message": f"{passed}/{total} pass",
-          "color": "green" if passed == total else "red"
-        }
-        pathlib.Path('tmp_summary/examples_badge.json').write_text(json.dumps(badge))
-        PY
+# ②‑b ─ generate examples_badge.json
+- name: Build badge JSON
+  run: |
+    python - <<'PY'
+    import json, pathlib, sys
+
+    # search for test_summary.json inside tmp_summary/
+    summary_files = list(pathlib.Path('tmp_summary').rglob('test_summary.json'))
+    if not summary_files:
+        print("::error ::test_summary.json not found in downloaded artifact")
+        sys.exit(1)
+
+    summary_path = summary_files[0]          # take the first match
+    data = json.load(open(summary_path, 'r'))
+
+    total  = len(data)
+    passed = sum(1 for v in data.values() if v.get("passed"))
+    badge  = {
+        "schemaVersion": 1,
+        "label": "examples",
+        "message": f"{passed}/{total} pass",
+        "color": "green" if passed == total else "red"
+    }
+
+    out = pathlib.Path('tmp_summary/examples_badge.json')
+    out.write_text(json.dumps(badge))
+    print(f"Wrote badge JSON to {out}")
+    PY
 
     # ③ ─ check out (or create) the gh‑pages branch
     - uses: actions/checkout@v4
