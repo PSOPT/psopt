@@ -482,4 +482,4 @@ Given that a great deal of time and effort has gone into PSOPT's development, **
 Automated Test Report from GitHub Actions
 ==========================================
 
-![PSOPT examples](https://psopt.github.io/psopt/artifacts/examples_badge.json)
+![PSOPT examples](https://img.shields.io/endpoint?url=https://psopt.github.io/psopt/artifacts/examples_badge.json)
