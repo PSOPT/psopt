@@ -479,12 +479,12 @@ Given that a great deal of time and effort has gone into PSOPT's development, **
             doi={10.1109/CACSD.2010.5612676}}
 
 
-Latest Continuous Integration Test Report from GitHub Actions
+Latest Continuous Integration Test Report 
 ==========================================
 
-This automated test is based on seven selected examples from the PSOPT distribution. Any push to the master branch triggers a complete build and test run of these examples. The resulting cost function for each selected example is then compared with a reference value.
+This automated test is based on seven selected examples from the PSOPT distribution and is carried out using GitHub Actions. Any push to the master branch or pull request triggers a complete build of the PSOPT library and the executable for each example in the distribution, followed by a test run of these seven examples. The resulting cost function for each selected example is then compared with a reference value. An example passes the test if the relative absolute difference between the computed cost function in the test and the reference value by less of a small tolerance.
 
 ![PSOPT examples](https://img.shields.io/endpoint?url=https://psopt.github.io/psopt/artifacts/examples_badge.json)
 
-[View the full PSOPT CI Test Summary](https://psopt.github.io/psopt/artifacts/README.md)
+[View the full PSOPT CI Test Summary](https://psopt.github.io/psopt/artifacts)
 
