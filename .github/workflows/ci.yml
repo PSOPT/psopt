@@ -132,14 +132,14 @@ jobs:
           passed = sum(1 for v in data.values() if v.get("passed"))
           badge  = {
             "schemaVersion": 1,
-            "label": "examples",
+            "label": "Selected examples",
             "message": f"{passed}/{total} passed",
             "color": "green" if passed == total else "red"
           }
           pathlib.Path('artifacts/examples_badge.json').write_text(json.dumps(badge))
           PY
 
-      # 5) (Optional) Copy your index.html if you have one
+      # 5) Copy your index.html if you have one
       - name: Copy dashboard HTML
         run: |
           if [ -f tmp_summary/index.html ]; then
