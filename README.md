@@ -431,9 +431,12 @@ The steps to create a docker container and run PSOPT on the container are as fol
 
 2. In your terminal, cd to the same folder where the Dockerfile is. The command to build the docker container (including PSOPT) is as follows: 
 ```
+docker build -t psopt-archlinux:latest .
+```
+The above command reuses a previous container with the same name, if it exists. If you want to rebuild the whole container use the following command:
+```
 docker build --no-cache -t psopt-archlinux:latest .
 ```
-
 3. Issue the following command to run the docker container interactively:
 ```
 docker run -it psopt-archlinux:latest 
