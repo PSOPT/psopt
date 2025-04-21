@@ -38,7 +38,7 @@ USER root
 WORKDIR /opt/psopt
 
 # 6. Clone PSOPT (or COPY your local code instead)
-RUN git clone --tags https://github.com/PSOPT/psopt.git psopt
+RUN git clone https://github.com/PSOPT/psopt.git psopt
 
 # 7. Build & install PSOPT under /usr
 WORKDIR /opt/psopt/psopt
