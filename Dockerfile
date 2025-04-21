@@ -24,7 +24,7 @@ WORKDIR /home/builduser
 
 # 4. Install 'yay' (an AUR helper) from the AUR
 #    - This step clones the yay repository and uses makepkg to build and install.
-RUN git clone https://aur.archlinux.org/yay.git && \
+RUN git clone --tags https://aur.archlinux.org/yay.git && \
 cd yay && \
 makepkg -si --noconfirm && \
 cd .. && rm -rf yay
