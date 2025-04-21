@@ -1,4 +1,4 @@
-<img src="psopt_logo.png" alt="Project logo" width="250"/>
+<img src="psopt_logo.png" alt="Project logo" width="400"/>
 
 Status
 ------
