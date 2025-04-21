@@ -1,6 +1,20 @@
 cmake_minimum_required (VERSION 3.12)
 string(TIMESTAMP BUILD_DATE "%Y.%m.%d")
-project(PSOPT VERSION ${BUILD_DATE} LANGUAGES CXX)
+
+execute_process(
+  COMMAND git describe --tags --abbrev=0
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE PSOPT_RELEASE_DATE
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+message(STATUS "PSOPT Rolling Release Date: ${PSOPT_RELEASE_DATE}")
+
+# Define it as a version macro
+add_definitions(-DPSOPT_VERSION__="${PSOPT_RELEASE_DATE}")
+
+
+project(PSOPT VERSION ${PSOPT_VERSION__} LANGUAGES CXX)
 
 option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
 option(WITH_SNOPT_INTERFACE "Build interface for the SNOPT optimizer." OFF)
