@@ -31,12 +31,14 @@ jobs:
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
+        outputs:
+          exists: ${{ steps.check_tag.outputs.exists }}
 
       - name: Debug check
         run: echo "Tag exists: ${{ steps.check_tag.outputs.exists }}"
 
       - name: Create and push tag (if it doesn't exist)
-        if: steps.check_tag.outputs.exists == 'false'
+        if: ${{ steps.check_tag.outputs.exists == 'false' }}
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
@@ -45,11 +47,13 @@ jobs:
           echo "Created and pushed tag $TAG_NAME"
 
       - name: Create GitHub Release
-        if: steps.check_tag.outputs.exists == 'false'
+        if: ${{ steps.check_tag.outputs.exists == 'false' }}
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.TAG_NAME }}
           name: "Rolling Release - ${{ env.TAG_NAME }}"
           body: |
             This is the rolling release of PSOPT on ${{ env.TAG_NAME }}.
-            For the latest updates, see [commit history](https://github.com/PSOPT/psopt/
+            For the latest updates, see [commit history](https://github.com/PSOPT/psopt/commits/master).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
