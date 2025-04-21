@@ -1,0 +1,31 @@
+name: Tag rolling release
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  tag-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract commit date for tag
+        run: |
+          COMMIT_DATE=$(git log -1 --format=%cd --date=format:'%Y-%m-%d')
+          echo "TAG_NAME=$COMMIT_DATE" >> $GITHUB_ENV
+
+      - name: Create tag if not already exists
+        run: |
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists. Skipping tag creation."
+          else
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git tag "$TAG_NAME"
+            git push origin "$TAG_NAME"
+            echo "Created and pushed tag $TAG_NAME"
+          fi
