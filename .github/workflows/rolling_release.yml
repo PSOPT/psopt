@@ -48,8 +48,7 @@ jobs:
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
 
-      - name: Create GitHub Release
-        if: ${{ steps.check_tag.outputs.exists == 'false' }}
+      - name: Create GitHub Release (even if tag exists)
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.extract_tag.outputs.tag }}
@@ -59,3 +58,4 @@ jobs:
             For the latest updates, see [commit history](https://github.com/PSOPT/psopt/commits/master).
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
