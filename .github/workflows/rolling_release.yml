@@ -19,9 +19,12 @@ jobs:
         run: git fetch --tags
 
       - name: Extract commit date for tag
+        id: extract_tag
         run: |
           COMMIT_DATE=$(git log -1 --format=%cd --date=format:'%Y-%m-%d')
           echo "TAG_NAME=$COMMIT_DATE" >> $GITHUB_ENV
+          echo "tag=$COMMIT_DATE" >> $GITHUB_OUTPUT
+
 
       - name: Check if tag exists
         id: check_tag
@@ -46,14 +49,20 @@ jobs:
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
 
+      - name: Debug tag being released
+        run: echo "Releasing tag: $RELEASE_TAG"
+        env:
+          RELEASE_TAG: ${{ steps.extract_tag.outputs.tag }}
+
       - name: Create GitHub Release
         if: ${{ steps.check_tag.outputs.exists == 'false' }}
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: "Rolling Release - ${{ env.TAG_NAME }}"
+          tag_name: ${{ steps.extract_tag.outputs.tag }}
+          name: "Rolling Release - ${{ steps.extract_tag.outputs.tag }}"
           body: |
-            This is the rolling release of PSOPT on ${{ env.TAG_NAME }}.
+            This is the rolling release of PSOPT on ${{ steps.extract_tag.outputs.tag }}.
             For the latest updates, see [commit history](https://github.com/PSOPT/psopt/commits/master).
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
