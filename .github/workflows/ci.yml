@@ -74,8 +74,7 @@ jobs:
           path: |
             build/examples/**/psopt_solution_*.txt
             build/test_summary.json
-      - name: Print Docker image tag being used
-        run: echo "Image tag: ghcr.io/psopt/psopt-ci:latest"
+
   publish:
     needs: build
     if: ${{ needs.build.result == 'success' }}
