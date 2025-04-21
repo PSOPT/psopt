@@ -40,3 +40,16 @@ jobs:
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
           echo "Created and pushed tag $TAG_NAME"
+          
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: "Rolling Release - ${{ env.TAG_NAME }}"
+          body: |
+            This is the rolling release of PSOPT on ${{ env.TAG_NAME }}.
+            See [Changelog](https://github.com/PSOPT/psopt/commits/master) for recent updates.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
