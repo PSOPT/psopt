@@ -378,7 +378,7 @@ The above is working with MacOS Sequoia with an Intel processor (date: 16 Feb 20
 Once all dependencies are installed, PSOPT can be downloaded from GitHub, and built using CMake using the following commands.
 
 ```
-git clone https://github.com/PSOPT/psopt.git
+git clone --tags https://github.com/PSOPT/psopt.git
 cd psopt
 mkdir build
 cd build
