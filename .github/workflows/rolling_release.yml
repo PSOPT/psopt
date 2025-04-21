@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository (with full history and tags)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch full history to access tags
+          fetch-depth: 0
 
       - name: Fetch all tags
         run: git fetch --tags
@@ -31,16 +31,12 @@ jobs:
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
-        outputs:
-          exists: ${{ steps.check_tag.outputs.exists }}
 
       - name: Debug check
         run: |
           echo "Tag exists: $TAG_EXISTS"
         env:
           TAG_EXISTS: ${{ steps.check_tag.outputs.exists }}
-
-
 
       - name: Create and push tag (if it doesn't exist)
         if: ${{ steps.check_tag.outputs.exists == 'false' }}
@@ -49,7 +45,6 @@ jobs:
           git config user.email "github-actions@github.com"
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
-          echo "Created and pushed tag $TAG_NAME"
 
       - name: Create GitHub Release
         if: ${{ steps.check_tag.outputs.exists == 'false' }}
