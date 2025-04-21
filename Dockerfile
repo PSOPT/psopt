@@ -43,11 +43,7 @@ RUN git clone https://github.com/PSOPT/psopt.git psopt
 # 7. Build & install PSOPT under /usr
 WORKDIR /opt/psopt/psopt
 RUN mkdir build && cd build && \
-    cmake .. \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_EXAMPLES=ON \
-      -DHEADLESS=ON \
-      -DCMAKE_INSTALL_PREFIX=/usr && \      # <<< important
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON -DHEADLESS=ON -DCMAKE_INSTALL_PREFIX=/usr && \      # <<< important
     make -j$(nproc) && \
     make install && \
     ldconfig                                     # refresh loader cache
