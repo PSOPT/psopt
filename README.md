@@ -1,10 +1,8 @@
-<img src="psopt_logo.png" alt="Project logo" width="300"/>
+<img src="psopt_logo.png" alt="Project logo" width="250"/>
 
-PSOPT
-=====
-
-Copyright (C) 2009-2025 Victor M. Becerra
-
+Status
+------
+![PSOPT examples](https://img.shields.io/endpoint?url=https://psopt.github.io/psopt/artifacts/examples_badge.json)
 
 Introduction
 ------------
@@ -488,7 +486,7 @@ Latest Continuous Integration Test Report
 
 This automated test is based on seven selected examples from the PSOPT distribution and is carried out using GitHub Actions. Any push to the master branch or pull request triggers a complete build of the PSOPT library and the executables for all examples in the distribution, followed by a test run of these seven examples. The build and test runs are performed on a Docker container running Arch Linux. The resulting cost function for each selected example is then compared with a reference value. An example passes the test if the relative absolute difference between the computed cost function in the test and the reference value is lower than a small tolerance.
 
-![PSOPT examples](https://img.shields.io/endpoint?url=https://psopt.github.io/psopt/artifacts/examples_badge.json)
-
 [View the full PSOPT CI Test Summary](https://psopt.github.io/psopt/artifacts)
 
+
+Copyright (C) 2009-2025 Victor M. Becerra
