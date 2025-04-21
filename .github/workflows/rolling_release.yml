@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository (with full history and tags)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # This is key — fetch full history and tags
+          fetch-depth: 0  # Fetch full history to access tags
 
       - name: Fetch all tags
         run: git fetch --tags
@@ -32,6 +32,9 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Debug check
+        run: echo "Tag exists: ${{ steps.check_tag.outputs.exists }}"
+
       - name: Create and push tag (if it doesn't exist)
         if: steps.check_tag.outputs.exists == 'false'
         run: |
@@ -40,7 +43,7 @@ jobs:
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
           echo "Created and pushed tag $TAG_NAME"
-          
+
       - name: Create GitHub Release
         if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v1
@@ -49,8 +52,4 @@ jobs:
           name: "Rolling Release - ${{ env.TAG_NAME }}"
           body: |
             This is the rolling release of PSOPT on ${{ env.TAG_NAME }}.
-            For the latest updates, see [commit history](https://github.com/PSOPT/psopt/commits/master).
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-          
+            For the latest updates, see [commit history](https://github.com/PSOPT/psopt/
