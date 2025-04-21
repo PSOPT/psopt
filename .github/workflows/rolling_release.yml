@@ -35,9 +35,11 @@ jobs:
           exists: ${{ steps.check_tag.outputs.exists }}
 
       - name: Debug check
-        run: echo "Tag exists: $TAG_EXISTS"
+        run: |
+          echo "Tag exists: $TAG_EXISTS"
         env:
           TAG_EXISTS: ${{ steps.check_tag.outputs.exists }}
+
 
 
       - name: Create and push tag (if it doesn't exist)
