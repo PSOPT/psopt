@@ -24,7 +24,7 @@ WORKDIR /home/builduser
 
 # 4. Install 'yay' (an AUR helper) from the AUR
 #    - This step clones the yay repository and uses makepkg to build and install.
-RUN git clone --tags https://aur.archlinux.org/yay.git && \
+RUN git clone https://aur.archlinux.org/yay.git && \
 cd yay && \
 makepkg -si --noconfirm && \
 cd .. && rm -rf yay
@@ -38,7 +38,7 @@ USER root
 WORKDIR /opt/psopt
 
 # 6. Clone PSOPT (or COPY your local code instead)
-RUN git clone https://github.com/PSOPT/psopt.git psopt
+RUN git clone --tags https://github.com/PSOPT/psopt.git psopt
 
 # 7. Build & install PSOPT under /usr
 WORKDIR /opt/psopt/psopt
