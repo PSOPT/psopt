@@ -1,4 +1,4 @@
-<img src="docking.jpeg" alt="Project image" width="3000"/>
+<img src="docking.jpeg" alt="Project image" width="300"/>
 
 PSOPT
 =====
