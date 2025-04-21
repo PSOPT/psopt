@@ -25,7 +25,6 @@ jobs:
           echo "TAG_NAME=$COMMIT_DATE" >> $GITHUB_ENV
           echo "tag=$COMMIT_DATE" >> $GITHUB_OUTPUT
 
-
       - name: Check if tag exists
         id: check_tag
         run: |
@@ -49,11 +48,6 @@ jobs:
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
 
-      - name: Debug tag being released
-        run: echo "Releasing tag: $RELEASE_TAG"
-        env:
-          RELEASE_TAG: ${{ steps.extract_tag.outputs.tag }}
-
       - name: Create GitHub Release
         if: ${{ steps.check_tag.outputs.exists == 'false' }}
         uses: softprops/action-gh-release@v1
@@ -65,4 +59,3 @@ jobs:
             For the latest updates, see [commit history](https://github.com/PSOPT/psopt/commits/master).
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
