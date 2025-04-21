@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/psopt_logo.png" alt="PSOPT Logo" width="200"/>
+  <img src="psopt_logo.png" alt="PSOPT Logo" width="200"/>
 </p>
 
 Status
