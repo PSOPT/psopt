@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="images/logo.png" alt="PSOPT Logo" width="200"/>
-</p>
+<img src="images/logo.png" alt="PSOPT Logo" width="200"/>
 
 Status
 ------
