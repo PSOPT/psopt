@@ -49,7 +49,8 @@ jobs:
           name: "Rolling Release - ${{ env.TAG_NAME }}"
           body: |
             This is the rolling release of PSOPT on ${{ env.TAG_NAME }}.
-            See [Changelog](https://github.com/PSOPT/psopt/commits/master) for recent updates.
+            For the latest updates, see [commit history](https://github.com/PSOPT/psopt/commits/master).
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
           
