@@ -1,5 +1,6 @@
-<img src="psopt_logo.png" alt="Project logo" width="400"/>
-
+<p align="center">
+  <img src="images/logo.png" alt="PSOPT Logo" width="200"/>
+</p>
 Status
 ------
 ![PSOPT examples](https://img.shields.io/endpoint?url=https://psopt.github.io/psopt/artifacts/examples_badge.json)
