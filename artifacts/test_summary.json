@@ -2,7 +2,7 @@
   "twoburn": {
     "passed": true,
     "cost": -0.2367249,
-    "elapsed_s": 9.781722,
+    "elapsed_s": 5.680098,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/twoburn/psopt_solution_twoburn.txt",
     "rel_error": 0.0,
@@ -10,17 +10,17 @@
   },
   "low_thrust": {
     "passed": true,
-    "cost": -0.2203403,
-    "elapsed_s": 17.495701,
+    "cost": -0.2203381,
+    "elapsed_s": 19.011356,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/low_thrust/psopt_solution_lowthrust.txt",
-    "rel_error": 1.0438508110189215e-05,
+    "rel_error": 4.538481787203095e-07,
     "cost_pass": true
   },
   "zpm": {
     "passed": true,
     "cost": 6680108.0,
-    "elapsed_s": 43.047515,
+    "elapsed_s": 45.892567,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/zpm/psopt_solution_zpm.txt",
     "rel_error": 2.99396267426734e-07,
@@ -29,7 +29,7 @@
   "shuttle_reentry": {
     "passed": true,
     "cost": -34.14119,
-    "elapsed_s": 5.623914,
+    "elapsed_s": 6.078559,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/shuttle_reentry/psopt_solution_shuttle.txt",
     "rel_error": 0.0,
@@ -38,7 +38,7 @@
   "launch": {
     "passed": true,
     "cost": -7529.661,
-    "elapsed_s": 3.721733,
+    "elapsed_s": 4.425687,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/launch/psopt_solution_launch.txt",
     "rel_error": 0.0,
@@ -47,7 +47,7 @@
   "manutec": {
     "passed": true,
     "cost": 20.4042,
-    "elapsed_s": 2.618773,
+    "elapsed_s": 3.07188,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/manutec/psopt_solution_manutec.txt",
     "rel_error": 0.0,
@@ -56,7 +56,7 @@
   "notorious": {
     "passed": true,
     "cost": 0.8806615,
-    "elapsed_s": 6.977748,
+    "elapsed_s": 7.084632,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/notorious/psopt_solution_notorious.txt",
     "rel_error": 0.0,
