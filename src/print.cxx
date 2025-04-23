@@ -249,6 +249,8 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
     fprintf(outfile,"\nCPU time (seconds):\t\t\t\t%e", solution.cpu_time);
     fprintf(outfile,"\nNLP solver used: \t\t\t\t%s", algorithm.nlp_method.c_str());
     fprintf(outfile,"\nPSOPT release number: \t\t\t\t%s", PSOPT_RELEASE_STRING );
+    fprintf(outfile,"\nPSOPT build date: \t\t\t\t%s", PSOPT_BUILD_DATE );
+
     fprintf(outfile,"\nDate and time of this run: \t\t\t%s", solution.end_date_and_time.c_str() );
 
     if ( algorithm.nlp_method == "IPOPT") {
@@ -349,6 +351,7 @@ void print_algorithm_summary(Prob& problem, Alg& algorithm, Sol& solution, Works
     fprintf(outfile,"\n*********************************************************************************************************");
     fprintf(outfile,"\n\n PROBLEM NAME:                   %s\n", problem.name.c_str() );
     fprintf(outfile,"\n PSOPT RELEASE NUMBER:           %s\n", PSOPT_RELEASE_STRING );
+    fprintf(outfile,"\n PSOPT BUILD DATE:               %s\n", PSOPT_BUILD_DATE );
     fprintf(outfile,"\n DATE AND TIME OF RUN START:     %s", solution.start_date_and_time.c_str() );
     fprintf(outfile,"\n DATE AND TIME OF RUN END:       %s", solution.end_date_and_time.c_str()   );
 

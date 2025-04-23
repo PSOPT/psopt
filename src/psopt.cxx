@@ -69,11 +69,13 @@ Workspace* workspace = workspace_up.get();
 
 string startup_message= "\n *******************************************************************************\n * This is PSOPT, an optimal control solver based on pseudospectral and local  *\n * collocation methods, together with large scale nonlinear programming        *";
 
-snprintf(workspace->text,sizeof(workspace->text), "%s %s %s", "\n *******************************************************************************\n * PSOPT release number: ", PSOPT_RELEASE_STRING, "                                                 *");
-
+snprintf(workspace->text,sizeof(workspace->text), "%s %s %s", "\n *******************************************************************************\n * PSOPT release number: ", PSOPT_RELEASE_STRING, "                              *");
 string release_message= workspace->text;
+snprintf(workspace->text,sizeof(workspace->text), "%s %s %s", "\n * PSOPT build date: ", PSOPT_BUILD_DATE, "                                     *");
 
-string license_notice=  "\n * Copyright (C) 2010-2020  Victor M. Becerra.                                 *\n *                                                                             *\n * This library is free software; you can redistribute it and/or               *\n * modify it under the terms of the GNU Lesser General Public License          *\n * as published by the Free Software Foundation;  version 2.1.                 *\n * This library is distributed in the hope that it will be useful,             *\n * but WITHOUT ANY WARRANTY; without even the implied warranty of              *\n * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU           *\n * Lesser General Public License for more details.                             *\n * You should have received a copy of the GNU Lesser General Public            *\n * License along with this library;                                            *\n * If not please visit http://www.gnu.org/licenses                             *\n *                                                                             *";
+string build_date= workspace->text;
+
+string license_notice=  "\n * Copyright (C) 2010-2025  Victor M. Becerra.                                 *\n *                                                                             *\n * This library is free software; you can redistribute it and/or               *\n * modify it under the terms of the GNU Lesser General Public License          *\n * as published by the Free Software Foundation;  version 2.1.                 *\n * This library is distributed in the hope that it will be useful,             *\n * but WITHOUT ANY WARRANTY; without even the implied warranty of              *\n * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU           *\n * Lesser General Public License for more details.                             *\n * You should have received a copy of the GNU Lesser General Public            *\n * License along with this library;                                            *\n * If not please visit http://www.gnu.org/licenses                             *\n *                                                                             *";
 
 string contact_notice=  "\n * The author can be contacted at his email address:    v.m.becerra@ieee.org   *\n *                                                                             *\n *******************************************************************************\n\n";
 
@@ -109,6 +111,8 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
   snprintf(workspace->text,sizeof(workspace->text),"%s",startup_message.c_str());
   psopt_print(workspace,workspace->text);
   snprintf(workspace->text,sizeof(workspace->text),"%s",release_message.c_str());
+  psopt_print(workspace,workspace->text);
+  snprintf(workspace->text,sizeof(workspace->text),"%s",build_date.c_str());
   psopt_print(workspace,workspace->text);
   snprintf(workspace->text,sizeof(workspace->text),"%s",license_notice.c_str());
   psopt_print(workspace,workspace->text);
