@@ -6,6 +6,14 @@ Status
 ------
 ![PSOPT examples](https://img.shields.io/endpoint?url=https://psopt.github.io/psopt/artifacts/examples_badge.json)
 
+## 💖 Sponsor PSOPT
+
+PSOPT is an open-source software package for solving optimal control problems, used by [NASA, DLR, and many top universities worldwide](https://www.psopt.net/publications)
+
+If you benefit from PSOPT, please consider [sponsoring its development](https://github.com/sponsors/psopt) to help support continued improvements, maintenance, and community support.
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-💖-pink.svg)](https://github.com/sponsors/psopt)
+
 Introduction
 ------------
 
@@ -66,7 +74,7 @@ or visit http://www.gnu.org/licenses/
 
 Author:    Professor Victor M. Becerra
 
-Address:   
+Address for correspondence:   
             
            University of Portsmouth
 
