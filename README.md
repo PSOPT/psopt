@@ -6,7 +6,7 @@ Status
 ------
 ![PSOPT examples](https://img.shields.io/endpoint?url=https://psopt.github.io/psopt/artifacts/examples_badge.json)
 
-## 💖 Sponsor PSOPT
+## 🛰 Sponsor PSOPT
 
 PSOPT is an open-source software package for solving optimal control problems, used by [NASA, DLR, and many top universities worldwide](https://www.psopt.net/publications)
 
