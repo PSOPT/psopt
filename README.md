@@ -74,16 +74,6 @@ or visit http://www.gnu.org/licenses/
 
 Author:    Professor Victor M. Becerra
 
-Address for correspondence:   
-            
-           University of Portsmouth
-
-           School of Electrical and Mechanical Engineering
-           
-           Portsmouth PO1 3DJ
-           
-           United Kingdom
-
 e-mail:    v.m.becerra@ieee.org
 
 
