@@ -5,7 +5,7 @@ permissions:
   packages: read      # ✔ allows pulling private GHCR images
 
 
-# ────────── TRIGGERS ──────────────────────────────────────────────
+# ────────── TRIGGERS ────────────────────────────────────────────── 
 on:
   push:
     branches: [master]           # run on pushes to master
