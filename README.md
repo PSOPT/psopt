@@ -8,6 +8,7 @@ Status
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 [![GitHub release](https://img.shields.io/github/v/release/PSOPT/psopt.svg)](https://github.com/PSOPT/psopt/releases)
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://github.com/PSOPT/psopt/tree/master/doc)
+[![GitHub Stars](https://img.shields.io/github/stars/PSOPT/psopt?style=social)](https://github.com/PSOPT/psopt/stargazers)
 
 
 ## 🛰 Sponsor PSOPT
