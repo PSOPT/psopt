@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.12)
 # VERSIONING
 # ────────────────────────────────────────────────────────────────
 
-# Get the latest tag for use as version (e.g. 2025-04-21)
+# Get the latest tag for use as version (e.g. 2025-04-21)   
 execute_process(
   COMMAND git describe --tags --abbrev=0
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
