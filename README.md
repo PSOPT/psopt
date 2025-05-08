@@ -9,6 +9,7 @@ Status
 [![GitHub release](https://img.shields.io/github/v/release/PSOPT/psopt.svg)](https://github.com/PSOPT/psopt/releases)
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://github.com/PSOPT/psopt/tree/master/doc)
 [![GitHub Stars](https://img.shields.io/github/stars/PSOPT/psopt?style=social)](https://github.com/PSOPT/psopt/stargazers)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15367119.svg)](https://doi.org/10.5281/zenodo.15367119)
 
 
 ## 🛰 Sponsor PSOPT
@@ -485,6 +486,9 @@ Given that a great deal of time and effort has gone into PSOPT's development, **
             pages={1391-1396},  
             doi={10.1109/CACSD.2010.5612676}}
 
+If you wish to cite this specific release of PSOPT, you can use the DOI banner at the top of this document.
+
+To cite the software concept using a DOI (meaning citing all releases), you can use the following DOI, which always resolves to the latest release: [10.5281/zenodo.15367118](https://doi.org/10.5281/zenodo.15367118). 
 
 Latest Continuous Integration Test Report 
 ==========================================
