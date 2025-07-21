@@ -2,7 +2,7 @@
   "twoburn": {
     "passed": true,
     "cost": -0.2367249,
-    "elapsed_s": 5.932633,
+    "elapsed_s": 5.528196,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/twoburn/psopt_solution_twoburn.txt",
     "rel_error": 0.0,
@@ -11,7 +11,7 @@
   "low_thrust": {
     "passed": true,
     "cost": -0.2203381,
-    "elapsed_s": 20.072788,
+    "elapsed_s": 18.406479,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/low_thrust/psopt_solution_lowthrust.txt",
     "rel_error": 4.538481787203095e-07,
@@ -20,7 +20,7 @@
   "zpm": {
     "passed": true,
     "cost": 6680108.0,
-    "elapsed_s": 50.019743,
+    "elapsed_s": 44.87366,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/zpm/psopt_solution_zpm.txt",
     "rel_error": 2.99396267426734e-07,
@@ -29,7 +29,7 @@
   "shuttle_reentry": {
     "passed": true,
     "cost": -34.14119,
-    "elapsed_s": 6.634039,
+    "elapsed_s": 5.776364,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/shuttle_reentry/psopt_solution_shuttle.txt",
     "rel_error": 0.0,
@@ -38,7 +38,7 @@
   "launch": {
     "passed": true,
     "cost": -7529.661,
-    "elapsed_s": 4.880244,
+    "elapsed_s": 4.224678,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/launch/psopt_solution_launch.txt",
     "rel_error": 0.0,
@@ -47,7 +47,7 @@
   "manutec": {
     "passed": true,
     "cost": 20.4042,
-    "elapsed_s": 3.273072,
+    "elapsed_s": 2.970989,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/manutec/psopt_solution_manutec.txt",
     "rel_error": 0.0,
@@ -56,7 +56,7 @@
   "notorious": {
     "passed": true,
     "cost": 0.8806615,
-    "elapsed_s": 7.336434,
+    "elapsed_s": 7.182763,
     "solver_ok": true,
     "solution_file": "/__w/psopt/psopt/build/examples/notorious/psopt_solution_notorious.txt",
     "rel_error": 0.0,
