@@ -1,0 +1,80 @@
+{
+  "breakwell": {
+    "final_objective": 4.444438650458878,
+    "max_rel_error": 1.487596e-06,
+    "optimal_cost": 4.444439,
+    "solved": 1
+  },
+  "bryson_denham": {
+    "final_objective": 0.39995386676223066,
+    "max_rel_error": 9.527662e-06,
+    "optimal_cost": 3.999539,
+    "solved": 1
+  },
+  "catmix": {
+    "final_objective": -0.04781471776374399,
+    "max_rel_error": 0.0001092872,
+    "optimal_cost": -0.0480532,
+    "solved": 1
+  },
+  "dae_i3": {
+    "final_objective": 1.0065625979140699e-17,
+    "max_rel_error": 8.846731e-09,
+    "optimal_cost": 2.421455e-18,
+    "solved": 1
+  },
+  "goddard": {
+    "final_objective": -0.5126681090355274,
+    "max_rel_error": 0.0006877005,
+    "optimal_cost": -1.025336,
+    "solved": 2
+  },
+  "hypersensitive": {
+    "final_objective": 0.030841201544607132,
+    "max_rel_error": 0.0005728489,
+    "optimal_cost": 1.330826,
+    "solved": 2
+  },
+  "low_thrust": {
+    "final_objective": -0.11017015041153937,
+    "max_rel_error": 0.0003513895,
+    "optimal_cost": -0.2203403,
+    "solved": 4
+  },
+  "obstacle": {
+    "final_objective": 0.7071067811865475,
+    "max_rel_error": 0.01246837,
+    "optimal_cost": 4.571044,
+    "solved": 2
+  },
+  "param2": {
+    "final_objective": 0.006524463078637936,
+    "max_rel_error": 2.220185e-08,
+    "optimal_cost": 404.9887,
+    "solved": 1
+  },
+  "predator": {
+    "final_objective": 0.02557474919422821,
+    "max_rel_error": 4.884318e-05,
+    "optimal_cost": 0.02753366,
+    "solved": 5
+  },
+  "shuttle_reentry": {
+    "final_objective": -0.3836088597950334,
+    "max_rel_error": 0.0005995313,
+    "optimal_cost": -34.14119,
+    "solved": 3
+  },
+  "twoburn": {
+    "final_objective": -0.11836243945998799,
+    "max_rel_error": 6.275189e-06,
+    "optimal_cost": -0.2367249,
+    "solved": 6
+  },
+  "twophase_schwartz": {
+    "final_objective": 1.403678589864484e-18,
+    "max_rel_error": 0.02254848,
+    "optimal_cost": 3.138721e-16,
+    "solved": 1
+  }
+}
