@@ -31,6 +31,9 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+// Bring std names into this translation unit (formerly leaked via psopt.h).
+using namespace std;
+
 adouble endpoint_cost_for_parameter_estimation(adouble* initial_states, adouble* final_states, adouble* parameters,adouble& t0, adouble& tf, adouble* xad, int iphase, Workspace* workspace)
 {
    // This is the end point cost function for parameter estimation problems.

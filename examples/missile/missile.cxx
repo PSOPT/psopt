@@ -19,6 +19,8 @@
 
 #include "psopt.h"
 
+using namespace std;
+
 using namespace PSOPT;
 
 

@@ -30,6 +30,9 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+// Bring std names into this translation unit (formerly leaked via psopt.h).
+using namespace std;
+
 
 
 void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)

@@ -31,6 +31,9 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+// Bring std names into this translation unit (formerly leaked via psopt.h).
+using namespace std;
+
 
 
 adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adouble*,int, Workspace* workspace), adouble* xad, int iphase, Workspace* workspace )

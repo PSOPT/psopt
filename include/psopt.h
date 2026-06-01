@@ -76,7 +76,11 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 
 
 
-using namespace std;
+// NOTE: a public header must not pull the whole std namespace into global
+// scope, since that would force it on every translation unit (and every user)
+// that includes psopt.h. Bring in only the specific names the header uses;
+// implementation files declare "using namespace std;" themselves where wanted.
+using std::unique_ptr;
 
 
 #include <adolc/drivers/drivers.h>

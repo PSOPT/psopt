@@ -31,6 +31,9 @@ e-mail:    v.m.becerra@ieee.org
 #include "psopt.h"
 #include "snopt_psopt.h"
 
+// Bring std names into this translation unit (formerly leaked via psopt.h).
+using namespace std;
+
 
 #ifdef USE_SNOPT
 

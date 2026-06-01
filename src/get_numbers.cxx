@@ -31,6 +31,9 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+// Bring std names into this translation unit (formerly leaked via psopt.h).
+using namespace std;
+
 int get_number_of_mesh_refinement_iterations(Prob& problem, Alg& algorithm)
 {
   int number_of_mesh_refinement_iterations;

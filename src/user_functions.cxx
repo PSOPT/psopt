@@ -31,6 +31,9 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+// Bring std names into this translation unit (formerly leaked via psopt.h).
+using namespace std;
+
 
 
 void get_delayed_control(adouble* delayed_control, int control_index, int iphase, adouble& time, double delay, adouble* xad, Workspace* workspace)

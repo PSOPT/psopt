@@ -31,6 +31,9 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+// Bring std names into this translation unit (formerly leaked via psopt.h).
+using namespace std;
+
 
 void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 {

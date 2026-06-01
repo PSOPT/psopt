@@ -35,6 +35,9 @@ e-mail:    v.m.becerra@ieee.org
 
 DEC_THREAD int     PSOPT_extras::errorFlag   = 0;	   
 
+// Bring std names into this translation unit (formerly leaked via psopt.h).
+using namespace std;
+
 DEC_THREAD int     PSOPT_extras::print_level = 1;        
 
 DEC_THREAD clock_t PSOPT_extras::start_clock = 0;
