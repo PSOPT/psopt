@@ -863,7 +863,10 @@ MatrixXd load_data(const char* filename, long nrows, long ncols)
   for (i=0;i<nrows;i++) { 
       for (j=0;j<ncols;j++) {
 
-           fscanf(fp,"%lf", &value); 
+           if ( fscanf(fp,"%lf", &value) != 1 ) {
+               fclose(fp);
+               error_message("Error reading data in load_data(): file is too short or malformed");
+           }
            m(i,j) = value;
       } 
   }

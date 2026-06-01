@@ -193,7 +193,10 @@ void estimate_order_reduction(Prob& problem,Alg& algorithm,Sol& solution, Worksp
   //
   int nphases = problem.nphases;
   int iphase, k;
-  int p;
+  // Default to the trapezoidal order. Local mesh refinement only runs with
+  // trapezoidal (p=2) or Hermite-Simpson (p=4) defects, but initialising here
+  // avoids using p uninitialised should differential_defects hold another value.
+  int p = 2;
   double rhat, eta;
   int r;
   int j;
@@ -280,7 +283,9 @@ void construct_new_mesh(Prob& problem,Alg& algorithm,Sol& solution, Workspace* w
   //
   int nphases = problem.nphases;
   int iphase;
-  double p;
+  // Default to the trapezoidal order (see estimate_order_reduction): avoids
+  // using p uninitialised should differential_defects hold another value.
+  double p = 2.0;
   long imax,rmax;
   bool terminate_flag = false;
   int M1 = algorithm.mr_M1;

@@ -149,11 +149,17 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
 int get_max_nodes(Prob& problem,int iphase, Alg* algorithm)
 {
 
-    int retval, i;
+    int i;
+
+    // Default to the manual-mode value so that retval is always initialized,
+    // even if mesh_refinement holds an unrecognized value. Returning an
+    // uninitialized retval here is dangerous: it propagates into
+    // get_max_nodes_in_all_phases() and sizes the entire Workspace allocation.
+    long length_nodes = problem.phase[iphase-1].nodes.size(); // EIGEN_UPDATE
+    int retval = problem.phase[iphase-1].nodes(length_nodes-1);
 
     if (algorithm->mesh_refinement == "manual") {
-         long length_nodes = problem.phase[iphase-1].nodes.size(); // EIGEN_UPDATE
-         retval = problem.phase[iphase-1].nodes(length_nodes-1);
+         // retval already holds the manual-mode value computed above.
     }
 
     else if (algorithm->mesh_refinement == "automatic" && !use_local_collocation(*algorithm) ) {

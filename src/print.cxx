@@ -322,7 +322,8 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
 	auxstr = "type " + mesh_stats_file;
 #endif
 
-    system(auxstr.c_str());
+    if ( system(auxstr.c_str()) != 0 )
+        fprintf(stderr, "PSOPT warning: command failed: %s\n", auxstr.c_str());
 
 
 #ifndef WIN32
@@ -331,7 +332,8 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
 	auxstr = "type " + filename;
 #endif
 
-    system(auxstr.c_str());
+    if ( system(auxstr.c_str()) != 0 )
+        fprintf(stderr, "PSOPT warning: command failed: %s\n", auxstr.c_str());
 
 
 

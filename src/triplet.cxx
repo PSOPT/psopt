@@ -587,16 +587,22 @@ void TripletSparseMatrix::Load(const char* fname)
   {  sp_error_message( "Error opening file in TripletSparseMatrix::Load()"); }
 
 
-   fscanf(fp,"%li", &nrow);
-   fscanf(fp,"%li", &ncol);
-   fscanf(fp,"%li", &nnz);
+   if ( fscanf(fp,"%li", &nrow) != 1 ||
+        fscanf(fp,"%li", &ncol) != 1 ||
+        fscanf(fp,"%li", &nnz)  != 1 ) {
+      fclose(fp);
+      sp_error_message("Error reading header in TripletSparseMatrix::Load()");
+   }
 
    this->resize(nrow, ncol, nnz);
 
    for (k=0;k<nnz;k++) {
-            fscanf(fp,"%li",  &RowIndx[k] );
-            fscanf(fp,"%li",  &ColIndx[k] );
-            fscanf(fp,"%lf", &a[k]);
+            if ( fscanf(fp,"%li",  &RowIndx[k] ) != 1 ||
+                 fscanf(fp,"%li",  &ColIndx[k] ) != 1 ||
+                 fscanf(fp,"%lf", &a[k])         != 1 ) {
+               fclose(fp);
+               sp_error_message("Error reading entry in TripletSparseMatrix::Load()");
+            }
    }
 
 

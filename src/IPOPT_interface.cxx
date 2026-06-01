@@ -206,7 +206,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
   else
       activate_hess = 0;
 
-  if( activate_hess*useAutomaticDifferentiation(*workspace->algorithm)  ) {
+  if( activate_hess && useAutomaticDifferentiation(*workspace->algorithm)  ) {
 
 	double       *hess_values = NULL;
 	adouble *xad = workspace->xad;

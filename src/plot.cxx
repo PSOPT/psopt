@@ -176,7 +176,8 @@ void plot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const cha
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 
 
@@ -325,7 +326,8 @@ void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, cons
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 
 
@@ -488,7 +490,8 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 
 
@@ -650,7 +653,8 @@ void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 
 
@@ -860,7 +864,8 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 
 
@@ -972,7 +977,8 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const string& title,  c
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 
 
@@ -1143,7 +1149,8 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 
 
@@ -1378,7 +1385,8 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 
 
@@ -1489,7 +1497,8 @@ void surf(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const stri
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 }
 
@@ -1597,7 +1606,8 @@ void plot3(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const str
 
          fclose(gscript);
 
-         system("gnuplot -persist gnuplot.scp ");
+         if ( system("gnuplot -persist gnuplot.scp ") != 0 )
+             fprintf(stderr, "PSOPT warning: gnuplot command failed (is gnuplot installed and on PATH?)\n");
 
 }
 
