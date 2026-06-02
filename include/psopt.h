@@ -65,15 +65,14 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 #define FREE_ARG char*
 
 #ifndef WIN32
-#include <stdlib.h>
+#include <cstdlib>
 #endif
 
-#include <math.h>
-#include <string.h>
-#include <time.h>
-#include <assert.h>
+#include <cmath>
+#include <cstring>
+#include <ctime>
+#include <cassert>
 #include <memory>
-
 
 
 // NOTE: a public header must not pull the whole std namespace into global
@@ -1225,7 +1224,9 @@ bool isSymmetric(const MatrixXd& m);
 
 
 
-using namespace Ipopt;
+// NOTE: no "using namespace Ipopt;" here. Implementation files that use
+// Ipopt names declare it themselves; this keeps the Ipopt namespace out of
+// the global scope of code that includes psopt.h.
 
 
 

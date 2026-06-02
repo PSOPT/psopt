@@ -606,6 +606,9 @@ void TripletSparseMatrix::Load(const char* fname)
                fclose(fp);
                sp_error_message("Error reading entry in TripletSparseMatrix::Load()");
             }
+            // Save() writes 1-based indices; internal storage is 0-based (see operator()).
+            RowIndx[k]--;
+            ColIndx[k]--;
    }
 
 
@@ -625,7 +628,7 @@ void TripletSparseMatrix::Save(const char* fname) const
   {  sp_error_message( "Error opening file in TripletSparseMatrix::Save()"); }
 
 
-//   fprintf(fp,"%li\t%li\t%li\n", n, m, nz);
+   fprintf(fp,"%i\t%i\t%i\n", n, m, nz);
 
    for (k=0;k<nz;k++) {
             fprintf(fp,"%i\t%i\t%e\n",  RowIndx[k]+1, ColIndx[k]+1, a[k] );

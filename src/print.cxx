@@ -32,6 +32,7 @@ e-mail:    v.m.becerra@ieee.org
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
+using namespace Ipopt;   // for Ipopt return-status enums (Solve_Succeeded)
 
 using namespace Eigen;
 

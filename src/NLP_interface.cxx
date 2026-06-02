@@ -32,13 +32,14 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+// Bring std/Ipopt names into this translation unit (formerly leaked via psopt.h).
+using namespace std;
+using namespace Ipopt;
+
 
 #ifdef USE_SNOPT
 #include "snoptProblem.hpp"
 #include "snopt_psopt.h"
-
-// Bring std names into this translation unit (formerly leaked via psopt.h).
-using namespace std;
 // Workspace* tempsnoptworkspace;
 
 Workspace* snoptProbLocal::workspace   = NULL;
