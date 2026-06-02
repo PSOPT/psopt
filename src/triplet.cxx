@@ -590,9 +590,9 @@ void TripletSparseMatrix::Load(const char* fname)
   {  sp_error_message( "Error opening file in TripletSparseMatrix::Load()"); }
 
 
-   if ( fscanf(fp,"%li", &nrow) != 1 ||
-        fscanf(fp,"%li", &ncol) != 1 ||
-        fscanf(fp,"%li", &nnz)  != 1 ) {
+   if ( fscanf(fp,"%i", &nrow) != 1 ||
+        fscanf(fp,"%i", &ncol) != 1 ||
+        fscanf(fp,"%i", &nnz)  != 1 ) {
       fclose(fp);
       sp_error_message("Error reading header in TripletSparseMatrix::Load()");
    }
@@ -600,8 +600,8 @@ void TripletSparseMatrix::Load(const char* fname)
    this->resize(nrow, ncol, nnz);
 
    for (k=0;k<nnz;k++) {
-            if ( fscanf(fp,"%li",  &RowIndx[k] ) != 1 ||
-                 fscanf(fp,"%li",  &ColIndx[k] ) != 1 ||
+            if ( fscanf(fp,"%i",  &RowIndx[k] ) != 1 ||
+                 fscanf(fp,"%i",  &ColIndx[k] ) != 1 ||
                  fscanf(fp,"%lf", &a[k])         != 1 ) {
                fclose(fp);
                sp_error_message("Error reading entry in TripletSparseMatrix::Load()");
@@ -628,7 +628,7 @@ void TripletSparseMatrix::Save(const char* fname) const
 //   fprintf(fp,"%li\t%li\t%li\n", n, m, nz);
 
    for (k=0;k<nz;k++) {
-            fprintf(fp,"%li\t%li\t%e\n",  RowIndx[k]+1, ColIndx[k]+1, a[k] );
+            fprintf(fp,"%i\t%i\t%e\n",  RowIndx[k]+1, ColIndx[k]+1, a[k] );
    }
 
    fclose(fp);

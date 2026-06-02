@@ -53,6 +53,7 @@ option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
 option(WITH_SNOPT_INTERFACE "Build interface for the SNOPT optimizer." OFF)
 option(BUILD_TESTS "Build tests for PSOPT." OFF)
 option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but generates PDFs)" OFF)
+option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror (for CI). Default OFF so normal builds are unaffected." OFF)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Eigen3 REQUIRED NO_MODULE)
@@ -88,7 +89,23 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_RELEASE_STRING}" -DHAVE_CSTDDEF)
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_delegating_constructors)
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
+
+# Opt-in strict warnings for CI. Applied only to the PSOPT library target so
+# dependency headers and user/example code are not affected.
+#  - unused-parameter is silenced: the fixed dae/cost/events/linkage callback
+#    signatures force parameters that individual problems may not use.
+#  - maybe-uninitialized is kept visible but non-fatal: it is prone to
+#    optimizer/compiler-version false positives (e.g. inside Eigen).
+if(PSOPT_STRICT_WARNINGS)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(${PROJECT_NAME} PRIVATE
+      -Wall -Wextra -Werror
+      -Wno-unused-parameter
+      -Wno-error=maybe-uninitialized
+    )
+  endif()
+endif()
 
 if(${WITH_SNOPT_INTERFACE})
     add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_RELEASE_STRING}" -DHAVE_CSTDDEF -DUSE_SNOPT)

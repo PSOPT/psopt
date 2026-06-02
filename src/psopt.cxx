@@ -385,8 +385,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     for(i=0; i<nphases; i++)
     {
         int nstates   = problem.phase[i].nstates;
-        int ncontrols = problem.phase[i].ncontrols;
-        int nparam    = problem.phase[i].nparameters;
         int norder    = problem.phase[i].current_number_of_intervals;
         int nevents   = problem.phase[i].nevents;
         int npath     = problem.phase[i].npath;
@@ -398,7 +396,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         MatrixXd ts;
         MatrixXd pl;
         MatrixXd pextra(1,norder+1);
-        double   time_scaling    =  problem.phase[i].scale.time;
         double hk, t0, tf;
 
         int nvars_phase_i = get_nvars_phase_i(problem, i, workspace);

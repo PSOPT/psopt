@@ -223,7 +223,7 @@ int auto_link2_count(Prob& problem, int nstates, int ncontrols)
 
 void auto_phase_setup(Prob& problem,int n_final_events, RowVectorXi& nodes)
 {
-	int i, j;
+	int i;
 
         if (problem.nphases == 1) return;
 

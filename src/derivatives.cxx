@@ -42,7 +42,7 @@ void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& 
 {
   // Computes only one column of the Jacobian matrix
 
-  int  j, k;
+  int  j;
   double delj;
   double sqreps;
   double xs;
@@ -577,7 +577,7 @@ void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), M
 {
 
 
-  long i,j;
+  long i;
   int nzcount_A=0;
   int nzcount_G=0;
   int n     =  length(x);
@@ -595,7 +595,6 @@ void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), M
 
         int nvars = n;
 
-        int k;
 
        xp = x;
 
@@ -672,12 +671,11 @@ void ScalarGradient( double (*fun)(MatrixXd& x, Workspace* workspace), MatrixXd&
                 MatrixXd* grad, GRWORK* grw, Workspace* workspace )
 {
 
-  int j = 0, nf;
+  int j = 0;
   double delj;
   MatrixXd sqreps;
   double xs = 0.0;
   long nvar= x.rows();
-  nf  = 1;
   double F1 = 0.0;
   double F2 = 0.0;
   double F3 = 0.0;
@@ -775,8 +773,6 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
     Jc.resize(ncons,nvars);
 
     MatrixXd& JacCol1 = *workspace->JacCol1;
-    MatrixXd& xlb     = *workspace->xlb;
-    MatrixXd& xub     = *workspace->xub;
     MatrixXd& xp      = *workspace->xp;
     MatrixXd jtemp;
 
