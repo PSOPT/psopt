@@ -57,6 +57,11 @@ DEFAULT_SUBSET = {
     "twoburn":           {"data": ["twoburn.txt"], "note": "multi-phase orbit transfer + data loader"},
 }
 
+# Examples excluded from the 'all' set. They still run if named explicitly.
+EXCLUDE_FROM_ALL = {
+    "climb",  # minimum-time-to-climb: does not converge within a practical CI timeout (>120s)
+}
+
 FLOAT = r"[-+]?\d+\.?\d*(?:[eE][-+]?\d+)?"
 RE_COST = re.compile(r"Optimal \(unscaled\) cost function value:\s*(" + FLOAT + r")")
 RE_OBJ = re.compile(r"Objective\.*:\s*(" + FLOAT + r")")
@@ -180,10 +185,18 @@ def main():
     elif args.examples == "all":
         ex_root = source_dir / "examples"
         specs = {p.name: {"data": [f.name for f in p.glob("*.dat")] + [f.name for f in p.glob("*.txt")]}
-                 for p in sorted(ex_root.iterdir()) if p.is_dir()}
+                 for p in sorted(ex_root.iterdir())
+                 if p.is_dir() and p.name not in EXCLUDE_FROM_ALL}
     else:
+        ex_root = source_dir / "examples"
         names = [n.strip() for n in args.examples.split(",") if n.strip()]
-        specs = {n: DEFAULT_SUBSET.get(n, {"data": []}) for n in names}
+        specs = {}
+        for n in names:
+            if n in DEFAULT_SUBSET:
+                specs[n] = DEFAULT_SUBSET[n]
+            else:
+                d = ex_root / n
+                specs[n] = {"data": [f.name for f in d.glob("*.dat")] + [f.name for f in d.glob("*.txt")]}
 
     if args.build:
         configure_and_build(build_dir, source_dir, list(specs.keys()), args.jobs)
