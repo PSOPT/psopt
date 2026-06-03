@@ -188,7 +188,7 @@ void determine_objective_scaling(MatrixXd& X,Sol& solution, Prob& problem, Alg& 
 	    long      n = length(X);
 	    int i, itag=workspace->tag_f;
 	    double  yp = 0.0;
-	    adouble *xad = workspace->xad;
+	    adouble *xad = workspace->xad.get();
 	    adouble  yad;
 	    MatrixXd&  GF = *workspace->GFip;
 	    problem.scale.objective = -1.0;
@@ -208,7 +208,7 @@ void determine_objective_scaling(MatrixXd& X,Sol& solution, Prob& problem, Alg& 
 
 	else {
 	  problem.scale.objective = -1.0;
-	  ScalarGradient( ff_num, X, &GF , workspace->grw, workspace );
+	  ScalarGradient( ff_num, X, &GF , workspace->grw.get(), workspace );
 	}
 
         nrm_g = (GF).norm();
@@ -272,9 +272,9 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
 			double       *jac_values = NULL;
 			int           nnz;
 		
-			adouble *xad = workspace->xad;
-			adouble *gad = workspace->gad;
-			double  *g   = workspace->fg;
+			adouble *xad = workspace->xad.get();
+			adouble *gad = workspace->gad.get();
+			double  *g   = workspace->fg.get();
 
 		   double  *x   = &xp(0);
 		
@@ -311,7 +311,7 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
 	      MatrixXd& xlb = *(workspace->xlb);
 		   MatrixXd& xub = *(workspace->xub);
 			for(j=0;j<nvars;j++) {  // EIGEN_UPDATE
-			    JacobianColumn( gg_num, xp, xlb, xub,j, &JacCol1, workspace->grw, workspace);
+			    JacobianColumn( gg_num, xp, xlb, xub,j, &JacCol1, workspace->grw.get(), workspace);
 			    jac_row_norm+= elemProduct(JacCol1, JacCol1);
 			}
 

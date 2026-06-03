@@ -227,7 +227,7 @@ void get_scaled_decision_variables_and_bounds(MatrixXd& x, MatrixXd& xlb, Matrix
 
     Prob & problem = *(workspace->problem);
 
-    adouble* xad = workspace->xad;
+    adouble* xad = workspace->xad.get();
 
 
     int nvar = get_number_nlp_vars(problem, workspace);

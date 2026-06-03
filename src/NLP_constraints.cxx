@@ -43,9 +43,9 @@ void gg_num( MatrixXd& x, MatrixXd* g, Workspace*  workspace )
 
    int j;
 
-   adouble* xad = workspace->xad;
+   adouble* xad = workspace->xad.get();
 
-   adouble* gad = workspace->gad;
+   adouble* gad = workspace->gad.get();
 
 
 
@@ -102,7 +102,7 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
     int phase_offset  = 0;
 
-    linkages = workspace->linkages;
+    linkages = workspace->linkages.get();
 
     for(i=0;i< problem->nphases; i++)
     {
@@ -120,17 +120,17 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 	  iph = iphase;
 	}
 
-	states        = workspace->states[i];
-	resid         = workspace->resid[i];
-	derivatives   = workspace->derivatives[i];
-   controls      = workspace->controls[i];
-   parameters    = workspace->parameters[iph-1];
-	initial_states= workspace->initial_states[i];
-	final_states  = workspace->final_states[i];
-	events        = workspace->events[i];
-	path          = workspace->path[i];
-   states_traj   = workspace->states_traj[i];
-   derivs_traj   = workspace->derivs_traj[i];
+	states        = workspace->states[i].get();
+	resid         = workspace->resid[i].get();
+	derivatives   = workspace->derivatives[i].get();
+   controls      = workspace->controls[i].get();
+   parameters    = workspace->parameters[iph-1].get();
+	initial_states= workspace->initial_states[i].get();
+	final_states  = workspace->final_states[i].get();
+	events        = workspace->events[i].get();
+	path          = workspace->path[i].get();
+   states_traj   = workspace->states_traj[i].get();
+   derivs_traj   = workspace->derivs_traj[i].get();
 
 	int j, k,  l;
 
@@ -205,10 +205,10 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
             else if (workspace->differential_defects == "trapezoidal") {
             // Trapezoidal method
                 if (k!=(norder)) { // EIGEN_UPDATE
-                    adouble* states_next      = workspace->states_next[i];
-                    adouble* controls_next    = workspace->controls_next[i];
-                    adouble* derivatives_next = workspace->derivatives_next[i];
-                    adouble* path_next        = workspace->path_next[i];
+                    adouble* states_next      = workspace->states_next[i].get();
+                    adouble* controls_next    = workspace->controls_next[i].get();
+                    adouble* derivatives_next = workspace->derivatives_next[i].get();
+                    adouble* path_next        = workspace->path_next[i].get();
                     adouble  time_next        = convert_to_original_time_ad( (workspace->snodes[i])(k+1), t0, tf );
                     adouble  hk               = time_next-time;
                     get_states(states_next, xad, iphase, k+1, workspace);
@@ -236,14 +236,14 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
             else if (workspace->differential_defects == "Hermite-Simpson") {
               // Hermite Simpson defects
               if (k!=(norder)) { // EIGEN_UPDATE
-                    adouble* states_next      = workspace->states_next[i];
-                    adouble* controls_next    = workspace->controls_next[i];
-                    adouble* derivatives_next = workspace->derivatives_next[i];
-                    adouble* path_next        = workspace->path_next[i];
-                    adouble* path_bar         = workspace->path_bar[i];
-                    adouble* states_bar       = workspace->states_bar[i];
-                    adouble* controls_bar     = workspace->controls_bar[i];
-                    adouble* derivatives_bar  = workspace->derivatives_bar[i];
+                    adouble* states_next      = workspace->states_next[i].get();
+                    adouble* controls_next    = workspace->controls_next[i].get();
+                    adouble* derivatives_next = workspace->derivatives_next[i].get();
+                    adouble* path_next        = workspace->path_next[i].get();
+                    adouble* path_bar         = workspace->path_bar[i].get();
+                    adouble* states_bar       = workspace->states_bar[i].get();
+                    adouble* controls_bar     = workspace->controls_bar[i].get();
+                    adouble* derivatives_bar  = workspace->derivatives_bar[i].get();
                     adouble  time_next        = convert_to_original_time_ad( (workspace->snodes[i])(k+1), t0, tf );
                     adouble  hk               = time_next-time;
                     adouble  time_bar         = time + 0.5*hk;

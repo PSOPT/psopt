@@ -48,10 +48,10 @@ void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& 
   double xs;
   long nf  = JacColumn->rows();
 
-  MatrixXd *dfdx_j = grw->dfdx_j;
-  MatrixXd *F1   = grw->F1;
-  MatrixXd *F2   = grw->F2;
-  MatrixXd *F3   = grw->F3;
+  MatrixXd *dfdx_j = grw->dfdx_j.get();
+  MatrixXd *F1   = grw->F1.get();
+  MatrixXd *F2   = grw->F2.get();
+  MatrixXd *F3   = grw->F3.get();
   int nvar = x.rows();
 
 
@@ -120,10 +120,10 @@ void JacobianRow( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x, 
   double xs;
   long nvar= x.rows();
 
-  MatrixXd *dfdx_j = grw->dfdx_j;
-  MatrixXd *F1   = grw->F1;
-  MatrixXd *F2   = grw->F2;
-  MatrixXd *F3   = grw->F3;
+  MatrixXd *dfdx_j = grw->dfdx_j.get();
+  MatrixXd *F1   = grw->F1.get();
+  MatrixXd *F2   = grw->F2.get();
+  MatrixXd *F3   = grw->F3.get();
 
   MatrixXd& xlb    = *workspace->xlb;
   MatrixXd& xub    = *workspace->xub;
@@ -194,9 +194,9 @@ void ComputeJacobianNonZeros( void fun(MatrixXd& x, MatrixXd* f ), MatrixXd& x,
 
 
 
-  MatrixXd *F1   = grw->F1;
-  MatrixXd *F2   = grw->F2;
-  MatrixXd *F3   = grw->F3;
+  MatrixXd *F1   = grw->F1.get();
+  MatrixXd *F2   = grw->F2.get();
+  MatrixXd *F3   = grw->F3.get();
 
   MatrixXd& xlb    = *workspace->xlb;
   MatrixXd& xub    = *workspace->xub;
@@ -299,7 +299,7 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 
    // Form dummy Jacobian matrix with ones at the non-zero elements
 
-   double* ones_pr = workspace->jac_Gij;
+   double* ones_pr = workspace->jac_Gij.get();
 
 
    for(i=0;i<nnz;i++)  ones_pr[i] = 1.0;
@@ -457,8 +457,8 @@ void EfficientlyComputeJacobianNonZeros( void fun(MatrixXd& x, MatrixXd* f, Work
   double sqreps;
   long nvar= x.rows();
 
-  MatrixXd *F1   = grw->F1;
-  MatrixXd *F2   = grw->F2;
+  MatrixXd *F1   = grw->F1.get();
+  MatrixXd *F2   = grw->F2.get();
 
 
   MatrixXd xp(nvar,1);
@@ -737,7 +737,7 @@ void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), MatrixXd& x, Matri
     int      n = x.rows();
     int i;
     double  yp = 0.0;
-    adouble *xad = workspace->xad;
+    adouble *xad = workspace->xad.get();
     adouble  yad;
 
     if( !(*trace_done) ) {
@@ -788,9 +788,9 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
 	double       *jac_values = NULL;
 	int           nnz;
 
-	adouble *xad = workspace->xad;
-	adouble *gad = workspace->gad;
-	double  *g   = workspace->fg;
+	adouble *xad = workspace->xad.get();
+	adouble *gad = workspace->gad.get();
+	double  *g   = workspace->fg.get();
 
     double  *x   = &xp(0);
 
@@ -823,7 +823,7 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
     	MatrixXd& xlb = *(workspace->xlb);
 	    MatrixXd& xub = *(workspace->xub);
 	    for(j=0;j<nvars;j++) { // EIGEN_UPDATE: index j shifted by -1
-	      JacobianColumn( gg_num, xp, xlb, xub,j, &JacCol1, workspace->grw, workspace);
+	      JacobianColumn( gg_num, xp, xlb, xub,j, &JacCol1, workspace->grw.get(), workspace);
           long nrows = JacCol1.rows();
           Jctmp.block(0,j,nrows,1)= JacCol1;
 	    }
@@ -892,7 +892,7 @@ void compute_jacobian_of_residual_vector_with_respect_to_variables(MatrixXd& Jr,
 
 
 	for(j=0;j<nvar;j++) {  // EIGEN_UPDATE: index j shifted by -1
-	    JacobianColumn( rr_num, X, XL, XU, j, &Jcol, workspace->grw, workspace);
+	    JacobianColumn( rr_num, X, XL, XU, j, &Jcol, workspace->grw.get(), workspace);
         Jr.block(0,j,Jcol.rows(), 1) = Jcol;
 	}
 }

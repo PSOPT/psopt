@@ -46,75 +46,75 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 
   int max_nodes = get_max_nodes_in_all_phases(problem, algorithm);
 
-  workspace->P         = new MatrixXd[nphases];
-  workspace->sindex    = new RowVectorXi[nphases];
-  workspace->w         = new MatrixXd[nphases];
-  workspace->D         = new MatrixXd[nphases];
-  workspace->snodes    = new MatrixXd[nphases];
-  workspace->old_snodes= new MatrixXd[nphases];
-  workspace->xlb       = new MatrixXd;
-  workspace->xub       = new MatrixXd;
-  workspace->x0        = new MatrixXd;
-  workspace->lambda    = new MatrixXd;
-  workspace->dual_costates = new MatrixXd[nphases];
-  workspace->dual_events   = new MatrixXd[nphases];
-  workspace->dual_path     = new MatrixXd[nphases];
-  workspace->linkage    = new MatrixXd;
-  workspace->constraint_scaling = new MatrixXd;
-  workspace->prev_states  = new MatrixXd[nphases];
-  workspace->prev_costates= new MatrixXd[nphases];
-  workspace->prev_controls= new MatrixXd[nphases];
-  workspace->prev_path    = new MatrixXd[nphases];
-  workspace->prev_param   = new MatrixXd[nphases];
-  workspace->prev_nodes   = new MatrixXd[nphases];
-  workspace->Ax           = new TripletSparseMatrix;
-  workspace->Gsp          = new TripletSparseMatrix;
-  workspace->Xsnopt       = new MatrixXd;
-  workspace->gsnopt       = new MatrixXd;
-  workspace->Xip          = new MatrixXd;
-  workspace->JacRow       = new MatrixXd;
-  workspace->Gip          = new MatrixXd;
-  workspace->GFip         = new MatrixXd;
-  workspace->Xdot         = new MatrixXd[nphases];
-  workspace->DerivResid   = new MatrixXd[nphases];
-  workspace->Xdotgg       = new MatrixXd[nphases];
-  workspace->e            = new MatrixXd[nphases];
-  workspace->hgg          = new MatrixXd[nphases];
-  workspace->prev_t0      = new MatrixXd(nphases,1);
-  workspace->prev_tf      = new MatrixXd(nphases,1);
-  workspace->JacCol1      = new MatrixXd;
-  workspace->JacCol2      = new MatrixXd;
-  workspace->JacCol3      = new MatrixXd;
-  workspace->xp           = new MatrixXd;
-  workspace->emax_history = new MatrixXd[nphases];
-  workspace->order_reduction=new MatrixXd[nphases];
-  workspace->old_relative_errors = new MatrixXd[nphases];
-  workspace->error_scaling_weights = new MatrixXd[nphases];
+  workspace->P         = make_unique<MatrixXd[]>(nphases);
+  workspace->sindex    = make_unique<RowVectorXi[]>(nphases);
+  workspace->w         = make_unique<MatrixXd[]>(nphases);
+  workspace->D         = make_unique<MatrixXd[]>(nphases);
+  workspace->snodes    = make_unique<MatrixXd[]>(nphases);
+  workspace->old_snodes= make_unique<MatrixXd[]>(nphases);
+  workspace->xlb       = make_unique<MatrixXd>();
+  workspace->xub       = make_unique<MatrixXd>();
+  workspace->x0        = make_unique<MatrixXd>();
+  workspace->lambda    = make_unique<MatrixXd>();
+  workspace->dual_costates = make_unique<MatrixXd[]>(nphases);
+  workspace->dual_events   = make_unique<MatrixXd[]>(nphases);
+  workspace->dual_path     = make_unique<MatrixXd[]>(nphases);
+  workspace->linkage    = make_unique<MatrixXd>();
+  workspace->constraint_scaling = make_unique<MatrixXd>();
+  workspace->prev_states  = make_unique<MatrixXd[]>(nphases);
+  workspace->prev_costates= make_unique<MatrixXd[]>(nphases);
+  workspace->prev_controls= make_unique<MatrixXd[]>(nphases);
+  workspace->prev_path    = make_unique<MatrixXd[]>(nphases);
+  workspace->prev_param   = make_unique<MatrixXd[]>(nphases);
+  workspace->prev_nodes   = make_unique<MatrixXd[]>(nphases);
+  workspace->Ax           = make_unique<TripletSparseMatrix>();
+  workspace->Gsp          = make_unique<TripletSparseMatrix>();
+  workspace->Xsnopt       = make_unique<MatrixXd>();
+  workspace->gsnopt       = make_unique<MatrixXd>();
+  workspace->Xip          = make_unique<MatrixXd>();
+  workspace->JacRow       = make_unique<MatrixXd>();
+  workspace->Gip          = make_unique<MatrixXd>();
+  workspace->GFip         = make_unique<MatrixXd>();
+  workspace->Xdot         = make_unique<MatrixXd[]>(nphases);
+  workspace->DerivResid   = make_unique<MatrixXd[]>(nphases);
+  workspace->Xdotgg       = make_unique<MatrixXd[]>(nphases);
+  workspace->e            = make_unique<MatrixXd[]>(nphases);
+  workspace->hgg          = make_unique<MatrixXd[]>(nphases);
+  workspace->prev_t0      = make_unique<MatrixXd>(nphases,1);
+  workspace->prev_tf      = make_unique<MatrixXd>(nphases,1);
+  workspace->JacCol1      = make_unique<MatrixXd>();
+  workspace->JacCol2      = make_unique<MatrixXd>();
+  workspace->JacCol3      = make_unique<MatrixXd>();
+  workspace->xp           = make_unique<MatrixXd>();
+  workspace->emax_history = make_unique<MatrixXd[]>(nphases);
+  workspace->order_reduction=make_unique<MatrixXd[]>(nphases);
+  workspace->old_relative_errors = make_unique<MatrixXd[]>(nphases);
+  workspace->error_scaling_weights = make_unique<MatrixXd[]>(nphases);
 
 
   (*workspace->linkage).resize(problem.nlinkages,1);
 
-  workspace->grw = new GRWORK;
+  workspace->grw = make_unique<GRWORK>();
 
-  workspace->grw->dfdx_j= new MatrixXd;
-  workspace->grw->F1    = new MatrixXd;
-  workspace->grw->F2    = new MatrixXd;
-  workspace->grw->F3    = new MatrixXd;
-  workspace->grw->F4    = new MatrixXd;
+  workspace->grw->dfdx_j= make_unique<MatrixXd>();
+  workspace->grw->F1    = make_unique<MatrixXd>();
+  workspace->grw->F2    = make_unique<MatrixXd>();
+  workspace->grw->F3    = make_unique<MatrixXd>();
+  workspace->grw->F4    = make_unique<MatrixXd>();
 
 
 
   if (algorithm.nlp_method=="IPOPT") {
-	workspace->iArow     = new int[(int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons)];
-	workspace->jAcol     = new int[(int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons)];
-	workspace->iGrow     = new int[(int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons)];
-	workspace->jGcol     = new int[(int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons)];
-	workspace->jac_Aij   = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons)];
-	workspace->jac_Gij   = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons)];
+	workspace->iArow     = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
+	workspace->jAcol     = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
+	workspace->iGrow     = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
+	workspace->jGcol     = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
+	workspace->jac_Aij   = make_unique<double[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
+	workspace->jac_Gij   = make_unique<double[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
 	if (algorithm.hessian == "exact" ) {
 		workspace->hess_ir   = new unsigned int[(int) (algorithm.hess_sparsity_ratio*max_nvars*max_nvars)];
 		workspace->hess_jc   = new unsigned int[(int) (algorithm.hess_sparsity_ratio*max_nvars*max_nvars)];
-		workspace->lambda_d  = new double [max_ncons];
+		workspace->lambda_d  = make_unique<double[]>(max_ncons);
 	}
 	else{
       workspace->hess_ir   = NULL;
@@ -137,8 +137,8 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   if ( algorithm.nlp_method == "SNOPT") {
   	workspace->iGfun     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->jGvar     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->iGfun1    = new          int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->jGvar1    = new          int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
+  	workspace->iGfun1    = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1)));
+  	workspace->jGvar1    = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1)));
   	workspace->iGfun2    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->jGvar2    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->G2        = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
@@ -156,50 +156,50 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   	workspace->G3        = NULL;
   	workspace->G4        = NULL;
   }
-  workspace->xad       = new adouble[max_nvars];
-  workspace->gad       = new adouble[max_ncons];
-  workspace->fgad      = new adouble[max_ncons+1];
-  workspace->fg        = new double[max_ncons+1];
-  workspace->nrm_row   = new double[max_ncons+1];
+  workspace->xad       = make_unique<adouble[]>(max_nvars);
+  workspace->gad       = make_unique<adouble[]>(max_ncons);
+  workspace->fgad      = make_unique<adouble[]>(max_ncons+1);
+  workspace->fg        = make_unique<double[]>(max_ncons+1);
+  workspace->nrm_row   = make_unique<double[]>(max_ncons+1);
 
-  workspace->states    = new adouble*[nphases];
-  workspace->controls  = new adouble*[nphases];
-  workspace->parameters= new adouble*[nphases];
-  workspace->resid     = new adouble*[nphases];
-  workspace->derivatives     = new adouble*[nphases];
-  workspace->initial_states  = new adouble*[nphases];
-  workspace->final_states    = new adouble*[nphases];
-  workspace->initial_controls= new adouble*[nphases];
-  workspace->final_controls  = new adouble*[nphases];
-  workspace->events          = new adouble*[nphases];
-  workspace->path            = new adouble*[nphases];
-  workspace->states_traj     = new adouble*[nphases];
-  workspace->derivs_traj     = new adouble*[nphases];
-  workspace->linkages        = new adouble[problem.nlinkages];
-  workspace->states_next     = new adouble*[nphases];
-  workspace->controls_next   = new adouble*[nphases];
-  workspace->derivatives_next   = new adouble*[nphases];
-  workspace->path_next          = new adouble*[nphases];
-  workspace->states_bar         = new adouble*[nphases];
-  workspace->controls_bar       = new adouble*[nphases];
-  workspace->derivatives_bar    = new adouble*[nphases];
-  workspace->path_bar           = new adouble*[nphases];
-  workspace->observed_variable  = new adouble*[nphases];
-  workspace->observed_residual  = new adouble*[nphases];
-  workspace->interp_states_pe   = new adouble*[nphases];
-  workspace->interp_controls_pe = new adouble*[nphases];
-  workspace->lam_resid  = new adouble*[nphases];
+  workspace->states    = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->controls  = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->parameters= make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->resid     = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->derivatives     = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->initial_states  = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->final_states    = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->initial_controls= make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->final_controls  = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->events          = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->path            = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->states_traj     = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->derivs_traj     = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->linkages        = make_unique<adouble[]>(problem.nlinkages);
+  workspace->states_next     = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->controls_next   = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->derivatives_next   = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->path_next          = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->states_bar         = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->controls_bar       = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->derivatives_bar    = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->path_bar           = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->observed_variable  = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->observed_residual  = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->interp_states_pe   = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->interp_controls_pe = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->lam_resid  = make_unique<unique_ptr<adouble[]>[]>(nphases);
 
 
 
   workspace->trace_f_done    = false;
 
-  workspace->time_array_tmp = new adouble[max_nodes +1];
-  workspace->single_trajectory_tmp = new adouble[max_nodes +1];
-  workspace->L_ad_tmp = new adouble[max_nodes +1];
-  workspace->u_spline   = new adouble[max_nodes +1];
-  workspace->z_spline   = new adouble[max_nodes +1];
-  workspace->y2a_spline = new adouble[max_nodes +1];
+  workspace->time_array_tmp = make_unique<adouble[]>(max_nodes +1);
+  workspace->single_trajectory_tmp = make_unique<adouble[]>(max_nodes +1);
+  workspace->L_ad_tmp = make_unique<adouble[]>(max_nodes +1);
+  workspace->u_spline   = make_unique<adouble[]>(max_nodes +1);
+  workspace->z_spline   = make_unique<adouble[]>(max_nodes +1);
+  workspace->y2a_spline = make_unique<adouble[]>(max_nodes +1);
 
 
  for(i=0; i< problem.nphases; i++)
@@ -223,37 +223,37 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
           workspace->prev_param[i].resize(nparam,1);
         }
 
-        workspace->states[i]= new adouble[nstates];
-        workspace->controls[i] = new adouble[ncontrols];
-        workspace->parameters[i] = new adouble[nparam];
-        workspace->resid[i]= new adouble[nstates];
-        workspace->derivatives[i]= new adouble[nstates];
-        workspace->initial_states[i]= new adouble[nstates];
-        workspace->final_states[i]= new adouble[nstates];
-        workspace->initial_controls[i]= new adouble[ncontrols];
-        workspace->final_controls[i]= new adouble[ncontrols];
-        workspace->events[i]= new adouble[nevents];
-        workspace->path[i]= new adouble[npath];
+        workspace->states[i]= make_unique<adouble[]>(nstates);
+        workspace->controls[i] = make_unique<adouble[]>(ncontrols);
+        workspace->parameters[i] = make_unique<adouble[]>(nparam);
+        workspace->resid[i]= make_unique<adouble[]>(nstates);
+        workspace->derivatives[i]= make_unique<adouble[]>(nstates);
+        workspace->initial_states[i]= make_unique<adouble[]>(nstates);
+        workspace->final_states[i]= make_unique<adouble[]>(nstates);
+        workspace->initial_controls[i]= make_unique<adouble[]>(ncontrols);
+        workspace->final_controls[i]= make_unique<adouble[]>(ncontrols);
+        workspace->events[i]= make_unique<adouble[]>(nevents);
+        workspace->path[i]= make_unique<adouble[]>(npath);
 
-        workspace->states_next[i]     = new adouble[nstates];
-        workspace->controls_next[i]   = new adouble[ncontrols];
-        workspace->derivatives_next[i]= new adouble[nstates];
-        workspace->path_next[i]       = new adouble[npath];
-        workspace->states_bar[i]      = new adouble[nstates];
-        workspace->controls_bar[i]    = new adouble[ncontrols];
-        workspace->derivatives_bar[i] = new adouble[nstates];
+        workspace->states_next[i]     = make_unique<adouble[]>(nstates);
+        workspace->controls_next[i]   = make_unique<adouble[]>(ncontrols);
+        workspace->derivatives_next[i]= make_unique<adouble[]>(nstates);
+        workspace->path_next[i]       = make_unique<adouble[]>(npath);
+        workspace->states_bar[i]      = make_unique<adouble[]>(nstates);
+        workspace->controls_bar[i]    = make_unique<adouble[]>(ncontrols);
+        workspace->derivatives_bar[i] = make_unique<adouble[]>(nstates);
 
-        workspace->path_bar[i]        = new adouble[npath];
+        workspace->path_bar[i]        = make_unique<adouble[]>(npath);
 
-   	  workspace->observed_variable[i] = new adouble[nobserved];
-	     workspace->observed_residual[i] = new adouble[nobserved];
-  	     workspace->lam_resid[i]              = new adouble[nobserved];
+   	  workspace->observed_variable[i] = make_unique<adouble[]>(nobserved);
+	     workspace->observed_residual[i] = make_unique<adouble[]>(nobserved);
+  	     workspace->lam_resid[i]              = make_unique<adouble[]>(nobserved);
 
-   	  workspace->interp_states_pe[i]   = new adouble[nstates];
-	     workspace->interp_controls_pe[i] = new adouble[ncontrols];
+   	  workspace->interp_states_pe[i]   = make_unique<adouble[]>(nstates);
+	     workspace->interp_controls_pe[i] = make_unique<adouble[]>(ncontrols);
 
-        workspace->states_traj[i]= new adouble[problem.phase[i].nstates*(max_nodes +1)];
-        workspace->derivs_traj[i]= new adouble[problem.phase[i].nstates*(max_nodes +1)];
+        workspace->states_traj[i]= make_unique<adouble[]>(problem.phase[i].nstates*(max_nodes +1));
+        workspace->derivs_traj[i]= make_unique<adouble[]>(problem.phase[i].nstates*(max_nodes +1));
         workspace->order_reduction[i].resize(1,max_nodes+1);
 
 
@@ -261,7 +261,7 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 
   int dotindex = problem.outfilename.find_first_of(".");
 
-  workspace->igroup = new IGroup;
+  workspace->igroup = make_unique<IGroup>();
 
   string fname = "psopt_solution_" + problem.outfilename.substr(0,dotindex) + ".txt";
 
@@ -335,7 +335,7 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
   workspace->constraint_scaling->resize(nlp_ncons,1);
 
 
-  solution.xad = workspace->xad;
+  solution.xad = workspace->xad.get();
 
   workspace->x0->resize(nvars,1);
   workspace->lambda->resize(nlp_ncons,1);
@@ -389,155 +389,26 @@ work_str::work_str(Prob& problem, Alg& algorithm, Sol& solution)
 
 work_str::~work_str()
 {
-  for(long unsigned int i=0; i< this->nphases; i++)
-  {
-    delete [] this->states[i];
-    delete [] this->controls[i];
-    delete [] this->parameters[i];
-    delete [] this->resid[i];
-    delete [] this->derivatives[i];
-    delete [] this->initial_states[i];
-    delete [] this->final_states[i];
-    delete [] this->initial_controls[i];
-    delete [] this->final_controls[i];
-    delete [] this->events[i];
-    delete [] this->path[i];
-
-    delete [] this->states_next[i];
-    delete [] this->controls_next[i];
-    delete [] this->derivatives_next[i];
-    delete [] this->path_next[i];
-    delete [] this->states_bar[i];
-    delete [] this->controls_bar[i];
-    delete [] this->derivatives_bar[i];
-
-    delete [] this->path_bar[i];
-
-    delete [] this->observed_variable[i];
-    delete [] this->observed_residual[i];
-    delete [] this->lam_resid[i];
-
-    delete [] this->interp_states_pe[i];
-    delete [] this->interp_controls_pe[i];
-
-    delete [] this->states_traj[i];
-    delete [] this->derivs_traj[i];
-  }
+  // Per-row arrays (states, controls, ... ) are unique_ptr<unique_ptr<adouble[]>[]>
+  // and free themselves; no manual per-row delete loop is needed.
 
   if (this->G2) delete [] this->G2;
   if (this->G3) delete [] this->G3;
   if (this->G4) delete [] this->G4;
   if (this->hess_ir) delete [] this->hess_ir;
   if (this->hess_jc) delete [] this->hess_jc;
-  if (this->iArow) delete [] this->iArow;
-  if (this->iGfun1) delete [] this->iGfun1;
   if (this->iGfun2) delete [] this->iGfun2;
   if (this->iGfun) delete [] this->iGfun;
-  if (this->iGrow) delete [] this->iGrow;
-  if (this->jac_Aij) delete [] this->jac_Aij;
-  if (this->jac_Gij) delete [] this->jac_Gij;
-  if (this->jAcol) delete [] this->jAcol;
-  if (this->jGcol) delete [] this->jGcol;
-  if (this->jGvar1) delete [] this->jGvar1;
   if (this->jGvar2) delete [] this->jGvar2;
   if (this->jGvar) delete [] this->jGvar;
-  if (this->lambda_d) delete [] this->lambda_d;
 
-  delete [] this->xad;
-  delete [] this->gad;
-  delete [] this->fgad;
-  delete [] this->fg;
-  delete [] this->nrm_row;
+  // states, controls, ... (the 2-D arrays) are unique_ptr-owned and free themselves.
 
-  delete [] this->states;
-  delete [] this->controls;
-  delete [] this->parameters;
-  delete [] this->resid;
-  delete [] this->derivatives;
-  delete [] this->initial_states;
-  delete [] this->final_states;
-  delete [] this->initial_controls;
-  delete [] this->final_controls;
-  delete [] this->events;
-  delete [] this->path;
-  delete [] this->states_traj;
-  delete [] this->derivs_traj;
-  delete [] this->linkages;
-  delete [] this->states_next;
-  delete [] this->controls_next;
-  delete [] this->derivatives_next;
-  delete [] this->path_next;
-  delete [] this->states_bar;
-  delete [] this->controls_bar;
-  delete [] this->derivatives_bar;
-  delete [] this->path_bar;
-  delete [] this->observed_variable;
-  delete [] this->observed_residual;
-  delete [] this->interp_states_pe;
-  delete [] this->interp_controls_pe;
-  delete [] this->lam_resid;
 
-  delete [] this->time_array_tmp;
-  delete [] this->single_trajectory_tmp;
-  delete [] this->L_ad_tmp;
-  delete [] this->u_spline;
-  delete [] this->z_spline;
-  delete [] this->y2a_spline;
 
-  delete this->igroup;
+  // xlb, xub are unique_ptr<MatrixXd> and free themselves.
 
-  delete [] this->P;
-  delete [] this->sindex;
-  delete [] this->w;
-  delete [] this->D;
-  delete [] this->snodes;
-  delete [] this->old_snodes;
-  delete    this->xlb;
-  delete    this->xub;
-  delete    this->x0;
-  delete    this->lambda;
-  delete [] this->dual_costates;
-  delete [] this->dual_events;
-  delete [] this->dual_path;
-  delete    this->linkage;
-  delete    this->constraint_scaling;
-  delete [] this->prev_states;
-  delete [] this->prev_costates;
-  delete [] this->prev_controls;
-  delete [] this->prev_path;
-  delete [] this->prev_param;
-  delete [] this->prev_nodes;
-  delete    this->Ax;
-  delete    this->Gsp;
-  delete    this->Xsnopt;
-  delete    this->gsnopt;
-  delete    this->Xip;
-  delete    this->JacRow;
-  delete    this->Gip;
-  delete    this->GFip;
-  delete [] this->Xdot;
-  delete [] this->DerivResid;
-  delete [] this->Xdotgg;
-  delete [] this->e;
-  delete [] this->hgg;
-  delete    this->prev_t0;
-  delete    this->prev_tf;
-  delete    this->JacCol1;
-  delete    this->JacCol2;
-  delete    this->JacCol3;
-  delete    this->xp;
-  delete [] this->emax_history;
-  delete [] this->order_reduction;
-  delete [] this->old_relative_errors;
-  delete [] this->error_scaling_weights;
 
-  delete this->grw->dfdx_j;
-  delete this->grw->F1;
-  delete this->grw->F2;
-  delete this->grw->F3;
-  delete this->grw->F4;
-
-  delete this->grw;
 
 }
 

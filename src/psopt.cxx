@@ -313,7 +313,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     }
     else {
         	hotflag = 1;
-			hot_start_nlp_guess(x0, lambda, solution,problem,algorithm, workspace->prev_states, workspace->prev_controls, workspace->prev_costates, workspace->prev_path, workspace->prev_nodes, workspace->prev_param, *workspace->prev_t0, *workspace->prev_tf, workspace);
+			hot_start_nlp_guess(x0, lambda, solution,problem,algorithm, workspace->prev_states.get(), workspace->prev_controls.get(), workspace->prev_costates.get(), workspace->prev_path.get(), workspace->prev_nodes.get(), workspace->prev_param.get(), *workspace->prev_t0, *workspace->prev_tf, workspace);
     }
 
   	// Define NLP bounds on the decision vector

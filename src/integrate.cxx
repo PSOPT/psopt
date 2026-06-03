@@ -60,10 +60,10 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 
         int norder    = problem.phase[i].current_number_of_intervals;
 
-	     states        = workspace->states[i];
-	     states_next   = workspace->states_next[i];
-        controls      = workspace->controls[i];
-        parameters    = workspace->parameters[i];
+	     states        = workspace->states[i].get();
+	     states_next   = workspace->states_next[i].get();
+        controls      = workspace->controls[i].get();
+        parameters    = workspace->parameters[i].get();
 
         get_parameters(parameters, xad, iphase, workspace);
 

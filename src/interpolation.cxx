@@ -89,7 +89,7 @@ void lagrange_interpolation_ad(adouble* y, adouble& x, adouble* pointx, adouble*
 
    int n = npoints;
 
-   adouble* L = workspace->L_ad_tmp;
+   adouble* L = workspace->L_ad_tmp.get();
 
    for(i=0;i<npoints;i++) L[i] = 1.0;
 
@@ -616,8 +616,8 @@ void spline_second_derivative(adouble* x, adouble* y, int n,  adouble* d2y, Work
       adouble alphai;
       adouble li = 0;
 
-      adouble* mu= workspace->u_spline;
-      adouble*  z= workspace->z_spline;
+      adouble* mu= workspace->u_spline.get();
+      adouble*  z= workspace->z_spline.get();
 
       mu[0] = 0.0;
       z[0]  = 0.0;
@@ -710,7 +710,7 @@ void spline_interpolation(adouble* y, adouble& x, adouble* xdata, adouble* ydata
 
    int kleft,kright,k;
    adouble h,A,B,C,D;
-   adouble *d2y = workspace->y2a_spline;
+   adouble *d2y = workspace->y2a_spline.get();
    kleft=1;
 
    spline_second_derivative(xdata, ydata, n, d2y, workspace );
@@ -832,7 +832,7 @@ void spline_interpolation_with_second_derivative(adouble* y, adouble& x, adouble
 
    int kleft,kright,k;
    adouble h,A,B,C,D;
-   adouble *d2y = workspace->y2a_spline;
+   adouble *d2y = workspace->y2a_spline.get();
    kleft=1;
 
    spline_second_derivative(xdata, ydata, n, d2y, workspace );

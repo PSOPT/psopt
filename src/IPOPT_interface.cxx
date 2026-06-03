@@ -52,7 +52,7 @@ adouble Lagrangian_ad(adouble* xad, double* lambda, double& obj_factor, Index& m
 {
 	adouble L;
 	adouble f;
-	adouble *g = workspace->gad;
+	adouble *g = workspace->gad.get();
 	Index i;
 
 	L = obj_factor*ff_ad(xad, workspace);
@@ -113,16 +113,16 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
   // Number of constraints in g(x)
   m = workspace->ncons;
 
-  MatrixXd *X0 = workspace->x0;
+  MatrixXd *X0 = workspace->x0.get();
 
   double  *x  = &(*X0)(0);
 
   if( !useAutomaticDifferentiation(*workspace->algorithm) ) {
 
 
-     DetectJacobianSparsity(gg_num, *X0, m,  &nnzA,  workspace->iArow, workspace->jAcol, workspace->jac_Aij,
-                                             &nnzG,  workspace->iGrow, workspace->jGcol,
-                                             workspace->grw, workspace );
+     DetectJacobianSparsity(gg_num, *X0, m,  &nnzA,  workspace->iArow.get(), workspace->jAcol.get(), workspace->jac_Aij.get(),
+                                             &nnzG,  workspace->iGrow.get(), workspace->jGcol.get(),
+                                             workspace->grw.get(), workspace );
 
      nnz = nnzA+nnzG;
 
@@ -153,9 +153,9 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 	unsigned int *jac_cind  = NULL;
 	double       *jac_values = NULL;
 
-	adouble *xad = workspace->xad;
-	adouble *gad = workspace->gad;
-	double  *g   = workspace->fg;
+	adouble *xad = workspace->xad.get();
+	adouble *gad = workspace->gad.get();
+	double  *g   = workspace->fg.get();
 
 	/* Tracing of function gg() */
 	trace_on(workspace->tag_g);
@@ -213,7 +213,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
   if( activate_hess && useAutomaticDifferentiation(*workspace->algorithm)  ) {
 
 	double       *hess_values = NULL;
-	adouble *xad = workspace->xad;
+	adouble *xad = workspace->xad.get();
 	adouble Lad;
 	double  obj_factor = 1.0;
 
@@ -371,7 +371,7 @@ bool IPOPT_PSOPT::eval_grad_f(Index n, const Number* x, bool new_x, Number* grad
   memcpy( &X(0), x, workspace->nvars*sizeof(double) );
 
   if(!useAutomaticDifferentiation(*workspace->algorithm))
-     ScalarGradient( ff_num, X, &GF , workspace->grw, workspace );
+     ScalarGradient( ff_num, X, &GF , workspace->grw.get(), workspace );
   else
      ScalarGradientAD( ff_ad, X, &GF, &workspace->trace_f_done, workspace->tag_f, workspace );
 
@@ -456,7 +456,7 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
         	nnzG = workspace->jac_nnzG;
 
 
-        	getIndexGroups( workspace->igroup, m, n, nnzG, workspace->iGrow, workspace->jGcol, workspace);
+        	getIndexGroups( workspace->igroup.get(), m, n, nnzG, workspace->iGrow.get(), workspace->jGcol.get(), workspace);
 
 	     	for (i=0;i<nnzG;i++)
       	{
@@ -492,7 +492,7 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
           memcpy( &X(0), x, workspace->nvars*sizeof(double) );
           
           // Compute by sparse finite differences only the non-constant Jacobian elements...
-          EfficientlyComputeJacobianNonZeros(gg_num, X, m, values, workspace->jac_nnzG, workspace->iGrow,workspace->jGcol, workspace->igroup, workspace->grw, workspace );
+          EfficientlyComputeJacobianNonZeros(gg_num, X, m, values, workspace->jac_nnzG, workspace->iGrow.get(),workspace->jGcol.get(), workspace->igroup.get(), workspace->grw.get(), workspace );
 
           // Now include in array values[] the constant Jacobian elements calculated previously
           for(i=0;i<workspace->jac_nnzA;i++) {
@@ -612,10 +612,10 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
 
 
 // *******************************************************************
-	adouble *xad = workspace->xad;
+	adouble *xad = workspace->xad.get();
 	adouble Lad;
 	double  obj_factor_d = obj_factor;
-	double*  lambda_d     = workspace->lambda_d;
+	double*  lambda_d     = workspace->lambda_d.get();
 	double  L;
 	/* Tracing of Lagrangian function. It needs to be repeated because obj_factor and lambda change  */
 	trace_on(workspace->tag_hess);

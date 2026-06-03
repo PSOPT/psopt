@@ -50,8 +50,8 @@ void auto_link(adouble* linkages, int* index, adouble* xad, int iphase_a, int ip
     int nstates_a = problem->phase[iphase_a-1].nstates;
     int nstates_b = problem->phase[iphase_b-1].nstates;
 
-    adouble* initial_states= workspace->initial_states[iphase_b-1];
-    adouble* final_states  = workspace->final_states[iphase_a-1];
+    adouble* initial_states= workspace->initial_states[iphase_b-1].get();
+    adouble* final_states  = workspace->final_states[iphase_a-1].get();
 
 
     if (nstates_a != nstates_b)
@@ -95,11 +95,11 @@ void auto_link_2(adouble* linkages, int* index, adouble* xad, int iphase_a, int 
     int ncontrols_b = problem->phase[iphase_b-1].ncontrols;
 
 
-    adouble* initial_states= workspace->initial_states[iphase_b-1];
-    adouble* final_states  = workspace->final_states[iphase_a-1];
+    adouble* initial_states= workspace->initial_states[iphase_b-1].get();
+    adouble* final_states  = workspace->final_states[iphase_a-1].get();
 
-    adouble* initial_controls= workspace->initial_controls[iphase_b-1];
-    adouble* final_controls  = workspace->final_controls[iphase_a-1];
+    adouble* initial_controls= workspace->initial_controls[iphase_b-1].get();
+    adouble* final_controls  = workspace->final_controls[iphase_a-1].get();
 
 
     if (nstates_a != nstates_b)

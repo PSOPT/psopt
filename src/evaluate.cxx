@@ -62,11 +62,11 @@ void evaluate_differential_error_in_phase(MatrixXd& state_error, int iphase, ado
 	  iph = iphase;
      }
 
-     states        = workspace->states[i];
-     controls      = workspace->controls[i];
-     parameters    = workspace->parameters[iph-1];
-     path          = workspace->path[i];
-     derivatives   = workspace->derivatives[i];
+     states        = workspace->states[i].get();
+     controls      = workspace->controls[i].get();
+     parameters    = workspace->parameters[iph-1].get();
+     path          = workspace->path[i].get();
+     derivatives   = workspace->derivatives[i].get();
 
      for (j=0;j<nstates;j++) {
           get_interpolated_state(&state_j, j, iphase, time, xad, workspace);    // EIGEN_UPDATE
@@ -208,7 +208,7 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 	int nphases = problem.nphases;
 	int iphase;
 	int n = algorithm.nsteps_error_integration;
-	adouble* xad = workspace->xad;
+	adouble* xad = workspace->xad.get();
 	MatrixXd eta;
 
 	MatrixXd states;

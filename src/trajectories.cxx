@@ -96,11 +96,11 @@ void compute_derivatives_trajectory( MatrixXd& Xdot, Prob& problem, Sol& solutio
 	  iph = iphase;
 	}
 
-	states        = workspace->states[i];
-	derivatives   = workspace->derivatives[i];
-        controls      = workspace->controls[i];
-        parameters    = workspace->parameters[iph-1];
-        path          = workspace->path[i];
+	states        = workspace->states[i].get();
+	derivatives   = workspace->derivatives[i].get();
+        controls      = workspace->controls[i].get();
+        parameters    = workspace->parameters[iph-1].get();
+        path          = workspace->path[i].get();
 
 	int j, k, l;
 

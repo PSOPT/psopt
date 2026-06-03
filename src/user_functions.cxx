@@ -45,8 +45,8 @@ void get_delayed_control(adouble* delayed_control, int control_index, int iphase
  int norder = problem.phase[i].current_number_of_intervals;
  adouble t0, tf;
  adouble delayed_time;
- adouble* time_array = workspace->time_array_tmp;;
- adouble* single_control_traj = workspace->single_trajectory_tmp;
+ adouble* time_array = workspace->time_array_tmp.get();;
+ adouble* single_control_traj = workspace->single_trajectory_tmp.get();
  get_individual_control_trajectory(single_control_traj, control_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
@@ -72,8 +72,8 @@ void get_delayed_state(adouble* delayed_state, int state_index, int iphase, adou
  adouble t0, tf;
  double ts;
  adouble delayed_time;
- adouble* time_array = workspace->time_array_tmp;
- adouble* single_state_traj =  workspace->single_trajectory_tmp;
+ adouble* time_array = workspace->time_array_tmp.get();
+ adouble* single_state_traj =  workspace->single_trajectory_tmp.get();
  get_individual_state_trajectory(single_state_traj, state_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
@@ -105,8 +105,8 @@ void get_interpolated_state(adouble* interp_state, int state_index, int iphase, 
  adouble t0, tf;
  double ts;
 
- adouble* time_array = workspace->time_array_tmp;
- adouble* single_state_traj =  workspace->single_trajectory_tmp;
+ adouble* time_array = workspace->time_array_tmp.get();
+ adouble* single_state_traj =  workspace->single_trajectory_tmp.get();
  get_individual_state_trajectory(single_state_traj, state_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
@@ -134,8 +134,8 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
  adouble t0, tf;
  double ts;
 
- adouble* time_array = workspace->time_array_tmp;
- adouble* single_control_traj =  workspace->single_trajectory_tmp;
+ adouble* time_array = workspace->time_array_tmp.get();
+ adouble* single_control_traj =  workspace->single_trajectory_tmp.get();
  get_individual_control_trajectory(single_control_traj, control_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE

@@ -60,13 +60,13 @@ adouble endpoint_cost_for_parameter_estimation(adouble* initial_states, adouble*
 
    MatrixXd& residual_weights = problem.phases(iphase).residual_weights;
 
-   adouble* interpolated_state = workspace->interp_states_pe[iphase-1];
+   adouble* interpolated_state = workspace->interp_states_pe[iphase-1].get();
 
-   adouble* interpolated_control = workspace->interp_controls_pe[iphase-1];
+   adouble* interpolated_control = workspace->interp_controls_pe[iphase-1].get();
 
-   adouble* observed_variable = workspace->observed_variable[iphase-1];
+   adouble* observed_variable = workspace->observed_variable[iphase-1].get();
 
-   adouble* resid = workspace->observed_residual[iphase-1];
+   adouble* resid = workspace->observed_residual[iphase-1].get();
 
 
 
@@ -244,19 +244,19 @@ void compute_residual_vector_in_phase(MatrixXd& residual_vector, adouble* xad, i
 
    MatrixXd& residual_weights = problem.phases(iphase).residual_weights;
 
-   adouble* interpolated_state = workspace->interp_states_pe[iphase-1];
+   adouble* interpolated_state = workspace->interp_states_pe[iphase-1].get();
 
-   adouble* interpolated_control = workspace->interp_controls_pe[iphase-1];
+   adouble* interpolated_control = workspace->interp_controls_pe[iphase-1].get();
 
-   adouble* observed_variable = workspace->observed_variable[iphase-1];
+   adouble* observed_variable = workspace->observed_variable[iphase-1].get();
 
-   adouble* resid = workspace->observed_residual[iphase-1];
+   adouble* resid = workspace->observed_residual[iphase-1].get();
 
    residual_vector.resize( nsamples*nobserved, 1);
 
    adouble* parameters;
 
-   parameters    = workspace->parameters[iphase-1];
+   parameters    = workspace->parameters[iphase-1].get();
 
    get_parameters(parameters, xad, iphase, workspace);
 
@@ -319,7 +319,7 @@ void rr_num(MatrixXd& X, MatrixXd* residual_vector, Workspace* workspace)
 
    MatrixXd residual_vector_in_phase;
 
-   adouble* xad = workspace->xad;
+   adouble* xad = workspace->xad.get();
 
    int nvars = get_number_nlp_vars(problem, workspace);
 
@@ -413,7 +413,7 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 
       Prob & problem = *(workspace->problem);
 
-      adouble* xad = workspace->xad;
+      adouble* xad = workspace->xad.get();
 
       int iphase, i, j;
 
@@ -445,7 +445,7 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 	       int iphase = i+1;
 	       int npar = problem.phase[i].nparameters;
 
-	       parameters    = workspace->parameters[iphase-1];
+	       parameters    = workspace->parameters[iphase-1].get();
 
 	       get_parameters( parameters, xad, iphase, workspace );
 

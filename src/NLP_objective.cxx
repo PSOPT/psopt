@@ -82,11 +82,11 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 	  iph = iphase;
 	}
 
-	states        = workspace->states[i];
-	states_next   = workspace->states_next[i];
-        controls      = workspace->controls[i];
-        parameters    = workspace->parameters[iph-1];
-        initial_states= workspace->initial_states[i];
+	states        = workspace->states[i].get();
+	states_next   = workspace->states_next[i].get();
+        controls      = workspace->controls[i].get();
+        parameters    = workspace->parameters[iph-1].get();
+        initial_states= workspace->initial_states[i].get();
 
         get_parameters(parameters, xad, iphase, workspace);
 
@@ -236,7 +236,7 @@ double ff_num(MatrixXd& x, Workspace* workspace)
 
    adouble retval;
 
-   adouble* xad = workspace->xad;
+   adouble* xad = workspace->xad.get();
 
 
    for(j=0; j<workspace->nvars; j++)
