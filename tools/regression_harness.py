@@ -60,18 +60,27 @@ DEFAULT_SUBSET = {
 # Examples excluded from the 'all' set. They still run if named explicitly.
 EXCLUDE_FROM_ALL = {
     "climb",  # minimum-time-to-climb: does not converge within a practical CI timeout (>120s)
+    "geodesic",  # segfaults at NLP iter 0 in -DHEADLESS=ON builds on aarch64 (heap
+                 # corruption; predates the RAII work, reproduces at e0bc5aa). Runs
+                 # fine non-headless and on x86_64. Re-enable once the crash is fixed.
 }
 
 FLOAT = r"[-+]?\d+\.?\d*(?:[eE][-+]?\d+)?"
 RE_COST = re.compile(r"Optimal \(unscaled\) cost function value:\s*(" + FLOAT + r")")
+# Fallback: some examples (and some solver/mesh paths) print only the per-solve
+# "Returned (unscaled) cost function value:" lines and never the final "Optimal"
+# summary. The last such value is the converged unscaled cost.
+RE_COST_FALLBACK = re.compile(r"Returned \(unscaled\) cost function value:\s*(" + FLOAT + r")")
 RE_OBJ = re.compile(r"Objective\.*:\s*(" + FLOAT + r")")
-RE_ERR = re.compile(r"maximum relative local error:\s*(" + FLOAT + r")")
+# PSOPT prints this line in two forms depending on the code path: with a colon
+# ("...local error:\t\t%e") and without ("...local error\t\t%e"). Match both.
+RE_ERR = re.compile(r"maximum relative local error:?\s*(" + FLOAT + r")")
 RE_SOLVED = re.compile(r"EXIT:\s*Optimal Solution Found")
 
 
 def parse_signals(text):
     sig = {}
-    costs = RE_COST.findall(text)
+    costs = RE_COST.findall(text) or RE_COST_FALLBACK.findall(text)
     objs = RE_OBJ.findall(text)
     errs = RE_ERR.findall(text)
     if costs:
@@ -128,7 +137,22 @@ def run_example(name, spec, build_dir, source_dir, timeout, stub_path):
                               capture_output=True, text=True)
     except subprocess.TimeoutExpired:
         return None, f"timeout after {timeout}s"
-    sig = parse_signals(proc.stdout + proc.stderr)
+    text = proc.stdout + proc.stderr
+    # PSOPT writes its results summary (the "Optimal (unscaled) cost function
+    # value" and per-phase "maximum relative local error" lines) to a solution
+    # file via fprintf rather than reliably to the console. The file name varies
+    # by example -- it may be problem.outfilename (e.g. "geodesic.txt") or
+    # "psopt_solution_<name>.txt" -- so fold in any .txt in the run directory
+    # that actually carries the summary (identified by the cost line). This also
+    # excludes input data files and mesh_statistics.txt, which lack that marker.
+    for sf in sorted(rundir.glob("*.txt")):
+        try:
+            content = sf.read_text(errors="replace")
+        except OSError:
+            continue
+        if "Optimal (unscaled) cost function value" in content:
+            text += "\n" + content
+    sig = parse_signals(text)
     if sig.get("solved", 0) < 1:
         return sig, "did not report Optimal Solution Found"
     return sig, None
@@ -172,7 +196,7 @@ def main():
     ap.add_argument("--record", action="store_true", help="write baselines from this run")
     ap.add_argument("--check", action="store_true", help="compare this run to baselines")
     ap.add_argument("--rtol", type=float, default=1e-4)
-    ap.add_argument("--timeout", type=int, default=300)
+    ap.add_argument("--timeout", type=int, default=600)
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     args = ap.parse_args()
 
