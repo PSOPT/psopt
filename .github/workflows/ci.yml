@@ -36,7 +36,7 @@ jobs:
       REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,8.806615e-01"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         run: |
@@ -69,7 +69,7 @@ jobs:
 
       - name: Upload solution files & summary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: psopt-logs
           path: |
@@ -88,7 +88,7 @@ jobs:
     steps:
       # 1) Check out gh-pages and persist GITHUB_TOKEN so we can push
       - name: Checkout gh-pages
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: gh-pages
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -97,7 +97,7 @@ jobs:
 
       # 2) Download the test_summary.json artefact
       - name: Download summary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: psopt-logs
           path: tmp_summary

@@ -14,7 +14,7 @@ comma‑separated environment variables or CLI flags:
   REF_COSTS="-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03"
 
 Tolerance is relative  (`abs(cost-ref)/abs(cost) <= tol`) where the default value
-is 0.01 
+is 1e-3 (0.1 % relative error).
 """
 
 import argparse, os, pathlib, subprocess, json, sys, re, math, textwrap
@@ -39,11 +39,11 @@ def default_tol(ref: float, override: float | None):
     Return the tolerance to use for a given reference value.
 
     • If the user passed --tol, honour that.
-    • Otherwise use 0.0001  (0.01 % relative error).
+    • Otherwise use 1e-3  (0.1 % relative error).
     """
     if override is not None:
         return override
-    return 0.0001
+    return 1e-3
 
 success_re   = re.compile(r"NLP solver reports:\s*The problem has been solved!", re.I)
 cost_line_re = re.compile(r"Optimal \(unscaled\) cost function value:\s+([-+0-9.eE]+)")

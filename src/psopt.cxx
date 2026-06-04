@@ -97,7 +97,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
   int nlp_ncons;
   int nlp_neq;
-  int offset;
+  int offset = 0;   // accumulated in the per-phase loop before use; init to 0
+                    // silences a -Wmaybe-uninitialized false positive (the
+                    // compiler can't prove the phase loop always runs).
   int nphases = problem.nphases;
 
   int number_of_mesh_refinement_iterations = get_number_of_mesh_refinement_iterations(problem,algorithm);
