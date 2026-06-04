@@ -1,8 +1,8 @@
-# .github/workflows/publish-image.yml
+# .github/workflows/publish_image.yml
 name: Build & push PSOPT image
 on:
   push:
-    paths: [ Dockerfile, .github/workflows/publish-image.yml ]
+    paths: [ Dockerfile, .github/workflows/publish_image.yml ]
 
 permissions:                    # needed for GHCR
   contents: read
@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up QEMU (for multi‑arch)
         uses: docker/setup-qemu-action@v3
@@ -30,4 +30,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: ghcr.io/${{ github.repository_owner.toLower() }}/psopt-ci:latest
+          # Hardcoded (lowercase) to match the image ci.yml pulls; the previous
+          # ${{ github.repository_owner.toLower() }} is not valid expression
+          # syntax (no toLower() method) and would not resolve correctly.
+          tags: ghcr.io/psopt/psopt-ci:latest

@@ -51,27 +51,27 @@ jobs:
       - name: Build
         run: cmake --build build -j$(nproc)
         
-      - name: Install python inside CI container
+      - name: Ensure python is available
         run: |
-          # The CI image's local pacman keyring was never initialised, so the
-          # archlinux-keyring upgrade hook fails ("no secret key available to
-          # sign with") and current packagers' keys stay untrusted, leaving the
-          # freshly-pulled python deps as "corrupted (invalid PGP signature)".
-          # Initialise the local keyring and import the master keys (so the
-          # keyring update can itself be verified), then refresh archlinux-keyring
-          # (its hook imports the current packager keys) and install python.
-          pacman-key --init
-          pacman-key --populate
-          pacman -Sy --noconfirm archlinux-keyring
-          # python pulls the new split libgcc/libstdc++ packages, whose files
-          # still belong to the image's older monolithic gcc-libs (a partial-
-          # upgrade file conflict). Overwrite just those forward-compatible
-          # library files so the transaction commits; the resulting DB
-          # inconsistency is irrelevant in a throwaway CI container.
-          pacman -S  --noconfirm \
-            --overwrite '/usr/lib/libgcc_s.so*' \
-            --overwrite '/usr/lib/libstdc++.so*' \
-            python
+          # python is baked into the CI image (see Dockerfile). This guard keeps
+          # the workflow working on older images that predate that change: if
+          # python is missing, install it at runtime. The fallback first
+          # bootstraps the pacman keyring (the old image's was never initialised,
+          # so the archlinux-keyring hook fails with "no secret key available to
+          # sign with"), then overwrites the forward-compatible libgcc/libstdc++
+          # files that conflict with the image's older monolithic gcc-libs.
+          if command -v python >/dev/null 2>&1; then
+            echo "python already present: $(python --version)"
+          else
+            echo "python not found; installing at runtime (pre-bake image)"
+            pacman-key --init
+            pacman-key --populate
+            pacman -Sy --noconfirm archlinux-keyring
+            pacman -S  --noconfirm \
+              --overwrite '/usr/lib/libgcc_s.so*' \
+              --overwrite '/usr/lib/libstdc++.so*' \
+              python
+          fi
         
       - name: Debug one executable
         run: |

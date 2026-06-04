@@ -5,6 +5,7 @@ FROM archlinux:latest
 RUN pacman -Syu --noconfirm
 
 # 2. Install official repo dependencies for PSOPT
+#    (python is used by the CI example-runner script, .github/scripts/run_examples.py)
 RUN pacman -S --noconfirm \
 base-devel \
 cmake \
@@ -13,7 +14,8 @@ eigen \
 boost \
 blas \
 lapack \
-git
+git \
+python
 
 # 3. Create a non-root user (required to build AUR packages cleanly)
 RUN useradd -m builduser && echo "builduser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
