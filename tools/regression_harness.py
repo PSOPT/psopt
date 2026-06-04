@@ -60,9 +60,6 @@ DEFAULT_SUBSET = {
 # Examples excluded from the 'all' set. They still run if named explicitly.
 EXCLUDE_FROM_ALL = {
     "climb",  # minimum-time-to-climb: does not converge within a practical CI timeout (>120s)
-    "geodesic",  # segfaults at NLP iter 0 in -DHEADLESS=ON builds on aarch64 (heap
-                 # corruption; predates the RAII work, reproduces at e0bc5aa). Runs
-                 # fine non-headless and on x86_64. Re-enable once the crash is fixed.
 }
 
 FLOAT = r"[-+]?\d+\.?\d*(?:[eE][-+]?\d+)?"
