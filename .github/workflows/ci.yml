@@ -63,7 +63,15 @@ jobs:
           pacman-key --init
           pacman-key --populate
           pacman -Sy --noconfirm archlinux-keyring
-          pacman -S  --noconfirm python
+          # python pulls the new split libgcc/libstdc++ packages, whose files
+          # still belong to the image's older monolithic gcc-libs (a partial-
+          # upgrade file conflict). Overwrite just those forward-compatible
+          # library files so the transaction commits; the resulting DB
+          # inconsistency is irrelevant in a throwaway CI container.
+          pacman -S  --noconfirm \
+            --overwrite '/usr/lib/libgcc_s.so*' \
+            --overwrite '/usr/lib/libstdc++.so*' \
+            python
         
       - name: Debug one executable
         run: |
