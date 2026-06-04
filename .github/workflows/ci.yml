@@ -52,7 +52,13 @@ jobs:
         run: cmake --build build -j$(nproc)
         
       - name: Install python inside CI container
-        run: pacman -Sy --noconfirm python
+        run: |
+          # The pre-built CI image is old enough that current Arch packagers'
+          # signing keys read as "unknown trust", which makes pacman reject
+          # freshly-downloaded packages as corrupted. Refresh archlinux-keyring
+          # first so the current keys are imported before we install python.
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -S  --noconfirm python
         
       - name: Debug one executable
         run: |
