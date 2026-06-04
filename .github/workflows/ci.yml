@@ -53,10 +53,15 @@ jobs:
         
       - name: Install python inside CI container
         run: |
-          # The pre-built CI image is old enough that current Arch packagers'
-          # signing keys read as "unknown trust", which makes pacman reject
-          # freshly-downloaded packages as corrupted. Refresh archlinux-keyring
-          # first so the current keys are imported before we install python.
+          # The CI image's local pacman keyring was never initialised, so the
+          # archlinux-keyring upgrade hook fails ("no secret key available to
+          # sign with") and current packagers' keys stay untrusted, leaving the
+          # freshly-pulled python deps as "corrupted (invalid PGP signature)".
+          # Initialise the local keyring and import the master keys (so the
+          # keyring update can itself be verified), then refresh archlinux-keyring
+          # (its hook imports the current packager keys) and install python.
+          pacman-key --init
+          pacman-key --populate
           pacman -Sy --noconfirm archlinux-keyring
           pacman -S  --noconfirm python
         
