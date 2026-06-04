@@ -987,6 +987,11 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace);
 
 void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
+// Export the full solution (per-phase time, states, controls, costates and
+// parameters, plus the run summary) to a single language-neutral JSON file for
+// post-processing in Python, MATLAB, R, etc. See src/print.cxx for the schema.
+void Save_to_json_file(const std::string& filename, Prob& problem, Sol& solution, Alg& algorithm);
+
 void psopt_main(Sol& solution, Prob& problem, Alg& algorithm, unique_ptr<Workspace>& workspace_up);
 
 void clip_vector_given_bounds(MatrixXd& xp, MatrixXd& xlb, MatrixXd& xub);

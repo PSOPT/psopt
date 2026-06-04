@@ -344,6 +344,191 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
 }
 
 
+// ============================================================================
+//  Save_to_json_file
+// ----------------------------------------------------------------------------
+//  Writes the full PSOPT solution to a single, language-neutral JSON file so
+//  the result can be loaded for post-processing in Python, MATLAB, R, etc.
+//  with one read.
+//
+//  Schema:
+//    {
+//      "summary": {
+//        "problem_name", "nlp_solver", "psopt_release", "psopt_build_date",
+//        "run_date_and_time", "cpu_time_seconds", "nlp_return_code",
+//        "solved" (bool), "solver_message", "optimal_cost", "n_phases"
+//      },
+//      "phases": [
+//        {
+//          "phase", "n_nodes", "n_states", "n_controls", "n_parameters",
+//          "endpoint_cost", "integrated_cost", "initial_time", "final_time",
+//          "max_relative_local_error",
+//          "time":            [ n_nodes ],
+//          "states":          [ n_states ][ n_nodes ],
+//          "controls":        [ n_controls ][ n_nodes ],
+//          "costates":        [ n_states ][ n_nodes ],
+//          "relative_errors": [ rows ][ cols ],
+//          "parameters":      [ n_parameters ]
+//        }, ...
+//      ]
+//    }
+//
+//  Orientation: every trajectory matrix is written as an array of rows, where
+//  row i is the trajectory of variable i+1 across the nodes -- shape
+//  [n_variables][n_nodes], the same orientation PSOPT uses internally and that
+//  Save(const MatrixXd&, ...) writes. In NumPy, json.load(...) then
+//  np.array(phase["states"]) yields an (n_states, n_nodes) array directly.
+//
+//  Notes:
+//   - Numbers are written with full double precision (%.17g) so values
+//     round-trip exactly, unlike the %g used by the tab-delimited Save().
+//   - JSON cannot represent NaN/Inf; any non-finite value is written as null
+//     so the file stays valid for standard parsers.
+// ============================================================================
+
+static void psopt_json_string(FILE* fp, const string& s)
+{
+    fputc('"', fp);
+    for (string::size_type k = 0; k < s.size(); k++) {
+        unsigned char c = (unsigned char) s[k];
+        switch (c) {
+            case '"':  fputs("\\\"", fp); break;
+            case '\\': fputs("\\\\", fp); break;
+            case '\b': fputs("\\b",  fp); break;
+            case '\f': fputs("\\f",  fp); break;
+            case '\n': fputs("\\n",  fp); break;
+            case '\r': fputs("\\r",  fp); break;
+            case '\t': fputs("\\t",  fp); break;
+            default:
+                if (c < 0x20) fprintf(fp, "\\u%04x", (unsigned int) c);
+                else          fputc((int) c, fp);
+        }
+    }
+    fputc('"', fp);
+}
+
+static void psopt_json_number(FILE* fp, double x)
+{
+    // JSON has no NaN/Inf representation; emit null so the file stays valid.
+    if (std::isfinite(x)) fprintf(fp, "%.17g", x);
+    else                  fputs("null", fp);
+}
+
+// Flatten any MatrixXd to a 1-D JSON array (used for the time and parameter vectors).
+static void psopt_json_vector(FILE* fp, const MatrixXd& v)
+{
+    long n = (long) v.size();
+    fputc('[', fp);
+    for (long k = 0; k < n; k++) {
+        if (k) fputc(',', fp);
+        psopt_json_number(fp, v(k));
+    }
+    fputc(']', fp);
+}
+
+// Write a MatrixXd as a JSON array of rows: [ [row 0 ...], [row 1 ...], ... ].
+static void psopt_json_matrix(FILE* fp, const MatrixXd& m)
+{
+    fputc('[', fp);
+    for (long i = 0; i < (long) m.rows(); i++) {
+        if (i) fputc(',', fp);
+        fputs("\n        [", fp);
+        for (long j = 0; j < (long) m.cols(); j++) {
+            if (j) fputc(',', fp);
+            psopt_json_number(fp, m(i, j));
+        }
+        fputc(']', fp);
+    }
+    fputc(']', fp);
+}
+
+void Save_to_json_file(const string& filename, Prob& problem, Sol& solution, Alg& algorithm)
+{
+    FILE* fp = fopen(filename.c_str(), "w");
+    if (fp == NULL) {
+        error_message("Error opening file in Save_to_json_file()");
+        return;   // error_message exits; this keeps static analysis happy
+    }
+
+    // Determine success exactly as print_psopt_summary() does.
+    bool solved = false;
+    const char* message = "*** The problem FAILED! - see screen output";
+    if (algorithm.nlp_method == "IPOPT") {
+        solved = (solution.nlp_return_code == (int) Solve_Succeeded);
+        if (solved) message = "The problem has been solved!";
+    }
+    else if (algorithm.nlp_method == "SNOPT") {
+        solved = (solution.nlp_return_code == 0);
+        if (solved) message = "Finished successfully";
+    }
+
+    fputs("{\n", fp);
+
+    // ---- run summary (mirrors print_psopt_summary) ----
+    fputs("  \"summary\": {\n", fp);
+    fputs("    \"problem_name\": ",      fp); psopt_json_string(fp, problem.name);                  fputs(",\n", fp);
+    fputs("    \"nlp_solver\": ",        fp); psopt_json_string(fp, algorithm.nlp_method);          fputs(",\n", fp);
+    fputs("    \"psopt_release\": ",     fp); psopt_json_string(fp, string(PSOPT_RELEASE_STRING));  fputs(",\n", fp);
+    fputs("    \"psopt_build_date\": ",  fp); psopt_json_string(fp, string(PSOPT_BUILD_DATE));      fputs(",\n", fp);
+    fputs("    \"run_date_and_time\": ", fp);
+    {
+        // solution.end_date_and_time comes from ctime() and carries a trailing
+        // newline; strip it so the JSON value is clean.
+        string run_dt = solution.end_date_and_time;
+        while (!run_dt.empty() && (run_dt[run_dt.size()-1] == '\n' || run_dt[run_dt.size()-1] == '\r'))
+            run_dt.erase(run_dt.size()-1);
+        psopt_json_string(fp, run_dt);
+    }
+    fputs(",\n", fp);
+    fputs("    \"cpu_time_seconds\": ",  fp); psopt_json_number(fp, solution.cpu_time);             fputs(",\n", fp);
+    fprintf(fp, "    \"nlp_return_code\": %d,\n", solution.nlp_return_code);
+    fprintf(fp, "    \"solved\": %s,\n", solved ? "true" : "false");
+    fputs("    \"solver_message\": ",    fp); psopt_json_string(fp, string(message));               fputs(",\n", fp);
+    fputs("    \"optimal_cost\": ",      fp); psopt_json_number(fp, solution.cost);                 fputs(",\n", fp);
+    fprintf(fp, "    \"n_phases\": %d\n", problem.nphases);
+    fputs("  },\n", fp);
+
+    // ---- per-phase trajectories and costs ----
+    fputs("  \"phases\": [\n", fp);
+    for (int i = 1; i <= problem.nphases; i++) {
+        MatrixXd& time     = solution.get_time_in_phase(i);
+        MatrixXd& states   = solution.get_states_in_phase(i);
+        MatrixXd& controls = solution.get_controls_in_phase(i);
+        MatrixXd& costates = solution.get_dual_costates_in_phase(i);
+        MatrixXd& relerr   = solution.get_relative_local_error_in_phase(i);
+        MatrixXd& params   = solution.get_parameters_in_phase(i);
+
+        long nnodes = length(time);
+
+        fputs("    {\n", fp);
+        fprintf(fp, "      \"phase\": %d,\n", i);
+        fprintf(fp, "      \"n_nodes\": %ld,\n", nnodes);
+        fprintf(fp, "      \"n_states\": %ld,\n", (long) states.rows());
+        fprintf(fp, "      \"n_controls\": %ld,\n", (long) controls.rows());
+        fprintf(fp, "      \"n_parameters\": %ld,\n", (long) params.size());
+        fputs("      \"endpoint_cost\": ",   fp); psopt_json_number(fp, solution.endpoint_cost[i-1]);   fputs(",\n", fp);
+        fputs("      \"integrated_cost\": ", fp); psopt_json_number(fp, solution.integrated_cost[i-1]); fputs(",\n", fp);
+        fputs("      \"initial_time\": ",    fp); psopt_json_number(fp, (nnodes > 0) ? time(0) : 0.0);  fputs(",\n", fp);
+        fputs("      \"final_time\": ",      fp); psopt_json_number(fp, (nnodes > 0) ? time(nnodes-1) : 0.0); fputs(",\n", fp);
+        fputs("      \"max_relative_local_error\": ", fp);
+              psopt_json_number(fp, (relerr.size() > 0) ? Max(relerr) : 0.0);                          fputs(",\n", fp);
+
+        fputs("      \"time\": ",            fp); psopt_json_vector(fp, time);     fputs(",\n", fp);
+        fputs("      \"states\": ",          fp); psopt_json_matrix(fp, states);   fputs(",\n", fp);
+        fputs("      \"controls\": ",        fp); psopt_json_matrix(fp, controls); fputs(",\n", fp);
+        fputs("      \"costates\": ",        fp); psopt_json_matrix(fp, costates); fputs(",\n", fp);
+        fputs("      \"relative_errors\": ", fp); psopt_json_matrix(fp, relerr);   fputs(",\n", fp);
+        fputs("      \"parameters\": ",      fp); psopt_json_vector(fp, params);   fputs("\n", fp);
+
+        fputs((i < problem.nphases) ? "    },\n" : "    }\n", fp);
+    }
+    fputs("  ]\n", fp);
+    fputs("}\n", fp);
+
+    fclose(fp);
+}
+
+
 
 
 
