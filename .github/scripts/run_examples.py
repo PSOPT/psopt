@@ -45,6 +45,21 @@ def default_tol(ref: float, override: float | None):
         return override
     return 1e-3
 
+
+def parse_ref(token: str):
+    """
+    Parse one REF_COSTS entry into a float, or None for a "run-only" example.
+
+    A blank entry or one of none/nan/skip/- means: still build, run, and require
+    the example to converge, but do NOT check its cost. Use this for examples
+    whose optimal cost is not a portable invariant -- e.g. notorious, a
+    parameter-estimation problem whose measurements are randomly generated, so
+    the least-squares residual varies across platforms while the estimated
+    parameter (the actual result) does not.
+    """
+    t = token.strip().lower()
+    return None if t in ("", "none", "nan", "skip", "-") else float(t)
+
 success_re   = re.compile(r"NLP solver reports:\s*The problem has been solved!", re.I)
 cost_line_re = re.compile(r"Optimal \(unscaled\) cost function value:\s+([-+0-9.eE]+)")
 
@@ -90,7 +105,7 @@ def main():
     ex_dir = pathlib.Path(args.exe_dir).resolve()
 
     examples = [e.strip() for e in args.examples.split(",") if e.strip()]
-    ref_vals = [float(x) for x in args.ref_costs.split(",")] if args.ref_costs else []
+    ref_vals = [parse_ref(x) for x in args.ref_costs.split(",")] if args.ref_costs else []
     if ref_vals and len(ref_vals)!=len(examples):
         print("::error ::Number of REF_COSTS entries does not match EXAMPLES list")
         sys.exit(1)
