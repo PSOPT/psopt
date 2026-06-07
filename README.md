@@ -300,7 +300,7 @@ PSOPT has been successfully compiled on:
 
 ​	•	Manjaro Linux  (latest versions as of 2025)
 
-​	•	MacOS Sequoia (MacPorts on Intel CPU)
+​	•	MacOS Tahoe version 26.4.1 (MacPorts on Intel CPU)
 
 
 
@@ -356,24 +356,119 @@ The use of the tool **yay** requires AUR support to be enabled on the package ma
 
 For **MacOS**
 
-It is also possible to build PSOPT on some versions of MacOS. This can be done by using MacPorts, which is an is an open-source system for compiling, installing, and upgrading open-source software on MacOS. 
+PSOPT can be built on macOS using [MacPorts](https://www.macports.org/install.php) for most
+of its dependencies. **Do not** install IPOPT from MacPorts, however: on Apple Silicon
+(M1/M2/M3/M4) the MacPorts `ipopt` package is built against a *parallel* (MPICH) build of
+MUMPS that calls `MPI_Init` at library-load time and crashes when an example is run directly.
+Instead, build IPOPT and MUMPS yourself, as a *sequential* solver, with the steps below. This
+procedure has been used successfully on Apple Silicon (M2 Max, M4 Pro) and on Intel Macs.
 
-To use MacPorts, download and install MacPorts from:
+*1. Install MacPorts*
 
-https://www.macports.org/install.php
+Download and install MacPorts from https://www.macports.org/install.php
 
-To install the PSOPT dependencies, issue the following commands from a terminal window:
+*2. Install the dependencies (via MacPorts)*
 
 ```
 sudo port install cmake
 sudo port install eigen3
 sudo port install git
-sudo port install ipopt
 sudo port install ADOL-C
 sudo port install gnuplot
+sudo port install pkgconfig
+sudo port install gcc15        # provides gfortran (/opt/local/bin/gfortran-mp-15)
 ```
 
-The above is working with MacOS Sequoia with an Intel processor (date: 16 Feb 2025). Currently, there are issues with the ARM64 (M1 and above) processors that have MacOS Sequoia. The installation might work with previous versions of MacOS on ARM64. 
+Notes:
+- The MacPorts `ipopt` port is deliberately **omitted** — it is built in step 3 instead.
+- `gcc15` is needed only for its Fortran compiler, `gfortran`, which is required to compile
+  MUMPS. It installs as `/opt/local/bin/gfortran-mp-15`. If you install a different GCC
+  version, adjust the `-mp-NN` suffix accordingly in step 3.
+- `ADOL-C` pulls in `ColPack` automatically. C and C++ are compiled with Apple's `clang`
+  (from the Xcode Command Line Tools), so no GCC C/C++ compiler is required.
+
+_3. Build IPOPT + MUMPS (sequential) with coinbrew_
+
+```
+git clone https://github.com/coin-or/coinbrew ~/coinbrew
+cd ~/coinbrew
+./coinbrew fetch Ipopt --no-prompt
+
+export CC=/usr/bin/clang
+export CXX=/usr/bin/clang++
+export FC=/opt/local/bin/gfortran-mp-15
+
+./coinbrew build Ipopt --prefix=$HOME/coin/dist --no-prompt \
+      ADD_FFLAGS=-fallow-argument-mismatch
+```
+
+Why these settings matter:
+- **`CC`/`CXX` = Apple clang** make IPOPT use the `libc++` C++ standard library, matching PSOPT
+  and the MacPorts libraries. Building IPOPT with the MacPorts `g++` instead links `libstdc++`,
+  whose `std::string` is binary-incompatible with `libc++` and causes a segmentation fault as
+  soon as PSOPT passes options to IPOPT.
+- **`FC` = gfortran** compiles MUMPS; `ADD_FFLAGS=-fallow-argument-mismatch` lets recent gfortran
+  accept MUMPS's legacy Fortran.
+- coinbrew builds MUMPS with its **sequential MPI stub**, so there is no MPICH and no load-time
+  `MPI_Init` — the root cause of the MacPorts crash.
+- Apple's **Accelerate** framework is detected automatically and used as a fast BLAS/LAPACK
+  (excellent on Apple Silicon); no extra flag is needed.
+
+If the build stops at the IPOPT **Java** unit test (this is harmless — it only fails when your
+system `java` is an Intel/x86_64 JVM that cannot load the arm64 library), finish the install
+manually:
+
+```
+cd ~/coinbrew/build/Ipopt/*/ && make install
+```
+
+_4. Verify the build_
+
+```
+otool -L ~/coin/dist/lib/libipopt.3.dylib | grep -iE 'mpi|c\+\+|stdc'
+```
+
+You should see `/usr/lib/libc++.1.dylib` and **no** `libmpi`, `libpmpi`, or `libstdc++`. That
+confirms IPOPT is sequential (no MPI) and on the correct C++ standard library.
+
+_5. Build PSOPT against your IPOPT_
+
+```
+export PKG_CONFIG_PATH=$HOME/coin/dist/lib/pkgconfig:$PKG_CONFIG_PATH
+
+cd /path/to/psopt
+rm -rf build
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON \
+      -DCMAKE_PREFIX_PATH=$HOME/coin/dist \
+      -DCMAKE_BUILD_RPATH=$HOME/coin/dist/lib \
+      -DCMAKE_INSTALL_RPATH=$HOME/coin/dist/lib
+cmake --build build -j
+```
+
+Add the `PKG_CONFIG_PATH` line to your `~/.zshrc` so that future reconfigures continue to find
+this IPOPT (and place `~/coin/dist/lib/pkgconfig` *before* `/opt/local/lib/pkgconfig`).
+
+_6. Run an example_
+
+```
+cd build/examples/launch && ./launch
+```
+
+_ Troubleshooting (issues seen on Apple Silicon)_
+
+- **`configure` aborts with "Provided package HSL ... does not contain MA27".** A stray
+  `coinhsl.pc` is on your pkg-config search path (HSL is optional for IPOPT — MUMPS is enough).
+  Locate it with `pkg-config --variable=pcfiledir coinhsl`, rename it (e.g. append `.disabled`),
+  and rebuild with an added `--reconfigure` flag.
+- **Build aborts at the `Java` unit test.** Harmless (Intel/x86_64 JVM). Finish with the manual
+  `make install` shown in step 3.
+- **An example segfaults immediately, and `otool -L .../launch` shows `libstdc++`.** This is the
+  C++ ABI mismatch: IPOPT was built with GCC. Rebuild it with `CC=/usr/bin/clang
+  CXX=/usr/bin/clang++` (remove `~/coinbrew/build/Ipopt` first to clear the cached configuration).
+- **An example crashes in `MPI_Init` / `libpmpi`.** PSOPT is still linking the MacPorts `ipopt`,
+  not your build. Check `otool -L` and ensure `PKG_CONFIG_PATH` points at
+  `~/coin/dist/lib/pkgconfig` first, then `rm -rf build` and reconfigure.
+
 
 
 
