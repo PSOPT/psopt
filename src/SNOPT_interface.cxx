@@ -102,14 +102,12 @@ void snoptProbLocal::snPSOPTusrf_(int    *Status, int *n,    double x[],
 
 
        // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
-       int options[4];
-       int repeat = 1; // To use previously determined sparsity pattern.
-       options[0]=0; options[1]=0; options[2]=0;options[3]=0; 
-	    sparse_jac(workspace->tag_fg, nF, nvars, repeat, xvars, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
+	    psopt_ad::SparseTriplet Js = psopt_ad::ad_sparse_jacobian(workspace->ad_fg, xvars, /*reuse=*/true);
+	    workspace->G2.assign(Js.val.begin(), Js.val.end());
 
 
         // Put the full Jacobian in the form of a triplet-based sparse matrix
-        TripletSparseMatrix GS2(workspace->G2, nF, nvars, workspace->F_nnz, (int*) workspace->iGfun2, (int*) workspace->jGvar2);
+        TripletSparseMatrix GS2(workspace->G2.data(), nF, nvars, workspace->F_nnz, (int*) workspace->iGfun2.data(), (int*) workspace->jGvar2.data());
 
 
         // Subtract from the full Jacobian the matrix of constant coefficients calculated earlier

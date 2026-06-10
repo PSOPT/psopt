@@ -139,22 +139,12 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   	workspace->jGvar     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   	workspace->iGfun1    = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1)));
   	workspace->jGvar1    = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1)));
-  	workspace->iGfun2    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->jGvar2    = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->G2        = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->G3        = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->G4        = new double[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
   }
   else {
   	workspace->iGfun     = NULL;
   	workspace->jGvar     = NULL;
   	workspace->iGfun1    = NULL;
   	workspace->jGvar1    = NULL;
-  	workspace->iGfun2    = NULL;
-  	workspace->jGvar2    = NULL;
-  	workspace->G2        = NULL;
-  	workspace->G3        = NULL;
-  	workspace->G4        = NULL;
   }
   workspace->xad       = make_unique<adouble[]>(max_nvars);
   workspace->gad       = make_unique<adouble[]>(max_ncons);
@@ -289,11 +279,11 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 
 // Initialise tape tags to be used by ADOL_C
 
-  workspace->tag_f        = 1;
-  workspace->tag_g 	     = 2;
-  workspace->tag_hess     = 3;
-  workspace->tag_fg 	     = 4;
-  workspace->tag_gc       = 5;
+  workspace->ad_f.tag    = 1;
+  workspace->ad_g.tag    = 2;
+  workspace->ad_hess.tag = 3;
+  workspace->ad_fg.tag   = 4;
+  workspace->ad_gc.tag   = 5;
 
   workspace->user_data = problem.user_data;
   
@@ -391,15 +381,9 @@ work_str::~work_str()
 {
   // Per-row arrays (states, controls, ... ) are unique_ptr<unique_ptr<adouble[]>[]>
   // and free themselves; no manual per-row delete loop is needed.
-
-  if (this->G2) delete [] this->G2;
-  if (this->G3) delete [] this->G3;
-  if (this->G4) delete [] this->G4;
   if (this->hess_ir) delete [] this->hess_ir;
   if (this->hess_jc) delete [] this->hess_jc;
-  if (this->iGfun2) delete [] this->iGfun2;
   if (this->iGfun) delete [] this->iGfun;
-  if (this->jGvar2) delete [] this->jGvar2;
   if (this->jGvar) delete [] this->jGvar;
 
   // states, controls, ... (the 2-D arrays) are unique_ptr-owned and free themselves.

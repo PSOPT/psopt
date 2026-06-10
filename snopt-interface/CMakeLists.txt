@@ -12,7 +12,7 @@ target_include_directories(${PROJECT_NAME}
 PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>
     $<INSTALL_INTERFACE:include/PSOPT/snopt>)
-target_link_libraries(${PROJECT_NAME} PRIVATE gfortran adolc ${snopt7_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE gfortran ${snopt7_LIBRARIES})
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_delegating_constructors)
 
 if(${BUILD_EXAMPLES})

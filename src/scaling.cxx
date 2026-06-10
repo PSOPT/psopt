@@ -186,23 +186,12 @@ void determine_objective_scaling(MatrixXd& X,Sol& solution, Prob& problem, Alg& 
 
 	if ( (algorithm.derivatives=="automatic") ) {
 	    long      n = length(X);
-	    int i, itag=workspace->tag_f;
-	    double  yp = 0.0;
-	    adouble *xad = workspace->xad.get();
-	    adouble  yad;
 	    MatrixXd&  GF = *workspace->GFip;
 	    problem.scale.objective = -1.0;
-	    trace_on(itag);
-	    for(i=0;i<n;i++) {
-
-         xad[i] <<= (&X(0))[i];
-	    }
-	    yad = ff_ad(xad, workspace);
-	    yad >>= yp;
-	    trace_off();
-
-
-       gradient(itag,n,&X(0),&GF(0));
+	    psopt_ad::ad_record(workspace->ad_f, (int)n, 1, &X(0),
+	        [&](const adouble* xin, adouble* yout){ yout[0] = ff_ad(const_cast<adouble*>(xin), workspace); });
+	    std::vector<double> gtmp = psopt_ad::ad_gradient(workspace->ad_f, &X(0));
+	    for(int t=0;t<(int)n;t++) GF(t) = gtmp[t];
 
 	}
 
@@ -267,41 +256,12 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
 
 		   jac_row_norm.setZero();
 		
-		   unsigned int *jac_rind  = NULL;
-			unsigned int *jac_cind  = NULL;
-			double       *jac_values = NULL;
-			int           nnz;
-		
-			adouble *xad = workspace->xad.get();
-			adouble *gad = workspace->gad.get();
-			double  *g   = workspace->fg.get();
-
 		   double  *x   = &xp(0);
-		
-			/* Tracing of function gg() */
-			trace_on(workspace->tag_gc);
-			for(i=0;i<nvars;i++)
-				xad[i] <<= x[i];
-		
-			gg_ad(xad, gad, workspace);
-		
-			for(i=0;i<ncons;i++)
-				gad[i] >>= g[i];
-			trace_off();
-		
-		
-		    int options[4];
-		    options[0]=0; options[1]=0; options[2]=0;options[3]=0;
-			sparse_jac(workspace->tag_gc, ncons, nvars, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values, options);
-		
-			for (i=0;i<nnz;i++) {
-
-		       jac_row_norm( jac_rind[i]      ) += pow( jac_values[i], 2.0);
-			}
-
-
-			///Bug fix
-			free(jac_rind); free(jac_cind); free(jac_values);
+			psopt_ad::ad_record(workspace->ad_gc, nvars, ncons, x,
+				[&](const adouble* xin, adouble* yout){ gg_ad(const_cast<adouble*>(xin), yout, workspace); });
+			psopt_ad::SparseTriplet J = psopt_ad::ad_sparse_jacobian(workspace->ad_gc, x, /*reuse=*/false);
+			for (int t=0;t<J.nnz();t++)
+			       jac_row_norm( J.row[t] ) += pow( J.val[t], 2.0);
 
 
      }

@@ -82,12 +82,8 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 using std::unique_ptr;
 
 
-#include <adolc/drivers/drivers.h>
-#include <adolc/interfaces.h>
-#include <adolc/adalloc.h>
-#include <adolc/adouble.h>
-#include <adolc/sparse/sparsedrivers.h>
-#include <adolc/taping.h>
+#include "psopt_ad_backend.hpp"   // AD backend select (default ADOL-C) -- step 2a
+#include "psopt_ad_driver.hpp"    // record + sparse Jac/Hess interface -- step 2b
 
 
 #include <string>
@@ -609,13 +605,13 @@ public:
    unsigned int*      jGvar;
    unique_ptr<int[]>  iGfun1;
    unique_ptr<int[]>  jGvar1;
-   unsigned  int*      iGfun2;
-   unsigned  int*      jGvar2;
+   std::vector<unsigned int>  iGfun2;
+   std::vector<unsigned int>  jGvar2;
    int       use_constraint_scaling;
    int       F_nnz;
-   double*  G2;
-   double*  G3;
-   double*  G4;
+   std::vector<double>  G2;
+   std::vector<double>  G3;
+   std::vector<double>  G4;
    unique_ptr<adouble[]>  xad;
    unique_ptr<adouble[]>  gad;
    unique_ptr<unique_ptr<adouble[]>[]>  states;
@@ -669,11 +665,7 @@ public:
 
 // tape tags to be used by ADOL_C
 
-  int tag_f     ;
-  int tag_g 	;
-  int tag_hess 	;
-  int tag_fg 	;
-  int tag_gc    ;
+  psopt_ad::ADHandle ad_f, ad_g, ad_hess, ad_fg, ad_gc;  // tags promoted to AD handles (step 2b)
   void *user_data;
   
 // A persistent variable for warm starts in SNOPT7
@@ -696,7 +688,7 @@ typedef xad_str XAD;
 
 // Function prototypes
 
-void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), MatrixXd& x, MatrixXd* grad, bool* flag, int itag, Workspace* workspace );
+void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), MatrixXd& x, MatrixXd* grad, bool* flag, psopt_ad::ADHandle& adh, Workspace* workspace );
 
 void EfficientlyComputeJacobianNonZeros( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& x,
                 int nf, double *nzvalue, int nnz, int* iArow, int* jAcol, IGroup* igroup, GRWORK* grw, Workspace* workspace );

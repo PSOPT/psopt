@@ -170,28 +170,13 @@ int NLP_interface(
   {
   	
 
-     adouble* xad  = workspace->xad;
-     adouble* fgad = workspace->fgad;
-     double*    fg = workspace->fg;
-     int i;
-
-     /* Tracing of function fg() */
-     trace_on(workspace->tag_fg);
-     for(i=0;i<n;i++)
-		xad[i] <<= x[i];
-
-     fg_ad(xad, fgad, workspace);
-
-     for(i=0;i<neF;i++)
-	     fgad[i] >>= fg[i];
-     trace_off();
-
-
-    // Initial run of ADOL-C's sparse_jac() to detect full Jacobian structure 
-    int repeat = 0;
-    int options[4];
-    options[0]=0; options[1]=0; options[2]=0;options[3]=0;
-    sparse_jac(workspace->tag_fg, neF, n, repeat, x, &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
+     psopt_ad::ad_record(workspace->ad_fg, n, neF, x,
+         [&](const adouble* xin, adouble* yout){ fg_ad(const_cast<adouble*>(xin), yout, workspace); });
+     psopt_ad::SparseTriplet Jfg = psopt_ad::ad_sparse_jacobian(workspace->ad_fg, x, /*reuse=*/false);
+     workspace->F_nnz = Jfg.nnz();
+     workspace->iGfun2.assign(Jfg.row.begin(), Jfg.row.end());
+     workspace->jGvar2.assign(Jfg.col.begin(), Jfg.col.end());
+     workspace->G2.assign(Jfg.val.begin(), Jfg.val.end());
 
 
      snprintf(workspace->text,sizeof(workspace->text),"\nJacobian sparsity detected using ADOLC:");

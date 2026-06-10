@@ -581,7 +581,6 @@ void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), M
   int nzcount_A=0;
   int nzcount_G=0;
   int n     =  length(x);
-  int neF   =  nf;  
   
   double s = 1.0e6*sqrt(PSOPT_extras::GetEPS());
 
@@ -591,7 +590,6 @@ void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), M
   MatrixXd& xub     = *workspace->xub;
 
 
-        int nF = neF;
 
         int nvars = n;
 
@@ -601,24 +599,25 @@ void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), M
        clip_vector_given_bounds( xp, xlb, xub);
 
        // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
-       int options[4];
-       int repeat = 1; // To use previously determined sparsity pattern.
-       options[0]=0; options[1]=0; options[2]=0;options[3]=0; 
-	    sparse_jac(workspace->tag_fg, nF, nvars, repeat, &xp(0), &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G2, options);
+	    { psopt_ad::SparseTriplet Jg = psopt_ad::ad_sparse_jacobian(workspace->ad_fg, &xp(0), /*reuse=*/true);
+	      workspace->iGfun2.assign(Jg.row.begin(), Jg.row.end()); workspace->jGvar2.assign(Jg.col.begin(), Jg.col.end());
+	      workspace->G2.assign(Jg.val.begin(), Jg.val.end()); }
 
        xp = x + 0.05*x.cwiseAbs() + s*ones(nvars,1);
        clip_vector_given_bounds( xp, xlb, xub);
 
        // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
 
-	    sparse_jac(workspace->tag_fg, nF, nvars, repeat, &xp(0), &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G3, options);
+	    { psopt_ad::SparseTriplet Jg = psopt_ad::ad_sparse_jacobian(workspace->ad_fg, &xp(0), /*reuse=*/true);
+	      workspace->G3.assign(Jg.val.begin(), Jg.val.end()); }
 
        xp = x - 0.06*x.cwiseAbs() - 0.95*s*ones(nvars,1);
 
        clip_vector_given_bounds( xp, xlb, xub);
        // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
 
-	    sparse_jac(workspace->tag_fg, nF, nvars, repeat, &xp(0), &workspace->F_nnz, &workspace->iGfun2, &workspace->jGvar2, &workspace->G4, options);
+	    { psopt_ad::SparseTriplet Jg = psopt_ad::ad_sparse_jacobian(workspace->ad_fg, &xp(0), /*reuse=*/true);
+	      workspace->G4.assign(Jg.val.begin(), Jg.val.end()); }
 
 
         if (workspace->enable_nlp_counters) {
@@ -731,28 +730,16 @@ void ScalarGradient( double (*fun)(MatrixXd& x, Workspace* workspace), MatrixXd&
 
 }
 
-void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), MatrixXd& x, MatrixXd* grad, bool* trace_done, int itag, Workspace* workspace )
+void ScalarGradientAD( adouble (*fun)(adouble *, Workspace*), MatrixXd& x, MatrixXd* grad, bool* trace_done, psopt_ad::ADHandle& adh, Workspace* workspace )
 {
-    // Compute the gradient of a scalar function using automatic differentiation
-    int      n = x.rows();
-    int i;
-    double  yp = 0.0;
-    adouble *xad = workspace->xad.get();
-    adouble  yad;
-
+    int n = x.rows();
     if( !(*trace_done) ) {
-    	trace_on(itag);
-    	for(i=0;i<n;i++) {
-            xad[i] <<= (&x(0))[i];
-	}
-    	yad = (*fun)(xad, workspace);
-    	yad >>= yp;
-    	trace_off();
+        psopt_ad::ad_record(adh, n, 1, &x(0),
+            [&](const adouble* xin, adouble* yout){ yout[0] = (*fun)(const_cast<adouble*>(xin), workspace); });
         *trace_done = true;
     }
-
-    gradient(itag,n,&x(0),&(*grad)(0));
-
+    std::vector<double> g = psopt_ad::ad_gradient(adh, &x(0));
+    for(int t=0;t<n;t++) (*grad)(t) = g[t];
 }
 
 
@@ -783,38 +770,12 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
 
      if ( useAutomaticDifferentiation(algorithm) ) {
 
-    unsigned int *jac_rind  = NULL;
-	unsigned int *jac_cind  = NULL;
-	double       *jac_values = NULL;
-	int           nnz;
-
-	adouble *xad = workspace->xad.get();
-	adouble *gad = workspace->gad.get();
-	double  *g   = workspace->fg.get();
-
     double  *x   = &xp(0);
-
-	/* Tracing of function gg() */
-	trace_on(workspace->tag_gc);
-	for(i=0;i<nvars;i++)
-		xad[i] <<= x[i];
-
-	gg_ad(xad, gad, workspace);
-
-	for(i=0;i<ncons;i++)
-		gad[i] >>= g[i];
-	trace_off();
-
-
-    int options[4];
-    options[0]=0; options[1]=0; options[2]=0;options[3]=0;
-	sparse_jac(workspace->tag_gc, ncons, nvars, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values, options);
-
-
-    for(j=0;j<nvars;j++)
-    {
-         Jctmp( jac_rind[j], jac_cind[j]) = jac_values[j];
-    }
+	psopt_ad::ad_record(workspace->ad_gc, nvars, ncons, x,
+		[&](const adouble* xin, adouble* yout){ gg_ad(const_cast<adouble*>(xin), yout, workspace); });
+	psopt_ad::SparseTriplet J = psopt_ad::ad_sparse_jacobian(workspace->ad_gc, x, /*reuse=*/false);
+	for(int t=0;t<J.nnz();t++)
+		Jctmp( J.row[t], J.col[t]) = J.val[t];
 
 
    }

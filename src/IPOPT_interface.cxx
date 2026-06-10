@@ -149,44 +149,15 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
   if( useAutomaticDifferentiation(*workspace->algorithm) ) {
 
-	unsigned int *jac_rind  = NULL;
-	unsigned int *jac_cind  = NULL;
-	double       *jac_values = NULL;
-
-	adouble *xad = workspace->xad.get();
-	adouble *gad = workspace->gad.get();
-	double  *g   = workspace->fg.get();
-
-	/* Tracing of function gg() */
-	trace_on(workspace->tag_g);
-	for(i=0;i<n;i++)
-		xad[i] <<= x[i];
-
-	gg_ad(xad, gad, workspace);
-
-	for(i=0;i<m;i++)
-		gad[i] >>= g[i];
-	trace_off();
-
-
-	/* Entries in row-compressed format using sparse_jac: */
-
-
-// ASSUMING ADOL-C - VERSION 2.X.X
-    int options[4];
-    options[0]=0; options[1]=0; options[2]=0;options[3]=0;
-    sparse_jac(workspace->tag_g, m, n, 0, x, &nnz, &jac_rind, &jac_cind, &jac_values, options);
-
-
-
+	psopt_ad::ad_record(workspace->ad_g, n, m, x,
+		[&](const adouble* xin, adouble* yout){ gg_ad(const_cast<adouble*>(xin), yout, workspace); });
+	psopt_ad::SparseTriplet J = psopt_ad::ad_sparse_jacobian(workspace->ad_g, x, /*reuse=*/false);
+	nnz = J.nnz();
 	for(i=0;i<nnz;i++)
 	{
-		workspace->jGcol[i] = jac_cind[i];
-		workspace->iGrow[i] = jac_rind[i];
+		workspace->jGcol[i] = J.col[i];
+		workspace->iGrow[i] = J.row[i];
 	}
-
-  ///Bug fix
-  free(jac_rind); free(jac_cind); free(jac_values);
 
         snprintf(workspace->text,sizeof(workspace->text),"\nJacobian sparsity detected using ADOLC:");
         psopt_print(workspace,workspace->text);
@@ -212,38 +183,21 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
   if( activate_hess && useAutomaticDifferentiation(*workspace->algorithm)  ) {
 
-	double       *hess_values = NULL;
-	adouble *xad = workspace->xad.get();
-	adouble Lad;
 	double  obj_factor = 1.0;
 
-   double *lambda = &(*workspace->lambda)(0);
-	double  L;
+   std::vector<double> lambda_full((size_t)m, 1.0);   // all-ones -> full, lambda-independent Hessian pattern
+   double *lambda = lambda_full.data();
    int nnz_hess;
-	/* Tracing of function Lagrangian_ad() */
-	trace_on(workspace->tag_hess);
-	for(i=0;i<n;i++)
-		xad[i] <<= x[i];
-	Lad = Lagrangian_ad(xad, lambda, obj_factor, m, workspace);
-        Lad >>=L;
-	trace_off();
-	/* Entries in row-compressed format using sparse_hess: */
-
-	unsigned int *hess_ir = NULL;
- 	unsigned int *hess_jc = NULL;
-
-
-
-// ASSUMING ADOL-C - VERSION 2.X.X
-    int options[2];
-    options[0]=1; options[1]=0;
-    sparse_hess(workspace->tag_hess, n,0,x,&nnz_hess,&hess_ir, &hess_jc,&hess_values, options);
-
-
-    for (i=0; i< nnz_hess; i++) {
-		workspace->hess_ir[i] = hess_ir[i];
-		workspace->hess_jc[i] = hess_jc[i];
-    }
+	/* Lagrangian Hessian structure via AD backend (step 2b) */
+	psopt_ad::ad_record(workspace->ad_hess, n, 1, x,
+		[&](const adouble* xin, adouble* yout){
+			yout[0] = Lagrangian_ad(const_cast<adouble*>(xin), lambda, obj_factor, m, workspace); });
+	psopt_ad::SparseTriplet Hs = psopt_ad::ad_sparse_hessian(workspace->ad_hess, x, /*reuse=*/false);
+	nnz_hess = Hs.nnz();
+	for (i=0; i< nnz_hess; i++) {
+		workspace->hess_ir[i] = Hs.row[i];
+		workspace->hess_jc[i] = Hs.col[i];
+	}
 
        snprintf(workspace->text,sizeof(workspace->text),"\nHessian sparsity detected using ADOLC:");
        psopt_print(workspace,workspace->text);
@@ -373,7 +327,7 @@ bool IPOPT_PSOPT::eval_grad_f(Index n, const Number* x, bool new_x, Number* grad
   if(!useAutomaticDifferentiation(*workspace->algorithm))
      ScalarGradient( ff_num, X, &GF , workspace->grw.get(), workspace );
   else
-     ScalarGradientAD( ff_ad, X, &GF, &workspace->trace_f_done, workspace->tag_f, workspace );
+     ScalarGradientAD( ff_ad, X, &GF, &workspace->trace_f_done, workspace->ad_f, workspace );
 
   memcpy( grad_f, &GF(0), workspace->nvars*sizeof(double));
 
@@ -505,33 +459,13 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
 
     if (useAutomaticDifferentiation(*workspace->algorithm)) {
 
-    	int nnz = nele_jac;
-    	unsigned int *jac_rind = NULL;
-    	unsigned int *jac_cind = NULL;
-
-
-
 	   for (i=0;i<n;i++) {
 		   xpr[i] = x[i];
 	   }
-
-      double* jac_values = NULL;
-
-
-
-// ASSUMING ADOL-C - VERSION 2.X.X
-       int options[4];
-       options[0]=0; options[1]=0; options[2]=0; options[3]=0;
-	    sparse_jac(workspace->tag_g, m, n, 0, xpr, &nnz, &jac_rind, &jac_cind, &jac_values, options);
-
-
-   	 for(i=0;i<nnz;i++) {
-
-                values[i] = jac_values[i];
-	    }
-
-      ///Bug fix
-      free(jac_rind); free(jac_cind); free(jac_values);
+	   psopt_ad::SparseTriplet J = psopt_ad::ad_sparse_jacobian(workspace->ad_g, xpr, /*reuse=*/false);
+	   for(i=0;i<J.nnz();i++) {
+                values[i] = J.val[i];
+	   }
 
 
 
@@ -612,44 +546,20 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
 
 
 // *******************************************************************
-	adouble *xad = workspace->xad.get();
-	adouble Lad;
 	double  obj_factor_d = obj_factor;
 	double*  lambda_d     = workspace->lambda_d.get();
-	double  L;
-	/* Tracing of Lagrangian function. It needs to be repeated because obj_factor and lambda change  */
-	trace_on(workspace->tag_hess);
-	for(i=0;i<n;i++)
-		xad[i] <<= x[i];
-
 	for(i=0;i<m;i++)
 		lambda_d[i] = lambda[i];
-
-	Lad = Lagrangian_ad(xad, lambda_d, obj_factor_d, m, workspace);
-        Lad >>=L;
-	trace_off();
-// *******************************************************************
-
+	psopt_ad::ad_record(workspace->ad_hess, n, 1, x,
+		[&](const adouble* xin, adouble* yout){ yout[0] = Lagrangian_ad(const_cast<adouble*>(xin), lambda_d, obj_factor_d, m, workspace); });
 	for (i=0;i<n;i++) {
 		xpr[i] = x[i];
 	}
-
-        unsigned int* hess_ir = NULL;
-        unsigned int* hess_jc = NULL;
-
-        double* hess_values = NULL;
-
-
-
-// ASSUMING ADOL-C - VERSION 2.X.X
-    int options[2];
-    options[0]=1; options[1]=0;
-    sparse_hess(workspace->tag_hess, n, 0, xpr, &nele_hess, &hess_ir, &hess_jc, &hess_values, options);
-
-
-        for(i=0;i<nele_hess;i++) {
-             values[i] = hess_values[i];
-        }
+	psopt_ad::SparseTriplet H = psopt_ad::ad_sparse_hessian(workspace->ad_hess, xpr, /*reuse=*/false);
+	nele_hess = H.nnz();
+	for(i=0;i<nele_hess;i++) {
+		values[i] = H.val[i];
+	}
 
 	if (workspace->enable_nlp_counters) {
 	    workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_hessian_evals++;
