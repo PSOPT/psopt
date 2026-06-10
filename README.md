@@ -46,13 +46,13 @@ The implementation has the following features:
 
 - Choice between Legendre, Chebyshev, trapezoidal, or Hermite-Simpson based collocation
 - Automatic scaling
-- Automatic first and second derivatives using the ADOL-C library
+- Automatic first and second derivatives using the CppAD library
 - Numerical differentiation by using sparse finite differences
 - Automatic mesh refinement
 - Automatic identification of the Jacobian and Hessian sparsity.
 - DAE formulation, so that differential and algebraic constraints can be implemented in the same C++ function.
 
-The PSOPT interface uses both Eigen3 (a linear algebra template library) and ADOL-C (an automatic differentiation library).
+The PSOPT interface uses both Eigen3 (a linear algebra template library) and CppAD (an automatic differentiation library).
 
 The first release of PSOPT was published in 2009. 
 
@@ -103,7 +103,7 @@ Installing PSOPT
 
 Please consult the [PSOPT User Manual](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_RR.pdf) for further details on the software functionality and how to use it. 
 
-PSOPT relies on three main software packages to perform a number of tasks: IPOPT, ADOL-C and EIGEN3. Some of these packages have their own dependencies.
+PSOPT relies on three main software packages to perform a number of tasks: IPOPT, CppAD and EIGEN3. Some of these packages have their own dependencies.
 
 
 
@@ -124,33 +124,6 @@ IPOPT is an open-source C++ package for large-scale nonlinear optimization, whic
 ​	https://coin-or.github.io/Ipopt/INSTALL.html
 
 
-
-**ADOL-C**
-
-ADOL-C is a library for automatic differentiation of C++ code. It computes gradients and sparse Jacobians required by **PSOPT**.
-
-A suitable version of ADOL-C can be easily installed using a package manager in some, but not all, Linux distributions. In some platforms, it may be necessary to manually install Adol-c and ColPack. The following commands should allow to perform a manual installation on various platforms:
-
-```
-wget --continue archive.ubuntu.com/ubuntu/pool/universe/a/adolc/adolc_2.7.2.orig.tar.xz 
-tar -xf adolc_2.7.2.orig.tar.xz
-cd ADOL-C-2.7.2
-mkdir ./ThirdParty
-cd ./ThirdParty
-wget --continue http://archive.ubuntu.com/ubuntu/pool/universe/c/colpack/colpack_1.0.10.orig.tar.gz
-tar zxvf colpack_1.0.10.orig.tar.gz
-mv ColPack-1.0.10 ColPack
-cd ColPack
-autoreconf -fi
-./configure --prefix=/usr/local
-make
-sudo make install
-cd ../..
-autoreconf -fi
-./configure --prefix=/usr/local --enable-sparse --with-colpack=/usr/local
-make
-sudo make install
-```
 
 **EIGEN3**
 
@@ -198,7 +171,7 @@ PSOPT relies on [CMake](https://cmake.org/download/)  and '[pkg-config](https://
 
 CMake is an open-source tool for managing software builds. PSOPT requires CMake 3.12 or later. 
 
-pkg-config is a helper tool used to provide the necessary details for compiling and linking a program to a library. It ensures that PSOPT’s dependencies are found correctly. pkg-config is available on most major Linux distributions. In particular, the build process expects to see pkg-config configuration files for IPOPT, ColPack and ADOL-C. These configuration files are usually installed under /usr/local/lib/pkgconfig or /usr/lib/pkgconfig. If these configuration files are not created during the build process for the above libraries, they can be created manually and be placed at the correct folder. If the pkg-config configuration files are being created manually, the contents of these files on the authors' computer are provided below as examples. Please note that the paths that are given in these files depend on the actual location where the different libraries have been installed.
+pkg-config is a helper tool used to provide the necessary details for compiling and linking a program to a library. It ensures that PSOPT’s dependencies are found correctly. pkg-config is available on most major Linux distributions. In particular, the build process expects to see pkg-config configuration files for IPOPT, ColPack and CppAD. These configuration files are usually installed under /usr/local/lib/pkgconfig or /usr/lib/pkgconfig. If these configuration files are not created during the build process for the above libraries, they can be created manually and be placed at the correct folder. If the pkg-config configuration files are being created manually, the contents of these files on the authors' computer are provided below as examples. Please note that the paths that are given in these files depend on the actual location where the different libraries have been installed.
 
 For IPOPT (filename: ipopt.pc):
 
@@ -215,44 +188,7 @@ For IPOPT (filename: ipopt.pc):
 	Requires.private: coinhsl coinmumps 
 
 
-
-For ColPack (filename: ColPack.pc):
-
-```
-prefix=/usr/local
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include/ColPack
-
-Name: ColPack
-Version: 1.0.10 
-Description: Graph Coloring Library 
-Requires: 
-Libs: -L${libdir} -lColPack -Wl,-rpath,${libdir} -Wl,-rpath,${libdir} 
-Cflags: -I${includedir}
-```
-
-For ADOL-C (filename: adolc.pc):
-
-
-
-```
-prefix=/usr/local
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-
-Name: adolc
-Version: 2.6.3
-Description: Algorithmic Differentiation Library for C/C++
-Requires: 
-Libs: -L${libdir} -ladolc -Wl,-rpath,${libdir} -lColPack -Wl,-rpath,${libdir} 
-Cflags: -I${includedir}
-\end{verbatim}
-```
-
-​	
-
+	
 For EIGEN3 (filename: eigen3.pc):
 
 ```
@@ -312,13 +248,8 @@ For **Ubuntu 24.04**:
 
 ```
 sudo apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
-  coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev
+  coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev libcppad-dev
 ```
-
-
-
-Note that Adol-c and ColPack needs to be manually installed on the latest version of Ubuntu (version 24.04). See the instructions above.
-
 
 
 For **Debian 12.9.0**:
@@ -326,26 +257,36 @@ For **Debian 12.9.0**:
 ```
 su
 apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
-  coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev
+  coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev libcppad-dev
 ```
-
-Note that Adol-c and ColPack needs to be manually installed on the latest version of Debian (version 11.9). See the instructions above.
-
 
 
 For **OpenSUSE Leap 15.5 and Tumbleweed**:
 
 ```
-sudo zypper install git gnuplot libboost_system1_66_0-devel eigen3-devel ColPack-devel \
-  adolc-devel blas-devel lapack-devel Ipopt-devel cmake gcc-c++
+sudo zypper install git gnuplot libboost_system1_66_0-devel eigen3-devel \
+  blas-devel lapack-devel Ipopt-devel cmake gcc-c++
+
+git clone https://github.com/coin-or/CppAD.git cppad.git
+cd cppad.git
+mkdir build && cd build
+cmake -D cppad_prefix=/usr/local ..
+make
+sudo make install
 ```
+That installs CppAD headers to /usr/local/include/cppad/ and the library to /usr/local/lib/, both of which PSOPT's CMake finds on the default search path — no extra flags needed.
+If you install CppAD to a non-standard prefix, point PSOPT at it when configuring, e.g.:
+```
+export CPPAD_DIR=/your/prefix      # or: cmake -DCPPAD_INCLUDE_DIR=... -DCPPAD_LIBRARY=...
+```
+
 
 For **Arch Linux / Manjaro**:
 
 ```
 sudo pacman -Syu
 sudo pacman -S git base-devel cmake gnuplot eigen boost blas lapack yay
-yay -S coin-or-ipopt colpack adol-c
+yay -S coin-or-ipopt colpack cppad
 ```
 
 
@@ -373,7 +314,6 @@ Download and install MacPorts from https://www.macports.org/install.php
 sudo port install cmake
 sudo port install eigen3
 sudo port install git
-sudo port install ADOL-C
 sudo port install gnuplot
 sudo port install pkgconfig
 sudo port install gcc15        # provides gfortran (/opt/local/bin/gfortran-mp-15)
@@ -384,8 +324,7 @@ Notes:
 - `gcc15` is needed only for its Fortran compiler, `gfortran`, which is required to compile
   MUMPS. It installs as `/opt/local/bin/gfortran-mp-15`. If you install a different GCC
   version, adjust the `-mp-NN` suffix accordingly in step 3.
-- `ADOL-C` pulls in `ColPack` automatically. C and C++ are compiled with Apple's `clang`
-  (from the Xcode Command Line Tools), so no GCC C/C++ compiler is required.
+
 
 _3. Build IPOPT + MUMPS (sequential) with coinbrew_
 
@@ -400,6 +339,23 @@ export FC=/opt/local/bin/gfortran-mp-15
 
 ./coinbrew build Ipopt --prefix=$HOME/coin/dist --no-prompt \
       ADD_FFLAGS=-fallow-argument-mismatch
+```
+
+_4. Build CppAD_
+
+```
+git clone https://github.com/coin-or/CppAD.git cppad.git
+cd cppad.git
+mkdir build && cd build
+cmake -D cppad_prefix=/usr/local ..
+make
+sudo make install
+```
+That installs headers to /usr/local/include/cppad/ and the library to /usr/local/lib/, both of which PSOPT's CMake finds on the default search path — no extra flags needed.
+
+If you install CppAD to a non-standard prefix, point PSOPT at it when configuring, e.g.:
+```
+export CPPAD_DIR=/your/prefix      # or: cmake -DCPPAD_INCLUDE_DIR=... -DCPPAD_LIBRARY=...
 ```
 
 Why these settings matter:
@@ -517,7 +473,7 @@ The following are opportunities provided by the use of docker containers with PS
 
 -**Reproducible Environments:** A Docker container ensures PSOPT is run with the same OS libraries, compiler, and dependencies, eliminating configuration mismatches, regardless of the host OS.
 
--**Easier Setup:** Users avoid manually installing IPOPT, ADOL-C, COLPACK, EIGEN3, and other dependencies. A single docker build command spins up a ready-to-run PSOPT environment.
+-**Easier Setup:** Users avoid manually installing IPOPT, COLPACK, EIGEN3, and other dependencies. A single docker build command spins up a ready-to-run PSOPT environment.
 
 -**Continuous Integration (CI) Testing:** Automated pipelines (e.g. GitHub Actions) can pull and test PSOPT in a Docker image, allowing fast and consistent builds.
 
