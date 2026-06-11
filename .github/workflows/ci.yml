@@ -44,6 +44,34 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Mark workspace safe for git
+        # Fixes the "detected dubious ownership in repository" git error inside the
+        # container (the checked-out workspace is owned by a different uid than the
+        # job user). Without this, PSOPT's CMake git-describe fails and the version
+        # string falls back to a bare date.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Ensure CppAD is available
+        # ci.yml builds inside the pre-baked ghcr.io/psopt/psopt-ci image. Until that
+        # image is rebuilt (via publish_image.yml) to include CppAD, install it here so
+        # the AD backend is present regardless of image state. Once CppAD is baked into
+        # the image under /usr, this step detects it and becomes a fast no-op. CppAD is
+        # built from source (not the AUR) so libcppad_lib -- which PSOPT links -- is
+        # guaranteed present. Note: CppAD uses 'cppad_prefix', not CMAKE_INSTALL_PREFIX.
+        run: |
+          if [ -f /usr/include/cppad/cppad.hpp ] && \
+             find /usr/lib /usr/lib64 -name 'libcppad_lib.*' 2>/dev/null | grep -q .; then
+            echo "CppAD already present in image; skipping build."
+          else
+            echo "CppAD not found in image; building from source and installing to /usr."
+            git clone --depth 1 https://github.com/coin-or/CppAD.git /tmp/cppad-src
+            cd /tmp/cppad-src && mkdir build && cd build
+            cmake -D cppad_prefix=/usr ..
+            make -j"$(nproc)"
+            make install
+            cd / && rm -rf /tmp/cppad-src
+          fi
+
       - name: Configure
         run: |
           cmake -B build \
