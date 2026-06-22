@@ -410,23 +410,6 @@ _6. Run an example_
 cd build/examples/launch && ./launch
 ```
 
-_ Troubleshooting (issues seen on Apple Silicon)_
-
-- **`configure` aborts with "Provided package HSL ... does not contain MA27".** A stray
-  `coinhsl.pc` is on your pkg-config search path (HSL is optional for IPOPT — MUMPS is enough).
-  Locate it with `pkg-config --variable=pcfiledir coinhsl`, rename it (e.g. append `.disabled`),
-  and rebuild with an added `--reconfigure` flag.
-- **Build aborts at the `Java` unit test.** Harmless (Intel/x86_64 JVM). Finish with the manual
-  `make install` shown in step 3.
-- **An example segfaults immediately, and `otool -L .../launch` shows `libstdc++`.** This is the
-  C++ ABI mismatch: IPOPT was built with GCC. Rebuild it with `CC=/usr/bin/clang
-  CXX=/usr/bin/clang++` (remove `~/coinbrew/build/Ipopt` first to clear the cached configuration).
-- **An example crashes in `MPI_Init` / `libpmpi`.** PSOPT is still linking the MacPorts `ipopt`,
-  not your build. Check `otool -L` and ensure `PKG_CONFIG_PATH` points at
-  `~/coin/dist/lib/pkgconfig` first, then `rm -rf build` and reconfigure.
-
-
-
 
 **Building and Installing PSOPT**
 
