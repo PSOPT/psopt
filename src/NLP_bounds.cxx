@@ -207,6 +207,13 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 	}
 
 
+        // Radau: terminal-control interpolation pin constraints are equalities (=0).
+        if ( algorithm->collocation_method == "Radau" ) {
+            int ncontrols = problem->phase[i].ncontrols;
+            int pin_base  = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+            for (int l2=0; l2<ncontrols; l2++) { g_l[pin_base+l2] = 0.0; g_u[pin_base+l2] = 0.0; }
+        }
+
         lam_phase_offset += ncons_phase_i;
 
         // Bounds for t0 <= tf constraint

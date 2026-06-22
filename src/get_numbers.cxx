@@ -138,6 +138,8 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
 
        nlp_ncons += npath*(max_nodes);
 
+       if ( algorithm.collocation_method == "Radau" ) nlp_ncons += problem.phase[i].ncontrols;
+
 
 
    }
@@ -241,6 +243,10 @@ int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
 
         if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
                     ncons_phase_i += npath*norder;
+        }
+
+        if ( workspace->algorithm->collocation_method == "Radau" ) {
+                    ncons_phase_i += problem.phase[i].ncontrols;  // terminal-control interpolation pin
         }
 
         return ncons_phase_i;

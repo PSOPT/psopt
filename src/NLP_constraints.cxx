@@ -189,7 +189,7 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 		           workspace->solution->mesh_stats[  workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals++;
 	         }
 
-            if (workspace->differential_defects != "Hermite-Simpson" && workspace->differential_defects != "trapezoidal"  ) {
+            if (workspace->differential_defects != "Hermite-Simpson" && workspace->differential_defects != "trapezoidal" && workspace->differential_defects != "Radau"  ) {
                 // Differentiation matrix based defects
 
                for (j=0; j<nstates; j++) {
@@ -199,6 +199,25 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
 		            if ( algorithm->scaling=="user" )
 				         gad[l] *=deriv_scaling(j);  // EIGEN_UPDATE
+               }
+
+            }
+            else if (workspace->differential_defects == "Radau") {
+                // Radau pseudospectral: rectangular differentiation matrix occupies the
+                // top norder rows of D (collocation defects); the terminal node (k==norder)
+                // is the non-collocated boundary -> zero-padded (free terminal state),
+                // exactly like the trapezoidal/Hermite-Simpson final row.
+               for (j=0; j<nstates; j++) {
+                     l = phase_offset+(k)*nstates+j;
+                     if (k != norder) {
+                         resid[j] = derivs_traj[(k)*nstates+j] - (tf-t0)/2.0*derivatives[j];
+                         gad[l] = resid[j];
+                         if ( algorithm->scaling=="user" )
+                                 gad[l] *= deriv_scaling(j);
+                     }
+                     else {
+                         gad[l] = 0.0;
+                     }
                }
 
             }
@@ -329,6 +348,25 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 		    }
 
    	}
+
+        // Radau: in-solve terminal-control interpolation pin. Pin the non-collocated
+        // terminal control U(norder) to the Lagrange interpolant of the collocation
+        // controls U(0..norder-1) at tau = +1, as ncontrols equality constraints placed
+        // just before the t0<=tf constraint (which stays the last slot of the phase block).
+        if ( workspace->differential_defects == "Radau" ) {
+            int ncontrols = problem->phase[i].ncontrols;
+            int pin_base  = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+            MatrixXd& sn  = workspace->snodes[i];
+            double xe = sn(norder);                                 // terminal node, tau = +1
+            get_controls(controls, xad, iphase, norder, workspace); // terminal control
+            for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] = controls[l2];
+            for (int m=0; m<norder; m++) {                          // subtract interpolant
+                double Lwm = 1.0;
+                for (int jj=0; jj<norder; jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
+                get_controls(controls, xad, iphase, m, workspace);
+                for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] -= Lwm*controls[l2];
+            }
+        }
 
         // Add tf >= t0 constraint [ t0MIN-tfMAX <= t0-tf <= 0 ]
 

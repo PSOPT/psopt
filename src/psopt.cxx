@@ -155,6 +155,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
              workspace->differential_defects = "Hermite-Simpson";
     }
 
+    else if (algorithm.collocation_method == "Radau") {
+             workspace->differential_defects = "Radau";
+    }
+
     else if (use_global_collocation(algorithm)) {
           if (algorithm.diff_matrix=="standard") {
              workspace->differential_defects = "standard";
@@ -298,6 +302,20 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     }
 
+    else if ( algorithm.collocation_method == "Radau" ) {
+
+	    for(i=0; i<nphases; i++)
+    	    {
+                // Radau nodes/weights and rectangular differentiation matrix.
+                // snodes are returned ascending (N collocation pts incl. -1, then the
+                // terminal +1), so NO sort_vector / rearrange_vector is applied here:
+                // unlike lglnodes (descending output), the ordering is already correct
+                // and D's rows are aligned to it.
+        	lgr_nodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i] );
+            }
+
+    }
+
     else if ( ( use_local_collocation(algorithm) && (iter_nodes==1)) || (use_local_collocation(algorithm) && (iter_nodes>1) && (algorithm.mesh_refinement=="manual") )  ) {
 
 	    for(i=0; i<nphases; i++)
@@ -377,6 +395,29 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     copy_decision_variables(solution, x0, problem, algorithm, workspace);
 
+    // Radau: the terminal node is non-collocated and carries no optimised control.
+    // Pin the reported terminal control to the Lagrange interpolant of the collocation
+    // controls evaluated at tau = +1 (the terminal node).
+    if ( algorithm.collocation_method == "Radau" ) {
+        for(int ip=0; ip<nphases; ip++) {
+            int ncontrols = problem.phase[ip].ncontrols;
+            int norder    = problem.phase[ip].current_number_of_intervals;
+            MatrixXd& sn  = workspace->snodes[ip];
+            double xe = sn(norder);                       // terminal node, tau = +1
+            MatrixXd Lw(norder,1);
+            for(int m=0;m<norder;m++) {                   // Lagrange weights at xe over the
+                double wL = 1.0;                          // norder collocation nodes sn(0..norder-1)
+                for(int j=0;j<norder;j++) if(j!=m) wL *= (xe - sn(j))/(sn(m)-sn(j));
+                Lw(m) = wL;
+            }
+            for(int l=0;l<ncontrols;l++) {
+                double val = 0.0;
+                for(int m=0;m<norder;m++) val += Lw(m)*(solution.controls[ip])(l,m);
+                (solution.controls[ip])(l,norder) = val;
+            }
+        }
+    }
+
     solution.cost = ff_num(x0, workspace)/problem.scale.objective;
 
     snprintf(workspace->text,sizeof(workspace->text),"\nReturned (unscaled) cost function value: %e", solution.cost);
@@ -421,6 +462,19 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	    		}
 	     }	
 
+	     if ( algorithm.collocation_method=="Radau" ) {
+	    		// Radau covector mapping. Sign confirmed in-situ against an analytic adjoint
+	    		// (scalar LQR, lambda(t)=sinh(T-t)/cosh(T)): in PSOPT's stored-dual convention
+	    		// the mapping is  lambda_k = + lambda_tilde_k / w_k  at collocation points
+	    		// k=0..norder-1 (same convention as Legendre). The terminal node (k=norder)
+	    		// is the non-collocated boundary; its costate is carried by the boundary
+	    		// multiplier (0 by transversality for a free terminal). w[i](norder)=0, so the
+	    		// terminal column is deliberately not divided.
+	    		for(k=0;k<norder;k++) {
+                   (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);
+	    		}
+	     }
+
 		  if (use_local_collocation(algorithm)) {
         		for(k=0;k<norder;k++) { // EIGEN_UPDATE: Index k shifted to start at 0
 	         // For local collocation, this is an estimate of the costate.
@@ -457,6 +511,21 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
           	solution.dual.costates[i] = solution.dual.costates[i].cwiseProduct((*workspace->constraint_scaling).block(lam_phase_offset,0, nstates*(norder+1),1) );
 	  			solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1);
    	  }
+
+	  // Radau: recover the terminal (non-collocated) costate by Lagrange extrapolation of
+	  // the physical collocation costates to tau = +1. Scaling-robust (a pure function of the
+	  // already-scaled collocation costates) and reuses the terminal-control-pin weights.
+	  if ( algorithm.collocation_method=="Radau" ) {
+	      MatrixXd& sn = workspace->snodes[i];
+	      double xe = sn(norder);
+	      for (int r=0;r<nstates;r++) (solution.dual.costates[i])(r,norder) = 0.0;
+	      for (int m=0;m<norder;m++) {
+	          double Lwm = 1.0;
+	          for (int jj=0;jj<norder;jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
+	          for (int r=0;r<nstates;r++)
+	              (solution.dual.costates[i])(r,norder) += Lwm * (solution.dual.costates[i])(r,m);
+	      }
+	  }
 
    	  if ( algorithm.collocation_method == "Chebyshev") {
                 // use linear extrapolation to approximate costate values at both ends (not perfect but better than nothing)
