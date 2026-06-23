@@ -128,6 +128,8 @@ public:
   MatrixXd* path;
   MatrixXd* events;
   MatrixXd* linkages;
+  MatrixXd* terminal_costates;   // Gauss: lambda(+1), the non-collocated terminal costate
+                                 // recovered from the quadrature-constraint multiplier.
 
   dual_str()
   {
@@ -136,6 +138,7 @@ public:
     path = NULL;
     events = NULL;
     linkages = NULL;
+    terminal_costates = NULL;
   }
 
   ~dual_str()
@@ -145,6 +148,7 @@ public:
     if (path) delete [] path;
     if (events) delete [] events;
     if (linkages) delete linkages;
+    if (terminal_costates) delete [] terminal_costates;
   }
 };
 
@@ -462,6 +466,7 @@ public:
    MatrixXd& get_time_in_phase(int iphase);
    MatrixXd& get_parameters_in_phase(int iphase);
    MatrixXd& get_dual_costates_in_phase(int iphase);
+   MatrixXd& get_dual_terminal_costate_in_phase(int iphase);
    MatrixXd& get_dual_hamiltonian_in_phase(int iphase);
    MatrixXd& get_dual_path_in_phase(int iphase);
    MatrixXd& get_dual_events_in_phase(int iphase);
@@ -712,6 +717,14 @@ void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace
 void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspace* workspace);
 
 void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspace);
+
+// Legendre-Gauss-Radau / Legendre-Gauss generators (rectangular collocation on the
+// existing square (norder+1) scaffold; see src/pseudospectral_rg.cxx).
+void lgr_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
+void lg_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
+
+// Accessor for the Gauss appended terminal-state variable (see get_variables.cxx).
+void get_gauss_terminal_states(adouble* states, adouble* xad, int iphase, Workspace* workspace);
 
 void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& algorithm, Workspace* workspace);
 

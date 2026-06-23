@@ -189,7 +189,7 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 		           workspace->solution->mesh_stats[  workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals++;
 	         }
 
-            if (workspace->differential_defects != "Hermite-Simpson" && workspace->differential_defects != "trapezoidal" && workspace->differential_defects != "Radau"  ) {
+            if (workspace->differential_defects != "Hermite-Simpson" && workspace->differential_defects != "trapezoidal" && workspace->differential_defects != "Radau" && workspace->differential_defects != "Gauss"  ) {
                 // Differentiation matrix based defects
 
                for (j=0; j<nstates; j++) {
@@ -210,6 +210,25 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                for (j=0; j<nstates; j++) {
                      l = phase_offset+(k)*nstates+j;
                      if (k != norder) {
+                         resid[j] = derivs_traj[(k)*nstates+j] - (tf-t0)/2.0*derivatives[j];
+                         gad[l] = resid[j];
+                         if ( algorithm->scaling=="user" )
+                                 gad[l] *= deriv_scaling(j);
+                     }
+                     else {
+                         gad[l] = 0.0;
+                     }
+               }
+
+            }
+            else if (workspace->differential_defects == "Gauss") {
+                // Legendre-Gauss pseudospectral: collocation defects at the N Gauss points
+                // (rows 1..norder); the initial node (k==0) is the non-collocated boundary
+                // -> zero-padded. The terminal state is a separate appended variable defined
+                // by the Gauss-quadrature constraint (added after this loop).
+               for (j=0; j<nstates; j++) {
+                     l = phase_offset+(k)*nstates+j;
+                     if (k != 0) {
                          resid[j] = derivs_traj[(k)*nstates+j] - (tf-t0)/2.0*derivatives[j];
                          gad[l] = resid[j];
                          if ( algorithm->scaling=="user" )
@@ -335,6 +354,11 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
 	offset = phase_offset+nstates*(norder+1);
 
+   // Gauss: final_states is the appended terminal-state variable, not the last stored node.
+   if ( workspace->differential_defects == "Gauss" ) {
+       get_gauss_terminal_states(final_states, xad, iphase, workspace);
+   }
+
    problem->events(events, initial_states, final_states, parameters, t0, tf, xad, iphase,workspace);
 
 
@@ -365,6 +389,23 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                 for (int jj=0; jj<norder; jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
                 get_controls(controls, xad, iphase, m, workspace);
                 for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] -= Lwm*controls[l2];
+            }
+        }
+
+        // Gauss: terminal-state defining (quadrature) constraint
+        //   x_f - x_0 - (tf-t0)/2 * sum_{k=1}^{norder} w_k f_k = 0     (nstates equalities)
+        // placed just before the t0<=tf constraint. final_states already holds x_f.
+        if ( workspace->differential_defects == "Gauss" ) {
+            int quad_base = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+            get_states(states, xad, iphase, 0, workspace);               // x_0 (initial node)
+            for (j=0; j<nstates; j++) gad[quad_base+j] = final_states[j] - states[j];
+            for (k=1; k<=norder; k++) {                                  // - (tf-t0)/2 sum w_k f_k
+                adouble tk = convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
+                get_states(states, xad, iphase, k, workspace);
+                get_controls(controls, xad, iphase, k, workspace);
+                problem->dae(derivatives, path, states, controls, parameters, tk, xad, iphase, workspace);
+                double wk = (workspace->w[i])(k);
+                for (j=0; j<nstates; j++) gad[quad_base+j] -= (tf-t0)/2.0 * wk * derivatives[j];
             }
         }
 

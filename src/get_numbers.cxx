@@ -73,6 +73,9 @@ int get_number_nlp_vars(Prob& problem, Workspace* workspace)
         if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
             nlp_vars += (ncontrols)*(nodes);
         }
+        if ( workspace->algorithm->collocation_method == "Gauss" ) {
+            nlp_vars += nstates;   // appended terminal-state variable (before t0,tf)
+        }
    }
 
    return nlp_vars;
@@ -92,6 +95,7 @@ int get_max_number_nlp_vars(Prob& problem, Alg& algorithm)
    	int    max_nodes = get_max_nodes( problem, i+1, &algorithm );
       	nlp_vars += (ncontrols+nstates)*(max_nodes+1)+nparam+2;
         nlp_vars += (ncontrols)*(max_nodes);
+        if ( algorithm.collocation_method == "Gauss" ) nlp_vars += nstates;
 
    }
 
@@ -139,6 +143,7 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
        nlp_ncons += npath*(max_nodes);
 
        if ( algorithm.collocation_method == "Radau" ) nlp_ncons += problem.phase[i].ncontrols;
+       if ( algorithm.collocation_method == "Gauss" ) nlp_ncons += problem.phase[i].nstates;
 
 
 
@@ -226,6 +231,10 @@ int get_nvars_phase_i(Prob& problem, int i, Workspace* workspace)
                     nvars_phase_i += ncontrols*norder;
         }
 
+        if ( workspace->algorithm->collocation_method == "Gauss" ) {
+                    nvars_phase_i += nstates;   // appended terminal-state variable (before t0,tf)
+        }
+
         nvars_phase_i += 2;
 
         return nvars_phase_i;
@@ -247,6 +256,10 @@ int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
 
         if ( workspace->algorithm->collocation_method == "Radau" ) {
                     ncons_phase_i += problem.phase[i].ncontrols;  // terminal-control interpolation pin
+        }
+
+        if ( workspace->algorithm->collocation_method == "Gauss" ) {
+                    ncons_phase_i += problem.phase[i].nstates;    // Gauss-quadrature terminal-state defining constraint
         }
 
         return ncons_phase_i;

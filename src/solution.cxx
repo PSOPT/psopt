@@ -72,6 +72,13 @@ MatrixXd& Sol::get_dual_costates_in_phase(int iphase)
      return dual.costates[iphase-1];
 }
 
+MatrixXd& Sol::get_dual_terminal_costate_in_phase(int iphase)
+{
+     if (iphase <1 || iphase > problem->nphases)
+          error_message("incorrect phase index in Sol::get_dual_terminal_costate_in_phase()");
+     return dual.terminal_costates[iphase-1];
+}
+
 MatrixXd& Sol::get_dual_hamiltonian_in_phase(int iphase)
 {
      if (iphase <1 || iphase > problem->nphases)
@@ -122,6 +129,7 @@ void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace
    solution.dual.path     = new MatrixXd[nphases];         
    solution.dual.events   = new MatrixXd[nphases];         
    solution.dual.Hamiltonian = new MatrixXd[nphases];      
+   solution.dual.terminal_costates = new MatrixXd[nphases];
    solution.dual.linkages    = new MatrixXd;               
    solution.endpoint_cost    = new double[nphases];
    solution.integrated_cost  = new double[nphases];

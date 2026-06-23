@@ -159,6 +159,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
              workspace->differential_defects = "Radau";
     }
 
+    else if (algorithm.collocation_method == "Gauss") {
+             workspace->differential_defects = "Gauss";
+    }
+
     else if (use_global_collocation(algorithm)) {
           if (algorithm.diff_matrix=="standard") {
              workspace->differential_defects = "standard";
@@ -312,6 +316,19 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 // unlike lglnodes (descending output), the ordering is already correct
                 // and D's rows are aligned to it.
         	lgr_nodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i] );
+            }
+
+    }
+
+    else if ( algorithm.collocation_method == "Gauss" ) {
+
+	    for(i=0; i<nphases; i++)
+    	    {
+                // Legendre-Gauss nodes/weights and rectangular differentiation matrix.
+                // snodes are returned ascending: { -1 (initial, non-collocated), N Gauss
+                // points }. Collocation is at rows 1..norder; row 0 (initial) is zero.
+                // No sort_vector / rearrange_vector (ordering already correct).
+        	lg_nodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i] );
             }
 
     }
@@ -471,6 +488,19 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	    		// multiplier (0 by transversality for a free terminal). w[i](norder)=0, so the
 	    		// terminal column is deliberately not divided.
 	    		for(k=0;k<norder;k++) {
+                   (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);
+	    		}
+	     }
+
+	     if ( algorithm.collocation_method=="Gauss" ) {
+	    		// Legendre-Gauss covector mapping (Benson canonical / Option 1).
+	    		// Collocation is at the N interior Gauss points, stored in columns
+	    		// 1..norder; column 0 (tau=-1) is the non-collocated initial node and
+	    		// carries no defect (its row was zero-padded), so it is not divided here.
+	    		// Interior mapping is the standard transformed-adjoint form lambda_k =
+	    		// + lambda_tilde_k / w_k (same convention as Legendre/Radau). The two
+	    		// boundary costates are recovered separately below.
+	    		for(k=1;k<=norder;k++) {
                    (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);
 	    		}
 	     }
@@ -686,12 +716,60 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
          }
 
 
-		offset = lam_phase_offset+1+nstates*(norder+1);
+		// Event (and, below, path) multipliers are gg_ad-aligned: the events block
+		// begins immediately after the nstates*(norder+1) differential-defect multipliers,
+		// at lam_phase_offset + nstates*(norder+1). (A previous +1 here skipped event 0 and
+		// over-read into the constraint following the events block -- the t0-tf constraint
+		// for Legendre/Chebyshev, the terminal-control pin for Radau, or the terminal-state
+		// quadrature constraint for Gauss.)
+		offset = lam_phase_offset+nstates*(norder+1);
 	
 		if (   algorithm.nlp_method == "IPOPT"   ) {
 	                solution.dual.costates[i] = -solution.dual.costates[i];
 	    }
 	
+
+		// Gauss (Legendre-Gauss / Benson Option 1) boundary costate recovery.
+		// The raw interior mapping lambda_k = lambda_tilde_k/w_k recovers the costate
+		// RELATIVE to the terminal costate: confirmed in-situ against the analytic LQR
+		// adjoint, it equals lambda_exact(t_k) - lambda_f, where lambda_f = lambda(+1) is
+		// the multiplier of the Gauss-quadrature constraint that defines the appended
+		// terminal-state variable x_f. Adding lambda_f back yields the physical interior
+		// costates; the non-collocated initial costate lambda(-1) is then recovered by
+		// Lagrange extrapolation of the corrected interior costates to tau=-1 (the mirror
+		// of the Radau terminal-costate pin). lambda_f is pushed through the identical
+		// scaling/sign pipeline as the defect costates so it lands in the same physical
+		// units as solution.dual.costates after the IPOPT flip above.
+		if ( algorithm.collocation_method=="Gauss" ) {
+		    int quad = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+		    MatrixXd lamf(nstates,1);
+		    for (int j=0;j<nstates;j++) {
+		        double v = lambda(quad+j);
+		        if ( algorithm.scaling=="user" )      v *= deriv_scaling(j);
+		        v /= problem.scale.objective;
+		        if ( algorithm.scaling=="automatic" ) v *= (*workspace->constraint_scaling)(quad+j);
+		        if ( algorithm.nlp_method=="IPOPT" )  v = -v;
+		        lamf(j) = v;
+		    }
+		    // (1) undo the constant shift on the interior Gauss columns 1..norder
+		    for (k=1;k<=norder;k++)
+		        (solution.dual.costates[i]).block(0,k,nstates,1) += lamf;
+		    // (2) initial costate (column 0, tau=-1) by Lagrange extrapolation of the
+		    //     corrected interior costates over the Gauss nodes snodes(1..norder).
+		    {
+		        MatrixXd& sn = workspace->snodes[i];
+		        double xe = sn(0);                          // tau = -1
+		        for (int r=0;r<nstates;r++) (solution.dual.costates[i])(r,0) = 0.0;
+		        for (int m=1;m<=norder;m++) {
+		            double Lwm = 1.0;
+		            for (int jj=1;jj<=norder;jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
+		            for (int r=0;r<nstates;r++)
+		                (solution.dual.costates[i])(r,0) += Lwm * (solution.dual.costates[i])(r,m);
+		        }
+		    }
+		    workspace->prev_costates[i] = solution.dual.costates[i]; // keep hot-start consistent
+		    solution.dual.terminal_costates[i] = lamf;              // lambda(+1) for reporting
+		}
 
 		solution.dual.events[i]  = -lambda.block(offset,0,nevents,1);
 		workspace->dual_events[i] = -(solution.dual.events[i]);

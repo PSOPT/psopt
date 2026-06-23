@@ -189,6 +189,11 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
 	  }
        }
 
+       if ( workspace->algorithm->collocation_method == "Gauss" ) {
+            // Gauss appended terminal-state variable: guess = terminal stored-state guess.
+            x0.block(x_phase_offset+offset2+nparam, 0, nstates, 1) = elemProduct((solution.states[i]).col(norder), state_scaling);
+       }
+
         x_phase_offset += nvars_phase_i;
 
   }

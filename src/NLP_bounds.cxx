@@ -112,6 +112,13 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
 	   }
         }
 
+        // Gauss: appended terminal-state variable takes the state bounds.
+        if ( algorithm.collocation_method == "Gauss" ) {
+            int xf_off = (nstates+ncontrols)*(norder+1) + nparam;
+            xlb.block(x_phase_offset+xf_off,0,nstates,1) = elemProduct((problem.phase[i].bounds.lower.states),state_scaling);
+            xub.block(x_phase_offset+xf_off,0,nstates,1) = elemProduct((problem.phase[i].bounds.upper.states),state_scaling);
+        }
+
 	xlb(x_phase_offset+nvars_phase_i-2)   = problem.phase[i].bounds.lower.StartTime*time_scaling; //EIGEN_UPDATE
 	xub(x_phase_offset+nvars_phase_i-2)   = problem.phase[i].bounds.upper.StartTime*time_scaling; //EIGEN_UPDATE
 
@@ -212,6 +219,12 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
             int ncontrols = problem->phase[i].ncontrols;
             int pin_base  = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
             for (int l2=0; l2<ncontrols; l2++) { g_l[pin_base+l2] = 0.0; g_u[pin_base+l2] = 0.0; }
+        }
+
+        // Gauss: terminal-state quadrature defining constraints are equalities (=0).
+        if ( algorithm->collocation_method == "Gauss" ) {
+            int quad_base = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+            for (int l2=0; l2<nstates; l2++) { g_l[quad_base+l2] = 0.0; g_u[quad_base+l2] = 0.0; }
         }
 
         lam_phase_offset += ncons_phase_i;

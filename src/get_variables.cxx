@@ -117,9 +117,32 @@ void get_states(adouble* states, adouble* xad, int iphase, int k, Workspace* wor
 
 }
 
+// Gauss: the terminal state x(t_f) is an explicit decision variable appended at the
+// end of the phase's variable block (after parameters, before t0,tf), defined by the
+// Gauss-quadrature constraint. This accessor reads it; centralising the offset here
+// keeps the Gauss layout knowledge in one place.
+void get_gauss_terminal_states(adouble* states, adouble* xad, int iphase, Workspace* workspace)
+{
+        int i = iphase-1;
+        Prob& problem = *workspace->problem;
+        MatrixXd& state_scaling = problem.phase[i].scale.states;
+        int iphase_offset = get_iphase_offset(problem, iphase, workspace);
+        int norder    = problem.phase[i].current_number_of_intervals;
+        int ncontrols = problem.phase[i].ncontrols;
+        int nstates   = problem.phase[i].nstates;
+        int nparam    = problem.phase[i].nparameters;
+        int xf_offset = (nstates+ncontrols)*(norder+1) + nparam;
+        for (int j=0;j<nstates;j++)
+            states[j] = xad[iphase_offset + xf_offset + j]/state_scaling(j);
+}
+
 void get_final_states(adouble* states, adouble* xad, int iphase, Workspace* workspace)
 {
         Prob& problem = *workspace->problem;
+        if ( workspace->algorithm->collocation_method == "Gauss" ) {
+            get_gauss_terminal_states(states, xad, iphase, workspace);
+            return;
+        }
         int k = problem.phase[iphase-1].current_number_of_intervals;
         get_states(states, xad, iphase, k, workspace);
 }
@@ -181,7 +204,6 @@ void get_times(adouble *t0, adouble *tf, adouble* xad, int iphase, Workspace* wo
 
 	     *t0  = xad[iphase_offset + nvars_phase_i-2]/time_scaling;
 	     *tf  = xad[iphase_offset + nvars_phase_i-1]/time_scaling;
-
 }
 
 adouble get_initial_time(adouble* xad, int iphase, Workspace* workspace)
