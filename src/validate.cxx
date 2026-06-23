@@ -45,6 +45,30 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("Incorrect collocation method specified. Valid options are \"Legendre\" , \"Chebyshev\", \"trapezoidal\", \"Hermite-Simpson\", \"Radau\", and \"Gauss\" ");
     if (algorithm.scaling != "automatic" && algorithm.scaling!="user")
        error_message("Incorrect scaling option specified. Valid options are \"automatic\" and \"user\" ");
+    if (algorithm.transcription_method != "collocation" && algorithm.transcription_method != "integrated-residual")
+       error_message("Incorrect transcription_method specified. Valid options are \"collocation\" and \"integrated-residual\" ");
+    if (algorithm.transcription_method == "integrated-residual") {
+       if (algorithm.collocation_method != "Hermite-Simpson")
+          error_message("integrated-residual transcription currently requires collocation_method = \"Hermite-Simpson\" ");
+       if (algorithm.ir_residual_nodes < 2)
+          error_message("algorithm.ir_residual_nodes must be >= 2 for integrated-residual transcription ");
+    }
+    if (algorithm.ir_objective != "residual" && algorithm.ir_objective != "cost")
+       error_message("Incorrect ir_objective specified. Valid options are \"residual\" and \"cost\" ");
+    if (algorithm.ir_objective == "cost") {
+       if (algorithm.transcription_method != "integrated-residual")
+          error_message("ir_objective=\"cost\" requires transcription_method=\"integrated-residual\" (DAIR optimality step) ");
+       if (algorithm.ir_regularization <= 0.0)
+          error_message("ir_objective=\"cost\" requires ir_regularization>0 (the residual penalty enforces the dynamics) ");
+    }
+    if (algorithm.ir_regularization < 0.0)
+       error_message("algorithm.ir_regularization must be >= 0 ");
+    if (algorithm.ir_regularization > 0.0) {
+       if (algorithm.collocation_method != "Hermite-Simpson")
+          error_message("integrated-residual regularization (ir_regularization>0) currently requires collocation_method = \"Hermite-Simpson\" ");
+       if (algorithm.ir_residual_nodes < 2)
+          error_message("algorithm.ir_residual_nodes must be >= 2 when ir_regularization>0 ");
+    }
     if (algorithm.defect_scaling != "state-based" && algorithm.defect_scaling!="jacobian-based")
        error_message("Incorrect differential defect scaling option specified. Valid options are \"state-based\" and \"jacobian-based\" ");
     if (algorithm.derivatives != "automatic" && algorithm.derivatives!="numerical")

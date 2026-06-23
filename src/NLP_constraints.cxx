@@ -272,6 +272,18 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
             }
             else if (workspace->differential_defects == "Hermite-Simpson") {
+              if ( workspace->transcription_method == "integrated-residual" ) {
+                  // Integrated-residual transcription: the dynamics are enforced via the
+                  // integrated-residual objective (see ff_ad), not by collocation defects.
+                  // Keep the defect rows but zero them (same zero-padding convention as the
+                  // final HS/Radau/Gauss row) so the constraint layout, bounds and the
+                  // event/path/costate offsets are completely undisturbed.
+                  for (j=0; j<nstates; j++) {
+                      l = phase_offset+(k)*nstates+j;
+                      gad[l] = 0.0;
+                  }
+              }
+              else
               // Hermite Simpson defects
               if (k!=(norder)) { // EIGEN_UPDATE
                     adouble* states_next      = workspace->states_next[i].get();

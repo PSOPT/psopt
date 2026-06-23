@@ -192,6 +192,17 @@ struct alg_str {
   string    constraint_scaling;
   string    ps_method;
   string    collocation_method;
+  string    transcription_method;   // "collocation" (default) or "integrated-residual"
+  int       ir_residual_nodes;      // Gauss-Legendre residual-quadrature points per interval
+                                    // (integrated-residual transcription; default 4)
+  double    ir_regularization;      // weight rho on integral(||xdot-f||^2) added to the
+                                    // objective under collocation (increment 2); default 0
+                                    // (rho=0 -> standard collocation, unchanged)
+  string    ir_objective;           // for transcription_method=="integrated-residual":
+                                    // "residual" (default) minimises integral(||xdot-f||^2)
+                                    // [DAIR feasibility step / increment 1]; "cost"
+                                    // minimises the user cost J + rho*R with defects
+                                    // dropped [DAIR optimality step / increment 3]
   string    hessian;
   string    defect_scaling;
   string    diff_matrix;
@@ -666,6 +677,10 @@ public:
    bool       auto_linked_flag;
    bool       enable_nlp_counters;
    string     differential_defects;
+   string     transcription_method;   // mirrors algorithm.transcription_method
+   MatrixXd   ir_nodes;               // residual-grid Gauss-Legendre nodes on [0,1]
+   MatrixXd   ir_weights;             // residual-grid weights on [0,1] (sum to 1)
+   int        ir_m;                   // number of residual nodes per interval
    clock_t    start_ticks;
 
 // tape tags to be used by ADOL_C
@@ -722,6 +737,7 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
 // existing square (norder+1) scaffold; see src/pseudospectral_rg.cxx).
 void lgr_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
 void lg_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
+void gauss_legendre_unit(int m, MatrixXd& nodes01, MatrixXd& w01);  // m GL nodes/weights on [0,1]
 
 // Accessor for the Gauss appended terminal-state variable (see get_variables.cxx).
 void get_gauss_terminal_states(adouble* states, adouble* xad, int iphase, Workspace* workspace);

@@ -124,6 +124,53 @@ void lgr_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D)
 //   w  : (N+1) x 1 weights, w(0) = 0 (initial node carries no Gauss weight).
 //   D  : (N+1) x (N+1); rows 1..N = rectangular collocation matrix, row 0 zero.
 // ---------------------------------------------------------------------------
+// Pure m-point Gauss-Legendre nodes and weights mapped to the unit interval [0,1].
+// Used by the integrated-residual transcription to integrate ||r||^2 over each mesh
+// interval at points distinct from the collocation knots (where the representing
+// polynomial makes the residual vanish by construction). The Newton iteration is the
+// same one validated in lg_nodes; here we return only the m interior nodes/weights,
+// rescaled so that sum(w01) = 1 (i.e. integral_0^1 g dtau ~ sum_j w01_j g(tau_j)).
+void gauss_legendre_unit(int m, MatrixXd& nodes01, MatrixXd& w01)
+{
+    const int Kc = m;
+    const int n  = Kc - 1;
+    const int N2 = Kc + 1;
+    MatrixXd y(Kc,1), y0(Kc,1), Lp(Kc,1), L(Kc, N2+1), wc(Kc,1);
+
+    for (int i = 0; i < Kc; ++i) {
+        double xu = (Kc>1) ? (-1.0 + 2.0*i/(double)(Kc-1)) : 0.0;
+        y(i) = std::cos((2.0*i + 1.0)*PSOPT_PI/(2.0*n + 2.0))
+             + (0.27/Kc)*std::sin(PSOPT_PI*xu*n/(double)N2);
+    }
+    y0.setConstant(2.0);
+    int iter = 0;
+    while ((y - y0).cwiseAbs().maxCoeff() > 1e-15 && iter++ < 100) {
+        L.col(0).setOnes();
+        L.col(1) = y;
+        for (int k = 2; k <= Kc; ++k)
+            L.col(k) = ((2.0*k - 1.0)*y.cwiseProduct(L.col(k-1)) - (k - 1.0)*L.col(k-2)) / (double)k;
+        for (int i = 0; i < Kc; ++i)
+            Lp(i) = N2*(L(i, Kc-1) - y(i)*L(i, N2-1)) / (1.0 - y(i)*y(i));
+        y0 = y;
+        for (int i = 0; i < Kc; ++i) y(i) = y0(i) - L(i, N2-1)/Lp(i);
+    }
+    for (int i = 0; i < Kc; ++i)
+        wc(i) = 2.0/((1.0 - y(i)*y(i))*Lp(i)*Lp(i)) * std::pow((double)N2/Kc, 2.0);
+
+    // ascending sort
+    for (int i = 0; i < Kc; ++i)
+        for (int j = i+1; j < Kc; ++j)
+            if (y(j) < y(i)) { std::swap(y(i), y(j)); std::swap(wc(i), wc(j)); }
+
+    // map (-1,1) -> (0,1):  tau = (xi+1)/2,  w01 = wc/2
+    nodes01.resize(Kc,1);
+    w01.resize(Kc,1);
+    for (int i = 0; i < Kc; ++i) {
+        nodes01(i) = 0.5*(y(i) + 1.0);
+        w01(i)     = 0.5*wc(i);
+    }
+}
+
 void lg_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D)
 {
     const int Kc = N;             // interior Gauss collocation points

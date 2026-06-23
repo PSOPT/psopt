@@ -143,6 +143,10 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.hess_sparsity_ratio 	       = 0.2;
   algorithm.hessian                     = "limited-memory";
   algorithm.collocation_method          = "Legendre";
+  algorithm.transcription_method        = "collocation";
+  algorithm.ir_residual_nodes           = 4;
+  algorithm.ir_regularization           = 0.0;
+  algorithm.ir_objective                = "residual";
   algorithm.diff_matrix                 = "standard";
   algorithm.ipopt_linear_solver         = "mumps";
   algorithm.print_level                 = 1;

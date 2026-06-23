@@ -160,9 +160,21 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 
         int ncons_phase_i = get_ncons_phase_i(*problem,i, workspace);
 	// lower and upper bounds on g(x)
+	if ( workspace->transcription_method == "integrated-residual" ) {
+		// The (zeroed) defect rows carry no dynamics under integrated-residual
+		// transcription; make them non-binding range constraints so the active-set
+		// Jacobian is not rank-deficient (degenerate 0=0 equalities break IPOPT's
+		// multiplier computation). Dynamics are enforced by the IR objective instead.
+		for (k=0;k<nstates*(norder+1);k++) {
+			g_l[lam_phase_offset+k] = -1.0e20;
+			g_u[lam_phase_offset+k] =  1.0e20;
+		}
+	}
+	else {
 	for (k=0;k<nstates*(norder+1);k++) {
 		g_l[lam_phase_offset+k] = 0.0;
 		g_u[lam_phase_offset+k] = 0.0;
+	}
 	}
 
 	offset = lam_phase_offset+nstates*(norder+1);

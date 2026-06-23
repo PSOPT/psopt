@@ -179,6 +179,20 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 
 
+    // Integrated-residual machinery: record the mode and build the per-interval
+    // Gauss-Legendre residual grid once (shared across phases and intervals). The grid is
+    // needed both by the integrated-residual transcription (increment 1) and by
+    // integrated-residual regularisation (increment 2, ir_regularization>0 under collocation).
+    workspace->transcription_method = algorithm.transcription_method;
+    if ( algorithm.transcription_method == "integrated-residual"
+         || algorithm.ir_regularization > 0.0 ) {
+        workspace->ir_m = algorithm.ir_residual_nodes;
+        gauss_legendre_unit(workspace->ir_m, workspace->ir_nodes, workspace->ir_weights);
+    }
+    else {
+        workspace->ir_m = 0;
+    }
+
     if (algorithm.mesh_refinement == "manual" )
     {
 			for (i=0; i<nphases; i++)
