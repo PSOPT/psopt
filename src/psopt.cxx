@@ -36,6 +36,157 @@ e-mail:    v.m.becerra@ieee.org
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
 
+// ===========================================================================================
+// Robust-DAIR (Option B) adjoint costate recovery.
+//
+// For the residual-box solve the dynamics are imposed by the box |xdot-f| <= delta rather than
+// by defect equalities, so the defect multipliers are ~0 and carry no costate information (the
+// box inequality multipliers are sensitivities to delta, not the discrete adjoint, and were
+// found to be structurally unusable). The costates are instead recovered by post-processing:
+// integrate the adjoint
+//        lambda_dot = -( dL/dx + (df/dx)^T lambda )
+// backward along the recovered primal from the transversality boundary value
+//        lambda(tf) = dphi/dxf + sum_e nu_e de_e/dxf,
+// where phi is the Mayer cost, e the event vector and nu_e its multipliers (already recovered
+// for the box solve, since the box does not touch the event constraints). This single boundary
+// formula covers the free-terminal (dphi/dxf = 0, no terminal event -> lambda(tf)=0), Mayer
+// (dphi/dxf) and fixed-terminal (event xf - x_f = 0 -> lambda(tf) = dphi/dxf + nu) cases without
+// classifying them, and mixed events through de_e/dxf. All Jacobians (df/dx, dL/dx, dphi/dxf,
+// de_e/dxf) are formed by central finite differences on the user functions (self-contained, no
+// dependence on the AD constraint tape); the backward sweep is RK4 on a sub-grid per interval
+// with the primal x(t), u(t) linearly interpolated between nodes.
+// ===========================================================================================
+static void recover_costates_adjoint(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
+{
+    const double fd   = 1.0e-6;   // central-difference step
+    const int    Nsub = 20;       // RK4 sub-steps per mesh interval
+
+    for (int i=0; i<problem.nphases; i++) {
+        int iphase    = i+1;
+        int iph       = (problem.multi_segment_flag || workspace->auto_linked_flag) ? 1 : iphase;
+        int nstates   = problem.phase[i].nstates;
+        int ncontrols = problem.phase[i].ncontrols;
+        int nparam    = problem.phase[i].nparameters;
+        int nevents   = problem.phase[i].nevents;
+        int norder    = problem.phase[i].current_number_of_intervals;
+
+        adouble* st  = workspace->states[i].get();
+        adouble* ct  = workspace->controls[i].get();
+        adouble* pr  = workspace->parameters[iph-1].get();
+        adouble* dv  = workspace->derivatives[i].get();
+        adouble* pth = workspace->path[i].get();
+        for (int l=0;l<nparam;l++) pr[l] = (solution.parameters[i])(l);
+
+        double t0 = (solution.nodes[i])(0);
+        double tf = (solution.nodes[i])(norder);
+
+        // ---- point evaluators on the user functions (value extraction) ----
+        auto eval_f = [&](const double* x,const double* u,double t,double* fout){
+            for(int l=0;l<nstates;l++)   st[l]=x[l];
+            for(int l=0;l<ncontrols;l++) ct[l]=u[l];
+            adouble tt=t;
+            problem.dae(dv,pth,st,ct,pr,tt,solution.xad,iphase,workspace);
+            for(int j=0;j<nstates;j++) fout[j]=dv[j].value();
+        };
+        auto eval_L = [&](const double* x,const double* u,double t)->double{
+            for(int l=0;l<nstates;l++)   st[l]=x[l];
+            for(int l=0;l<ncontrols;l++) ct[l]=u[l];
+            adouble tt=t;
+            return problem.integrand_cost(st,ct,pr,tt,solution.xad,iphase,workspace).value();
+        };
+
+        std::vector<adouble> as0(nstates), asf(nstates), aev(nevents>0?nevents:1);
+        auto eval_phi = [&](const double* X0,const double* XF)->double{
+            for(int l=0;l<nstates;l++){ as0[l]=X0[l]; asf[l]=XF[l]; }
+            adouble at0=t0, atf=tf;
+            return problem.endpoint_cost(as0.data(),asf.data(),pr,at0,atf,solution.xad,iphase,workspace).value();
+        };
+        auto eval_ev = [&](const double* X0,const double* XF,double* eout){
+            for(int l=0;l<nstates;l++){ as0[l]=X0[l]; asf[l]=XF[l]; }
+            adouble at0=t0, atf=tf;
+            problem.events(aev.data(),as0.data(),asf.data(),pr,at0,atf,solution.xad,iphase,workspace);
+            for(int e=0;e<nevents;e++) eout[e]=aev[e].value();
+        };
+
+        // ---- transversality: lambda(tf) ----
+        std::vector<double> x0v(nstates), xf(nstates);
+        for(int l=0;l<nstates;l++){ x0v[l]=(solution.states[i])(l,0); xf[l]=(solution.states[i])(l,norder); }
+
+        MatrixXd lam(nstates, norder+1);
+        std::vector<double> lamf(nstates,0.0), xfp(nstates), xfm(nstates);
+        for(int l=0;l<nstates;l++){
+            xfp=xf; xfm=xf; xfp[l]+=fd; xfm[l]-=fd;
+            lamf[l] += ( eval_phi(x0v.data(),xfp.data()) - eval_phi(x0v.data(),xfm.data()) )/(2*fd);
+        }
+        if (nevents>0){
+            std::vector<double> ep(nevents), em(nevents);
+            for(int l=0;l<nstates;l++){
+                xfp=xf; xfm=xf; xfp[l]+=fd; xfm[l]-=fd;
+                eval_ev(x0v.data(),xfp.data(),ep.data());
+                eval_ev(x0v.data(),xfm.data(),em.data());
+                for(int e=0;e<nevents;e++)
+                    lamf[l] += (solution.dual.events[i])(e) * ( ep[e]-em[e] )/(2*fd);
+            }
+        }
+        for(int l=0;l<nstates;l++) lam(l,norder)=lamf[l];
+
+        // ---- adjoint RHS: lambda_dot = -( dL/dx + (df/dx)^T lambda ) ----
+        auto rhs = [&](double t,const double* x,const double* u,const double* L_,double* ld){
+            std::vector<double> xp(nstates),xm(nstates),fp(nstates),fm(nstates),g(nstates);
+            for(int l=0;l<nstates;l++){
+                for(int q=0;q<nstates;q++){xp[q]=x[q];xm[q]=x[q];}
+                xp[l]+=fd; xm[l]-=fd;
+                g[l]=( eval_L(xp.data(),u,t)-eval_L(xm.data(),u,t) )/(2*fd);   // dL/dx_l
+            }
+            std::vector<double> JTl(nstates,0.0);
+            for(int l=0;l<nstates;l++){
+                for(int q=0;q<nstates;q++){xp[q]=x[q];xm[q]=x[q];}
+                xp[l]+=fd; xm[l]-=fd;
+                eval_f(xp.data(),u,t,fp.data());
+                eval_f(xm.data(),u,t,fm.data());
+                // column l of df/dx is d f / d x_l; accumulate (J^T lambda)_l = sum_j (df_j/dx_l) lambda_j
+                for(int j=0;j<nstates;j++)
+                    JTl[l] += ( (fp[j]-fm[j])/(2*fd) ) * L_[j];
+            }
+            for(int l=0;l<nstates;l++) ld[l] = -( g[l] + JTl[l] );
+        };
+
+        // ---- backward RK4, interval by interval ----
+        std::vector<double> L0(nstates),xa(nstates),ua(ncontrols),
+                            k1(nstates),k2(nstates),k3(nstates),k4(nstates),tmp(nstates);
+        for(int k=norder-1;k>=0;k--){
+            double ta=(solution.nodes[i])(k), tb=(solution.nodes[i])(k+1);
+            for(int l=0;l<nstates;l++) L0[l]=lam(l,k+1);
+            auto interp=[&](double t){
+                double w=(tb>ta)?(t-ta)/(tb-ta):0.0;
+                for(int l=0;l<nstates;l++)   xa[l]=(solution.states[i])(l,k)+w*((solution.states[i])(l,k+1)-(solution.states[i])(l,k));
+                for(int l=0;l<ncontrols;l++) ua[l]=(solution.controls[i])(l,k)+w*((solution.controls[i])(l,k+1)-(solution.controls[i])(l,k));
+            };
+            double dt=(tb-ta)/Nsub, h=-dt;
+            for(int s=0;s<Nsub;s++){
+                double t1=tb - s*dt;
+                interp(t1);              rhs(t1,      xa.data(),ua.data(),L0.data(),k1.data());
+                for(int l=0;l<nstates;l++) tmp[l]=L0[l]+0.5*h*k1[l];
+                interp(t1+0.5*h);        rhs(t1+0.5*h,xa.data(),ua.data(),tmp.data(),k2.data());
+                for(int l=0;l<nstates;l++) tmp[l]=L0[l]+0.5*h*k2[l];
+                                         rhs(t1+0.5*h,xa.data(),ua.data(),tmp.data(),k3.data());
+                for(int l=0;l<nstates;l++) tmp[l]=L0[l]+h*k3[l];
+                interp(t1+h);            rhs(t1+h,    xa.data(),ua.data(),tmp.data(),k4.data());
+                for(int l=0;l<nstates;l++) L0[l]+=(h/6.0)*(k1[l]+2*k2[l]+2*k3[l]+k4[l]);
+            }
+            for(int l=0;l<nstates;l++) lam(l,k)=L0[l];
+        }
+
+        solution.dual.costates[i] = lam;
+
+        // recompute the Hamiltonian with the recovered costates (Xdot[i] holds f)
+        MatrixXd Temp1 = solution.dual.costates[i].cwiseProduct(workspace->Xdot[i]);
+        solution.dual.Hamiltonian[i] = solution.integrand_cost[i] + sum_columns(Temp1);
+    }
+}
+
+
+
 
 
 
@@ -1026,6 +1177,15 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     if (!useAutomaticDifferentiation(algorithm) && algorithm.nlp_method=="IPOPT")  {
 //          deleteIndexGroups( workspace->igroup, workspace->nvars );
+    }
+
+    // ---- Robust-DAIR (Option B): adjoint costate recovery ----
+    // For the residual-box solve the defect multipliers carry no costate information; recover
+    // the costates by backward adjoint integration along the primal (see recover_costates_adjoint).
+    if ( algorithm.transcription_method == "integrated-residual"
+         && ( algorithm.ir_dair
+              || ( algorithm.ir_objective == "cost" && algorithm.ir_residual_bound >= 0.0 ) ) ) {
+        recover_costates_adjoint(problem, algorithm, solution, workspace);
     }
 
     evaluate_solution(problem, algorithm, solution, workspace);
