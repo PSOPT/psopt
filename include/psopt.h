@@ -215,6 +215,12 @@ struct alg_str {
                                     // optimality solve (min J s.t. the residual box), with the
                                     // box tolerance tied to the mesh as delta = ir_dair_delta_factor*h^2.
   double    ir_dair_delta_factor;   // K in the DAIR box-tolerance schedule delta = K*h^2 (default 10)
+  int       ir_local_order;          // Nie-Kerrigan flexible-order local representation: if >=2,
+                                     // each mesh element carries a degree-ir_local_order Lagrange
+                                     // state (and control) through ir_local_order+1 local LGL nodes
+                                     // (endpoints shared, C0), so increasing the order drives the
+                                     // integrated residual genuinely small (p-refinement); 0 (default)
+                                     // keeps the fixed cubic-Hermite integrated-residual representation
   string    hessian;
   string    defect_scaling;
   string    diff_matrix;
@@ -693,6 +699,12 @@ public:
    MatrixXd   ir_nodes;               // residual-grid Gauss-Legendre nodes on [0,1]
    MatrixXd   ir_weights;             // residual-grid weights on [0,1] (sum to 1)
    int        ir_m;                   // number of residual nodes per interval
+   MatrixXd   ir_lgl01;               // Nie-Kerrigan: reference local LGL nodes on [0,1] (d+1)
+   MatrixXd   ir_lgl_w;               // Nie-Kerrigan: reference LGL weights on [-1,1] (d+1, sum 2),
+                                      // ordered to match ir_lgl01 (ascending); used for the
+                                      // per-element high-order cost integral
+   MatrixXd   ir_Bval;                // Nie-Kerrigan: Lagrange basis  l_r(s_q)  (m x (d+1))
+   MatrixXd   ir_Bder;                // Nie-Kerrigan: basis derivative l'_r(s_q) (m x (d+1))
    std::vector<double> ir_delta_phase; // robust-DAIR per-phase box tolerances delta_p = K*h_p^2;
                                        // when sized nphases it overrides the scalar ir_residual_bound
                                        // in the box bounds (empty during the feasibility sub-solve
@@ -881,6 +893,18 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
 int get_number_nlp_vars(Prob& problem, Workspace* workspace);
+
+// Number of residual-box rows owned by one phase (Option B / DAIR): one row per residual
+// component, grouped (group, GL point, state). For the legacy cubic-Hermite representation
+// (ir_local_order==0) the residual is integrated per mesh interval, giving norder groups;
+// for the Nie-Kerrigan flexible-order representation (ir_local_order>=2) it is integrated per
+// element, giving M = norder/ir_local_order groups. Single source of truth for the box-block
+// size, used by get_number(s)_nlp_constraints, gg_ad/gg_num and the box bounds.
+inline int ir_box_rows(int norder, int nstates, int m, int ir_local_order)
+{
+    int groups = (ir_local_order >= 2) ? (norder / ir_local_order) : norder;
+    return groups * m * nstates;
+}
 
 int get_number_nlp_constraints(Prob& problem, Workspace* workspace);
 

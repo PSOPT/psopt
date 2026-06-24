@@ -50,6 +50,70 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
     int norder    = problem.phase[i].current_number_of_intervals;
     int nstates   = problem.phase[i].nstates;
     int ncontrols = problem.phase[i].ncontrols;
+
+    // ---- Nie-Kerrigan flexible-order local representation ----
+    // Each element carries a degree-d Lagrange state through d+1 local LGL nodes (endpoints
+    // shared, C0). x(s)=sum_r B_val(q,r) X_r, xdot(s)=(1/h_e) sum_r B_der(q,r) X_r at the GL
+    // points s_q; the residual xdot - f is integrated per element. Increasing d drives the
+    // residual genuinely small (p-refinement), unlike the fixed cubic-Hermite form below.
+    if ( workspace->algorithm->ir_local_order >= 2 ) {
+        int d  = workspace->algorithm->ir_local_order;
+        int M  = norder / d;                 // number of elements
+        int np = d + 1;
+        MatrixXd& tau  = workspace->ir_nodes;
+        MatrixXd& wq   = workspace->ir_weights;
+        MatrixXd& Bval = workspace->ir_Bval;
+        MatrixXd& Bder = workspace->ir_Bder;
+        int m = workspace->ir_m;
+        adouble* pscr = workspace->path_bar[i].get();
+        adouble* xbuf = workspace->states[i].get();
+        adouble* ubuf = workspace->controls[i].get();
+        std::vector<adouble> X(np*nstates), U(np*((ncontrols>0)?ncontrols:1));
+        std::vector<adouble> xq(nstates), xdotq(nstates), fq(nstates), uq((ncontrols>0)?ncontrols:1);
+        adouble* uptr = (ncontrols>0) ? uq.data() : ubuf;
+        adouble R = 0.0;
+        int ridx = 0;
+        for (int e=0; e<M; e++) {
+            int base = e*d;                  // global index of the element's first node
+            adouble tk  = convert_to_original_time_ad( (workspace->snodes[i])(base),   t0, tf );
+            adouble tk1 = convert_to_original_time_ad( (workspace->snodes[i])(base+d), t0, tf );
+            adouble he  = tk1 - tk;
+            for (int r=0; r<np; r++) {
+                get_states(xbuf, xad, iphase, base+r, workspace);
+                for (int j=0;j<nstates;j++) X[r*nstates+j] = xbuf[j];
+                if (ncontrols>0) {
+                    get_controls(ubuf, xad, iphase, base+r, workspace);
+                    for (int c=0;c<ncontrols;c++) U[r*ncontrols+c] = ubuf[c];
+                }
+            }
+            for (int q=0; q<m; q++) {
+                for (int j=0;j<nstates;j++) {
+                    adouble xv=0.0, dv=0.0;
+                    for (int r=0;r<np;r++) { xv += Bval(q,r)*X[r*nstates+j]; dv += Bder(q,r)*X[r*nstates+j]; }
+                    xq[j]    = xv;
+                    xdotq[j] = dv/he;        // d/dt = (1/h_e) d/ds
+                }
+                if (ncontrols>0)
+                    for (int c=0;c<ncontrols;c++) {
+                        adouble uv=0.0;
+                        for (int r=0;r<np;r++) uv += Bval(q,r)*U[r*ncontrols+c];
+                        uq[c]=uv;
+                    }
+                adouble tq = tk + tau(q)*he;
+                problem.dae(fq.data(), pscr, xq.data(), uptr, parameters, tq, xad, iphase, workspace);
+                adouble rsq = 0.0;
+                for (int j=0;j<nstates;j++) {
+                    adouble rj = xdotq[j] - fq[j];
+                    if (rout) rout[ridx++] = rj;
+                    rsq += rj*rj;
+                }
+                R += he * wq(q) * rsq;
+            }
+        }
+        return R;
+    }
+
+
     adouble* xk    = workspace->states[i].get();
     adouble* xk1   = workspace->states_next[i].get();
     adouble* fk    = workspace->derivatives[i].get();
@@ -189,7 +253,35 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 	}
 	else {
 
-	      if ( !use_local_collocation(algorithm) ) {
+	      if ( workspace->algorithm->ir_local_order >= 2 ) {
+
+		  // Nie-Kerrigan cost integral: per-element Lobatto (LGL) quadrature, exact to
+		  // degree 2d-1 and so matched to the degree-d local state/control. The snodes
+		  // within element e are exactly that element's d+1 LGL nodes; sum integrand*w
+		  // scaled by the element half-width. Shared endpoints receive a contribution
+		  // from each adjoining element, which correctly sums the per-element integrals.
+		  int d = workspace->algorithm->ir_local_order;
+		  int M = norder / d;
+		  MatrixXd& wl = workspace->ir_lgl_w;            // d+1 LGL weights on [-1,1], sum 2
+		  for (int e=0; e<M; e++) {
+		      int base = e*d;
+		      adouble te0 = convert_to_original_time_ad( (workspace->snodes[i])(base),   t0, tf );
+		      adouble te1 = convert_to_original_time_ad( (workspace->snodes[i])(base+d), t0, tf );
+		      adouble he  = te1 - te0;
+		      for (int r=0; r<=d; r++) {
+		          int gk = base + r;
+		          get_controls(controls, xad, iphase, gk, workspace);
+		          get_states(states,     xad, iphase, gk, workspace);
+		          adouble tnode = convert_to_original_time_ad( (workspace->snodes[i])(gk), t0, tf );
+		          integrand_cost = problem.integrand_cost(states,controls,parameters,tnode,xad,iphase,workspace);
+		          (solution.integrand_cost[i])(gk) = integrand_cost.value();
+		          phase_sum_cost += (he/2.0) * wl(r) * integrand_cost;
+		      }
+		  }
+
+	      }
+
+	      else if ( !use_local_collocation(algorithm) ) {
 
 		for(k=0; k<norder+1; k++)  // EIGEN_UPDATE: k index shifted by -1
 		{

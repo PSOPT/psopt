@@ -37,6 +37,46 @@ e-mail:    v.m.becerra@ieee.org
 using namespace std;
 
 // ===========================================================================================
+// Nie-Kerrigan flexible-order local basis. On each mesh element the state (and control) is a
+// degree-d Lagrange polynomial through d+1 local LGL nodes on [0,1] (endpoints shared between
+// elements, so the state is C0). This routine precomputes, on the reference element, the local
+// LGL nodes and the Lagrange basis l_r and its derivative l'_r evaluated at the residual GL
+// quadrature points s_q, so the residual sweep is a pair of small matrix-vector products per
+// element (the basis is element-independent; only the physical width h_e scales the derivative).
+// ===========================================================================================
+static void build_ir_local_basis(int d, const MatrixXd& gl, MatrixXd& lgl01, MatrixXd& lgl_w,
+                                  MatrixXd& Bval, MatrixXd& Bder, Workspace* workspace)
+{
+    MatrixXd x, w, P, D;
+    lglnodes(d, x, w, P, D, workspace);          // d+1 LGL nodes/weights on [-1,1]
+    int np = d + 1;
+    lgl01.resize(np,1); lgl_w.resize(np,1);
+    for (int r=0;r<np;r++) { lgl01(r) = 0.5*(x(r) + 1.0); lgl_w(r) = w(r); }  // map nodes [-1,1]->[0,1]
+    for (int a=0;a<np;a++) for (int b=a+1;b<np;b++)               // sort nodes ascending,
+        if (lgl01(b) < lgl01(a)) { std::swap(lgl01(a), lgl01(b)); // carrying the weights along
+                                   std::swap(lgl_w(a), lgl_w(b)); }
+
+    int m = gl.rows();
+    Bval.resize(m,np); Bder.resize(m,np);
+    for (int q=0;q<m;q++) {
+        double s = gl(q);
+        for (int r=0;r<np;r++) {
+            double tr  = lgl01(r);
+            double val = 1.0;
+            for (int j=0;j<np;j++) if (j!=r) val *= (s - lgl01(j))/(tr - lgl01(j));
+            Bval(q,r) = val;
+            double der = 0.0;                                     // l'_r(s) = sum_k 1/(tr-tk) prod_{j!=r,k}(...)
+            for (int k=0;k<np;k++) if (k!=r) {
+                double term = 1.0/(tr - lgl01(k));
+                for (int j=0;j<np;j++) if (j!=r && j!=k) term *= (s - lgl01(j))/(tr - lgl01(j));
+                der += term;
+            }
+            Bder(q,r) = der;
+        }
+    }
+}
+
+// ===========================================================================================
 // Robust-DAIR (Option B) adjoint costate recovery.
 //
 // For the residual-box solve the dynamics are imposed by the box |xdot-f| <= delta rather than
@@ -339,6 +379,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
          || algorithm.ir_regularization > 0.0 ) {
         workspace->ir_m = algorithm.ir_residual_nodes;
         gauss_legendre_unit(workspace->ir_m, workspace->ir_nodes, workspace->ir_weights);
+        if ( algorithm.ir_local_order >= 2 )   // Nie-Kerrigan flexible-order local basis (p-refinement)
+            build_ir_local_basis(algorithm.ir_local_order, workspace->ir_nodes,
+                                  workspace->ir_lgl01, workspace->ir_lgl_w, workspace->ir_Bval, workspace->ir_Bder, workspace);
     }
     else {
         workspace->ir_m = 0;
@@ -513,7 +556,27 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 	    for(i=0; i<nphases; i++)
     	    {
-	        workspace->snodes[i] = linspace(-1.0, 1.0, problem.phase[i].current_number_of_intervals+1);
+	        if ( algorithm.ir_local_order >= 2 ) {
+	            // Nie-Kerrigan: the snodes are concatenated per-element LGL sub-nodes. With
+	            // norder = current_number_of_intervals total sub-intervals and local degree d,
+	            // there are M = norder/d elements of d+1 LGL nodes each (endpoints shared).
+	            int d = algorithm.ir_local_order;
+	            int norder = problem.phase[i].current_number_of_intervals;
+	            if ( norder % d != 0 )
+	                error_message("ir_local_order: (number of nodes - 1) must be divisible by ir_local_order ");
+	            int M = norder / d;
+	            MatrixXd& sn = workspace->snodes[i];
+	            sn.resize(norder+1,1);
+	            MatrixXd& lgl01 = workspace->ir_lgl01;       // d+1 reference LGL nodes on [0,1]
+	            double H = 2.0 / (double) M;                 // element width on [-1,1]
+	            for (int e=0; e<M; e++) {
+	                double a_e = -1.0 + e*H;
+	                for (int r=0; r<=d; r++) sn(e*d + r) = a_e + lgl01(r)*H;
+	            }
+	        }
+	        else {
+	            workspace->snodes[i] = linspace(-1.0, 1.0, problem.phase[i].current_number_of_intervals+1);
+	        }
             }
 
     }
@@ -586,24 +649,35 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     // ---- Robust-DAIR (Option B) optimality sub-solve ----
     // The solve above was the feasibility step (box non-binding). Read the mesh scale h from
-    // the feasibility primal, set the box tolerance delta = ir_dair_delta_factor*h^2, and
-    // minimise the user cost J subject to |(xdot-f)_{k,q,j}| <= delta, warm-started from the
-    // feasibility primal (x0) and duals (lambda). The NLP dimension is unchanged (the box
-    // block is already present), so only the objective and the box bounds change. As the
-    // mesh-refinement loop refines, h and delta fall together and J converges to the optimum
-    // without penalty-continuation divergence. Each phase gets its own box tolerance
-    // delta_p = ir_dair_delta_factor * h_p^2 from that phase's mesh scale (ir_delta_phase),
-    // so phases of different time scale or mesh density are bounded on their own terms; the
-    // scalar ir_residual_bound is set to the largest delta_p for reporting and gating.
+    // the feasibility primal, set the box tolerance from it, and minimise the user cost J subject
+    // to |(xdot-f)_{g,q,j}| <= delta, warm-started from the feasibility primal (x0) and duals
+    // (lambda). The NLP dimension is unchanged (the box block is already present), so only the
+    // objective and the box bounds change. As the mesh-refinement loop refines, h and delta fall
+    // together and J converges to the optimum without penalty-continuation divergence.
+    //
+    // The schedule is order-aware. The residual of a degree-p local representation behaves like
+    // h^p (the derivative error of a degree-p interpolant), so the box tolerance is matched to
+    // that order: delta_p = ir_dair_delta_factor * h_node^expo, where h_node = Tlen/norder is the
+    // mesh node spacing and expo is the representation order:
+    //   cubic-Hermite (ir_local_order==0): expo = 2  (the legacy K*h^2 rule, unchanged);
+    //   Nie-Kerrigan  (ir_local_order>=2): expo = d = ir_local_order.
+    // The node spacing (not the element width Tlen/M = d*h_node) is the right scale empirically and
+    // theoretically: the degree-d interpolation constant ~1/(d+1)! folds the d^d from the element
+    // width back to O(1), so K*h_node^d tracks the achievable residual whereas K*h_element^d is far
+    // too loose at coarse meshes. Each phase gets its own delta_p (ir_delta_phase); the scalar
+    // ir_residual_bound is set to the largest delta_p for reporting and gating.
     if ( algorithm.ir_dair && algorithm.transcription_method == "integrated-residual" ) {
         copy_decision_variables(solution, x0, problem, algorithm, workspace);   // feasibility nodes
         workspace->ir_delta_phase.assign(nphases, 0.0);
+        int    lo   = algorithm.ir_local_order;
+        int    expo = ( lo >= 2 ) ? lo : 2;
         double delta_max = 0.0;
         for (i=0; i<nphases; i++) {
             int norder  = problem.phase[i].current_number_of_intervals;
             double Tlen = (solution.nodes[i])(norder) - (solution.nodes[i])(0);
-            double h_p  = Tlen/norder;
-            double d_p  = algorithm.ir_dair_delta_factor * h_p * h_p;
+            double h_node = Tlen/norder;                     // mesh node spacing (both reps)
+            double d_p = algorithm.ir_dair_delta_factor;     // K*h_node^expo by exact integer powers
+            for (int e=0; e<expo; e++) d_p *= h_node;         // expo==2 reproduces (K*h)*h bit-for-bit
             workspace->ir_delta_phase[i] = d_p;
             delta_max = std::max(delta_max, d_p);
         }
@@ -613,10 +687,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         workspace->trace_f_done = false;   // re-tape the objective gradient: residual -> cost J
         if (nphases == 1)
             snprintf(workspace->text,sizeof(workspace->text),
-                     "\nDAIR optimality sub-solve: min J s.t. |r| <= %e", delta_max);
+                     "\nDAIR optimality sub-solve: min J s.t. |r| <= %e  (delta = K*h^%d)", delta_max, expo);
         else
             snprintf(workspace->text,sizeof(workspace->text),
-                     "\nDAIR optimality sub-solve: min J s.t. per-phase |r| <= delta_p (max %e)", delta_max);
+                     "\nDAIR optimality sub-solve: min J s.t. per-phase |r| <= delta_p (max %e, K*h^%d)", delta_max, expo);
         psopt_print(workspace,workspace->text);
         workspace->enable_nlp_counters = true;
         NLP_interface( algorithm, &x0, ff_num, gg_num, nlp_ncons, nlp_neq, &xlb, &xub, &lambda, 1, 1, workspace, problem.user_data );

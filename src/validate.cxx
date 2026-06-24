@@ -73,6 +73,14 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        if (algorithm.ir_dair_delta_factor <= 0.0)
           error_message("algorithm.ir_dair_delta_factor must be > 0 ");
     }
+    if (algorithm.ir_local_order != 0) {
+       if (algorithm.ir_local_order < 2)
+          error_message("algorithm.ir_local_order must be 0 (legacy cubic-Hermite IR) or >= 2 (Nie-Kerrigan) ");
+       if (algorithm.transcription_method != "integrated-residual")
+          error_message("ir_local_order requires transcription_method=\"integrated-residual\" ");
+       if (algorithm.ir_residual_nodes < algorithm.ir_local_order)
+          error_message("ir_residual_nodes must be >= ir_local_order so the residual is well sampled ");
+    }
     if (algorithm.ir_regularization < 0.0)
        error_message("algorithm.ir_regularization must be >= 0 ");
     if (algorithm.ir_regularization > 0.0) {

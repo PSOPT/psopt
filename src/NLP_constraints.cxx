@@ -478,7 +478,9 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
           adouble* params = workspace->parameters[iphpar-1].get();
           get_parameters(params, xad, iphr, workspace);
           get_times(&t0r, &tfr, xad, iphr, workspace);
-          int cnt = problem->phase[ip].current_number_of_intervals * m * problem->phase[ip].nstates;
+          int cnt = ir_box_rows( problem->phase[ip].current_number_of_intervals,
+                                 problem->phase[ip].nstates, m,
+                                 workspace->algorithm->ir_local_order );
           integrated_residual_phase(ip, iphr, xad, t0r, tfr, params, workspace, &gad[rb]);
           for (int t=0; t<cnt; t++) constraint_scaling(rb+t) = 1.0;
           rb += cnt;
