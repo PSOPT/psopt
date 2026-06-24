@@ -118,6 +118,16 @@ int get_number_nlp_constraints(Prob& problem,Workspace* workspace)
 
    nlp_ncons +=  problem.nlinkages;
 
+   // Robust-DAIR (Option B): a box constraint |(xdot-f)_{k,q,j}| <= ir_residual_bound on every
+   // raw residual component (interval k, GL point q, state j) of every phase.
+   if ( workspace->algorithm->transcription_method == "integrated-residual"
+        && ( workspace->algorithm->ir_dair
+             || ( workspace->algorithm->ir_objective == "cost"
+                  && workspace->algorithm->ir_residual_bound >= 0.0 ) ) ) {
+       int m = workspace->algorithm->ir_residual_nodes;
+       for (i=0; i<problem.nphases; i++)
+          nlp_ncons += problem.phase[i].current_number_of_intervals * m * problem.phase[i].nstates;
+   }
 
    return nlp_ncons;
 }
@@ -151,6 +161,15 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
 
    nlp_ncons +=  problem.nlinkages;
 
+   // Robust-DAIR (Option B): reserve the residual-box block (upper bound via max nodes).
+   if ( algorithm.transcription_method == "integrated-residual"
+        && ( algorithm.ir_dair
+             || ( algorithm.ir_objective == "cost"
+                  && algorithm.ir_residual_bound >= 0.0 ) ) ) {
+       int m = algorithm.ir_residual_nodes;
+       for (i=0; i<problem.nphases; i++)
+          nlp_ncons += get_max_nodes(problem, i+1, &algorithm) * m * problem.phase[i].nstates;
+   }
 
    return nlp_ncons;
 }

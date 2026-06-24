@@ -262,6 +262,21 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 
   }
 
+  // Robust-DAIR (Option B): box bounds on every residual component  |r_{k,q,j}| <= delta.
+  if ( algorithm->transcription_method == "integrated-residual"
+       && ( algorithm->ir_dair
+            || ( algorithm->ir_objective == "cost"
+                 && algorithm->ir_residual_bound >= 0.0 ) ) ) {
+      double delta = algorithm->ir_residual_bound;
+      int m  = algorithm->ir_residual_nodes;
+      int rb = lam_phase_offset + problem->nlinkages;
+      for (i=0; i<problem->nphases; i++) {
+          int cnt = problem->phase[i].current_number_of_intervals * m * problem->phase[i].nstates;
+          for (int t=0; t<cnt; t++) { g_l[rb+t] = -delta; g_u[rb+t] = delta; }
+          rb += cnt;
+      }
+  }
+
 
   return;
 }

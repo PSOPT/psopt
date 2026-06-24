@@ -203,6 +203,18 @@ struct alg_str {
                                     // [DAIR feasibility step / increment 1]; "cost"
                                     // minimises the user cost J + rho*R with defects
                                     // dropped [DAIR optimality step / increment 3]
+  double    ir_residual_bound;      // robust-DAIR optimality step: if >=0, minimise the
+                                    // user cost J subject to the residual-box constraint
+                                    // |(xdot-f)_{k,q,j}| <= ir_residual_bound on every raw
+                                    // residual component at the GL points (well-conditioned,
+                                    // replaces the rho penalty); <0 (default) keeps the
+                                    // rho-penalty form (increment 3)
+  bool      ir_dair;                // if true (with transcription_method=="integrated-residual"),
+                                    // each mesh-refinement iteration runs the DAIR alternation:
+                                    // a feasibility solve (min integral(||r||^2)) followed by an
+                                    // optimality solve (min J s.t. the residual box), with the
+                                    // box tolerance tied to the mesh as delta = ir_dair_delta_factor*h^2.
+  double    ir_dair_delta_factor;   // K in the DAIR box-tolerance schedule delta = K*h^2 (default 10)
   string    hessian;
   string    defect_scaling;
   string    diff_matrix;
@@ -738,6 +750,11 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
 void lgr_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
 void lg_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
 void gauss_legendre_unit(int m, MatrixXd& nodes01, MatrixXd& w01);  // m GL nodes/weights on [0,1]
+adouble integrated_residual_phase(int i, int iphase, adouble* xad, adouble t0, adouble tf,
+                                  adouble* parameters, Workspace* workspace,
+                                  adouble* rout = nullptr);  // returns phase integral of ||xdot-f||^2;
+                                  // if rout!=nullptr, also writes each raw component (xdot-f)_{k,q,j}
+                                  // into rout in (interval k, GL point q, state j) order
 
 // Accessor for the Gauss appended terminal-state variable (see get_variables.cxx).
 void get_gauss_terminal_states(adouble* states, adouble* xad, int iphase, Workspace* workspace);

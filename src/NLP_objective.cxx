@@ -43,8 +43,8 @@ using namespace std;
 //   * the integrated-residual transcription  (increment 1: this IS the phase objective);
 //   * integrated-residual regularisation      (increment 2: added to the user objective
 //     with weight algorithm.ir_regularization, defects retained so the costates survive).
-static adouble integrated_residual_phase(int i, int iphase, adouble* xad,
-        adouble t0, adouble tf, adouble* parameters, Workspace* workspace)
+adouble integrated_residual_phase(int i, int iphase, adouble* xad,
+        adouble t0, adouble tf, adouble* parameters, Workspace* workspace, adouble* rout)
 {
     Prob& problem = *workspace->problem;
     int norder    = problem.phase[i].current_number_of_intervals;
@@ -67,6 +67,7 @@ static adouble integrated_residual_phase(int i, int iphase, adouble* xad,
     int m = workspace->ir_m;
     int j, k;
     adouble R = 0.0;
+    int ridx = 0;   // running index into rout (interval, GL point, state)
 
     for (k=0; k<norder; k++) {
         adouble tk  = convert_to_original_time_ad( (workspace->snodes[i])(k),   t0, tf );
@@ -108,6 +109,7 @@ static adouble integrated_residual_phase(int i, int iphase, adouble* xad,
             for (j=0; j<nstates; j++) {
                 adouble xdot = (g00*xk[j] + g01*xk1[j])/hk + g10*fk[j] + g11*fk1[j];
                 adouble rj   = xdot - fq[j];
+                if (rout) rout[ridx++] = rj;   // raw residual component for the box constraint
                 rsq += rj*rj;
             }
             R += hk * wq(q) * rsq;
@@ -285,13 +287,12 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 	} // End if-else (zero_cost_integrand)
 
         // Integrated-residual penalty term:
-        //  * increment 2 (collocation): J + rho*R with the defects retained as hard
-        //    constraints (costates survive);
-        //  * increment 3 DAIR optimality step (transcription=="integrated-residual",
-        //    ir_objective=="cost"): J + rho*R with the defects dropped, so the dynamics
-        //    are enforced only through the residual penalty and the alternating loop.
-        // Skipped only for the pure-residual feasibility step (increment 1), whose
-        // objective is already R.
+        //  * increment 2 (collocation): J + rho*R with hard defects (costates survive);
+        //  * increment 3 DAIR optimality step (integrated-residual + ir_objective=="cost",
+        //    penalty form): J + rho*R with defects dropped.
+        // Skipped for the pure-residual feasibility step (objective already R) and for the
+        // robust-DAIR constraint form (ir_residual_bound>=0), where the dynamics are
+        // enforced by the integral(||r||^2)<=eps constraint and the objective is pure J.
         bool pure_residual = ( workspace->transcription_method == "integrated-residual"
                                && algorithm.ir_objective != "cost" );
         if ( !pure_residual && algorithm.ir_regularization > 0.0 ) {

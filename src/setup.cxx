@@ -147,6 +147,9 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.ir_residual_nodes           = 4;
   algorithm.ir_regularization           = 0.0;
   algorithm.ir_objective                = "residual";
+  algorithm.ir_residual_bound           = -1.0;
+  algorithm.ir_dair                     = false;
+  algorithm.ir_dair_delta_factor        = 10.0;
   algorithm.diff_matrix                 = "standard";
   algorithm.ipopt_linear_solver         = "mumps";
   algorithm.print_level                 = 1;

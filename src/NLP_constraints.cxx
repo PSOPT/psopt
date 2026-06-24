@@ -458,6 +458,33 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
   }
 
+  // Robust-DAIR optimality step (Option B): append the residual-box constraint block
+  //   |(xdot - f)_{k,q,j}| <= ir_residual_bound
+  // for every raw residual component, immediately after the linkages. Bounding the residual
+  // components (each with an O(1) gradient that does not vanish near feasibility) keeps the
+  // trajectory determined and well-conditioned, unlike the single scalar integral. Defects
+  // remain dropped (non-binding); the objective stays the pure user cost J. Rows left
+  // unscaled so the bound applies to the raw residual.
+  if ( algorithm->transcription_method == "integrated-residual"
+       && ( algorithm->ir_dair
+            || ( algorithm->ir_objective == "cost"
+                 && algorithm->ir_residual_bound >= 0.0 ) ) ) {
+      adouble t0r, tfr;
+      int rb = phase_offset + problem->nlinkages;   // start of the residual-box block
+      int m  = workspace->ir_m;
+      for (int ip=0; ip<problem->nphases; ip++) {
+          int iphr   = ip+1;
+          int iphpar = ( problem->multi_segment_flag || workspace->auto_linked_flag ) ? 1 : iphr;
+          adouble* params = workspace->parameters[iphpar-1].get();
+          get_parameters(params, xad, iphr, workspace);
+          get_times(&t0r, &tfr, xad, iphr, workspace);
+          int cnt = problem->phase[ip].current_number_of_intervals * m * problem->phase[ip].nstates;
+          integrated_residual_phase(ip, iphr, xad, t0r, tfr, params, workspace, &gad[rb]);
+          for (int t=0; t<cnt; t++) constraint_scaling(rb+t) = 1.0;
+          rb += cnt;
+      }
+  }
+
   if ( algorithm->scaling=="automatic" || algorithm->scaling!="user" )
   {
 	// Scale the constraints using automatic scaling

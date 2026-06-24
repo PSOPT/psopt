@@ -58,8 +58,20 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     if (algorithm.ir_objective == "cost") {
        if (algorithm.transcription_method != "integrated-residual")
           error_message("ir_objective=\"cost\" requires transcription_method=\"integrated-residual\" (DAIR optimality step) ");
-       if (algorithm.ir_regularization <= 0.0)
-          error_message("ir_objective=\"cost\" requires ir_regularization>0 (the residual penalty enforces the dynamics) ");
+       if (algorithm.ir_regularization <= 0.0 && algorithm.ir_residual_bound < 0.0)
+          error_message("ir_objective=\"cost\" needs the dynamics enforced: set ir_regularization>0 (penalty form) or ir_residual_bound>=0 (robust constraint form) ");
+    }
+    if (algorithm.ir_residual_bound >= 0.0) {
+       if (algorithm.transcription_method != "integrated-residual" || algorithm.ir_objective != "cost")
+          error_message("ir_residual_bound>=0 (robust-DAIR constraint form) requires transcription_method=\"integrated-residual\" and ir_objective=\"cost\" ");
+    }
+    if (algorithm.ir_dair) {
+       if (algorithm.transcription_method != "integrated-residual")
+          error_message("ir_dair=true requires transcription_method=\"integrated-residual\" ");
+       if (algorithm.collocation_method != "Hermite-Simpson")
+          error_message("ir_dair=true requires collocation_method=\"Hermite-Simpson\" ");
+       if (algorithm.ir_dair_delta_factor <= 0.0)
+          error_message("algorithm.ir_dair_delta_factor must be > 0 ");
     }
     if (algorithm.ir_regularization < 0.0)
        error_message("algorithm.ir_regularization must be >= 0 ");
