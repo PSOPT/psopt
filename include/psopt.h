@@ -693,6 +693,10 @@ public:
    MatrixXd   ir_nodes;               // residual-grid Gauss-Legendre nodes on [0,1]
    MatrixXd   ir_weights;             // residual-grid weights on [0,1] (sum to 1)
    int        ir_m;                   // number of residual nodes per interval
+   std::vector<double> ir_delta_phase; // robust-DAIR per-phase box tolerances delta_p = K*h_p^2;
+                                       // when sized nphases it overrides the scalar ir_residual_bound
+                                       // in the box bounds (empty during the feasibility sub-solve
+                                       // and in direct-box mode, where the scalar is used)
    clock_t    start_ticks;
 
 // tape tags to be used by ADOL_C

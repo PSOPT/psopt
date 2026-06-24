@@ -263,14 +263,18 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
   }
 
   // Robust-DAIR (Option B): box bounds on every residual component  |r_{k,q,j}| <= delta.
+  // Under ir_dair the per-phase tolerances ir_delta_phase[p] = K*h_p^2 (set by the DAIR
+  // optimality sub-solve) override the scalar ir_residual_bound; when ir_delta_phase is not
+  // populated (the feasibility sub-solve, and direct-box mode) the scalar is used for all phases.
   if ( algorithm->transcription_method == "integrated-residual"
        && ( algorithm->ir_dair
             || ( algorithm->ir_objective == "cost"
                  && algorithm->ir_residual_bound >= 0.0 ) ) ) {
-      double delta = algorithm->ir_residual_bound;
+      bool use_phase = ( (int) workspace->ir_delta_phase.size() == problem->nphases );
       int m  = algorithm->ir_residual_nodes;
       int rb = lam_phase_offset + problem->nlinkages;
       for (i=0; i<problem->nphases; i++) {
+          double delta = use_phase ? workspace->ir_delta_phase[i] : algorithm->ir_residual_bound;
           int cnt = problem->phase[i].current_number_of_intervals * m * problem->phase[i].nstates;
           for (int t=0; t<cnt; t++) { g_l[rb+t] = -delta; g_u[rb+t] = delta; }
           rb += cnt;

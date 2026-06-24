@@ -432,6 +432,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     if ( algorithm.ir_dair && algorithm.transcription_method == "integrated-residual" ) {
         algorithm.ir_objective      = "residual";
         algorithm.ir_residual_bound = 1.0e20;     // box present but non-binding
+        workspace->ir_delta_phase.clear();        // feasibility uses the scalar bound (all phases)
     }
 
     workspace->nvars     = get_number_nlp_vars(problem, workspace);
@@ -590,23 +591,32 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     // feasibility primal (x0) and duals (lambda). The NLP dimension is unchanged (the box
     // block is already present), so only the objective and the box bounds change. As the
     // mesh-refinement loop refines, h and delta fall together and J converges to the optimum
-    // without penalty-continuation divergence. (A single global delta uses the largest
-    // interval across phases; per-phase tolerances would be a refinement for multi-phase.)
+    // without penalty-continuation divergence. Each phase gets its own box tolerance
+    // delta_p = ir_dair_delta_factor * h_p^2 from that phase's mesh scale (ir_delta_phase),
+    // so phases of different time scale or mesh density are bounded on their own terms; the
+    // scalar ir_residual_bound is set to the largest delta_p for reporting and gating.
     if ( algorithm.ir_dair && algorithm.transcription_method == "integrated-residual" ) {
         copy_decision_variables(solution, x0, problem, algorithm, workspace);   // feasibility nodes
-        double hmax = 0.0;
+        workspace->ir_delta_phase.assign(nphases, 0.0);
+        double delta_max = 0.0;
         for (i=0; i<nphases; i++) {
             int norder  = problem.phase[i].current_number_of_intervals;
             double Tlen = (solution.nodes[i])(norder) - (solution.nodes[i])(0);
-            hmax = std::max(hmax, Tlen/norder);
+            double h_p  = Tlen/norder;
+            double d_p  = algorithm.ir_dair_delta_factor * h_p * h_p;
+            workspace->ir_delta_phase[i] = d_p;
+            delta_max = std::max(delta_max, d_p);
         }
-        double delta = algorithm.ir_dair_delta_factor * hmax * hmax;
         algorithm.ir_objective      = "cost";
-        algorithm.ir_residual_bound = delta;
+        algorithm.ir_residual_bound = delta_max;
         define_nlp_bounds(*workspace->xlb, *workspace->xub, problem, algorithm, workspace);
         workspace->trace_f_done = false;   // re-tape the objective gradient: residual -> cost J
-        snprintf(workspace->text,sizeof(workspace->text),
-                 "\nDAIR optimality sub-solve: min J s.t. |r| <= %e", delta);
+        if (nphases == 1)
+            snprintf(workspace->text,sizeof(workspace->text),
+                     "\nDAIR optimality sub-solve: min J s.t. |r| <= %e", delta_max);
+        else
+            snprintf(workspace->text,sizeof(workspace->text),
+                     "\nDAIR optimality sub-solve: min J s.t. per-phase |r| <= delta_p (max %e)", delta_max);
         psopt_print(workspace,workspace->text);
         workspace->enable_nlp_counters = true;
         NLP_interface( algorithm, &x0, ff_num, gg_num, nlp_ncons, nlp_neq, &xlb, &xub, &lambda, 1, 1, workspace, problem.user_data );
