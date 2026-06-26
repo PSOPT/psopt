@@ -117,8 +117,14 @@ void hp_refine_radau( Prob& problem, Alg& algorithm, Sol& solution, Workspace* w
         RowVectorXi old_orders = problem.phase[i].hp_orders;
         RowVectorXd old_breaks = problem.phase[i].hp_breakpoints;   // size K-1, in (0,1)
 
+        bool gauss = ( algorithm.collocation_method == "Gauss" );
+
+        // Map each interval to its error columns / storage nodes. Radau shares breakpoints, so
+        // storage = sum(orders) and the per-interval stride is the order. Gauss stores every
+        // non-collocated breakpoint separately, so storage = sum(orders) + K - 1 and the stride
+        // is order+1; the last interval's trailing column is clamped by the err/N_eff bound.
         std::vector<int> start(K+1, 0);
-        for (int j=0;j<K;j++) start[j+1] = start[j] + old_orders(j);
+        for (int j=0;j<K;j++) start[j+1] = start[j] + old_orders(j) + (gauss ? 1 : 0);
 
         // per-iteration node budget: bound mesh growth to ~mr_max_increment_factor and never
         // exceed the workspace ceiling R. This keeps the interval count from exploding (worst
@@ -134,8 +140,15 @@ void hp_refine_radau( Prob& problem, Alg& algorithm, Sol& solution, Workspace* w
             int s=start[j], eend=start[j+1];
             for (int c=s; c<eend && c<N_eff; c++) e_j[j] = std::max(e_j[j], err(0,c));
             if (e_j[j] > eps_tol) {
-                double a=sn(s), b=sn(eend), half=0.5*(b-a);
-                int np=old_orders(j)+1; VectorXd xi(np);
+                // Legendre-decay smoothness over the interval's own nodes. Radau uses its
+                // order+1 nodes (right endpoint = shared breakpoint). Gauss adds the stored
+                // right breakpoint (order+2 nodes) so the fit spans the true interval; the
+                // last Gauss interval has no stored right breakpoint (the appended x_f), so
+                // it falls back to order+1 nodes.
+                int np   = old_orders(j) + 1 + ((gauss && j<K-1) ? 1 : 0);
+                int last = s + np - 1;
+                double a=sn(s), b=sn(last), half=0.5*(b-a);
+                VectorXd xi(np);
                 for (int c=0;c<np;c++) xi(c)=(sn(s+c)-0.5*(a+b))/half;
                 double sg=1.0e30;
                 for (int l=0;l<nstates;l++){ VectorXd v(np);
@@ -177,7 +190,7 @@ void hp_refine_radau( Prob& problem, Alg& algorithm, Sol& solution, Workspace* w
             // back to a unit p-bump if any order headroom remains.
             if ( (right-left) >= 2.0*min_width ) {
                 int sub  = std::max(N_min, std::min(N_max, nj/2 + 1));
-                int cost = 2*sub - nj;
+                int cost = 2*sub - nj + (gauss ? 1 : 0);   // Gauss: the new interface breakpoint is an extra stored node
                 if (proj + cost <= N_target) { action[j]=2; h_sub[j]=sub; proj+=cost; }
                 else if (nj < N_max && proj + 1 <= N_target) { action[j]=1; p_new[j]=nj+1; proj+=1; }
             } else if (nj < N_max && proj + 1 <= N_target) {
@@ -201,12 +214,14 @@ void hp_refine_radau( Prob& problem, Alg& algorithm, Sol& solution, Workspace* w
             if (j < K-1) nb.push_back(right);
         }
 
-        // proj was held <= N_target <= R, so sum(no) <= R by construction; assert defensively.
+        // proj was held <= N_target <= R, so storage <= R by construction; assert defensively.
+        // Storage is sum(orders) for Radau and sum(orders)+K-1 for Gauss (the interface nodes).
         int tot=0; for (size_t q=0;q<no.size();q++) tot+=no[q];
-        if (tot > R) {                                   // should not happen; clamp if it does
-            while (tot > R) { int qm=-1,om=N_min;
+        int storage = tot + (gauss ? (int)no.size() - 1 : 0);
+        if (storage > R) {                               // should not happen; clamp if it does
+            while (storage > R) { int qm=-1,om=N_min;
                 for (size_t q=0;q<no.size();q++) if(no[q]>om){om=no[q];qm=(int)q;}
-                if(qm<0) break; no[qm]-=1; tot--; }
+                if(qm<0) break; no[qm]-=1; tot--; storage--; }
         }
 
         RowVectorXi new_orders(no.size());

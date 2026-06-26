@@ -156,7 +156,19 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
        nlp_ncons += npath*(max_nodes);
 
        if ( algorithm.collocation_method == "Radau" ) nlp_ncons += problem.phase[i].ncontrols;
-       if ( algorithm.collocation_method == "Gauss" ) nlp_ncons += problem.phase[i].nstates;
+       if ( algorithm.collocation_method == "Gauss" ) {
+           int Kg;
+           if ( hp_auto_active(algorithm) ) {
+               // The ph driver grows the interval count across refinement, so the workspace
+               // must be sized for the worst-case K rather than the seed mesh. With storage
+               // (Nc + K - 1) bounded by the node ceiling R = max_nodes and every interval
+               // carrying at least one collocation node, K <= (R+1)/2; size for that bound.
+               Kg = (max_nodes + 1) / 2 + 1;
+           } else {
+               Kg = hp_mesh_active(problem.phase[i]) ? (int) problem.phase[i].hp_orders.size() : 1;
+           }
+           nlp_ncons += Kg * problem.phase[i].nstates;   // K Gauss-quadrature defining constraints (one per interval; K=1 single-block)
+       }
 
 
 
@@ -196,8 +208,15 @@ int get_max_nodes(Prob& problem,int iphase, Alg* algorithm)
     // order is N_eff = sum(hp_orders). The Workspace allocation and every
     // max-count function key off this, so report it directly. Phases without an
     // hp mesh fall through to the legacy schedule below (bit-identical).
-    if ( hp_mesh_active(problem.phase[iphase-1]) )
-        return problem.phase[iphase-1].hp_orders.sum();
+    if ( hp_mesh_active(problem.phase[iphase-1]) ) {
+        int Nc = problem.phase[iphase-1].hp_orders.sum();
+        // Gauss collocates strictly interior points, so every interface breakpoint is a
+        // non-collocated stored node: storage = Nc + K and norder = Nc + K - 1. Radau (and
+        // the other endpoint-collocating schemes) share the breakpoint, so N_eff = Nc.
+        if ( algorithm->collocation_method == "Gauss" )
+            return Nc + (int) problem.phase[iphase-1].hp_orders.size() - 1;
+        return Nc;
+    }
 
     // Default to the manual-mode value so that retval is always initialized,
     // even if mesh_refinement holds an unrecognized value. Returning an
@@ -297,7 +316,8 @@ int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
         }
 
         if ( workspace->algorithm->collocation_method == "Gauss" ) {
-                    ncons_phase_i += problem.phase[i].nstates;    // Gauss-quadrature terminal-state defining constraint
+                    int Kg = hp_mesh_active(problem.phase[i]) ? (int) problem.phase[i].hp_orders.size() : 1;
+                    ncons_phase_i += Kg * problem.phase[i].nstates;    // K Gauss-quadrature defining constraints (one per interval; K=1 single-block)
         }
 
         return ncons_phase_i;

@@ -401,7 +401,7 @@ inline bool hp_mesh_active(const Phases& ph) {
 inline bool hp_auto_active(const Alg& algorithm) {
    return algorithm.hp_refinement
        && algorithm.mesh_refinement == "automatic"
-       && algorithm.collocation_method == "Radau";
+       && ( algorithm.collocation_method == "Radau" || algorithm.collocation_method == "Gauss" );
 }
 
 
@@ -804,6 +804,7 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
 void lgr_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
 void lgr_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // hp multi-interval LGR (shared breakpoints)
 void lg_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
+void lg_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // hp multi-interval LG (non-collocated breakpoints)
 void gauss_legendre_unit(int m, MatrixXd& nodes01, MatrixXd& w01);  // m GL nodes/weights on [0,1]
 adouble integrated_residual_phase(int i, int iphase, adouble* xad, adouble t0, adouble tf,
                                   adouble* parameters, Workspace* workspace,

@@ -233,10 +233,11 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
             for (int l2=0; l2<ncontrols; l2++) { g_l[pin_base+l2] = 0.0; g_u[pin_base+l2] = 0.0; }
         }
 
-        // Gauss: terminal-state quadrature defining constraints are equalities (=0).
+        // Gauss: the K Gauss-quadrature defining constraints (one per interval) are equalities (=0).
         if ( algorithm->collocation_method == "Gauss" ) {
+            int Kg = hp_mesh_active(problem->phase[i]) ? hp_num_intervals(problem->phase[i]) : 1;
             int quad_base = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
-            for (int l2=0; l2<nstates; l2++) { g_l[quad_base+l2] = 0.0; g_u[quad_base+l2] = 0.0; }
+            for (int l2=0; l2<Kg*nstates; l2++) { g_l[quad_base+l2] = 0.0; g_u[quad_base+l2] = 0.0; }
         }
 
         lam_phase_offset += ncons_phase_i;

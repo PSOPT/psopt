@@ -146,6 +146,34 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
 	int offset;
 
+   // Multi-interval Gauss bookkeeping. Gauss collocates strictly interior points, so the
+   // K stored breakpoints (tau_0..tau_{K-1}) interleaved with each interval's Gauss points
+   // are all non-collocated. Mark the breakpoint storage indices (zero-padded defect rows)
+   // and record per-interval Gauss orders/left-breakpoint indices for the K defining
+   // constraints. Single-block Gauss => K=1, one breakpoint at node 0 (the initial node).
+   std::vector<char> gauss_is_bp;
+   std::vector<int>  gauss_bp_idx;     // storage index of each interval's left breakpoint
+   std::vector<int>  gauss_n;          // per-interval Gauss order
+   int gauss_K = 1;
+   if ( workspace->differential_defects == "Gauss" ) {
+       if ( hp_mesh_active(problem->phase[i]) ) {
+           gauss_K = hp_num_intervals(problem->phase[i]);
+           gauss_n.resize(gauss_K);
+           for (int jj=0; jj<gauss_K; jj++) gauss_n[jj] = hp_interval_order(problem->phase[i], jj);
+       } else {
+           gauss_n.assign(1, norder);                 // single block: norder Gauss points
+       }
+       gauss_bp_idx.resize(gauss_K);
+       gauss_is_bp.assign(norder+1, 0);
+       int gidx = 0;
+       for (int jj=0; jj<gauss_K; jj++) {
+           gauss_bp_idx[jj] = gidx;                   // left breakpoint (non-collocated)
+           gauss_is_bp[gidx] = 1;
+           gidx += 1 + gauss_n[jj];                   // breakpoint + this interval's Gauss pts
+       }
+       // gidx == norder+1; the terminal tau_K is the appended x_f, not stored here.
+   }
+
    ncons_phase_i = get_ncons_phase_i(*problem,i, workspace);
 
    int path_offset = phase_offset+nstates*(norder+1)+nevents;
@@ -222,13 +250,14 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
             }
             else if (workspace->differential_defects == "Gauss") {
-                // Legendre-Gauss pseudospectral: collocation defects at the N Gauss points
-                // (rows 1..norder); the initial node (k==0) is the non-collocated boundary
-                // -> zero-padded. The terminal state is a separate appended variable defined
-                // by the Gauss-quadrature constraint (added after this loop).
+                // Legendre-Gauss pseudospectral: collocation defects at the interior Gauss
+                // points; every stored breakpoint (single-block: just the initial node k=0;
+                // multi-interval: tau_0..tau_{K-1}) is non-collocated -> zero-padded. The
+                // breakpoint/terminal states are fixed by the K Gauss-quadrature defining
+                // constraints assembled after this loop.
                for (j=0; j<nstates; j++) {
                      l = phase_offset+(k)*nstates+j;
-                     if (k != 0) {
+                     if ( !gauss_is_bp[k] ) {
                          resid[j] = derivs_traj[(k)*nstates+j] - (tf-t0)/2.0*derivatives[j];
                          gad[l] = resid[j];
                          if ( algorithm->scaling=="user" )
@@ -415,20 +444,34 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
             }
         }
 
-        // Gauss: terminal-state defining (quadrature) constraint
-        //   x_f - x_0 - (tf-t0)/2 * sum_{k=1}^{norder} w_k f_k = 0     (nstates equalities)
-        // placed just before the t0<=tf constraint. final_states already holds x_f.
+        // Gauss: terminal/interface defining (quadrature) constraints, one per interval:
+        //   x(tau_{j+1}) - x(tau_j) - (tf-t0)/2 * sum_{k in Gauss_j} w_k f_k = 0   (nstates each)
+        // x(tau_K) is the appended terminal x_f; interior breakpoint states tau_1..tau_{K-1}
+        // are ordinary stored nodes (shared once => C0 continuity). Composite weights already
+        // carry the sub-interval scaling Dtau_j/2. Placed just before the t0<=tf constraint.
+        // Single block (K=1) reduces to the original x_f - x_0 - (tf-t0)/2 sum w_k f_k.
         if ( workspace->differential_defects == "Gauss" ) {
             int quad_base = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
-            get_states(states, xad, iphase, 0, workspace);               // x_0 (initial node)
-            for (j=0; j<nstates; j++) gad[quad_base+j] = final_states[j] - states[j];
-            for (k=1; k<=norder; k++) {                                  // - (tf-t0)/2 sum w_k f_k
-                adouble tk = convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
-                get_states(states, xad, iphase, k, workspace);
-                get_controls(controls, xad, iphase, k, workspace);
-                problem->dae(derivatives, path, states, controls, parameters, tk, xad, iphase, workspace);
-                double wk = (workspace->w[i])(k);
-                for (j=0; j<nstates; j++) gad[quad_base+j] -= (tf-t0)/2.0 * wk * derivatives[j];
+            for (int jint=0; jint<gauss_K; jint++) {
+                int cbase = quad_base + jint*nstates;
+                // + right boundary state (interior breakpoint node, or x_f for the last interval)
+                if (jint < gauss_K-1) get_states(states, xad, iphase, gauss_bp_idx[jint+1], workspace);
+                else                  get_gauss_terminal_states(states, xad, iphase, workspace);
+                for (j=0; j<nstates; j++) gad[cbase+j] = states[j];
+                // - left boundary state
+                get_states(states, xad, iphase, gauss_bp_idx[jint], workspace);
+                for (j=0; j<nstates; j++) gad[cbase+j] -= states[j];
+                // - (tf-t0)/2 sum_{k in interval jint} w_k f_k
+                int kf = gauss_bp_idx[jint] + 1;
+                int kl = gauss_bp_idx[jint] + gauss_n[jint];
+                for (k=kf; k<=kl; k++) {
+                    adouble tk = convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
+                    get_states(states, xad, iphase, k, workspace);
+                    get_controls(controls, xad, iphase, k, workspace);
+                    problem->dae(derivatives, path, states, controls, parameters, tk, xad, iphase, workspace);
+                    double wk = (workspace->w[i])(k);
+                    for (j=0; j<nstates; j++) gad[cbase+j] -= (tf-t0)/2.0 * wk * derivatives[j];
+                }
             }
         }
 

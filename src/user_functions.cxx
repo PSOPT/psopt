@@ -114,26 +114,39 @@ void get_interpolated_state(adouble* interp_state, int state_index, int iphase, 
 	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
  }
 
- if (  use_global_collocation(algorithm) && norder<100 ) {
-    if ( hp_mesh_active(problem.phase[i]) ) {
-        // hp multi-interval mesh: a global Lagrange interpolant over the clustered
-        // composite nodes is ill-conditioned and blows up the error estimator at high
-        // per-interval order. Interpolate only on the local interval containing `time`,
-        // using that interval's nodes [s .. e] (its collocation nodes plus the shared
-        // right breakpoint). Reduces to the global interpolant when there is one interval.
+ if (  use_global_collocation(algorithm) && hp_mesh_active(problem.phase[i]) ) {
+        // hp multi-interval mesh: a global Lagrange interpolant over the clustered composite
+        // nodes is ill-conditioned and blows up the error estimator. Interpolate only on the
+        // local interval containing `time`. Because this is per-interval (low local order) it
+        // is well-conditioned at any total node count, so no norder cap is needed here.
+        bool   gauss = ( algorithm.collocation_method == "Gauss" );
         int    K  = hp_num_intervals(problem.phase[i]);
         double tq = time.value();
         int    s  = 0;
         for (int jint=0; jint<K; jint++) {
-            int e = s + hp_interval_order(problem.phase[i], jint);   // right endpoint node
-            if ( tq <= time_array[e].value() || jint == K-1 ) {
+            int ord = hp_interval_order(problem.phase[i], jint);
+            // Routing boundary and interpolation node set differ for Gauss. The LG state on an
+            // interval is the degree-(ord) polynomial through its support nodes [left breakpoint,
+            // ord Gauss points] - the right breakpoint is a SEPARATE variable fixed by the
+            // quadrature defining constraint, NOT a support node, so it must be excluded from the
+            // interpolant (including it forces a degree ord+1 fit that oscillates to pass through
+            // the quadrature-derived value, inflating the residual near interfaces). The closing
+            // segment [last Gauss point, right breakpoint] is then a forward evaluation of this
+            // same polynomial, so routing still advances at the right breakpoint.
+            int en  = s + ord;                       // last interpolation node (degree-ord poly)
+            int rb  = s + ord + (gauss ? 1 : 0);     // routing boundary: right breakpoint (Gauss)
+            if ( rb > norder ) rb = norder;          // last Gauss interval: x_f is not stored here
+            if ( en > norder ) en = norder;
+            if ( tq <= time_array[rb].value() || jint == K-1 ) {
                 lagrange_interpolation_ad( interp_state, time, time_array+s,
-                                           single_state_traj+s, (e-s)+1, workspace );
+                                           single_state_traj+s, (en-s)+1, workspace );
                 return;
             }
-            s = e;                                                   // shared breakpoint
+            s = rb;                                  // advance to the right breakpoint
         }
-    }
+ 	lagrange_interpolation_ad( interp_state, time, time_array, single_state_traj, norder+1, workspace);
+ }
+ else if (  use_global_collocation(algorithm) && norder<100 ) {
  	lagrange_interpolation_ad( interp_state, time, time_array, single_state_traj, norder+1, workspace);
  }
  else  {
@@ -149,6 +162,7 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
  int k;
  int i = iphase-1;
  Prob& problem = *workspace->problem;
+ Alg&  algorithm = *workspace->algorithm;
  int norder = problem.phase[i].current_number_of_intervals;
  adouble t0, tf;
  double ts;
@@ -162,6 +176,27 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
 	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
  }
 
+ // For a Gauss hp mesh the control is collocated only at the interior Gauss points; the
+ // (non-collocated) breakpoint storage slots carry control variables that enter no collocation
+ // condition and are left arbitrary by the NLP. A global spline through them corrupts the
+ // interpolated control near every interface and badly inflates the error estimate there.
+ // Interpolate instead within the interval containing `time`, using only that interval's
+ // Gauss-point controls. Radau (breakpoints collocated) keeps the global spline: bit-identical.
+ if ( use_global_collocation(algorithm)
+      && hp_mesh_active(problem.phase[i]) && algorithm.collocation_method=="Gauss" ) {
+     int K = hp_num_intervals(problem.phase[i]); double tq = time.value(); int s = 0;
+     for (int jint=0; jint<K; jint++) {
+         int ord = hp_interval_order(problem.phase[i], jint);
+         int rb  = s + ord + 1; if (rb > norder) rb = norder;   // right breakpoint (x_f if last)
+         if ( tq <= time_array[rb].value() || jint == K-1 ) {
+             // this interval's Gauss-point controls occupy storage indices [s+1 .. s+ord]
+             lagrange_interpolation_ad( interp_control, time, time_array+(s+1),
+                                        single_control_traj+(s+1), ord, workspace );
+             return;
+         }
+         s = rb;
+     }
+ }
  spline_interpolation( interp_control, time, time_array, single_control_traj, norder+1, workspace);
 
 }

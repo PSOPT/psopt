@@ -494,8 +494,18 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     // storage layout for this N_eff, so the entire downstream pipeline is reused
     // unchanged. Phases without an hp mesh are untouched (bit-identical).
     for (i=0; i<nphases; i++) {
-        if ( hp_mesh_active(problem.phase[i]) )
-            problem.phase[i].current_number_of_intervals = problem.phase[i].hp_orders.sum();
+        if ( hp_mesh_active(problem.phase[i]) ) {
+            int Nc = problem.phase[i].hp_orders.sum();              // total collocation points
+            int K  = (int) problem.phase[i].hp_orders.size();       // number of intervals
+            // Radau (and Legendre/Chebyshev): breakpoints are collocated/shared, storage is
+            // Nc collocation + 1 terminal, so current_number_of_intervals = Nc. Gauss collocates
+            // strictly interior points, so the K stored breakpoints tau_0..tau_{K-1} are extra
+            // non-collocated storage nodes: storage = Nc + K, hence norder = Nc + K - 1.
+            if ( algorithm.collocation_method == "Gauss" )
+                problem.phase[i].current_number_of_intervals = Nc + K - 1;
+            else
+                problem.phase[i].current_number_of_intervals = Nc;
+        }
     }
 
     // ---- Robust-DAIR (Option B): at each mesh-refinement level the first solve is the
@@ -585,7 +595,13 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 // snodes are returned ascending: { -1 (initial, non-collocated), N Gauss
                 // points }. Collocation is at rows 1..norder; row 0 (initial) is zero.
                 // No sort_vector / rearrange_vector (ordering already correct).
-        	lg_nodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i] );
+                if ( hp_mesh_active(problem.phase[i]) )
+                    // hp multi-interval Gauss (non-collocated breakpoints): composite storage
+                    // [ -1, Gauss_1, tau_1, Gauss_2, ..., tau_{K-1}, Gauss_K ], block-diagonal D.
+                    lg_nodes_multi( problem.phase[i].hp_breakpoints, problem.phase[i].hp_orders,
+                                    workspace->snodes[i], workspace->w[i], workspace->D[i] );
+                else
+        	    lg_nodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i] );
             }
 
     }
@@ -830,14 +846,14 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 	     if ( algorithm.collocation_method=="Gauss" ) {
 	    		// Legendre-Gauss covector mapping (Benson canonical / Option 1).
-	    		// Collocation is at the N interior Gauss points, stored in columns
-	    		// 1..norder; column 0 (tau=-1) is the non-collocated initial node and
-	    		// carries no defect (its row was zero-padded), so it is not divided here.
-	    		// Interior mapping is the standard transformed-adjoint form lambda_k =
-	    		// + lambda_tilde_k / w_k (same convention as Legendre/Radau). The two
-	    		// boundary costates are recovered separately below.
+	    		// Collocation is at the interior Gauss points; their costates are
+	    		// lambda_k = + lambda_tilde_k / w_k (same convention as Legendre/Radau).
+	    		// Non-collocated nodes (single-block: the initial node; multi-interval: every
+	    		// stored breakpoint) carry w=0 and no defect, so they are NOT divided here -
+	    		// they are recovered from the defining-constraint multipliers below.
 	    		for(k=1;k<=norder;k++) {
-                   (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);
+                   if ( (workspace->w[i])(k) != 0.0 )
+                       (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);
 	    		}
 	     }
 
@@ -1072,46 +1088,71 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	    }
 	
 
-		// Gauss (Legendre-Gauss / Benson Option 1) boundary costate recovery.
-		// The raw interior mapping lambda_k = lambda_tilde_k/w_k recovers the costate
-		// RELATIVE to the terminal costate: confirmed in-situ against the analytic LQR
-		// adjoint, it equals lambda_exact(t_k) - lambda_f, where lambda_f = lambda(+1) is
-		// the multiplier of the Gauss-quadrature constraint that defines the appended
-		// terminal-state variable x_f. Adding lambda_f back yields the physical interior
-		// costates; the non-collocated initial costate lambda(-1) is then recovered by
-		// Lagrange extrapolation of the corrected interior costates to tau=-1 (the mirror
-		// of the Radau terminal-costate pin). lambda_f is pushed through the identical
-		// scaling/sign pipeline as the defect costates so it lands in the same physical
-		// units as solution.dual.costates after the IPOPT flip above.
+		// Gauss (Legendre-Gauss / Benson Option 1) boundary costate recovery, generalised
+		// to the multi-interval mesh via the Darby-Garg-Rao covector mapping. In each
+		// interval the raw interior mapping lambda_k = lambda_tilde_k/w_k recovers the
+		// costate RELATIVE to that interval's right-endpoint costate, which is exactly the
+		// multiplier of that interval's Gauss-quadrature defining constraint, lamf_j. So per
+		// interval j we add lamf_j back to its interior costates; the interface breakpoint
+		// tau_j then carries lamf_j (the costate at the right end of interval j = left end of
+		// interval j+1, continuous for a smooth costate); the terminal costate is lamf_K; and
+		// the non-collocated initial costate is a LOCAL Lagrange extrapolation of interval 1's
+		// corrected interior costates to tau=-1 (a global extrapolation over the clustered
+		// multi-interval nodes would be ill-conditioned). Single interval (K=1) reduces to the
+		// original Benson recovery bit-identically.
 		if ( algorithm.collocation_method=="Gauss" ) {
 		    int quad = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
-		    MatrixXd lamf(nstates,1);
-		    for (int j=0;j<nstates;j++) {
-		        double v = lambda(quad+j);
-		        if ( algorithm.scaling=="user" )      v *= deriv_scaling(j);
-		        v /= problem.scale.objective;
-		        if ( algorithm.scaling=="automatic" ) v *= (*workspace->constraint_scaling)(quad+j);
-		        if ( algorithm.nlp_method=="IPOPT" )  v = -v;
-		        lamf(j) = v;
+		    MatrixXd& sn = workspace->snodes[i];
+
+		    int Kg = hp_mesh_active(problem.phase[i]) ? hp_num_intervals(problem.phase[i]) : 1;
+		    std::vector<int> bp(Kg), gn(Kg);
+		    int gidx = 0;
+		    for (int jj=0; jj<Kg; jj++) {
+		        gn[jj] = hp_mesh_active(problem.phase[i]) ? hp_interval_order(problem.phase[i], jj) : norder;
+		        bp[jj] = gidx;
+		        gidx  += 1 + gn[jj];
 		    }
-		    // (1) undo the constant shift on the interior Gauss columns 1..norder
-		    for (k=1;k<=norder;k++)
-		        (solution.dual.costates[i]).block(0,k,nstates,1) += lamf;
-		    // (2) initial costate (column 0, tau=-1) by Lagrange extrapolation of the
-		    //     corrected interior costates over the Gauss nodes snodes(1..norder).
+
+		    MatrixXd lamfK(nstates,1); lamfK.setZero();
+		    for (int jint=0; jint<Kg; jint++) {
+		        // interval jint's defining-constraint multiplier, pushed through the same
+		        // scaling/sign pipeline as the defect costates (so it lands in physical units).
+		        MatrixXd lamfj(nstates,1);
+		        for (int j=0;j<nstates;j++) {
+		            double v = lambda(quad + jint*nstates + j);
+		            if ( algorithm.scaling=="user" )      v *= deriv_scaling(j);
+		            v /= problem.scale.objective;
+		            if ( algorithm.scaling=="automatic" ) v *= (*workspace->constraint_scaling)(quad + jint*nstates + j);
+		            if ( algorithm.nlp_method=="IPOPT" )  v = -v;
+		            lamfj(j) = v;
+		        }
+		        // (1) undo the per-interval constant shift on this interval's interior costates
+		        int kf = bp[jint]+1, kl = bp[jint]+gn[jint];
+		        for (k=kf; k<=kl; k++)
+		            (solution.dual.costates[i]).block(0,k,nstates,1) += lamfj;
+		        // (2) interface breakpoint tau_{jint+1} carries this interval's right-end costate
+		        if (jint < Kg-1) {
+		            int bcol = bp[jint+1];
+		            for (int r=0;r<nstates;r++) (solution.dual.costates[i])(r,bcol) = lamfj(r);
+		        }
+		        if (jint == Kg-1) lamfK = lamfj;     // terminal costate lambda(+1)
+		    }
+
+		    // (3) initial costate (column 0, tau=-1) by LOCAL extrapolation over interval 1's
+		    //     corrected interior Gauss costates.
 		    {
-		        MatrixXd& sn = workspace->snodes[i];
-		        double xe = sn(0);                          // tau = -1
+		        double xe = sn(0);
+		        int kf = bp[0]+1, kl = bp[0]+gn[0];
 		        for (int r=0;r<nstates;r++) (solution.dual.costates[i])(r,0) = 0.0;
-		        for (int m=1;m<=norder;m++) {
+		        for (int m=kf; m<=kl; m++) {
 		            double Lwm = 1.0;
-		            for (int jj=1;jj<=norder;jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
+		            for (int jj=kf; jj<=kl; jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
 		            for (int r=0;r<nstates;r++)
 		                (solution.dual.costates[i])(r,0) += Lwm * (solution.dual.costates[i])(r,m);
 		        }
 		    }
 		    workspace->prev_costates[i] = solution.dual.costates[i]; // keep hot-start consistent
-		    solution.dual.terminal_costates[i] = lamf;              // lambda(+1) for reporting
+		    solution.dual.terminal_costates[i] = lamfK;              // lambda(+1) for reporting
 		}
 
 		solution.dual.events[i]  = -lambda.block(offset,0,nevents,1);

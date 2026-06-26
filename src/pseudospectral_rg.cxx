@@ -299,6 +299,88 @@ void lg_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D)
     D.bottomRows(Kc) = Drect;     // row 0 (initial, non-collocated) stays zero
 }
 
+// ---------------------------------------------------------------------------
+// Multi-interval (hp) Legendre-Gauss assembler with shared breakpoints.
+//
+// Unlike Radau, Gauss collocates strictly interior points, so every breakpoint is
+// NON-collocated. The composite storage interleaves the stored breakpoints with each
+// interval's interior Gauss points (ascending):
+//
+//   [ tau_0=-1 , Gauss_1(n_1) , tau_1 , Gauss_2(n_2) , ... , tau_{K-1} , Gauss_K(n_K) ]
+//
+// and the global terminal tau_K=+1 is NOT stored here - it remains the single appended
+// terminal-state variable x_f, exactly as in single-block lg_nodes. Storage length is
+// therefore M = sum(orders) + K (Nc collocation points + K stored breakpoints tau_0..tau_{K-1}).
+//
+//   * x : interior Gauss points of each interval affine-mapped onto its sub-interval,
+//         interleaved with the stored breakpoints; ascending overall.
+//   * w : each interval's local Gauss weights scaled by Dtau_j/2; every breakpoint slot 0.
+//   * D : BLOCK-DIAGONAL (no column overlap). Interval j's local rectangular block
+//         (the bottom n_j rows of lg_nodes(n_j), shape n_j x (n_j+1)) is scaled by 2/Dtau_j
+//         and placed with its collocation rows on interval j's Gauss indices; local column 0
+//         (the interval's left endpoint) maps to the stored breakpoint tau_{j-1}, local
+//         columns 1..n_j to the Gauss indices. The right breakpoint tau_j is not in
+//         interval j's polynomial - it is fixed by that interval's Gauss-quadrature
+//         defining constraint (assembled in NLP_constraints), mirroring how x_f is fixed
+//         in the single block. Interior breakpoints are stored once, so C0 continuity is
+//         implicit. Breakpoint rows of D are zero (non-collocated closure).
+//
+//   breakpoints : (K-1) interior breaks, strictly increasing, in (0,1) of normalised time.
+//   orders      : (K) per-interval Gauss orders n_j (interior collocation points each).
+//
+// K=1 reduces bit-identically to lg_nodes(n_1). AI provenance: generated with AI
+// assistance (G1 of the Route-B hp Gauss extension); validated against lg_nodes and by
+// reproducing single-block Gauss solves from manual multi-interval meshes (see G1 notes).
+// ---------------------------------------------------------------------------
+void lg_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders,
+                    MatrixXd& x, MatrixXd& w, MatrixXd& D)
+{
+    const int K = (int) orders.size();
+    int Nc = 0;
+    for (int j = 0; j < K; ++j) Nc += orders(j);
+    const int M = Nc + K;                         // Nc Gauss pts + K stored breakpoints
+
+    std::vector<double> s(K + 1);                 // sub-interval endpoints on [-1,1]
+    s[0] = -1.0;  s[K] = 1.0;
+    for (int j = 1; j < K; ++j) s[j] = -1.0 + 2.0 * breakpoints(j - 1);
+
+    x.resize(M, 1);  x.setZero();
+    w.resize(M, 1);  w.setZero();
+    D.resize(M, M);  D.setZero();
+
+    int idx = 0;
+    for (int j = 0; j < K; ++j) {
+        const int    bp_left = idx;               // storage index of this interval's left breakpoint tau_j
+        x(idx) = s[j];                            // breakpoint tau_j (non-collocated); w=0, D row 0
+        idx++;
+
+        const int    n  = orders(j);
+        const double a  = s[j], b = s[j + 1];
+        const double dt = b - a;                  // sub-interval width in tau (> 0)
+
+        MatrixXd xj, wj, Dj;
+        lg_nodes(n, xj, wj, Dj);                  // local block on [-1,1]: [ -1 ; n Gauss ]
+
+        const int    g_start = idx;               // composite index of this interval's first Gauss point
+        const double dscale  = 2.0 / dt;
+        for (int r = 0; r < n; ++r) {             // local node r+1 is the r-th Gauss point
+            x(g_start + r) = a + (xj(r + 1) + 1.0) * 0.5 * dt;
+            w(g_start + r) = wj(r + 1) * dt * 0.5;
+        }
+        // local collocation rows are lg_nodes rows 1..n; local col 0 = left endpoint,
+        // local cols 1..n = Gauss points. Map onto composite indices.
+        for (int lr = 1; lr <= n; ++lr) {
+            const int crow = g_start + (lr - 1);
+            for (int lc = 0; lc <= n; ++lc) {
+                const int ccol = (lc == 0) ? bp_left : (g_start + (lc - 1));
+                D(crow, ccol) = dscale * Dj(lr, lc);
+            }
+        }
+        idx += n;
+    }
+    // idx == M; the global terminal tau_K=+1 is the appended x_f, not stored here.
+}
+
 // ===========================================================================
 #ifdef RG_STANDALONE_TEST
 #include <cstdio>
