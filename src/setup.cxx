@@ -163,6 +163,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.mr_initial_increment        = 5;
   algorithm.mr_kappa                    = 0.1;
   algorithm.mr_M1                       = 5;
+  algorithm.hp_refinement               = false;
   algorithm.mesh_refinement 		       = "manual";
   algorithm.switch_order                = 2;
   algorithm.parameter_statistics        = "yes";

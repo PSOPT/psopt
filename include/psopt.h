@@ -42,6 +42,7 @@ namespace PSOPT {
 // using namespace Eigen;
 using Eigen::MatrixXd;
 using Eigen::RowVectorXi;
+using Eigen::RowVectorXd;
 
 
 
@@ -243,6 +244,11 @@ struct alg_str {
   double    mr_kappa;
   int       mr_M1;
   string    mesh_refinement;
+  // hp-adaptive (Route B) automatic refinement driver (Liu-Hager-Rao ph). When true,
+  // mesh_refinement="automatic" with a Radau method drives an hp mesh (per-interval order
+  // and breakpoint updates) instead of the legacy global pseudospectral node-count
+  // heuristic. Default false, so existing automatic runs are unaffected.
+  bool      hp_refinement;
   int       switch_order;
   double    ipopt_max_cpu_time;
 
@@ -338,6 +344,15 @@ struct phases_str {
 
    int current_number_of_intervals;
 
+   // hp-adaptive mesh (Route B, Radau). A phase may carry an internal multi-interval
+   // pseudospectral mesh: hp_breakpoints holds the K-1 interior break locations on the
+   // open interval (0,1) of normalised phase time, and hp_orders holds the K per-interval
+   // Radau orders. Both empty (the default) means a single interval (K=1) of order
+   // current_number_of_intervals, i.e. the legacy single-block discretisation, which is
+   // reproduced bit-for-bit. Populated manually (fixed mesh) or by the hp driver.
+   RowVectorXd hp_breakpoints;
+   RowVectorXi hp_orders;
+
    Bounds bounds;
 
    Guess  guess;
@@ -365,6 +380,29 @@ struct phases_str {
 };
 
 typedef struct phases_str Phases;
+
+// hp-adaptive helpers (Route B). With no hp mesh specified these report a single
+// interval whose order is the legacy current_number_of_intervals, so all existing
+// single-block code paths are unaffected.
+inline int hp_num_intervals(const Phases& ph) {
+   return (ph.hp_orders.size() > 0) ? (int) ph.hp_orders.size() : 1;
+}
+inline int hp_interval_order(const Phases& ph, int j) {
+   return (ph.hp_orders.size() > 0) ? ph.hp_orders(j) : ph.current_number_of_intervals;
+}
+inline bool hp_mesh_active(const Phases& ph) {
+   return ph.hp_orders.size() > 0;
+}
+
+// True when the automatic Liu-Hager-Rao ph driver should run: automatic refinement,
+// a Radau method, and the hp_refinement flag set. Gated separately from hp_mesh_active
+// (which only asks whether an hp mesh is currently populated) so the driver owns the
+// mesh schedule even at iteration 1 before any hp_orders have been seeded.
+inline bool hp_auto_active(const Alg& algorithm) {
+   return algorithm.hp_refinement
+       && algorithm.mesh_refinement == "automatic"
+       && algorithm.collocation_method == "Radau";
+}
 
 
 struct prob_ul_bounds {
@@ -764,6 +802,7 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
 // Legendre-Gauss-Radau / Legendre-Gauss generators (rectangular collocation on the
 // existing square (norder+1) scaffold; see src/pseudospectral_rg.cxx).
 void lgr_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
+void lgr_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // hp multi-interval LGR (shared breakpoints)
 void lg_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
 void gauss_legendre_unit(int m, MatrixXd& nodes01, MatrixXd& w01);  // m GL nodes/weights on [0,1]
 adouble integrated_residual_phase(int i, int iphase, adouble* xad, adouble t0, adouble tf,
@@ -818,6 +857,13 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
 void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* workspace);
 
 void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace );
+
+// hp-adaptive (Route B) automatic refinement driver and its workspace-sizing ceiling.
+// hp_refine_radau rewrites each phase's hp_breakpoints/hp_orders from the per-interval
+// error after a solve; hp_node_ceiling is the a-priori upper bound on N_eff used to size
+// the workspace once, before the refinement loop.
+void hp_refine_radau( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace );
+int  hp_node_ceiling( Prob& problem, Alg& algorithm, int iphase );
 
 int get_max_nodes(Prob& problem,int iphase, Alg* algorithm);
 

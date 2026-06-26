@@ -184,6 +184,21 @@ int get_max_nodes(Prob& problem,int iphase, Alg* algorithm)
 
     int i;
 
+    // hp-adaptive automatic driver (Route B, Liu-Hager-Rao ph): the mesh grows across
+    // refinement iterations, so the workspace must be sized for an a-priori ceiling on
+    // N_eff, not the (as-yet-unseeded) current mesh. Checked before hp_mesh_active so the
+    // ceiling wins even if the user supplied an initial hp mesh that the driver will grow.
+    if ( hp_auto_active(*algorithm) )
+        return hp_node_ceiling(problem, *algorithm, iphase);
+
+    // hp-adaptive fixed mesh (Route B): when a phase carries an explicit
+    // multi-interval Radau mesh (hp_orders populated), its effective single-block
+    // order is N_eff = sum(hp_orders). The Workspace allocation and every
+    // max-count function key off this, so report it directly. Phases without an
+    // hp mesh fall through to the legacy schedule below (bit-identical).
+    if ( hp_mesh_active(problem.phase[iphase-1]) )
+        return problem.phase[iphase-1].hp_orders.sum();
+
     // Default to the manual-mode value so that retval is always initialized,
     // even if mesh_refinement holds an unrecognized value. Returning an
     // uninitialized retval here is dangerous: it propagates into

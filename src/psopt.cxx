@@ -395,6 +395,24 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 			}
     }
 
+    else if ( hp_auto_active(algorithm) ) {
+        // hp-adaptive automatic (Route B, Liu-Hager-Rao ph): the driver owns the mesh
+        // schedule. At iteration 1 seed K0=1 interval at order N0 = nodes(0)-1 (the
+        // discretisation the user already requests), unless an initial hp mesh was supplied
+        // manually. From iteration 2 on, hp_refine_radau (called after the previous solve)
+        // has already written hp_breakpoints/hp_orders, so nothing is set here; the N_eff
+        // update happens through the hp_mesh_active branch a few lines below.
+        if ( iter_nodes == 1 ) {
+            for (i=0; i<nphases; i++) {
+                if ( !hp_mesh_active(problem.phase[i]) ) {
+                    problem.phase[i].hp_breakpoints.resize(0);
+                    problem.phase[i].hp_orders.resize(1);
+                    problem.phase[i].hp_orders(0) = ((int) problem.phase[i].nodes(0)) - 1;
+                }
+            }
+        }
+    }
+
     else  if (algorithm.mesh_refinement=="automatic" && use_global_collocation(algorithm)  ) {
 
          	if ( iter_nodes == 1 ) {
@@ -467,6 +485,19 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     workspace->trace_f_done = false;
 
+    // hp-adaptive fixed mesh (Route B, increment 1): a phase carrying an explicit
+    // multi-interval Radau mesh (hp_orders populated) is discretised as a single
+    // effective LGR block of order N_eff = sum(hp_orders) with shared breakpoints.
+    // Set current_number_of_intervals = N_eff here, before the NLP var/constraint
+    // counts and offsets below, all of which key off it; the composite node/weight/
+    // differentiation assembler (lgr_nodes_multi) reproduces the single-block
+    // storage layout for this N_eff, so the entire downstream pipeline is reused
+    // unchanged. Phases without an hp mesh are untouched (bit-identical).
+    for (i=0; i<nphases; i++) {
+        if ( hp_mesh_active(problem.phase[i]) )
+            problem.phase[i].current_number_of_intervals = problem.phase[i].hp_orders.sum();
+    }
+
     // ---- Robust-DAIR (Option B): at each mesh-refinement level the first solve is the
     // feasibility step (min integral(||xdot-f||^2)); the optimality step (min J s.t. the
     // residual box) follows just after the NLP solve below. Under ir_dair the residual-box
@@ -534,7 +565,14 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 // terminal +1), so NO sort_vector / rearrange_vector is applied here:
                 // unlike lglnodes (descending output), the ordering is already correct
                 // and D's rows are aligned to it.
-        	lgr_nodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i] );
+                if ( hp_mesh_active(problem.phase[i]) )
+                    // hp multi-interval mesh (shared breakpoints): the composite
+                    // assembler returns the same (N_eff+1) storage layout as a single
+                    // block of order N_eff = sum(hp_orders), block-structured D.
+                    lgr_nodes_multi( problem.phase[i].hp_breakpoints, problem.phase[i].hp_orders,
+                                     workspace->snodes[i], workspace->w[i], workspace->D[i] );
+                else
+        	    lgr_nodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i] );
             }
 
     }
@@ -703,22 +741,31 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     // Radau: the terminal node is non-collocated and carries no optimised control.
     // Pin the reported terminal control to the Lagrange interpolant of the collocation
-    // controls evaluated at tau = +1 (the terminal node).
+    // controls evaluated at tau = +1 (the terminal node). hp multi-interval mesh: tau=+1
+    // belongs to the LAST interval, so the interpolant must be built on that interval's
+    // collocation nodes sn(m0..norder-1) with m0 = N_eff - n_last. A global interpolant
+    // over all clustered multi-interval nodes is severely ill-conditioned (Sum|L| ~ 1e9)
+    // and amplifies per-node noise into the terminal value. For a single interval m0 = 0,
+    // so this reduces exactly to the legacy global interpolant (bit-identical). This mirrors
+    // the interval-aware terminal-control pin in NLP_constraints.cxx.
     if ( algorithm.collocation_method == "Radau" ) {
         for(int ip=0; ip<nphases; ip++) {
             int ncontrols = problem.phase[ip].ncontrols;
             int norder    = problem.phase[ip].current_number_of_intervals;
             MatrixXd& sn  = workspace->snodes[ip];
             double xe = sn(norder);                       // terminal node, tau = +1
-            MatrixXd Lw(norder,1);
-            for(int m=0;m<norder;m++) {                   // Lagrange weights at xe over the
-                double wL = 1.0;                          // norder collocation nodes sn(0..norder-1)
-                for(int j=0;j<norder;j++) if(j!=m) wL *= (xe - sn(j))/(sn(m)-sn(j));
+            int m0 = 0;                                   // first node of the interpolating interval
+            if ( hp_mesh_active(problem.phase[ip]) )
+                m0 = norder - hp_interval_order(problem.phase[ip], hp_num_intervals(problem.phase[ip]) - 1);
+            MatrixXd Lw(norder,1); Lw.setZero();
+            for(int m=m0;m<norder;m++) {                  // Lagrange weights at xe over the
+                double wL = 1.0;                          // last interval's nodes sn(m0..norder-1)
+                for(int j=m0;j<norder;j++) if(j!=m) wL *= (xe - sn(j))/(sn(m)-sn(j));
                 Lw(m) = wL;
             }
             for(int l=0;l<ncontrols;l++) {
                 double val = 0.0;
-                for(int m=0;m<norder;m++) val += Lw(m)*(solution.controls[ip])(l,m);
+                for(int m=m0;m<norder;m++) val += Lw(m)*(solution.controls[ip])(l,m);
                 (solution.controls[ip])(l,norder) = val;
             }
         }
@@ -834,13 +881,20 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	  // Radau: recover the terminal (non-collocated) costate by Lagrange extrapolation of
 	  // the physical collocation costates to tau = +1. Scaling-robust (a pure function of the
 	  // already-scaled collocation costates) and reuses the terminal-control-pin weights.
+	  // hp multi-interval mesh: tau=+1 belongs to the last interval, so extrapolate only on
+	  // that interval's nodes sn(m0..norder-1), m0 = N_eff - n_last (a global interpolant over
+	  // clustered multi-interval nodes is severely ill-conditioned). Single interval m0 = 0,
+	  // bit-identical to the legacy extrapolation.
 	  if ( algorithm.collocation_method=="Radau" ) {
 	      MatrixXd& sn = workspace->snodes[i];
 	      double xe = sn(norder);
+	      int m0 = 0;
+	      if ( hp_mesh_active(problem.phase[i]) )
+	          m0 = norder - hp_interval_order(problem.phase[i], hp_num_intervals(problem.phase[i]) - 1);
 	      for (int r=0;r<nstates;r++) (solution.dual.costates[i])(r,norder) = 0.0;
-	      for (int m=0;m<norder;m++) {
+	      for (int m=m0;m<norder;m++) {
 	          double Lwm = 1.0;
-	          for (int jj=0;jj<norder;jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
+	          for (int jj=m0;jj<norder;jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
 	          for (int r=0;r<nstates;r++)
 	              (solution.dual.costates[i])(r,norder) += Lwm * (solution.dual.costates[i])(r,m);
 	      }
@@ -1294,7 +1348,15 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     }
 
-    if (algorithm.mesh_refinement == "automatic" && iter_nodes>= algorithm.mr_min_extrapolation_points && use_global_collocation(algorithm) && iter_nodes<number_of_mesh_refinement_iterations  )
+    // hp-adaptive automatic (Route B, Liu-Hager-Rao ph): rewrite each phase's hp mesh from
+    // the per-interval error, ready for the next iteration. Runs every non-final iteration
+    // (no extrapolation-point warm-up needed, unlike the global heuristic).
+    if ( hp_auto_active(algorithm) && iter_nodes < number_of_mesh_refinement_iterations )
+    {
+        hp_refine_radau( problem, algorithm, solution, workspace );
+    }
+
+    else if (algorithm.mesh_refinement == "automatic" && iter_nodes>= algorithm.mr_min_extrapolation_points && use_global_collocation(algorithm) && iter_nodes<number_of_mesh_refinement_iterations  )
     {
 
 	   // Calculate the next number of nodes for each phase

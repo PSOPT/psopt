@@ -26,8 +26,11 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <algorithm>
+#include <vector>
 
 using Eigen::MatrixXd;
+using Eigen::RowVectorXd;
+using Eigen::RowVectorXi;
 
 #ifndef PSOPT_PI
 #define PSOPT_PI 3.14159265358979323846
@@ -114,6 +117,82 @@ void lgr_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D)
     D.resize(M, M);
     D.setZero();
     D.topRows(Kc) = Drect;        // last row stays zero (terminal closure / pad)
+}
+
+// ---------------------------------------------------------------------------
+// Multi-interval (hp) Legendre-Gauss-Radau assembler with SHARED breakpoints.
+//
+// A K-interval LGR mesh with shared interior breakpoints is structurally
+// identical to a single LGR block of effective order N_eff = sum(orders): it has
+// N_eff collocation points plus one non-collocated global terminal node, so the
+// storage layout produced here has exactly the same shape as lgr_nodes(N_eff),
+// and every downstream consumer (defects, cost quadrature, events, variable and
+// constraint counts, offsets) reuses unchanged. The only structural differences,
+// all confined to the three returned arrays, are:
+//   * x : per-interval LGR collocation points affine-mapped onto their
+//         sub-interval of tau in [-1,1], concatenated, each shared breakpoint
+//         counted once, with the global terminal tau=+1 last (ascending overall).
+//   * w : each interval's local weights scaled by Dtau_j/2 so the composite
+//         quadrature on [-1,1] equals the sum of the per-interval quadratures;
+//         the terminal slot w(N_eff) = 0.
+//   * D : block structure. Each interval's local rectangular block (the top n_j
+//         rows of lgr_nodes(n_j)) is scaled by 2/Dtau_j (the affine d/dtau
+//         factor) and placed so consecutive blocks overlap by exactly one
+//         column - the shared breakpoint - which imposes interior C0 continuity
+//         implicitly. The terminal (last) row is zero, the single-block closure.
+//
+//   breakpoints : (K-1) interior breaks, strictly increasing, in (0,1) of the
+//                 normalised phase time (0 -> tau=-1, 1 -> tau=+1).
+//   orders      : (K) per-interval Radau orders n_j (collocation points each).
+//
+// AI provenance: this composite assembler was generated with AI assistance
+// (increment 1 of the Route-B hp-adaptive work) and is validated by a standalone
+// regression check against lgr_nodes plus polynomial differentiation/quadrature
+// exactness tests; see the increment-1 notes.
+// ---------------------------------------------------------------------------
+void lgr_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders,
+                     MatrixXd& x, MatrixXd& w, MatrixXd& D)
+{
+    const int K = (int) orders.size();
+    int N_eff = 0;
+    for (int j = 0; j < K; ++j) N_eff += orders(j);
+    const int M = N_eff + 1;
+
+    // breakpoints in (0,1) -> sub-interval endpoints s_j on [-1,1].
+    std::vector<double> s(K + 1);
+    s[0] = -1.0;  s[K] = 1.0;
+    for (int j = 1; j < K; ++j) s[j] = -1.0 + 2.0 * breakpoints(j - 1);
+
+    x.resize(M, 1);  x.setZero();
+    w.resize(M, 1);  w.setZero();
+    D.resize(M, M);  D.setZero();
+
+    int c = 0;                                    // running composite collocation index
+    for (int j = 0; j < K; ++j) {
+        const int    n  = orders(j);
+        const double a  = s[j], b = s[j + 1];
+        const double dt = b - a;                  // sub-interval width in tau (> 0)
+
+        MatrixXd xj, wj, Dj;
+        lgr_nodes(n, xj, wj, Dj);                 // local block on [-1,1], order n
+
+        // collocation nodes of this interval are the first n local nodes; the
+        // local terminal node (xi=+1) is the next interval's first node (shared
+        // breakpoint) or, for the last interval, the global terminal handled below.
+        for (int r = 0; r < n; ++r) {
+            x(c + r) = a + (xj(r) + 1.0) * 0.5 * dt;   // local xi -> tau in [a,b]
+            w(c + r) = wj(r) * dt * 0.5;               // composite quadrature weight
+        }
+        // local rectangular block (top n rows, n+1 columns) scaled by 2/dt; local
+        // column n (terminal) lands on composite column c+n = the shared breakpoint
+        // (first node of the next interval) or the global terminal (last interval).
+        const double dscale = 2.0 / dt;
+        for (int row = 0; row < n; ++row)
+            for (int col = 0; col <= n; ++col)
+                D(c + row, c + col) = dscale * Dj(row, col);
+        c += n;
+    }
+    x(M - 1) = 1.0;     // global terminal tau=+1 (= s[K]); w(M-1)=0, D last row 0
 }
 
 // ---------------------------------------------------------------------------

@@ -273,7 +273,7 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
 
 
       xp = (prev_states[i]).row(k);
-		if (!use_local_collocation(algorithm) ) {
+		if (!use_local_collocation(algorithm) && !hp_mesh_active(problem.phase[i]) ) {
 		    lagrange_interpolation(xn,solution.nodes[i],prev_nodes[i], xp);
 		}
 		else {
@@ -288,7 +288,7 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
 	for (k=0;k<nstates;k++) { // EIGEN_UPDATE
 
       xp = (prev_costates[i]).row(k);
-		if (!use_local_collocation(algorithm)) {
+		if (!use_local_collocation(algorithm) && !hp_mesh_active(problem.phase[i])) {
 		    lagrange_interpolation(xn,solution.nodes[i],prev_nodes[i], xp);
 		}
 		else {

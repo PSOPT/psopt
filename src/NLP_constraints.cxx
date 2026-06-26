@@ -387,18 +387,29 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
         // Radau: in-solve terminal-control interpolation pin. Pin the non-collocated
         // terminal control U(norder) to the Lagrange interpolant of the collocation
-        // controls U(0..norder-1) at tau = +1, as ncontrols equality constraints placed
-        // just before the t0<=tf constraint (which stays the last slot of the phase block).
+        // controls at tau = +1, as ncontrols equality constraints placed just before
+        // the t0<=tf constraint (which stays the last slot of the phase block).
+        //
+        // Single block: the interpolant uses all norder collocation controls
+        // U(0..norder-1). hp multi-interval mesh: tau=+1 belongs to the LAST interval,
+        // so the interpolant must be that interval's LOCAL polynomial, built only on
+        // its collocation nodes U(m0..norder-1) with m0 = N_eff - n_last. Using a
+        // global interpolant over the clustered multi-interval node set would be both
+        // wrong (not the hp local extrapolant) and numerically unstable. For a single
+        // interval m0 = 0, so this reduces exactly to the legacy pin (bit-identical).
         if ( workspace->differential_defects == "Radau" ) {
             int ncontrols = problem->phase[i].ncontrols;
             int pin_base  = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
             MatrixXd& sn  = workspace->snodes[i];
+            int m0 = 0;                                              // first node of the interpolating interval
+            if ( hp_mesh_active(problem->phase[i]) )
+                m0 = norder - hp_interval_order(problem->phase[i], hp_num_intervals(problem->phase[i]) - 1);
             double xe = sn(norder);                                 // terminal node, tau = +1
             get_controls(controls, xad, iphase, norder, workspace); // terminal control
             for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] = controls[l2];
-            for (int m=0; m<norder; m++) {                          // subtract interpolant
+            for (int m=m0; m<norder; m++) {                         // subtract local interpolant
                 double Lwm = 1.0;
-                for (int jj=0; jj<norder; jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
+                for (int jj=m0; jj<norder; jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
                 get_controls(controls, xad, iphase, m, workspace);
                 for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] -= Lwm*controls[l2];
             }

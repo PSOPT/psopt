@@ -203,6 +203,47 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
  		error_message(workspace->text);
          }
 
+         // hp-adaptive fixed mesh (Route B, increment 1). When a phase carries an
+         // explicit multi-interval mesh via hp_orders / hp_breakpoints, validate it:
+         // Radau-only for now; K orders and K-1 breaks; breaks strictly increasing in
+         // (0,1); each interval order >= 2 (a single-point interval is degenerate).
+         if ( hp_mesh_active(problem.phase[i]) )
+         {
+            if ( algorithm.collocation_method != "Radau" )
+            {
+               snprintf(workspace->text,sizeof(workspace->text),"hp-adaptive mesh (hp_orders) in phase %i currently requires collocation_method = \"Radau\"",i+1);
+               error_message(workspace->text);
+            }
+            int Khp = (int) problem.phase[i].hp_orders.size();
+            if ( (int) problem.phase[i].hp_breakpoints.size() != Khp-1 )
+            {
+               snprintf(workspace->text,sizeof(workspace->text),"In phase %i, length(hp_breakpoints) must equal length(hp_orders)-1",i+1);
+               error_message(workspace->text);
+            }
+            for (int kk=0; kk<Khp; kk++)
+            {
+               if ( problem.phase[i].hp_orders(kk) < 2 )
+               {
+                  snprintf(workspace->text,sizeof(workspace->text),"In phase %i, every hp_orders entry must be >= 2",i+1);
+                  error_message(workspace->text);
+               }
+            }
+            for (int kk=0; kk<Khp-1; kk++)
+            {
+               double bk = problem.phase[i].hp_breakpoints(kk);
+               if ( bk <= 0.0 || bk >= 1.0 )
+               {
+                  snprintf(workspace->text,sizeof(workspace->text),"In phase %i, hp_breakpoints must lie strictly in the open interval (0,1)",i+1);
+                  error_message(workspace->text);
+               }
+               if ( kk>0 && bk <= problem.phase[i].hp_breakpoints(kk-1) )
+               {
+                  snprintf(workspace->text,sizeof(workspace->text),"In phase %i, hp_breakpoints must be strictly increasing",i+1);
+                  error_message(workspace->text);
+               }
+            }
+         }
+
 	 if ( problem.phase[i].nobserved >  0  )
          {
 

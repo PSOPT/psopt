@@ -115,6 +115,25 @@ void get_interpolated_state(adouble* interp_state, int state_index, int iphase, 
  }
 
  if (  use_global_collocation(algorithm) && norder<100 ) {
+    if ( hp_mesh_active(problem.phase[i]) ) {
+        // hp multi-interval mesh: a global Lagrange interpolant over the clustered
+        // composite nodes is ill-conditioned and blows up the error estimator at high
+        // per-interval order. Interpolate only on the local interval containing `time`,
+        // using that interval's nodes [s .. e] (its collocation nodes plus the shared
+        // right breakpoint). Reduces to the global interpolant when there is one interval.
+        int    K  = hp_num_intervals(problem.phase[i]);
+        double tq = time.value();
+        int    s  = 0;
+        for (int jint=0; jint<K; jint++) {
+            int e = s + hp_interval_order(problem.phase[i], jint);   // right endpoint node
+            if ( tq <= time_array[e].value() || jint == K-1 ) {
+                lagrange_interpolation_ad( interp_state, time, time_array+s,
+                                           single_state_traj+s, (e-s)+1, workspace );
+                return;
+            }
+            s = e;                                                   // shared breakpoint
+        }
+    }
  	lagrange_interpolation_ad( interp_state, time, time_array, single_state_traj, norder+1, workspace);
  }
  else  {
