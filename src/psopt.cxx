@@ -399,7 +399,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         // hp-adaptive automatic (Route B, Liu-Hager-Rao ph): the driver owns the mesh
         // schedule. At iteration 1 seed K0=1 interval at order N0 = nodes(0)-1 (the
         // discretisation the user already requests), unless an initial hp mesh was supplied
-        // manually. From iteration 2 on, hp_refine_radau (called after the previous solve)
+        // manually. From iteration 2 on, hp_refine_driver (called after the previous solve)
         // has already written hp_breakpoints/hp_orders, so nothing is set here; the N_eff
         // update happens through the hp_mesh_active branch a few lines below.
         if ( iter_nodes == 1 ) {
@@ -1394,7 +1394,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     // (no extrapolation-point warm-up needed, unlike the global heuristic).
     if ( hp_auto_active(algorithm) && iter_nodes < number_of_mesh_refinement_iterations )
     {
-        hp_refine_radau( problem, algorithm, solution, workspace );
+        hp_refine_driver( problem, algorithm, solution, workspace );
     }
 
     else if (algorithm.mesh_refinement == "automatic" && iter_nodes>= algorithm.mr_min_extrapolation_points && use_global_collocation(algorithm) && iter_nodes<number_of_mesh_refinement_iterations  )

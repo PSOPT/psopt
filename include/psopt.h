@@ -860,10 +860,10 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
 void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace );
 
 // hp-adaptive (Route B) automatic refinement driver and its workspace-sizing ceiling.
-// hp_refine_radau rewrites each phase's hp_breakpoints/hp_orders from the per-interval
+// hp_refine_driver rewrites each phase's hp_breakpoints/hp_orders from the per-interval
 // error after a solve; hp_node_ceiling is the a-priori upper bound on N_eff used to size
 // the workspace once, before the refinement loop.
-void hp_refine_radau( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace );
+void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace );
 int  hp_node_ceiling( Prob& problem, Alg& algorithm, int iphase );
 
 int get_max_nodes(Prob& problem,int iphase, Alg* algorithm);

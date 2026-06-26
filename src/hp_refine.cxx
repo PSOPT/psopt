@@ -90,7 +90,7 @@ static double legendre_decay_rate(const VectorXd& xi, const VectorXd& vals, doub
 
 // ---------------------------------------------------------------------------------------
 // The driver. Rewrites problem.phase[i].hp_orders (and, from 3b, hp_breakpoints) in place.
-void hp_refine_radau( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace )
+void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace )
 {
     const double eps_tol   = algorithm.ode_tolerance;
     const double sigma_min = 0.05;
