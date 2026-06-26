@@ -219,9 +219,14 @@ void hp_refine_radau( Prob& problem, Alg& algorithm, Sol& solution, Workspace* w
         int tot=0; for (size_t q=0;q<no.size();q++) tot+=no[q];
         int storage = tot + (gauss ? (int)no.size() - 1 : 0);
         if (storage > R) {                               // should not happen; clamp if it does
-            while (storage > R) { int qm=-1,om=N_min;
-                for (size_t q=0;q<no.size();q++) if(no[q]>om){om=no[q];qm=(int)q;}
-                if(qm<0) break; no[qm]-=1; tot--; storage--; }
+            while (storage > R) {
+                int qm=-1, om=N_min;
+                for (size_t q=0;q<no.size();q++) {
+                    if (no[q]>om) { om=no[q]; qm=(int)q; }
+                }
+                if (qm<0) break;
+                no[qm]-=1; tot--; storage--;
+            }
         }
 
         RowVectorXi new_orders(no.size());
