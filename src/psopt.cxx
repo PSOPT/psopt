@@ -256,8 +256,6 @@ void psopt_main(Sol& solution, Prob& problem, Alg& algorithm,  unique_ptr<Worksp
 {
 // PSOPT:  main algorithm
 
-int MAX_STANDARD_PS_NODES = 200;
-
 
 Workspace* workspace = workspace_up.get();
 
@@ -413,24 +411,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         }
     }
 
-    else  if (algorithm.mesh_refinement=="automatic" && use_global_collocation(algorithm)  ) {
-
-         	if ( iter_nodes == 1 ) {
-	    			for (i=0; i<nphases; i++)
-					{
-		    			problem.phase[i].current_number_of_intervals    = ( (int) problem.phase[i].nodes(iter_nodes-1)) -1;
-					}
-	  			}
-
-	  			else if (iter_nodes <= algorithm.mr_min_extrapolation_points) {
-	 				for (i=0; i<nphases; i++)
-					{
-		    			problem.phase[i].current_number_of_intervals    += algorithm.mr_initial_increment;
-					}
-
-          	}
-    }
-
     else  if (algorithm.mesh_refinement=="automatic" && use_local_collocation(algorithm) ) {
           // Local mesh refinement algorithm by Betts (2001)
 
@@ -534,12 +514,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     if (algorithm.collocation_method == "Legendre") {
     	for(i=0; i<nphases; i++)
     	{
-		 if (problem.phase[i].current_number_of_intervals > MAX_STANDARD_PS_NODES && algorithm.mesh_refinement=="automatic" && !hp_mesh_active(problem.phase[i]))
-		 {
-		    // When using automatic mesh refinement, switch to central differences when the order is too large to avoid numerical problems.
-		    // (The hp multi-interval path keeps the differentiation-matrix defects: high order is carried by the sub-intervals, not a single huge block.)
-		    workspace->differential_defects="central-differences";
-		 }
                  if ( hp_mesh_active(problem.phase[i]) ) {
                     // hp multi-interval LGL (shared, collocated breakpoints; Option A): the
                     // composite assembler returns ascending nodes and an M x (M+K-1) D whose
@@ -564,12 +538,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 	    for(i=0; i<nphases; i++)
     	    {
-	         if (problem.phase[i].current_number_of_intervals > MAX_STANDARD_PS_NODES && algorithm.mesh_refinement=="automatic" && !hp_mesh_active(problem.phase[i]))
-		 {
-		    // When using automatic mesh refinement, switch to central differences when the order is too large to avoid numerical problems.
-		    // (The hp multi-interval path keeps the differentiation-matrix defects.)
-		    workspace->differential_defects="central-differences";
-		 }
                  if ( hp_mesh_active(problem.phase[i]) ) {
                     // hp multi-interval Chebyshev (shared collocated breakpoints; Option A), same
                     // layout as hp-LGL. cgl_nodes_multi returns ascending nodes, the M x (M+K-1)
@@ -1352,19 +1320,12 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     }
 
     // hp-adaptive automatic (Route B, Liu-Hager-Rao ph): rewrite each phase's hp mesh from
-    // the per-interval error, ready for the next iteration. Runs every non-final iteration
-    // (no extrapolation-point warm-up needed, unlike the global heuristic).
+    // the per-interval error, ready for the next iteration. This is the only automatic
+    // refinement for the global pseudospectral methods; the local methods (Betts) build their
+    // next mesh in the use_local_collocation pre-solve branch (construct_new_mesh).
     if ( hp_auto_active(algorithm) && iter_nodes < number_of_mesh_refinement_iterations )
     {
         hp_refine_driver( problem, algorithm, solution, workspace );
-    }
-
-    else if (algorithm.mesh_refinement == "automatic" && iter_nodes>= algorithm.mr_min_extrapolation_points && use_global_collocation(algorithm) && iter_nodes<number_of_mesh_refinement_iterations  )
-    {
-
-	   // Calculate the next number of nodes for each phase
-	      compute_next_mesh_size( problem, algorithm, solution, workspace );
-
     }
 
 

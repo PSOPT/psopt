@@ -118,15 +118,14 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     if (algorithm.ode_tolerance <= 0)
        error_message("algorithm.ode_tolerance must be positive");
 
-    if (algorithm.mr_max_increment_factor <= 0 || algorithm.mr_max_increment_factor > 1 )
-       error_message("algorithm.mr_max_increment_factor must be in the interval (0,1]");
+    if (algorithm.mr_max_growth_factor <= 0 || algorithm.mr_max_growth_factor > 1 )
+       error_message("algorithm.mr_max_growth_factor must be in the interval (0,1]");
     if (algorithm.mr_max_iterations <= 0)
        error_message("algorithm.mr_max_iterations must be positive");
-    if (algorithm.mr_min_extrapolation_points < 2)
-       error_message("algorithm.mr_min_extrapolation_points must be >= 2");
-
-    if (algorithm.mr_initial_increment <= 0)
-       error_message("algorithm.mr_initial_increment must be positive");
+    if (algorithm.mr_min_order < 2)
+       error_message("algorithm.mr_min_order must be >= 2");
+    if (algorithm.mr_max_order < algorithm.mr_min_order)
+       error_message("algorithm.mr_max_order must be >= algorithm.mr_min_order");
 
     if (algorithm.mr_kappa <= 0 || algorithm.mr_kappa>1.0 )
        error_message("algorithm.mr_kappa must be in the interval (0,1]");
@@ -135,7 +134,7 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("algorithm.mr_M1 must be positive");
 
     if (algorithm.switch_order < 0  )
-       error_message("algorithm.mr_M1 must be >= 0");
+       error_message("algorithm.switch_order must be >= 0");
 
     if (algorithm.mesh_refinement != "automatic" &&  algorithm.mesh_refinement != "manual" )
        error_message("algorithm.mesh_refinement must either \"manual\" or \"automatic\" ");

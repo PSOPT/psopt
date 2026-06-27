@@ -237,18 +237,23 @@ struct alg_str {
 
 
   double    ode_tolerance;
-  double    mr_max_increment_factor;
+  // Caps the per-iteration growth of the mesh. For the hp pseudospectral driver it bounds the
+  // increase of the total collocation count N_eff; for the local (Betts) refinement it bounds
+  // the per-iteration interval growth. (Formerly mr_max_increment_factor.)
+  double    mr_max_growth_factor;
   int	      mr_max_iterations;
-  int       mr_min_extrapolation_points;
-  int       mr_initial_increment;
+  // Per-interval polynomial-degree bounds for the hp pseudospectral driver: the literature
+  // N_min / N_max (Patterson-Hager-Rao 2015; Darby-Hager-Rao 2011). mr_min_order is the floor
+  // degree for a freshly subdivided interval; mr_max_order is the degree above which the driver
+  // switches from p-refinement to h-refinement (interval subdivision).
+  int       mr_min_order;
+  int       mr_max_order;
+  // Local (Betts 2001) refinement parameters: kappa is the error-reduction threshold, M1 the
+  // per-interval maximum order increment. Used by construct_new_mesh for trapezoidal /
+  // Hermite-Simpson automatic refinement.
   double    mr_kappa;
   int       mr_M1;
   string    mesh_refinement;
-  // hp-adaptive (Route B) automatic refinement driver (Liu-Hager-Rao ph). When true,
-  // mesh_refinement="automatic" with a Radau method drives an hp mesh (per-interval order
-  // and breakpoint updates) instead of the legacy global pseudospectral node-count
-  // heuristic. Default false, so existing automatic runs are unaffected.
-  bool      hp_refinement;
   int       switch_order;
   double    ipopt_max_cpu_time;
 
@@ -394,18 +399,16 @@ inline bool hp_mesh_active(const Phases& ph) {
    return ph.hp_orders.size() > 0;
 }
 
-// True when the automatic Liu-Hager-Rao ph driver should run: automatic refinement, a
-// shared-breakpoint (Radau/Legendre/Chebyshev) or Gauss method, and the hp_refinement flag
-// set. Gated separately from hp_mesh_active (which only asks whether an hp mesh is currently
-// populated) so the driver owns the mesh schedule even at iteration 1 before any hp_orders
-// have been seeded. Legendre (LGL) and Chebyshev (CGL) share collocated breakpoints exactly
-// like Radau, so the driver's shared-breakpoint (non-Gauss) storage/error mapping applies
-// unchanged. Chebyshev is enabled here from CC4: once the cost quadrature became Clenshaw-
-// Curtis (CC2), the spurious low-cost meshes that defeated the driver in C3 no longer arise,
-// and Lagrange-form auto hp converges (no Mayer reformulation needed).
+// True when the automatic Liu-Hager-Rao ph driver should run: automatic refinement with a
+// shared-breakpoint (Radau/Legendre/Chebyshev) or Gauss pseudospectral method. This is the
+// only automatic refinement for the global pseudospectral methods (the legacy global node-
+// count heuristic has been retired), so it fires whenever mesh_refinement=="automatic" and the
+// method is pseudospectral - no separate opt-in flag. Gated separately from hp_mesh_active
+// (which only asks whether an hp mesh is currently populated) so the driver owns the mesh
+// schedule even at iteration 1 before any hp_orders have been seeded. The local methods
+// (trapezoidal/Hermite-Simpson) use the Betts refinement instead.
 inline bool hp_auto_active(const Alg& algorithm) {
-   return algorithm.hp_refinement
-       && algorithm.mesh_refinement == "automatic"
+   return algorithm.mesh_refinement == "automatic"
        && ( algorithm.collocation_method == "Radau"
             || algorithm.collocation_method == "Gauss"
             || algorithm.collocation_method == "Legendre"
@@ -869,8 +872,6 @@ void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& 
 void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, adouble* xad, int nsteps, Workspace* workspace);
 
 void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* workspace);
-
-void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace );
 
 // hp-adaptive (Route B) automatic refinement driver and its workspace-sizing ceiling.
 // hp_refine_driver rewrites each phase's hp_breakpoints/hp_orders from the per-interval

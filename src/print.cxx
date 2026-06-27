@@ -580,10 +580,10 @@ void print_algorithm_summary(Prob& problem, Alg& algorithm, Sol& solution, Works
     if (algorithm.mesh_refinement == "automatic" )  {
     fprintf(outfile,"\nMESH REF. ODE TOLERANCE:        %e", algorithm.ode_tolerance   );
     fprintf(outfile,"\nMESH REF. MAX ITERATIONS:       %i", algorithm.mr_max_iterations   );
-    fprintf(outfile,"\nMESH REF. MAX INCREMENT FACTOR: %e", algorithm.mr_max_increment_factor   );
+    fprintf(outfile,"\nMESH REF. MAX GROWTH FACTOR:    %e", algorithm.mr_max_growth_factor   );
       if (use_global_collocation(algorithm)) {
-    fprintf(outfile,"\nMESH REF. INITIAL INCREMENT:    %i", algorithm.mr_initial_increment   );
-    fprintf(outfile,"\nMESH REF. MIN EXTRAPOL. POINTS: %i", algorithm.mr_min_extrapolation_points   );
+    fprintf(outfile,"\nMESH REF. MIN ORDER (N_min):    %i", algorithm.mr_min_order   );
+    fprintf(outfile,"\nMESH REF. MAX ORDER (N_max):    %i", algorithm.mr_max_order   );
       }
       else {
     fprintf(outfile,"\nMESH REF. KAPPA:                %e", algorithm.mr_kappa   );

@@ -22,22 +22,22 @@
 #include <algorithm>
 using namespace Eigen;
 
-// Upper limit on N_eff for the hp-auto workspace ceiling. Matches MAX_STANDARD_PS_NODES in
-// psopt.cxx (kept as a local constant here to avoid a cross-translation-unit symbol
-// dependency); staying below it keeps the single-block LGR node generators in range.
+// Upper limit on N_eff for the hp-auto workspace ceiling. Staying below it keeps the
+// single-block LGR node generators in range and bounds the worst-case storage the
+// automatic driver may request.
 static const int HP_MAX_NODES = 600;
 
 // ---------------------------------------------------------------------------------------
 // Workspace-sizing ceiling. The hp mesh grows across refinement iterations, but the
 // Workspace is allocated once before the loop, so get_max_nodes must report an a-priori
-// upper bound on N_eff. Derived from the fields the user already sets in automatic mode
-// (no new public Alg fields): a geometric growth of the initial node count, bounded by the
-// standard pseudospectral node limit so the single-block node generators stay in range.
+// upper bound on N_eff. Each of the mr_max_iterations rounds adds at most
+// ceil(mr_max_growth_factor * nodes0) collocation points, bounded by the pseudospectral node
+// limit so the single-block node generators stay in range.
 int hp_node_ceiling( Prob& problem, Alg& algorithm, int iphase )
 {
     int nodes0 = (int) problem.phase[iphase-1].nodes(0);
-    int per_iter = std::max( algorithm.mr_initial_increment,
-                             (int) std::ceil(algorithm.mr_max_increment_factor * nodes0) );
+    int per_iter = (int) std::ceil(algorithm.mr_max_growth_factor * nodes0);
+    if ( per_iter < 1 ) per_iter = 1;
     int R = nodes0 + algorithm.mr_max_iterations * per_iter;
     if ( R > HP_MAX_NODES - 1 ) R = HP_MAX_NODES - 1;
     if ( R < nodes0 )                    R = nodes0;
@@ -95,9 +95,10 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
     const double eps_tol   = algorithm.ode_tolerance;
     const double sigma_min = 0.05;
 
-    // ph thresholds (internal constants for bring-up; promote to Alg fields once tuned).
-    const int    N_min     = 3;        // floor order for a freshly split sub-interval
-    const int    N_max     = 12;       // p->h switch: never p-refine an interval beyond this
+    // Per-interval polynomial-degree bounds (literature N_min / N_max, Patterson-Hager-Rao
+    // 2015; Darby-Hager-Rao 2011), now exposed as Alg fields.
+    const int    N_min     = algorithm.mr_min_order;  // floor order for a freshly split sub-interval
+    const int    N_max     = algorithm.mr_max_order;  // p->h switch: never p-refine beyond this
     const double sigma_lo  = 0.5;      // below this an interval is non-smooth -> prefer h
     const double min_width = 1.0e-4;   // smallest sub-interval (in (0,1)) the driver will create
 
@@ -126,11 +127,11 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
         std::vector<int> start(K+1, 0);
         for (int j=0;j<K;j++) start[j+1] = start[j] + old_orders(j) + (gauss ? 1 : 0);
 
-        // per-iteration node budget: bound mesh growth to ~mr_max_increment_factor and never
+        // per-iteration node budget: bound mesh growth to ~mr_max_growth_factor and never
         // exceed the workspace ceiling R. This keeps the interval count from exploding (worst
         // intervals are served first; the rest wait for a later iteration) and guarantees the
         // once-allocated workspace is never overrun.
-        int N_target = (int) std::ceil( N_eff * (1.0 + algorithm.mr_max_increment_factor) );
+        int N_target = (int) std::ceil( N_eff * (1.0 + algorithm.mr_max_growth_factor) );
         if (N_target < N_eff + 1) N_target = N_eff + 1;
         if (N_target > R)         N_target = R;
 
@@ -177,7 +178,7 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
             // p-refinement when the interval is smooth and still below the order cap.
             if ( smooth && nj < N_max ) {
                 int dN_raw = std::max(1, (int)std::ceil( std::log(e_j[j]/eps_tol)/sig[j] ));
-                int dN_cap = std::max(2, (int)std::ceil(algorithm.mr_max_increment_factor*nj)+1);
+                int dN_cap = std::max(2, (int)std::ceil(algorithm.mr_max_growth_factor*nj)+1);
                 int N_new  = std::min( nj + std::min(dN_raw, dN_cap), N_max );
                 int cost   = N_new - nj;
                 if (cost >= 1 && proj + cost <= N_target) { action[j]=1; p_new[j]=N_new; proj+=cost; }

@@ -36,124 +36,10 @@ using namespace std;
 
 using namespace Eigen;
 
-void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace )
-{
-   int iphase;
-	MatrixXd PHI;
-	MatrixXd theta(2,1);
-	double  yd;
-	MatrixXd x;
-	MatrixXd evec;
-	int i;
-	MatrixXd y, yls;
-	int xd;
-	int max_increment;
-	double yerror;
-
-  	for(iphase=1;iphase<=problem.nphases;iphase++) {
-    	int decrease_count=0;
-		int Ncurrent = problem.phase[iphase-1].current_number_of_intervals+1;
-
-
-		int Nd;
-	  	MatrixXd& emax_history = workspace->emax_history[iphase-1];
-
-      x    = emax_history.block(0,0, workspace->current_mesh_refinement_iteration, 1); 
-
-      evec = emax_history.block(0,1, workspace->current_mesh_refinement_iteration, 1); 
-
-      y.resize(evec.rows(),1);
-      
-    	for(int iii=0;iii<evec.rows();iii++)   y(iii)= log(evec(iii));
-
-
-		// If the error in this phase is not below the tolerance, then increment the nodes
-
-		if ( evec( evec.rows() -1  ) > algorithm.ode_tolerance )   {   
-
-		    // Check convergence behaviour
-
-		   for (i=length(y)-2; i>=0; i--) {   // EIGEN_UPDATE: index i shifted by -1
-				if (y(i+1)<y(i)) {
-			   	 decrease_count++;
-				}
-				else break;
-		   }
-
-		   if (decrease_count>=1) {
-			  // If the error has decreased calculate the next mesh size by using regression.
-
-			  // Create regression matrix
-
-			  PHI.resize(1,2);
-
-			  int istart = length(y)-decrease_count-1;
-			  int iend   = length(y)-1;
-
-           int deltai = iend-istart+1;
-
-
-           y = y.block(istart,0,deltai,1);
-
-           x = x.block(istart,0,deltai,1);
-
-           evec = (evec.block(istart,0,deltai,1));
-
-			  
-			  PHI.resize(length(y),2);
-			  
-           PHI(0,0) = log( x(0)); PHI(0,1) = 1.0;
-
-			  for (i=1;i<length(y);i++) { // EIGEN_UPDATE: Index i shifted by -1.
-             PHI(i,0) = log(x(i)); PHI(i,1) = 1.0;
-			  }
-
-//	    	          Solve the least squares problem
-
-			  theta = (PHI.transpose()*PHI).colPivHouseholderQr().solve(PHI.transpose()*y);
-			  
-
-			  yls = PHI*theta;
-
-           yerror = (y-yls).norm();
-
-			  snprintf(workspace->text,sizeof(workspace->text), "\nLeast squares problem solved for global mesh refinement. Norm of residual = %e", yerror);
-
-			  psopt_print(workspace,workspace->text);
-
-
-
-           yd = std::max( log(0.25*evec(length(evec)-1)), log(0.99*algorithm.ode_tolerance) );
-
-           xd = (int) exp( (yd- theta(1))/theta(0) );
-
-			  max_increment = std::max( (int) algorithm.mr_max_increment_factor*Ncurrent, 1);
-
-			  Nd = std::min( Ncurrent + max_increment, std::max( xd, (Ncurrent+1)  ) );
-
-			  snprintf(workspace->text,sizeof(workspace->text),"\nPhase %i: extrapolated number of nodes: %i, accepted number of nodes %d\n", iphase, xd, Nd);
-
-		    }
-
-		    else {
-			// Take a cautious step forward and hope for the best
-			Nd = Ncurrent + 1;
-			snprintf(workspace->text,sizeof(workspace->text),"\nPhase %i: cautious step forward, next number of nodes %d\n", iphase, Nd);
-		    }
-
-		    psopt_print(workspace,workspace->text);
-
-	            problem.phase[iphase-1].current_number_of_intervals = Nd-1;
-
-	       }  // End if
-
-
-
-	}
-
-
-}
-
+// NOTE: compute_next_mesh_size (the legacy global pseudospectral node-count refinement
+// heuristic) was retired when hp-adaptive refinement became the default automatic strategy
+// for the global pseudospectral methods (Radau/Gauss/Legendre/Chebyshev). The remaining
+// functions in this file serve the local (Betts) refinement path.
 
 bool check_for_equidistributed_error(Prob& problem,Alg& algorithm,Sol& solution)
 {
@@ -323,7 +209,7 @@ void construct_new_mesh(Prob& problem,Alg& algorithm,Sol& solution, Workspace* w
 				terminate_flag=true;
 	      if ( (epsilon_max <= kappa*algorithm.ode_tolerance) && (I(imax)<M1) && (I(imax)>0) )
 				terminate_flag = true;
-	      if ( Icount >= (algorithm.mr_max_increment_factor)*(M-1) )
+	      if ( Icount >= (algorithm.mr_max_growth_factor)*(M-1) )
 				terminate_flag = true;
 		   for(int iii=0;iii<I.cols(); iii++) {
 	         if (  I(iii) == M1  ) {

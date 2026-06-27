@@ -560,7 +560,7 @@ int main(void)
     algorithm.jac_sparsity_ratio          =  0.11; // 0.05;
     algorithm.collocation_method          = "trapezoidal";
     algorithm.mesh_refinement             = "automatic";
-    algorithm.mr_max_increment_factor     = 0.2;
+    algorithm.mr_max_growth_factor     = 0.2;
 
 
 

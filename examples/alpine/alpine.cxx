@@ -252,7 +252,7 @@ int main(void)
     algorithm.collocation_method          = "Legendre";
     algorithm.diff_matrix                 = "central-differences";
     algorithm.mesh_refinement             = "automatic";
-    algorithm.mr_max_increment_factor     = 0.3;
+    algorithm.mr_max_growth_factor     = 0.3;
     algorithm.mr_max_iterations           = 3;
     algorithm.defect_scaling              = "jacobian-based";
 

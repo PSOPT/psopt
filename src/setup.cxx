@@ -157,13 +157,12 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.save_sparsity_pattern       = 0;
   algorithm.nsteps_error_integration    = 10;
   algorithm.ode_tolerance               = 1.e-3;
-  algorithm.mr_max_increment_factor     = 0.4;
+  algorithm.mr_max_growth_factor        = 0.4;
   algorithm.mr_max_iterations		       = 7;
-  algorithm.mr_min_extrapolation_points = 2;
-  algorithm.mr_initial_increment        = 5;
+  algorithm.mr_min_order                = 3;
+  algorithm.mr_max_order                = 12;
   algorithm.mr_kappa                    = 0.1;
   algorithm.mr_M1                       = 5;
-  algorithm.hp_refinement               = false;
   algorithm.mesh_refinement 		       = "manual";
   algorithm.switch_order                = 2;
   algorithm.parameter_statistics        = "yes";

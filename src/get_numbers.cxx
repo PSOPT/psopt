@@ -241,25 +241,14 @@ int get_max_nodes(Prob& problem,int iphase, Alg* algorithm)
          // retval already holds the manual-mode value computed above.
     }
 
-    else if (algorithm->mesh_refinement == "automatic" && !use_local_collocation(*algorithm) ) {
-
-         retval = problem.phase[iphase-1].nodes(0) + (algorithm->mr_min_extrapolation_points-1)*(algorithm->mr_initial_increment);
-         int count = retval;
-         for (i=1;i<=(algorithm->mr_max_iterations-2);i++) {
-//                int increment = algorithm->mr_max_increment_factor*count;
-// 		          count += increment;
-// The above two lines have been deleted has they led to inconsistent mesh refinement iterations with different maximum number of mesh refinement iterations.
-// Thanks to Emmanuel Schneider for pointing out this issue.             
-            count += (int) algorithm->mr_max_increment_factor * count; 
-	      }
-	      retval += count;
-    }
-
+    // Automatic + global pseudospectral never reaches here: hp_auto_active is handled at the
+    // top of this function via hp_node_ceiling (the a-priori N_eff ceiling). Only the local
+    // (Betts) automatic schedule remains.
     else if (algorithm->mesh_refinement == "automatic" && use_local_collocation(*algorithm) ) {
          int M = problem.phase[iphase-1].nodes(0);
 	      int mcount = M;
 	      for (i=1; i<= algorithm->mr_max_iterations;i++) {
-	         mcount += (int) mcount*algorithm->mr_max_increment_factor;
+	         mcount += (int) mcount*algorithm->mr_max_growth_factor;
 	      }
 	      retval = mcount;
     }
