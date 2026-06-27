@@ -257,6 +257,11 @@ struct alg_str {
   int       switch_order;
   double    ipopt_max_cpu_time;
 
+  // Solution diagnostics verbosity. 0 (default): none, and the solve is bit-identical to before.
+  // 1: per-interval error localisation + smoothness indicator + costate-structure summary.
+  // 2: additionally the Hamiltonian-constancy and stationarity (dH/du) consistency residuals.
+  // Appended at the end of the struct so that the offsets of all pre-existing fields are unchanged.
+  int       diagnostic_level;
 
 };
 
@@ -499,6 +504,8 @@ public:
       nodes = NULL;
       parameters = NULL;
       relative_errors = NULL;
+      smoothness = NULL;
+      stationarity_residual = NULL;
       integrand_cost = NULL;
       endpoint_cost = NULL;
       integrated_cost = NULL;
@@ -513,6 +520,8 @@ public:
       if (this->integrand_cost) delete [] this->integrand_cost;
       if (this->parameters) delete [] this->parameters;
       if (this->relative_errors) delete [] this->relative_errors;
+      if (this->smoothness) delete [] this->smoothness;
+      if (this->stationarity_residual) delete [] this->stationarity_residual;
       if (this->endpoint_cost) delete [] this->endpoint_cost;
       if (this->integrated_cost) delete [] this->integrated_cost;
       if (this->mesh_stats) delete [] this->mesh_stats;
@@ -539,6 +548,14 @@ public:
    string   start_date_and_time;
    string   end_date_and_time;
    Prob* problem;
+   // Per-state spectral smoothness indicator sigma (decay rate of the phase Legendre coefficients),
+   // populated by solution_diagnostics for the global pseudospectral methods. Appended as the last
+   // data member so the offsets of all pre-existing members are unchanged; only allocated when
+   // diagnostic_level > 0.
+   MatrixXd *smoothness;
+   // Per-node stationarity residual dH/du (one row per control), populated by solution_diagnostics
+   // at diagnostic_level >= 2. Appended after smoothness as a data member; only allocated then.
+   MatrixXd *stationarity_residual;
    MatrixXd& get_states_in_phase(int iphase);
    MatrixXd& get_controls_in_phase(int iphase);
    MatrixXd& get_time_in_phase(int iphase);
@@ -550,6 +567,8 @@ public:
    MatrixXd& get_dual_events_in_phase(int iphase);
    MatrixXd& get_dual_linkages();
    MatrixXd& get_relative_local_error_in_phase(int iphase);
+   MatrixXd& get_smoothness_in_phase(int iphase);
+   MatrixXd& get_stationarity_residual_in_phase(int iphase);
    double   get_cost() { return cost; }
 };
 
@@ -872,6 +891,11 @@ void JacobianColumn( void fun(MatrixXd& x, MatrixXd* f, Workspace* ), MatrixXd& 
 void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, adouble* xad, int nsteps, Workspace* workspace);
 
 void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* workspace);
+
+// Optional solution diagnostics (see Alg::diagnostic_level). Computes the per-interval smoothness
+// indicator and, at higher levels, the costate-structure summary and consistency residuals, and
+// prints a report. A no-op when diagnostic_level == 0.
+void solution_diagnostics(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
 // hp-adaptive (Route B) automatic refinement driver and its workspace-sizing ceiling.
 // hp_refine_driver rewrites each phase's hp_breakpoints/hp_orders from the per-interval

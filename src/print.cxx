@@ -518,6 +518,13 @@ void Save_to_json_file(const string& filename, Prob& problem, Sol& solution, Alg
         fputs("      \"controls\": ",        fp); psopt_json_matrix(fp, controls); fputs(",\n", fp);
         fputs("      \"costates\": ",        fp); psopt_json_matrix(fp, costates); fputs(",\n", fp);
         fputs("      \"relative_errors\": ", fp); psopt_json_matrix(fp, relerr);   fputs(",\n", fp);
+        if (solution.smoothness != NULL) {   // populated only when diagnostic_level > 0
+            fputs("      \"smoothness\": ", fp); psopt_json_matrix(fp, solution.smoothness[i-1]); fputs(",\n", fp);
+        }
+        if (solution.stationarity_residual != NULL) {   // populated only when diagnostic_level >= 2
+            fputs("      \"stationarity_residual\": ", fp);
+            psopt_json_matrix(fp, solution.stationarity_residual[i-1]); fputs(",\n", fp);
+        }
         fputs("      \"parameters\": ",      fp); psopt_json_vector(fp, params);   fputs("\n", fp);
 
         fputs((i < problem.nphases) ? "    },\n" : "    }\n", fp);

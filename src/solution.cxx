@@ -112,6 +112,20 @@ MatrixXd& Sol::get_relative_local_error_in_phase(int iphase)
      return relative_errors[iphase-1];
 }
 
+MatrixXd& Sol::get_smoothness_in_phase(int iphase)
+{
+     if (iphase <1 || iphase > problem->nphases)
+          error_message("incorrect phase index in Sol::get_smoothness_in_phase()");
+     return smoothness[iphase-1];
+}
+
+MatrixXd& Sol::get_stationarity_residual_in_phase(int iphase)
+{
+     if (iphase <1 || iphase > problem->nphases)
+          error_message("incorrect phase index in Sol::get_stationarity_residual_in_phase()");
+     return stationarity_residual[iphase-1];
+}
+
 void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace)
 {
    int nphases = problem.nphases;
@@ -124,6 +138,10 @@ void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace
    solution.integrand_cost= new MatrixXd[nphases];         
    solution.parameters  = new MatrixXd[nphases];           
    solution.relative_errors     = new MatrixXd[nphases];   
+   if (algorithm.diagnostic_level > 0)
+      solution.smoothness       = new MatrixXd[nphases];   
+   if (algorithm.diagnostic_level >= 2)
+      solution.stationarity_residual = new MatrixXd[nphases];
 
    solution.dual.costates = new MatrixXd[nphases];         
    solution.dual.path     = new MatrixXd[nphases];         
@@ -177,6 +195,10 @@ void resize_solution(Sol& solution, Prob& problem, Alg& algorithm)
    	(solution.dual.costates[i]).resize(nstates, current_number_of_intervals+1);
    	(solution.dual.Hamiltonian[i]).resize(1, current_number_of_intervals+1);
 	(solution.relative_errors[i]).resize(1, current_number_of_intervals);
+	if (algorithm.diagnostic_level > 0)
+	   (solution.smoothness[i]).resize(1, nstates);
+	if (algorithm.diagnostic_level >= 2)
+	   (solution.stationarity_residual[i]).resize(ncontrols, current_number_of_intervals+1);
    	if (npath) {
      		(solution.dual.path[i]).resize(npath, current_number_of_intervals+1);
    	}

@@ -1335,6 +1335,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
   get_local_time( solution.end_date_and_time );
 
+  if (algorithm.diagnostic_level > 0) {
+     solution_diagnostics(problem, algorithm, solution, workspace);
+  }
+
 
 
   if (algorithm.print_level>0) {
