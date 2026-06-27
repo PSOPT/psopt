@@ -169,7 +169,7 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
            }
            nlp_ncons += Kg * problem.phase[i].nstates;   // K Gauss-quadrature defining constraints (one per interval; K=1 single-block)
        }
-       if ( algorithm.collocation_method == "Legendre" && ( hp_auto_active(algorithm) || hp_mesh_active(problem.phase[i]) ) ) {
+       if ( ( algorithm.collocation_method == "Legendre" || algorithm.collocation_method == "Chebyshev" ) && ( hp_auto_active(algorithm) || hp_mesh_active(problem.phase[i]) ) ) {
            int Kl;
            if ( hp_auto_active(algorithm) ) {
                // ph driver grows K across refinement: size for worst-case. LGL shares
@@ -332,7 +332,7 @@ int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
                     ncons_phase_i += Kg * problem.phase[i].nstates;    // K Gauss-quadrature defining constraints (one per interval; K=1 single-block)
         }
 
-        if ( workspace->algorithm->collocation_method == "Legendre" && hp_mesh_active(problem.phase[i]) ) {
+        if ( ( workspace->algorithm->collocation_method == "Legendre" || workspace->algorithm->collocation_method == "Chebyshev" ) && hp_mesh_active(problem.phase[i]) ) {
                     int Kl = (int) problem.phase[i].hp_orders.size();
                     ncons_phase_i += (Kl - 1) * problem.phase[i].nstates;  // K-1 LGL interface defects (interior breakpoints collocated from both sides)
         }

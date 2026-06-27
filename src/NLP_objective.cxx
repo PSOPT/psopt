@@ -292,16 +292,12 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 
 		    time = convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
 
-		    adouble stime = (workspace->snodes[i])(k);
-
 		    integrand_cost = problem.integrand_cost(states,controls,parameters,time,xad,iphase,workspace);
 
-		    if (workspace->algorithm->collocation_method=="Chebyshev") {
-			// Multiply by the reciprocal of the Chebyshev weighting function to evaluate the
-			// correct integral.
-			integrand_cost *= sqrt(1.0-stime*stime);
-		    }
-
+		    // Cost is a plain weighted sum sum (tf-t0)/2 * w_k * g_k for every method. For
+		    // Chebyshev, w_k are Clenshaw-Curtis weights (set in the dispatch / cgl_nodes_multi),
+		    // which integrate the integrand directly with spectral accuracy - no sqrt(1-x^2)
+		    // compensation is needed.
 		    (solution.integrand_cost[i])(k) = integrand_cost.value();
 
 		    phase_sum_cost += ((tf-t0)/2.0)*integrand_cost*w(k);

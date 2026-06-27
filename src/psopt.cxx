@@ -564,16 +564,33 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 	    for(i=0; i<nphases; i++)
     	    {
-	         if (problem.phase[i].current_number_of_intervals > MAX_STANDARD_PS_NODES && algorithm.mesh_refinement=="automatic")
+	         if (problem.phase[i].current_number_of_intervals > MAX_STANDARD_PS_NODES && algorithm.mesh_refinement=="automatic" && !hp_mesh_active(problem.phase[i]))
 		 {
 		    // When using automatic mesh refinement, switch to central differences when the order is too large to avoid numerical problems.
+		    // (The hp multi-interval path keeps the differentiation-matrix defects.)
 		    workspace->differential_defects="central-differences";
 		 }
+                 if ( hp_mesh_active(problem.phase[i]) ) {
+                    // hp multi-interval Chebyshev (shared collocated breakpoints; Option A), same
+                    // layout as hp-LGL. cgl_nodes_multi returns ascending nodes, the M x (M+K-1)
+                    // composite D, and the composite Clenshaw-Curtis weights (sum 2). The cost is
+                    // then a plain weighted sum - no sqrt(1-x^2) factor. Ascending => no sort.
+                    cgl_nodes_multi( problem.phase[i].hp_breakpoints, problem.phase[i].hp_orders,
+                                     workspace->snodes[i], workspace->w[i], workspace->D[i] );
+                 }
+                 else {
          	cglnodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i], workspace );
 
                 sort_vector(workspace->snodes[i],workspace->sindex[i]);
 
                 rearrange_vector(workspace->w[i], workspace->sindex[i] );
+
+                // single-block Chebyshev cost uses Clenshaw-Curtis weights (integrate f directly,
+                // spectral) instead of the legacy CGL pi-weights + sqrt(1-x^2) compensation. The
+                // nodes/D from cglnodes are kept; only the quadrature weights are replaced. C-C
+                // weights are symmetric, so the sorted (ascending) order needs no rearrangement.
+                clenshaw_curtis_weights( (int)workspace->snodes[i].size() - 1, workspace->w[i] );
+                 }
             }
 
     }
@@ -880,14 +897,11 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		  }		
 
     	  if ( algorithm.collocation_method == "Chebyshev" ) {
-        		for(k=1;k<norder;k++) {  // EIGEN_UPDATE: Index k shifted by -1
-                  double tk = (workspace->snodes[i])(k);
-
+        		// Covector map lambda_k = nu_k / w_k with w_k the Clenshaw-Curtis cost weight.
+        		// CGL collocates both endpoints and the C-C endpoint weights are nonzero, so the
+        		// map runs over ALL nodes exactly as for Legendre (no endpoint extrapolation).
+        		for(k=0;k<norder+1;k++) {
                     (solution.dual.costates[i]).block(0,k,nstates,1) = (solution.dual.costates[i]).block(0,k,nstates,1)/(workspace->w[i])(k);
-
-                    (solution.dual.costates[i]).block(0,k,nstates,1) =(1.0/sqrt(1.0 - tk*tk))*(solution.dual.costates[i]).block(0,k,nstates,1); // See PhD thesis by Pietz (2003)
-
-
         		}
     	  }
 
@@ -906,18 +920,19 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	  			solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1);
    	  }
 
-	  // Legendre hp: correct the interior-breakpoint costates with the interface-defect
-	  // multipliers. An interior LGL breakpoint is collocated from both sides; the primary
-	  // (left-interval terminal) multiplier divided by the accumulated breakpoint weight,
-	  // already stored in costates(bp) by the lambda_k = lambda_tilde_k/w_k loop above, is
-	  // only the left-side contribution. The interface (right-interval initial) defect
+	  // Legendre/Chebyshev hp: correct the interior-breakpoint costates with the interface-
+	  // defect multipliers. An interior Lobatto breakpoint is collocated from both sides; the
+	  // primary (left-interval terminal) multiplier divided by the accumulated breakpoint
+	  // weight, already stored in costates(bp) by the lambda_k = lambda_tilde_k/w_k loop above,
+	  // is only the left-side contribution. The interface (right-interval initial) defect
 	  // multiplier mu completes the Lobatto covector mapping at the shared node:
 	  //     lambda(bp) = ( nu_primary + mu_interface ) / w_bp .
 	  // mu is pushed through the same user/objective/automatic scaling the costate block
 	  // received (using the interface constraint's own automatic-scaling entry), then divided
 	  // by the accumulated weight. K=1 has no interfaces and is unchanged (bit-identical to
-	  // single-block Legendre).
-	  if ( algorithm.collocation_method=="Legendre" && hp_mesh_active(problem.phase[i]) ) {
+	  // single-block). LGL and CGL share this Option-A interface-defect structure exactly.
+	  if ( ( algorithm.collocation_method=="Legendre" || algorithm.collocation_method=="Chebyshev" )
+	       && hp_mesh_active(problem.phase[i]) ) {
 	      int iface = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
 	      int Kl = hp_num_intervals(problem.phase[i]);
 	      int cbp = 0;
@@ -956,104 +971,11 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	      }
 	  }
 
-   	  if ( algorithm.collocation_method == "Chebyshev") {
-                // use linear extrapolation to approximate costate values at both ends (not perfect but better than nothing)
+   	  // (Chebyshev endpoint costates are now mapped directly by the covector loop above -
+   	  // the legacy near-endpoint linear-extrapolation workaround, needed only when the old
+   	  // pi-weight + 1/sqrt(1-t^2) map blew up at the ends, has been removed.)
 
-                MatrixXd Pl, Pl1, Pl2;
-                double sl, sl1;
-
-                  Pl1 = solution.dual.costates[i].block(0,norder-3, nstates, 1);
-                  Pl2 = solution.dual.costates[i].block(0,norder-4, nstates, 1);
-                  sl  = (workspace->snodes[i])(norder-2)-(workspace->snodes[i])(norder -3  );
-                  sl1 = (workspace->snodes[i])(norder-3)-(workspace->snodes[i])(  norder-4 );
-
-                Pl = Pl1 + (Pl1-Pl2)/sl1*sl;
-               solution.dual.costates[i].block(0, norder-2, nstates, 1) = Pl;
-
-
-                Pl1 = solution.dual.costates[i].block(0,4, nstates, 1);
-
-                Pl2 = solution.dual.costates[i].block(0,3, nstates, 1);
-
-
-                sl1  = (workspace->snodes[i])(4)-(workspace->snodes[i])(3);
-
-                sl   = (workspace->snodes[i])(3)-(workspace->snodes[i])(2);
-
-                Pl = Pl2 - (Pl1-Pl2)/sl1*sl;
-
-
-                solution.dual.costates[i].block(0,2, nstates,1) = Pl;
-
-                /*  */
-
-
-
-                  Pl1 = solution.dual.costates[i].block(0,norder-2,nstates,1);
-
-                  Pl2 = solution.dual.costates[i].block(0,norder-3,nstates,1);
-
-
-                sl  = (workspace->snodes[i])(norder-1)-(workspace->snodes[i])(norder -2  );
-
-                sl1 = (workspace->snodes[i])(norder-2)-(workspace->snodes[i])(  norder-3 );
-
-                Pl = Pl1 + (Pl1-Pl2)/sl1*sl;
-
-
-                solution.dual.costates[i].block(0,norder-1,nstates,1) = Pl;
-
-
-                Pl1 = solution.dual.costates[i].block(0,3,nstates,1);
-
-                Pl2 = solution.dual.costates[i].block(0,2,nstates,1);
-
-
-                sl1  = (workspace->snodes[i])(3)-(workspace->snodes[i])(2);
-
-                sl   = (workspace->snodes[i])(2)-(workspace->snodes[i])(1);
-
-                Pl = Pl2 - (Pl1-Pl2)/sl1*sl;
-
-
-                solution.dual.costates[i].block(0,1,nstates,1) = Pl;
-
-
-                /*  */
-
-
-                Pl1 = solution.dual.costates[i].block(0,norder-1,nstates,1);
-
-                Pl2 = solution.dual.costates[i].block(0,norder-2,nstates,1);
-
-
-                sl  = (workspace->snodes[i])(norder)-(workspace->snodes[i])(norder -1  );
-
-                sl1 = (workspace->snodes[i])(norder-1)-(workspace->snodes[i])(  norder-2 );
-
-                Pl = Pl1 + (Pl1-Pl2)/sl1*sl;
-
-
-                solution.dual.costates[i].block(0,norder,nstates,1) = Pl;
-
-
-                Pl1 = solution.dual.costates[i].block(0,2,nstates,1);
-
-
-                Pl2 = solution.dual.costates[i].block(0,1,nstates,1);
-
-
-                sl1  = (workspace->snodes[i])(2)-(workspace->snodes[i])(1);
-
-                sl   = (workspace->snodes[i])(1)-(workspace->snodes[i])(0);
-
-                Pl = Pl2 - (Pl1-Pl2)/sl1*sl;
-
-                solution.dual.costates[i].block(0,0,nstates,1) = Pl;
-
-        }
-
-    	  if ( (algorithm.collocation_method == "Legendre" || algorithm.collocation_method == "Chebyshev") && algorithm.diff_matrix != "central-differences") {
+    	  if ( ( algorithm.collocation_method == "Legendre" ) && algorithm.diff_matrix != "central-differences") {
                 // Smooth the costates, as they can be noisy in the case of standard Legendre or Chebyshev collocation.
                 // (see Farhroo and Ross "Costate estimation by a Legendre Pseudospectral Method", Journal of Guidance
                 //    Control and Dynamics, 2001).

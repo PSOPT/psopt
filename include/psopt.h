@@ -394,18 +394,22 @@ inline bool hp_mesh_active(const Phases& ph) {
    return ph.hp_orders.size() > 0;
 }
 
-// True when the automatic Liu-Hager-Rao ph driver should run: automatic refinement,
-// a shared-breakpoint (Radau/Legendre) or Gauss method, and the hp_refinement flag set.
-// Gated separately from hp_mesh_active (which only asks whether an hp mesh is currently
+// True when the automatic Liu-Hager-Rao ph driver should run: automatic refinement, a
+// shared-breakpoint (Radau/Legendre/Chebyshev) or Gauss method, and the hp_refinement flag
+// set. Gated separately from hp_mesh_active (which only asks whether an hp mesh is currently
 // populated) so the driver owns the mesh schedule even at iteration 1 before any hp_orders
-// have been seeded. Legendre (LGL) shares collocated breakpoints exactly like Radau, so the
-// driver's shared-breakpoint (non-Gauss) storage/error mapping applies unchanged.
+// have been seeded. Legendre (LGL) and Chebyshev (CGL) share collocated breakpoints exactly
+// like Radau, so the driver's shared-breakpoint (non-Gauss) storage/error mapping applies
+// unchanged. Chebyshev is enabled here from CC4: once the cost quadrature became Clenshaw-
+// Curtis (CC2), the spurious low-cost meshes that defeated the driver in C3 no longer arise,
+// and Lagrange-form auto hp converges (no Mayer reformulation needed).
 inline bool hp_auto_active(const Alg& algorithm) {
    return algorithm.hp_refinement
        && algorithm.mesh_refinement == "automatic"
        && ( algorithm.collocation_method == "Radau"
             || algorithm.collocation_method == "Gauss"
-            || algorithm.collocation_method == "Legendre" );
+            || algorithm.collocation_method == "Legendre"
+            || algorithm.collocation_method == "Chebyshev" );
 }
 
 
@@ -811,6 +815,9 @@ void lg_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
 void lg_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // hp multi-interval LG (non-collocated breakpoints)
 void lgl_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // single-block LGL, ascending, positive-convention D
 void lgl_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // hp multi-interval LGL (shared collocated breakpoints; D is M x (M+K-1): M x M primary block + K-1 interface columns)
+void clenshaw_curtis_weights(int N, MatrixXd& w);  // Clenshaw-Curtis weights for N+1 CGL nodes on [-1,1] (sum 2; integrate f directly)
+void cgl_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // single-block CGL (Chebyshev), ascending, positive-convention D, pi-summing weights
+void cgl_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // hp multi-interval CGL (Option-A layout; Clenshaw-Curtis composite weights)
 void gauss_legendre_unit(int m, MatrixXd& nodes01, MatrixXd& w01);  // m GL nodes/weights on [0,1]
 adouble integrated_residual_phase(int i, int iphase, adouble* xad, adouble t0, adouble tf,
                                   adouble* parameters, Workspace* workspace,

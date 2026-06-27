@@ -209,9 +209,9 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
          // (0,1); each interval order >= 2 (a single-point interval is degenerate).
          if ( hp_mesh_active(problem.phase[i]) )
          {
-            if ( algorithm.collocation_method != "Radau" && algorithm.collocation_method != "Gauss" && algorithm.collocation_method != "Legendre" )
+            if ( algorithm.collocation_method != "Radau" && algorithm.collocation_method != "Gauss" && algorithm.collocation_method != "Legendre" && algorithm.collocation_method != "Chebyshev" )
             {
-               snprintf(workspace->text,sizeof(workspace->text),"hp-adaptive mesh (hp_orders) in phase %i currently requires collocation_method = \"Radau\", \"Gauss\" or \"Legendre\"",i+1);
+               snprintf(workspace->text,sizeof(workspace->text),"hp-adaptive mesh (hp_orders) in phase %i currently requires collocation_method = \"Radau\", \"Gauss\", \"Legendre\" or \"Chebyshev\"",i+1);
                error_message(workspace->text);
             }
             int Khp = (int) problem.phase[i].hp_orders.size();

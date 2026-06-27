@@ -483,7 +483,7 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
         // D.col(M+e) is the interface coefficient vector stored by lgl_nodes_multi (nonzero
         // only over interval (e+1)'s nodes). Placed in the same constraint slot that the
         // Radau pin / Gauss quadrature defining constraints occupy. K=1 => no interface rows.
-        if ( algorithm->collocation_method == "Legendre" && hp_mesh_active(problem->phase[i]) ) {
+        if ( ( algorithm->collocation_method == "Legendre" || algorithm->collocation_method == "Chebyshev" ) && hp_mesh_active(problem->phase[i]) ) {
             int M  = norder + 1;
             int Kl = hp_num_intervals(problem->phase[i]);
             int iface_base = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);

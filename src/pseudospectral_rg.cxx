@@ -505,6 +505,132 @@ void lgl_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders,
     }
 }
 
+// ---------------------------------------------------------------------------
+// clenshaw_curtis_weights: Clenshaw-Curtis quadrature weights for the N+1
+// Chebyshev-Gauss-Lobatto nodes on [-1,1] (weights sum to 2). Unlike the pi-summing CGL
+// weights (which integrate f(x)/sqrt(1-x^2)), these integrate f(x) DIRECTLY with spectral
+// accuracy - the correct quadrature for a Lagrange cost integral sampled at CGL nodes, with
+// no sqrt(1-x^2) compensation. The weights are symmetric (w_j = w_{N-j}) and the interior
+// formula is symmetric in j <-> N-j, so the same values apply to the ascending node order
+// used by cgl_nodes (y_j = -cos(j*pi/N)). Reference: Trefethen, Spectral Methods in MATLAB
+// (clencurt). AI provenance: generated with AI assistance; validated standalone (sum 2,
+// polynomial exactness to degree N, spectral convergence on smooth integrands).
+// ---------------------------------------------------------------------------
+void clenshaw_curtis_weights(int N, MatrixXd& w)
+{
+    const int M = N + 1;
+    w.resize(M, 1);
+    if (N == 0) { w(0) = 2.0; return; }
+    const bool even = (N % 2 == 0);
+    for (int j = 0; j <= N; ++j) {
+        const double th = PSOPT_PI * j / N;
+        if (j == 0 || j == N) {
+            w(j) = even ? 1.0 / (double)(N * N - 1) : 1.0 / (double)(N * N);
+        } else {
+            double v = 1.0;
+            const int kmax = even ? (N / 2 - 1) : ((N - 1) / 2);
+            for (int k = 1; k <= kmax; ++k)
+                v -= 2.0 * std::cos(2.0 * k * th) / (double)(4 * k * k - 1);
+            if (even) v -= std::cos(N * th) / (double)(N * N - 1);
+            w(j) = 2.0 * v / N;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// cgl_nodes: single-block Chebyshev-Gauss-Lobatto set in STANDARD POSITIVE
+// ASCENDING convention (matching lgl_nodes / lgr_nodes, NOT the legacy descending,
+// negated-D cglnodes). N+1 nodes y_j = -cos(j*pi/N) on [-1,1] (y_0=-1, y_N=+1, both
+// endpoints collocated). Weights are CLENSHAW-CURTIS (sum 2), which integrate f directly at
+// the CGL nodes with spectral accuracy - so the Lagrange cost is a plain weighted sum with NO
+// sqrt(1-x^2) compensation. D is the standard (positive) first-derivative matrix built from
+// the general barycentric formula on the ascending nodes, so (D p)_j = p'(y_j). AI provenance:
+// generated with AI assistance (hp CGL extension); validated by polynomial differentiation
+// exactness and Clenshaw-Curtis quadrature exactness.
+// ---------------------------------------------------------------------------
+void cgl_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D)
+{
+    const int M = N + 1;
+    x.resize(M, 1);
+    D.resize(M, M);  D.setZero();
+
+    for (int j = 0; j < M; ++j) x(j) = -std::cos(PSOPT_PI * j / N);   // ascending: -1 .. +1
+
+    clenshaw_curtis_weights(N, w);   // C-C weights (sum 2); integrate f directly, no sqrt factor
+
+    // barycentric weights for this node set, then the standard differentiation matrix
+    //   D(j,l) = (lam_l/lam_j)/(y_j - y_l),  D(j,j) = -sum_{l!=j} D(j,l).
+    std::vector<double> lam(M, 1.0);
+    for (int j = 0; j < M; ++j) {
+        double prod = 1.0;
+        for (int l = 0; l < M; ++l) if (l != j) prod *= (x(j) - x(l));
+        lam[j] = 1.0 / prod;
+    }
+    for (int j = 0; j < M; ++j) {
+        double diag = 0.0;
+        for (int l = 0; l < M; ++l) if (l != j) {
+            D(j, l) = (lam[l] / lam[j]) / (x(j) - x(l));
+            diag   -= D(j, l);
+        }
+        D(j, j) = diag;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// cgl_nodes_multi: hp multi-interval Chebyshev (Option A), structurally identical to
+// lgl_nodes_multi - shared collocated breakpoints, storage M = N_eff+1, D is M x (M+K-1)
+// (square top-left differentiation block + K-1 trailing interface columns). The local block
+// generator (cgl_nodes) supplies CLENSHAW-CURTIS weights, so the composite weights are a plain
+// per-sub-interval C-C sum scaled by the sub-interval width (sum 2 over the phase) - the cost
+// is a direct weighted sum with NO sqrt(1-x^2) factor. Composite breakpoint weights accumulate
+// both sides. K=1 reduces to a single CGL block. AI provenance: generated with AI assistance
+// (hp CGL extension); validated standalone.
+// ---------------------------------------------------------------------------
+void cgl_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders,
+                     MatrixXd& x, MatrixXd& w, MatrixXd& D)
+{
+    const int K = (int) orders.size();
+    int N_eff = 0;
+    for (int j = 0; j < K; ++j) N_eff += orders(j);
+    const int M    = N_eff + 1;
+    const int Mext = M + (K - 1);
+
+    std::vector<double> s(K + 1);
+    s[0] = -1.0;  s[K] = 1.0;
+    for (int j = 1; j < K; ++j) s[j] = -1.0 + 2.0 * breakpoints(j - 1);
+
+    std::vector<int> c(K + 1, 0);
+    for (int j = 0; j < K; ++j) c[j + 1] = c[j] + orders(j);
+
+    x.resize(M, 1);     x.setZero();
+    w.resize(M, 1);     w.setZero();
+    D.resize(M, Mext);  D.setZero();
+
+    for (int j = 0; j < K; ++j) {
+        const int    n  = orders(j);
+        const double a  = s[j], b = s[j + 1];
+        const double dt = b - a;
+        const double dscale = 2.0 / dt;
+
+        MatrixXd xj, wj, Dj;
+        cgl_nodes(n, xj, wj, Dj);          // wj are Clenshaw-Curtis weights (sum 2)
+
+        for (int r = 0; r <= n; ++r) {
+            x(c[j] + r)  = a + (xj(r) + 1.0) * 0.5 * dt;
+            w(c[j] + r) += wj(r) * dt * 0.5;   // composite C-C weight (breakpoints both sides)
+        }
+        const int r0 = (j == 0) ? 0 : 1;
+        for (int r = r0; r <= n; ++r)
+            for (int lc = 0; lc <= n; ++lc)
+                D(c[j] + r, c[j] + lc) = dscale * Dj(r, lc);
+        if (j > 0) {
+            const int ecol = M + (j - 1);
+            for (int lc = 0; lc <= n; ++lc)
+                D(c[j] + lc, ecol) = dscale * Dj(0, lc);
+        }
+    }
+}
+
 // ===========================================================================
 #ifdef RG_STANDALONE_TEST
 #include <cstdio>
@@ -627,7 +753,145 @@ int main()
                       + (D1-Ds1).cwiseAbs().maxCoeff();
             all &= pass("K=1 == single-block lgl_nodes (eps)", dk < 1e-15, dk);
         }
+
+        std::printf("CGL single block (Chebyshev, positive ascending D):\n");
+        {
+            MatrixXd xc, wc, Dc;
+            cgl_nodes(N, xc, wc, Dc);
+            all &= pass("x(0)=-1, x(N)=+1, ascending",
+                        std::abs(xc(0)+1.0)<1e-14 && std::abs(xc(N)-1.0)<1e-14 &&
+                        (xc.bottomRows(N)-xc.topRows(N)).minCoeff()>0, 0.0);
+            all &= pass("weights sum to 2", std::abs(wc.sum()-2.0)<1e-12,
+                        std::abs(wc.sum()-2.0));
+            all &= pass("D rows sum 0", Dc.rowwise().sum().cwiseAbs().maxCoeff()<1e-8,
+                        Dc.rowwise().sum().cwiseAbs().maxCoeff());
+            double me = 0;
+            for (int deg = 1; deg <= N; ++deg) {
+                MatrixXd xs = xc.array().pow((double)deg);
+                MatrixXd dn = Dc * xs;
+                MatrixXd de = (double)deg * xc.array().pow((double)(deg-1));
+                me = std::max(me, (dn-de).cwiseAbs().maxCoeff());
+            }
+            all &= pass("D exact poly deg<=N (all nodes)", me < 1e-7, me);
+            // cost quadrature is now Clenshaw-Curtis: sum w_k p(x_k) -> integral_{-1}^1 p dx,
+            // EXACT for polynomials of degree <= N (no sqrt factor).
+            double qe = 0;
+            for (int deg = 0; deg <= N; ++deg) {
+                double q = 0;
+                for (int k=0;k<=N;k++) q += wc(k)*std::pow(xc(k),deg);
+                double exact = (deg%2==0) ? 2.0/(deg+1) : 0.0;   // int_{-1}^1 x^deg dx
+                qe = std::max(qe, std::abs(q-exact));
+            }
+            all &= pass("Chebyshev cost-quadrature exact (C-C, deg<=N)", qe < 1e-11, qe);
+        }
+
+        std::printf("CGL multi-interval (Option A, shared breakpoints + interface cols):\n");
+        {
+            int m = std::max(2, N);
+            RowVectorXi ord(3);   ord << m, m, m;
+            RowVectorXd brk(2);   brk << 1.0/3.0, 2.0/3.0;
+            MatrixXd xm, wm, Dm;
+            cgl_nodes_multi(brk, ord, xm, wm, Dm);
+            const int Neff = 3*m, Mm = Neff + 1, K = 3;
+            all &= pass("storage M = N_eff+1", xm.rows()==Mm && wm.rows()==Mm, 0.0);
+            all &= pass("D is M x (M+K-1)", Dm.rows()==Mm && Dm.cols()==Mm+(K-1), 0.0);
+            all &= pass("x ascending, ends -1..+1",
+                        std::abs(xm(0)+1.0)<1e-14 && std::abs(xm(Mm-1)-1.0)<1e-14, 0.0);
+            all &= pass("weights sum to 2", std::abs(wm.sum()-2.0)<1e-12,
+                        std::abs(wm.sum()-2.0));
+            MatrixXd Dprim = Dm.leftCols(Mm);
+            all &= pass("primary rows sum 0", Dprim.rowwise().sum().cwiseAbs().maxCoeff()<1e-8,
+                        Dprim.rowwise().sum().cwiseAbs().maxCoeff());
+            double me = 0;
+            for (int deg = 1; deg <= m; ++deg) {
+                MatrixXd xs = xm.array().pow((double)deg);
+                MatrixXd dn = Dprim * xs;
+                MatrixXd de = (double)deg * xm.array().pow((double)(deg-1));
+                me = std::max(me, (dn-de).cwiseAbs().maxCoeff());
+                MatrixXd di = Dm.rightCols(K-1).transpose() * xs;
+                double e1 = std::abs(di(0) - (double)deg*std::pow(xm(m),   deg-1));
+                double e2 = std::abs(di(1) - (double)deg*std::pow(xm(2*m), deg-1));
+                me = std::max(me, std::max(e1, e2));
+            }
+            all &= pass("primary+interface exact poly deg<=m", me < 1e-6, me);
+            RowVectorXi o1(1); o1 << m; RowVectorXd b0(0);
+            MatrixXd x1, w1, D1, xs1, ws1, Ds1;
+            cgl_nodes_multi(b0, o1, x1, w1, D1);
+            cgl_nodes(m, xs1, ws1, Ds1);
+            double dk = (x1-xs1).cwiseAbs().maxCoeff()
+                      + (w1-ws1).cwiseAbs().maxCoeff()
+                      + (D1-Ds1).cwiseAbs().maxCoeff();
+            all &= pass("K=1 == single-block cgl_nodes (eps)", dk < 1e-14, dk);
+        }
     }
+
+    // ---- Clenshaw-Curtis weights (CC1) ----
+    {
+        std::printf("\n-- Clenshaw-Curtis weights --\n");
+        // (1) weights sum to 2 for a range of orders (even and odd)
+        double smax = 0.0;
+        for (int N : {1,2,3,4,5,8,12,16,17,24,32}) {
+            MatrixXd w; clenshaw_curtis_weights(N, w);
+            smax = std::max(smax, std::fabs(w.sum() - 2.0));
+        }
+        all &= pass("CC weights sum to 2 (N=1..32)", smax < 1e-13, smax);
+
+        // (2) polynomial exactness: integral of x^p on [-1,1] is 0 (p odd) or 2/(p+1) (p even),
+        //     exact for p <= N. Nodes are the ascending CGL nodes y_j = -cos(j*pi/N).
+        double pemax = 0.0;
+        for (int N : {4,5,8,12,16}) {
+            MatrixXd w; clenshaw_curtis_weights(N, w);
+            std::vector<double> y(N+1);
+            for (int j=0;j<=N;++j) y[j] = -std::cos(M_PI*j/N);
+            for (int p=0;p<=N;++p) {
+                double q = 0.0;
+                for (int j=0;j<=N;++j) q += w(j)*std::pow(y[j], p);
+                double exact = (p%2==0) ? 2.0/(p+1) : 0.0;
+                pemax = std::max(pemax, std::fabs(q-exact));
+            }
+        }
+        all &= pass("CC exact for polynomials deg<=N", pemax < 1e-11, pemax);
+
+        // (3) spectral convergence on a smooth integrand:
+        //     integral_{-1}^1 exp(sin x) dx = 2.28319452091059 (independent Simpson reference)
+        const double Iref = 2.28319452091059;
+        double e16 = 1e9, e32 = 1e9;
+        for (int N : {8,16,24,32}) {
+            MatrixXd w; clenshaw_curtis_weights(N, w);
+            double q = 0.0;
+            for (int j=0;j<=N;++j) { double yj = -std::cos(M_PI*j/N); q += w(j)*std::exp(std::sin(yj)); }
+            if (N==16) e16 = std::fabs(q-Iref);
+            if (N==32) e32 = std::fabs(q-Iref);
+        }
+        all &= pass("CC spectral on exp(sin x): N=16 < 1e-12", e16 < 1e-12, e16);
+        all &= pass("CC spectral on exp(sin x): N=32 < 1e-13", e32 < 1e-13, e32);
+
+        // (4) composite C-C (the hp assembly): K sub-intervals over [-1,1], local weights
+        //     scaled by (b-a)/2 and accumulated at shared breakpoints, must sum to 2 and
+        //     converge SPECTRALLY as the per-interval order rises. Integrate exp(sin x) over
+        //     [-1,1] with a uniform K=4 split at orders 6 and 12.
+        double cs = 0.0, e_ord6 = 0.0, e_ord12 = 0.0;
+        for (int ord : {6, 12}) {
+            int K = 4;
+            double s[5]; for (int j=0;j<=K;++j) s[j] = -1.0 + 2.0*j/K;
+            double q = 0.0, wsum = 0.0;
+            for (int j=0;j<K;++j) {
+                MatrixXd w; clenshaw_curtis_weights(ord, w);
+                double a = s[j], b = s[j+1], dt = b-a;
+                for (int r=0;r<=ord;++r) {
+                    double yr = -std::cos(M_PI*r/ord);
+                    double xg = a + (yr+1.0)*0.5*dt;          // local -> global
+                    double wg = w(r)*dt*0.5;                  // scale local weight by (b-a)/2
+                    q += wg*std::exp(std::sin(xg)); wsum += wg;
+                }
+            }
+            if (ord==6)  { cs = std::fabs(wsum-2.0); e_ord6  = std::fabs(q-Iref); }
+            if (ord==12) {                            e_ord12 = std::fabs(q-Iref); }
+        }
+        all &= pass("composite C-C weights sum to 2", cs < 1e-13, cs);
+        all &= pass("composite C-C spectral: ord12 << ord6", e_ord12 < e_ord6 && e_ord12 < 1e-12, e_ord12);
+    }
+
     std::printf("\n%s\n", all ? "ALL CHECKS PASSED" : "SOME CHECKS FAILED");
     return all ? 0 : 1;
 }

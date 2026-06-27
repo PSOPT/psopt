@@ -241,7 +241,7 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
         }
 
         // Legendre hp: the K-1 LGL interface defects (interior breakpoints) are equalities (=0).
-        if ( algorithm->collocation_method == "Legendre" && hp_mesh_active(problem->phase[i]) ) {
+        if ( ( algorithm->collocation_method == "Legendre" || algorithm->collocation_method == "Chebyshev" ) && hp_mesh_active(problem->phase[i]) ) {
             int Kl = hp_num_intervals(problem->phase[i]);
             int iface_base = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
             for (int l2=0; l2<(Kl-1)*nstates; l2++) { g_l[iface_base+l2] = 0.0; g_u[iface_base+l2] = 0.0; }
