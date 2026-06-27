@@ -381,6 +381,130 @@ void lg_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders,
     // idx == M; the global terminal tau_K=+1 is the appended x_f, not stored here.
 }
 
+// ---------------------------------------------------------------------------
+// Legendre-Gauss-Lobatto generator (single block), self-contained and ASCENDING.
+//   N  = polynomial degree; returns N+1 LGL nodes (both endpoints collocated).
+//   x  : (N+1) x 1 ascending nodes on [-1,1]  (x(0) = -1, x(N) = +1).
+//   w  : (N+1) x 1 LGL quadrature weights.
+//   D  : (N+1) x (N+1) square differentiation matrix, STANDARD (positive)
+//        convention  D x = dx/dtau  (so  D*x_nodes = +derivative), matching
+//        lgr_nodes / lg_nodes and the (tf-t0)/2 * f defect form. (Note: the
+//        legacy single-block lglnodes() returns a descending, negated-D layout
+//        that the Legendre branch is tuned to; that path is left untouched and
+//        the hp path uses this ascending positive-convention block instead.)
+//   The LGL nodes are the zeros of (1-x^2) P'_N(x); weights w_k = 2/(N(N+1) P_N(x_k)^2);
+//   off-diagonal D_ij = P_N(x_i) / ( P_N(x_j) (x_i - x_j) ),  corners
+//   D_00 = -N(N+1)/4 (at -1),  D_NN = +N(N+1)/4 (at +1),  interior diagonal 0.
+// ---------------------------------------------------------------------------
+void lgl_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D)
+{
+    const int N1 = N + 1;
+    x.resize(N1, 1);  w.resize(N1, 1);  D.resize(N1, N1);  D.setZero();
+
+    // --- nodes via Newton iteration (descending Chebyshev-Gauss-Lobatto guess) ---
+    MatrixXd xd(N1,1), xold(N1,1);
+    MatrixXd P(N1, N1);
+    for (int i = 0; i < N1; ++i) xd(i) = std::cos(PSOPT_PI * i / (double)N);   // +1 .. -1
+    xold.setConstant(2.0);
+    int iter = 0;
+    while ((xd - xold).cwiseAbs().maxCoeff() > 1e-15 && iter++ < 100) {
+        xold = xd;
+        P.col(0).setOnes();
+        P.col(1) = xd;
+        for (int k = 1; k < N; ++k)
+            P.col(k + 1) = ((2.0*k + 1.0) * xd.cwiseProduct(P.col(k)) - (double)k * P.col(k - 1)) / (double)(k + 1);
+        for (int i = 0; i < N1; ++i)
+            xd(i) = xold(i) - (xd(i) * P(i, N) - P(i, N - 1)) / ((double)N1 * P(i, N));
+    }
+
+    // --- reverse nodes / P_N to ASCENDING (x(0) = -1 ... x(N) = +1) ---
+    MatrixXd pn(N1, 1);
+    for (int r = 0; r < N1; ++r) { x(r) = xd(N - r); pn(r) = P(N - r, N); }
+
+    // --- weights (ascending): w_k = 2 / ( N (N+1) P_N(x_k)^2 ) ---
+    for (int k = 0; k < N1; ++k) w(k) = 2.0 / ((double)N * N1 * pn(k) * pn(k));
+
+    // --- positive-convention ascending differentiation matrix ---
+    for (int i = 0; i < N1; ++i)
+        for (int j = 0; j < N1; ++j)
+            if (i != j) D(i, j) = (pn(i) / pn(j)) / (x(i) - x(j));
+    D(0, 0)  = -(double)N1 * N / 4.0;     // ascending node 0 is -1
+    D(N, N)  =  (double)N1 * N / 4.0;     // ascending node N is +1
+}
+
+// ---------------------------------------------------------------------------
+// Multi-interval (hp) Legendre-Gauss-Lobatto assembler (shared, collocated
+// breakpoints; Option A). For K intervals of degree n_j the storage length is
+//   M = N_eff + 1,   N_eff = sum_j n_j,
+// exactly as for the single block and for Radau, because adjacent intervals
+// share their (collocated) breakpoint node. Both endpoints of every interval are
+// collocated, so an interior breakpoint carries two defects - the terminal-node
+// derivative of the left interval and the initial-node derivative of the right
+// interval. The square top-left M x M block of D holds one defect per storage node
+// (the breakpoint's primary defect is taken from the LEFT interval's terminal row),
+// and is consumed verbatim by the existing square-D machinery (mtrx_mul_trans reads
+// only that leading block). The remaining K-1 "other side" interface defects are
+// stored as TRAILING COLUMNS, so
+//   D is M x (M + K - 1),  leading dimension M  (mtrx_mul_trans unaffected).
+// Column M + (j-1) holds the coefficient vector of the initial-node (left-endpoint)
+// derivative of interval j>=1: the interface defect is  D.col(M+(j-1)) . X = (tf-t0)/2
+// f(x(c_j)) at breakpoint storage index c_j = sum_{m<j} n_m, which the constraint
+// assembler recovers from hp_orders. Each local block is scaled by 2/Dtau_j (the
+// affine d/dtau on [-1,1] of the sub-interval) and breakpoint weights accumulate
+// both sides' contribution. K=1 reduces to a single LGL block of order N_eff
+// (M x M, no trailing columns). AI provenance: generated with AI assistance
+// (hp LGL extension); validated against lgl_nodes and by polynomial
+// differentiation/quadrature exactness in the standalone test.
+// ---------------------------------------------------------------------------
+void lgl_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders,
+                     MatrixXd& x, MatrixXd& w, MatrixXd& D)
+{
+    const int K = (int) orders.size();
+    int N_eff = 0;
+    for (int j = 0; j < K; ++j) N_eff += orders(j);
+    const int M    = N_eff + 1;
+    const int Mext = M + (K - 1);                 // primary cols + K-1 interface cols
+
+    std::vector<double> s(K + 1);                 // sub-interval endpoints on [-1,1]
+    s[0] = -1.0;  s[K] = 1.0;
+    for (int j = 1; j < K; ++j) s[j] = -1.0 + 2.0 * breakpoints(j - 1);
+
+    std::vector<int> c(K + 1, 0);                 // c[j] = composite index of interval j's left endpoint
+    for (int j = 0; j < K; ++j) c[j + 1] = c[j] + orders(j);   // c[K] = N_eff
+
+    x.resize(M, 1);     x.setZero();
+    w.resize(M, 1);     w.setZero();
+    D.resize(M, Mext);  D.setZero();              // M x (M+K-1); leading dim M
+
+    for (int j = 0; j < K; ++j) {
+        const int    n  = orders(j);
+        const double a  = s[j], b = s[j + 1];
+        const double dt = b - a;                  // sub-interval width in tau (> 0)
+        const double dscale = 2.0 / dt;
+
+        MatrixXd xj, wj, Dj;
+        lgl_nodes(n, xj, wj, Dj);                 // ascending local LGL block, (n+1) nodes, square D
+
+        for (int r = 0; r <= n; ++r) {
+            x(c[j] + r)  = a + (xj(r) + 1.0) * 0.5 * dt;   // local xi -> tau in [a,b]
+            w(c[j] + r) += wj(r) * dt * 0.5;               // += : breakpoints accumulate both sides
+        }
+        // primary defect rows (top-left M x M): interval 0 writes all rows 0..n; interval
+        // j>0 skips its left-endpoint row 0 (that breakpoint's primary defect is the
+        // terminal row of interval j-1, already written).
+        const int r0 = (j == 0) ? 0 : 1;
+        for (int r = r0; r <= n; ++r)
+            for (int lc = 0; lc <= n; ++lc)
+                D(c[j] + r, c[j] + lc) = dscale * Dj(r, lc);
+        // interface defect (left-endpoint derivative of interval j>0) stored as column M+(j-1).
+        if (j > 0) {
+            const int ecol = M + (j - 1);
+            for (int lc = 0; lc <= n; ++lc)
+                D(c[j] + lc, ecol) = dscale * Dj(0, lc);
+        }
+    }
+}
+
 // ===========================================================================
 #ifdef RG_STANDALONE_TEST
 #include <cstdio>
@@ -438,6 +562,70 @@ int main()
             }
             all &= pass("D exact poly deg<=N", me < 1e-9, me);
             all &= pass("initial row is zero", D.row(0).cwiseAbs().maxCoeff() == 0.0, 0.0);
+        }
+
+        std::printf("LGL single block (square D, every node collocated):\n");
+        {
+            MatrixXd xl, wl, Dl;
+            lgl_nodes(N, xl, wl, Dl);
+            all &= pass("x(0) = -1 (initial)", std::abs(xl(0) + 1.0) < 1e-14, std::abs(xl(0)+1.0));
+            all &= pass("x(N) = +1 (terminal)", std::abs(xl(N) - 1.0) < 1e-14, std::abs(xl(N)-1.0));
+            all &= pass("weights sum to 2", std::abs(wl.sum() - 2.0) < 1e-12, std::abs(wl.sum()-2.0));
+            all &= pass("D square (N+1)x(N+1)", Dl.rows()==N+1 && Dl.cols()==N+1, 0.0);
+            all &= pass("D rows sum 0", Dl.rowwise().sum().cwiseAbs().maxCoeff() < 1e-9,
+                        Dl.rowwise().sum().cwiseAbs().maxCoeff());
+            double me = 0;
+            for (int deg = 1; deg <= N; ++deg) {
+                MatrixXd xs = xl.array().pow((double)deg);
+                MatrixXd dn = Dl * xs;
+                MatrixXd de = (double)deg * xl.array().pow((double)(deg - 1));
+                me = std::max(me, (dn - de).cwiseAbs().maxCoeff());
+            }
+            all &= pass("D exact poly deg<=N (all nodes)", me < 1e-8, me);
+        }
+
+        std::printf("LGL multi-interval (Option A: shared breakpoints + interface rows):\n");
+        {
+            // 3-interval mesh of orders (m,m,m); each interval can differentiate exactly up to
+            // its own degree, so test with deg <= min order = N (=m here).
+            int m = std::max(2, N);
+            RowVectorXi ord(3);   ord << m, m, m;
+            RowVectorXd brk(2);   brk << 1.0/3.0, 2.0/3.0;     // breakpoints in (0,1)
+            MatrixXd xm, wm, Dm;
+            lgl_nodes_multi(brk, ord, xm, wm, Dm);
+            const int Neff = 3*m, Mm = Neff + 1, K = 3;
+            all &= pass("storage M = N_eff+1", xm.rows()==Mm && wm.rows()==Mm, 0.0);
+            all &= pass("D is M x (M+K-1)", Dm.rows()==Mm && Dm.cols()==Mm+(K-1), 0.0);
+            all &= pass("x ascending, ends -1..+1",
+                        std::abs(xm(0)+1.0)<1e-14 && std::abs(xm(Mm-1)-1.0)<1e-14, 0.0);
+            all &= pass("weights sum to 2", std::abs(wm.sum()-2.0)<1e-12, std::abs(wm.sum()-2.0));
+            // primary block (leftCols M) differentiates exactly; interface columns give p'
+            // at the breakpoints
+            MatrixXd Dprim = Dm.leftCols(Mm);
+            all &= pass("primary rows sum 0", Dprim.rowwise().sum().cwiseAbs().maxCoeff()<1e-9,
+                        Dprim.rowwise().sum().cwiseAbs().maxCoeff());
+            double me = 0;
+            for (int deg = 1; deg <= m; ++deg) {
+                MatrixXd xs = xm.array().pow((double)deg);
+                MatrixXd dn = Dprim * xs;
+                MatrixXd de = (double)deg * xm.array().pow((double)(deg - 1));
+                me = std::max(me, (dn - de).cwiseAbs().maxCoeff());
+                // interface columns (rightCols K-1): col Mm+e dotted with xs = p' at breakpoint
+                MatrixXd di = Dm.rightCols(K-1).transpose() * xs;     // (K-1) x 1
+                double e1 = std::abs(di(0) - (double)deg*std::pow(xm(m),   deg-1));
+                double e2 = std::abs(di(1) - (double)deg*std::pow(xm(2*m), deg-1));
+                me = std::max(me, std::max(e1, e2));
+            }
+            all &= pass("primary+interface exact poly deg<=m", me < 1e-7, me);
+            // K=1 must reduce to single-block lgl_nodes
+            RowVectorXi o1(1); o1 << m; RowVectorXd b0(0);
+            MatrixXd x1, w1, D1, xs1, ws1, Ds1;
+            lgl_nodes_multi(b0, o1, x1, w1, D1);
+            lgl_nodes(m, xs1, ws1, Ds1);
+            double dk = (x1-xs1).cwiseAbs().maxCoeff()
+                      + (w1-ws1).cwiseAbs().maxCoeff()
+                      + (D1-Ds1).cwiseAbs().maxCoeff();
+            all &= pass("K=1 == single-block lgl_nodes (eps)", dk < 1e-15, dk);
         }
     }
     std::printf("\n%s\n", all ? "ALL CHECKS PASSED" : "SOME CHECKS FAILED");

@@ -395,13 +395,17 @@ inline bool hp_mesh_active(const Phases& ph) {
 }
 
 // True when the automatic Liu-Hager-Rao ph driver should run: automatic refinement,
-// a Radau method, and the hp_refinement flag set. Gated separately from hp_mesh_active
-// (which only asks whether an hp mesh is currently populated) so the driver owns the
-// mesh schedule even at iteration 1 before any hp_orders have been seeded.
+// a shared-breakpoint (Radau/Legendre) or Gauss method, and the hp_refinement flag set.
+// Gated separately from hp_mesh_active (which only asks whether an hp mesh is currently
+// populated) so the driver owns the mesh schedule even at iteration 1 before any hp_orders
+// have been seeded. Legendre (LGL) shares collocated breakpoints exactly like Radau, so the
+// driver's shared-breakpoint (non-Gauss) storage/error mapping applies unchanged.
 inline bool hp_auto_active(const Alg& algorithm) {
    return algorithm.hp_refinement
        && algorithm.mesh_refinement == "automatic"
-       && ( algorithm.collocation_method == "Radau" || algorithm.collocation_method == "Gauss" );
+       && ( algorithm.collocation_method == "Radau"
+            || algorithm.collocation_method == "Gauss"
+            || algorithm.collocation_method == "Legendre" );
 }
 
 
@@ -805,6 +809,8 @@ void lgr_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
 void lgr_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // hp multi-interval LGR (shared breakpoints)
 void lg_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);
 void lg_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // hp multi-interval LG (non-collocated breakpoints)
+void lgl_nodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // single-block LGL, ascending, positive-convention D
+void lgl_nodes_multi(const RowVectorXd& breakpoints, const RowVectorXi& orders, MatrixXd& x, MatrixXd& w, MatrixXd& D);  // hp multi-interval LGL (shared collocated breakpoints; D is M x (M+K-1): M x M primary block + K-1 interface columns)
 void gauss_legendre_unit(int m, MatrixXd& nodes01, MatrixXd& w01);  // m GL nodes/weights on [0,1]
 adouble integrated_residual_phase(int i, int iphase, adouble* xad, adouble t0, adouble tf,
                                   adouble* parameters, Workspace* workspace,

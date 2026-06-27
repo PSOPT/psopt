@@ -475,6 +475,38 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
             }
         }
 
+        // LGL hp: K-1 interface defects at the interior breakpoints. Each interior
+        // breakpoint is collocated from both sides; the LEFT interval's terminal-row defect
+        // is the primary one (in the square top-left block of D, applied in the per-node
+        // loop above), and the RIGHT interval's initial-node derivative is enforced here:
+        //   D.col(M+e) . X  -  (tf-t0)/2 f(x(bp_e)) = 0,   bp_e = c_{e+1} = sum_{m<=e} n_m.
+        // D.col(M+e) is the interface coefficient vector stored by lgl_nodes_multi (nonzero
+        // only over interval (e+1)'s nodes). Placed in the same constraint slot that the
+        // Radau pin / Gauss quadrature defining constraints occupy. K=1 => no interface rows.
+        if ( algorithm->collocation_method == "Legendre" && hp_mesh_active(problem->phase[i]) ) {
+            int M  = norder + 1;
+            int Kl = hp_num_intervals(problem->phase[i]);
+            int iface_base = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+            int cbp = 0;
+            for (int e = 0; e < Kl-1; e++) {
+                cbp += hp_interval_order(problem->phase[i], e);     // bp_e = c_{e+1}
+                int cbase = iface_base + e*nstates;
+                adouble tk = convert_to_original_time_ad( (workspace->snodes[i])(cbp), t0, tf );
+                get_states(states, xad, iphase, cbp, workspace);
+                get_controls(controls, xad, iphase, cbp, workspace);
+                problem->dae(derivatives, path, states, controls, parameters, tk, xad, iphase, workspace);
+                for (j=0; j<nstates; j++) {
+                    adouble acc = 0.0;
+                    for (int nd=0; nd<M; nd++) {
+                        double dcoef = D(nd, M + e);
+                        if (dcoef != 0.0) acc += dcoef * states_traj[nd*nstates + j];
+                    }
+                    gad[cbase+j] = acc - (tf-t0)/2.0 * derivatives[j];
+                    if ( algorithm->scaling=="user" ) gad[cbase+j] *= deriv_scaling(j);
+                }
+            }
+        }
+
         // Add tf >= t0 constraint [ t0MIN-tfMAX <= t0-tf <= 0 ]
 
       gad[ phase_offset + ncons_phase_i - 1] =  (t0 - tf)*time_scaling;

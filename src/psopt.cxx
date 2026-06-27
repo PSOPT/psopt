@@ -534,16 +534,28 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     if (algorithm.collocation_method == "Legendre") {
     	for(i=0; i<nphases; i++)
     	{
-		 if (problem.phase[i].current_number_of_intervals > MAX_STANDARD_PS_NODES && algorithm.mesh_refinement=="automatic")
+		 if (problem.phase[i].current_number_of_intervals > MAX_STANDARD_PS_NODES && algorithm.mesh_refinement=="automatic" && !hp_mesh_active(problem.phase[i]))
 		 {
 		    // When using automatic mesh refinement, switch to central differences when the order is too large to avoid numerical problems.
+		    // (The hp multi-interval path keeps the differentiation-matrix defects: high order is carried by the sub-intervals, not a single huge block.)
 		    workspace->differential_defects="central-differences";
 		 }
+                 if ( hp_mesh_active(problem.phase[i]) ) {
+                    // hp multi-interval LGL (shared, collocated breakpoints; Option A): the
+                    // composite assembler returns ascending nodes and an M x (M+K-1) D whose
+                    // leading M x M block is the positive-convention differentiation matrix
+                    // (consumed by mtrx_mul_trans) and whose K-1 trailing columns carry the
+                    // interface defects. Ascending output => NO sort_vector/rearrange_vector.
+                    lgl_nodes_multi( problem.phase[i].hp_breakpoints, problem.phase[i].hp_orders,
+                                     workspace->snodes[i], workspace->w[i], workspace->D[i] );
+                 }
+                 else {
         	 lglnodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->P[i], workspace->D[i], workspace);
 
                 sort_vector(workspace->snodes[i],workspace->sindex[i]);
 
                 rearrange_vector(workspace->w[i], workspace->sindex[i] );
+                 }
 
     	}
     }
@@ -893,6 +905,34 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
           	solution.dual.costates[i] = solution.dual.costates[i].cwiseProduct((*workspace->constraint_scaling).block(lam_phase_offset,0, nstates*(norder+1),1) );
 	  			solution.dual.costates[i] = reshape(solution.dual.costates[i], nstates, norder+1);
    	  }
+
+	  // Legendre hp: correct the interior-breakpoint costates with the interface-defect
+	  // multipliers. An interior LGL breakpoint is collocated from both sides; the primary
+	  // (left-interval terminal) multiplier divided by the accumulated breakpoint weight,
+	  // already stored in costates(bp) by the lambda_k = lambda_tilde_k/w_k loop above, is
+	  // only the left-side contribution. The interface (right-interval initial) defect
+	  // multiplier mu completes the Lobatto covector mapping at the shared node:
+	  //     lambda(bp) = ( nu_primary + mu_interface ) / w_bp .
+	  // mu is pushed through the same user/objective/automatic scaling the costate block
+	  // received (using the interface constraint's own automatic-scaling entry), then divided
+	  // by the accumulated weight. K=1 has no interfaces and is unchanged (bit-identical to
+	  // single-block Legendre).
+	  if ( algorithm.collocation_method=="Legendre" && hp_mesh_active(problem.phase[i]) ) {
+	      int iface = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+	      int Kl = hp_num_intervals(problem.phase[i]);
+	      int cbp = 0;
+	      for (int e=0; e<Kl-1; e++) {
+	          cbp += hp_interval_order(problem.phase[i], e);          // breakpoint storage index c_{e+1}
+	          double wbp = (workspace->w[i])(cbp);
+	          for (int j=0;j<nstates;j++) {
+	              double v = lambda(iface + e*nstates + j);
+	              if ( algorithm.scaling=="user" )      v *= deriv_scaling(j);
+	              v /= problem.scale.objective;
+	              if ( algorithm.scaling=="automatic" ) v *= (*workspace->constraint_scaling)(iface + e*nstates + j);
+	              (solution.dual.costates[i])(j,cbp) += v / wbp;
+	          }
+	      }
+	  }
 
 	  // Radau: recover the terminal (non-collocated) costate by Lagrange extrapolation of
 	  // the physical collocation costates to tau = +1. Scaling-robust (a pure function of the
