@@ -35,6 +35,7 @@ e-mail:    v.m.becerra@ieee.org
 #include <cmath>
 #include <map>
 #include <set>
+#include <unordered_map>
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -374,6 +375,126 @@ static void VerifyHessianColouring(int n, int m, int nele_hess, Workspace* works
         ig->number, n, per_row_collisions, total_off, total_off - obj_only, obj_only,
         max_jac_row, max_hess_deg, dense_cols);
     psopt_print(workspace, workspace->text);
+}
+
+
+// ---- H2b: index-set Hessian value recovery (Option A) --------------------------------------
+//
+// Computes the sparse Lagrangian Hessian E = obj_factor*grad^2 f + sum_r lambda_r grad^2 g_r into
+// out[] (parallel to the pattern hess_ir/hess_jc) by the index-set method:
+//
+//   * diagonal entries:           direct central 2nd differences of the Lagrangian (2n evals),
+//                                 always correct, and side-steps the same-group diagonal-collision
+//                                 case (two variables in one group cannot share a constraint row,
+//                                 so the per-row scheme never separates same-group diagonals).
+//   * off-diagonal constraint part: per-constraint recovery from group-perturbed constraint
+//                                 vectors. Each group pair (k,l) that shares a constraint row costs
+//                                 four vector g evaluations; the CPR property (<=1 variable per row
+//                                 per group) makes each constraint's four-corner difference isolate
+//                                 a single Hessian entry (grad^2 g_r)_{a,b}, which is accumulated
+//                                 with weight lambda_r. Group pairs that share no row are skipped.
+//   * off-diagonal objective part:  direct central mixed 2nd differences of the objective, added
+//                                 with weight obj_factor. The objective is one global function whose
+//                                 group second differences would mix entries across nodes, so it is
+//                                 handled directly (its Hessian is block-diagonal + the dense time
+//                                 columns, so this is comparatively cheap).
+//
+// The split is exact: central-mixed(L) = obj_factor*central-mixed(f) + sum_r lambda_r*central-mixed(g_r),
+// and a whole-group perturbation reproduces the single-variable perturbation each constraint sees
+// (the other group members do not appear in that row), so out[] matches the H1 direct values to
+// round-off. H2b uses this for validation only (the solve still uses the direct values); H2c wires
+// it in as the value path with an auto-select on gamma.
+static void ComputeHessianIndexSetNumerical(MatrixXd& X, const double* lambda, double obj_factor,
+                                            int n, int m, double* out, int nele_hess, Workspace* workspace)
+{
+    const double qrt_eps = 1.2243397568e-04;   // eps^(1/4)
+    IGroup* ig  = workspace->igroup.get();
+    const int* grp = workspace->hess_col_group.get();
+
+    std::vector<double> h((size_t) n);
+    for (int j = 0; j < n; j++) h[(size_t) j] = qrt_eps * std::max(1.0, std::fabs(X(j)));
+
+    std::unordered_map<long,int> emap;
+    emap.reserve((size_t) nele_hess * 2);
+    for (int e = 0; e < nele_hess; e++)
+        emap[(long) workspace->hess_ir[e] * (long) n + (long) workspace->hess_jc[e]] = e;
+    for (int e = 0; e < nele_hess; e++) out[e] = 0.0;
+
+    // ---- diagonals: direct central Lagrangian second differences ----
+    const double L0 = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+    for (int a = 0; a < n; a++) {
+        std::unordered_map<long,int>::iterator it = emap.find((long) a * (long) n + (long) a);
+        if (it == emap.end()) continue;
+        const double xa = X(a), ha = h[(size_t) a];
+        X(a) = xa + ha; const double Lp = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+        X(a) = xa - ha; const double Lm = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+        X(a) = xa;
+        out[it->second] = (Lp - 2.0 * L0 + Lm) / (ha * ha);
+    }
+
+    // ---- off-diagonal constraint part: index-set recovery ----
+    const int nnzG = workspace->jac_nnzG;
+    const int* iG  = workspace->iGrow.get();
+    const int* jG  = workspace->jGcol.get();
+    std::vector< std::unordered_map<int,int> > rgv((size_t) m);          // row -> (group -> variable)
+    std::vector< std::vector<int> >            group_rows((size_t) ig->number);
+    for (int e = 0; e < nnzG; e++) {
+        const int r = iG[e], j = jG[e];
+        if (r < 0 || r >= m) continue;
+        const int g = grp[j];
+        if (g < 0) continue;
+        rgv[(size_t) r][g] = j;
+        group_rows[(size_t) g].push_back(r);
+    }
+
+    MatrixXd xbase = X;
+    MatrixXd Gpp(m,1), Gpm(m,1), Gmp(m,1), Gmm(m,1);
+    std::vector<int> sr, sa, sb;                                         // shared (row, var_k, var_l)
+    for (int k = 0; k < ig->number; k++) {
+        for (int l = k + 1; l < ig->number; l++) {
+            sr.clear(); sa.clear(); sb.clear();
+            for (size_t idx = 0; idx < group_rows[(size_t) k].size(); idx++) {
+                const int r = group_rows[(size_t) k][idx];
+                std::unordered_map<int,int>::iterator itl = rgv[(size_t) r].find(l);
+                if (itl == rgv[(size_t) r].end()) continue;
+                sr.push_back(r); sa.push_back(rgv[(size_t) r][k]); sb.push_back(itl->second);
+            }
+            if (sr.empty()) continue;
+
+            for (int corner = 0; corner < 4; corner++) {
+                const double sk = (corner & 2) ? -1.0 : 1.0;
+                const double sl = (corner & 1) ? -1.0 : 1.0;
+                for (int t = 0; t < ig->size[k]; t++) { const int j = ig->colindex[k][t]; X(j) = xbase(j) + sk * h[(size_t) j]; }
+                for (int t = 0; t < ig->size[l]; t++) { const int j = ig->colindex[l][t]; X(j) = xbase(j) + sl * h[(size_t) j]; }
+                MatrixXd& G = (corner == 0) ? Gpp : (corner == 1) ? Gpm : (corner == 2) ? Gmp : Gmm;
+                gg_num(X, &G, workspace);
+                for (int t = 0; t < ig->size[k]; t++) X(ig->colindex[k][t]) = xbase(ig->colindex[k][t]);
+                for (int t = 0; t < ig->size[l]; t++) X(ig->colindex[l][t]) = xbase(ig->colindex[l][t]);
+            }
+
+            for (size_t s = 0; s < sr.size(); s++) {
+                const int r = sr[s], a = sa[s], b = sb[s];
+                int A = a, B = b; if (A < B) { int tt = A; A = B; B = tt; }
+                std::unordered_map<long,int>::iterator it = emap.find((long) A * (long) n + (long) B);
+                if (it == emap.end()) continue;
+                const double dgr = Gpp(r) - Gpm(r) - Gmp(r) + Gmm(r);
+                out[it->second] += lambda[r] * dgr / (4.0 * h[(size_t) a] * h[(size_t) b]);
+            }
+        }
+    }
+
+    // ---- off-diagonal objective part: direct central mixed differences of the objective ----
+    for (int e = 0; e < nele_hess; e++) {
+        const int a = (int) workspace->hess_ir[e], b = (int) workspace->hess_jc[e];
+        if (a == b) continue;
+        const double xa = X(a), xb = X(b), ha = h[(size_t) a], hb = h[(size_t) b];
+        X(a) = xa + ha; X(b) = xb + hb; const double fpp = ff_num(X, workspace);
+        X(a) = xa + ha; X(b) = xb - hb; const double fpm = ff_num(X, workspace);
+        X(a) = xa - ha; X(b) = xb + hb; const double fmp = ff_num(X, workspace);
+        X(a) = xa - ha; X(b) = xb - hb; const double fmm = ff_num(X, workspace);
+        X(a) = xa; X(b) = xb;
+        out[e] += obj_factor * (fpp - fpm - fmp + fmm) / (4.0 * ha * hb);
+    }
 }
 
 
@@ -910,6 +1031,26 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
            for (i = 0; i < nele_hess; i++) if (std::fabs(values[i]) > vmax) vmax = std::fabs(values[i]);
            if (vmax > 1.0e-10) {
              workspace->hess_verify_done = true;        // attempt only once, at a meaningful iterate
+
+             // H2b: index-set (colouring) Hessian vs H1 direct values. Pure finite differences -
+             // no AD needed - so this always runs. The solve still uses the direct values; this
+             // confirms the per-constraint recovery reconstructs the same Hessian.
+             {
+                 std::vector<double> outis((size_t) nele_hess, 0.0);
+                 ComputeHessianIndexSetNumerical(X, lambda_d, obj_factor_d, n, m, outis.data(), nele_hess, workspace);
+                 double maxd = 0.0, scale = 0.0, maxd_off = 0.0;
+                 for (int e = 0; e < nele_hess; e++) {
+                     if (std::fabs(values[e]) > scale) scale = std::fabs(values[e]);
+                     const double d = std::fabs(outis[e] - values[e]);
+                     if (d > maxd) maxd = d;
+                     if (workspace->hess_ir[e] != workspace->hess_jc[e] && d > maxd_off) maxd_off = d;
+                 }
+                 snprintf(workspace->text, sizeof(workspace->text),
+                     "\nH2b index-set Hessian vs H1-direct: max|IS-direct| = %.3e "
+                     "(off-diagonal %.3e; Hessian scale %.3e)\n", maxd, maxd_off, scale);
+                 psopt_print(workspace, workspace->text);
+             }
+
              try {
                std::vector<double> xloc(x, x + n);
                psopt_ad::ad_record(workspace->ad_hess, n, 1, x,
