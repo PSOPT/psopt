@@ -703,6 +703,7 @@ public:
    unique_ptr<double[]>  nrm_row;
    unsigned int*      hess_ir;
    unsigned int*      hess_jc;
+   int                hess_nnz_capacity;   // allocated length of hess_ir/hess_jc
    unsigned int*      iGfun;
    unsigned int*      jGvar;
    unique_ptr<int[]>  iGfun1;

@@ -141,6 +141,9 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.nlp_tolerance               = 1.e-6;
   algorithm.jac_sparsity_ratio  	       = 0.5;
   algorithm.hess_sparsity_ratio 	       = 0.2;
+  // "limited-memory" (default): IPOPT L-BFGS. "exact": exact sparse Hessian via the AD backend
+  // (requires automatic derivatives). "numerical": sparse Lagrangian Hessian by finite differences,
+  // usable with numerical derivatives (lets IPOPT take exact-Hessian steps instead of L-BFGS).
   algorithm.hessian                     = "limited-memory";
   algorithm.collocation_method          = "Legendre";
   algorithm.transcription_method        = "collocation";

@@ -388,7 +388,8 @@ int NLP_interface(
   app->Options()->SetNumericValue("max_cpu_time", workspace->algorithm->ipopt_max_cpu_time );
 
 
-  if ( useAutomaticDifferentiation(algorithm) && algorithm.hessian=="exact" ) {
+  if ( ( useAutomaticDifferentiation(algorithm) && algorithm.hessian=="exact" )
+       || algorithm.hessian=="numerical" ) {
      app->Options()->SetStringValue("hessian_approximation", "exact");
   }
   else {

@@ -111,14 +111,16 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 	workspace->jGcol     = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
 	workspace->jac_Aij   = make_unique<double[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
 	workspace->jac_Gij   = make_unique<double[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
-	if (algorithm.hessian == "exact" ) {
-		workspace->hess_ir   = new unsigned int[(int) (algorithm.hess_sparsity_ratio*max_nvars*max_nvars)];
-		workspace->hess_jc   = new unsigned int[(int) (algorithm.hess_sparsity_ratio*max_nvars*max_nvars)];
+	if (algorithm.hessian == "exact" || algorithm.hessian == "numerical" ) {
+		workspace->hess_nnz_capacity = (int) (algorithm.hess_sparsity_ratio*max_nvars*max_nvars);
+		workspace->hess_ir   = new unsigned int[workspace->hess_nnz_capacity];
+		workspace->hess_jc   = new unsigned int[workspace->hess_nnz_capacity];
 		workspace->lambda_d  = make_unique<double[]>(max_ncons);
 	}
 	else{
       workspace->hess_ir   = NULL;
 		workspace->hess_jc   = NULL;
+		workspace->hess_nnz_capacity = 0;
 		workspace->lambda_d  = NULL;
 	}
   }
@@ -131,6 +133,7 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 	 workspace->jac_Gij   = NULL;
     workspace->hess_ir   = NULL;
     workspace->hess_jc   = NULL;
+    workspace->hess_nnz_capacity = 0;
     workspace->lambda_d  = NULL;
   }
   

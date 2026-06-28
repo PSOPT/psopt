@@ -30,6 +30,9 @@ e-mail:    v.m.becerra@ieee.org
 
 
 #include "psopt.h"
+#include <vector>
+#include <algorithm>
+#include <cmath>
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -67,6 +70,195 @@ adouble Lagrangian_ad(adouble* xad, double* lambda, double& obj_factor, Index& m
 }
 
 
+// ----------------------------------------------------------------------------
+// Numerical sparse Lagrangian Hessian (algorithm.hessian == "numerical").
+// Lets IPOPT use an exact-Hessian step under numerical derivatives instead of
+// falling back to limited-memory L-BFGS. The Hessian of the Lagrangian
+// H = obj_factor*grad^2 f + sum_k lambda_k grad^2 g_k is symmetric; we supply
+// its lower triangle. Sparsity is taken structurally from the already-detected
+// constraint-Jacobian pattern (every variable pair the objective couples is, in
+// PSOPT's collocation NLP, also coupled by some constraint); values are formed
+// by finite differences of the scalar Lagrangian. See ComputeHessianNonZeros...
+// ----------------------------------------------------------------------------
+
+// Scalar Lagrangian evaluated numerically, reusing the same ff_num/gg_num that
+// feed IPOPT's eval_f/eval_g (so the Hessian is consistent with the problem
+// IPOPT actually sees). G uses the shared constraint buffer workspace->Gip.
+static double Lagrangian_num(MatrixXd& X, const double* lambda, double obj_factor,
+                             int m, Workspace* workspace)
+{
+    MatrixXd& G = *workspace->Gip;
+    double L = obj_factor * ff_num(X, workspace);
+    gg_num(X, &G, workspace);
+    for (int i = 0; i < m; i++) L += lambda[i] * G(i);
+    return L;
+}
+
+// One probe of the Hessian sparsity. At point X with multipliers lambda, estimate each
+// candidate (superset) entry by a cheap FORWARD mixed difference of the Lagrangian and flag
+// those above a relative threshold as structurally nonzero. Forward accuracy is irrelevant
+// here: a structurally-zero entry has every mixed a-b derivative vanishing, so it reads as
+// round-off, while a genuine entry reads as O(E_ab). The 2n single-variable perturbations
+// are reused across all off-diagonal candidates, so the probe costs ~ (2n + #off-diagonals)
+// Lagrangian evaluations. Diagonals are retained unconditionally by the caller.
+static void ProbeHessianPattern(MatrixXd& X, const double* lambda, double obj_factor, int m,
+                                const std::vector<long>& keys, int n,
+                                std::vector<char>& keep, Workspace* workspace)
+{
+    const double qrt_eps = 1.2243397568e-04;          // eps^(1/4)
+    const double L0 = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+
+    std::vector<double> Lp((size_t) n), h((size_t) n);
+    for (int i = 0; i < n; i++) {
+        const double xi = X(i);
+        const double hi = qrt_eps * std::max(1.0, std::fabs(xi));
+        h[(size_t) i] = hi;
+        X(i) = xi + hi; Lp[(size_t) i] = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+        X(i) = xi;
+    }
+
+    const size_t N = keys.size();
+    std::vector<double> E(N, 0.0);
+    double maxE = 0.0;
+    for (size_t e = 0; e < N; e++) {
+        const int a = (int) (keys[e] / n), b = (int) (keys[e] % n);
+        if (a == b) continue;                          // diagonals kept unconditionally
+        const double xa = X(a), xb = X(b), ha = h[(size_t) a], hb = h[(size_t) b];
+        X(a) = xa + ha; X(b) = xb + hb;
+        const double Lpp = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+        X(a) = xa; X(b) = xb;
+        const double Eab = (Lpp - Lp[(size_t) a] - Lp[(size_t) b] + L0) / (ha * hb);
+        E[e] = Eab;
+        if (std::fabs(Eab) > maxE) maxE = std::fabs(Eab);
+    }
+
+    const double thresh = std::max(1.0e-12, 1.0e-6 * maxE);
+    for (size_t e = 0; e < N; e++) if (std::fabs(E[e]) > thresh) keep[(size_t) e] = 1;
+}
+
+// Build the lower-triangular Lagrangian-Hessian sparsity pattern (row >= col). A structural
+// superset is first formed from the (non-constant) constraint-Jacobian pattern: union over
+// each constraint row of (variables in that row) x (variables in that row), plus every
+// diagonal. For pseudospectral / free-final-time discretisations this superset can be far
+// denser than the true Hessian (a t_f-scaled linear term registers as non-constant yet has
+// zero second derivative), so it is then pruned by probing: the FD Hessian is evaluated at a
+// non-degenerate point and entries that are zero there are dropped. Up to two (rows,cols,count)
+// source blocks may be supplied (the second is optional; pass count2=0). Fills
+// workspace->hess_ir/hess_jc with the pruned pattern and returns the number of nonzeros.
+static int DetectHessianSparsityNumerical(int n, int m,
+                                          const int* iR1, const int* jC1, int cnt1,
+                                          const int* iR2, const int* jC2, int cnt2,
+                                          Workspace* workspace)
+{
+    // ---- 1. structural superset ------------------------------------------------------------
+    std::vector< std::vector<int> > rowcols((size_t) m);
+    for (int e = 0; e < cnt1; e++) { int r = iR1[e]; if (r >= 0 && r < m) rowcols[r].push_back(jC1[e]); }
+    for (int e = 0; e < cnt2; e++) { int r = iR2[e]; if (r >= 0 && r < m) rowcols[r].push_back(jC2[e]); }
+
+    std::vector<long> keys;
+    for (int r = 0; r < m; r++) {
+        std::vector<int>& cols = rowcols[(size_t) r];
+        std::sort(cols.begin(), cols.end());
+        cols.erase(std::unique(cols.begin(), cols.end()), cols.end());
+        const size_t d = cols.size();
+        for (size_t p = 0; p < d; p++)
+            for (size_t q = 0; q <= p; q++)            // cols sorted ascending => cols[p] >= cols[q]
+                keys.push_back((long) cols[p] * (long) n + (long) cols[q]);
+    }
+    for (int i = 0; i < n; i++) keys.push_back((long) i * (long) n + (long) i);   // all diagonals
+
+    std::sort(keys.begin(), keys.end());
+    keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+
+    // ---- 2. probe-and-prune ----------------------------------------------------------------
+    const size_t N = keys.size();
+    std::vector<char> keep(N, 0);
+    for (size_t e = 0; e < N; e++) if (keys[e] / n == keys[e] % n) keep[e] = 1;   // keep all diagonals
+
+    MatrixXd& X   = *workspace->Xip;
+    MatrixXd& x0  = *workspace->x0;
+    MatrixXd& xlb = *workspace->xlb;
+    MatrixXd& xub = *workspace->xub;
+    for (int i = 0; i < n; i++) {
+        const double xi = x0(i);
+        // nudge each component away from zero by a distinct amount to break degeneracies
+        double xp = xi + 0.10 * std::max(1.0, std::fabs(xi)) * (1.0 + 0.5 * std::sin(0.7 * (double) i + 0.3));
+        const double lo = xlb(i), hi = xub(i);
+        if (lo > -1.0e19 && xp < lo) xp = lo;
+        if (hi <  1.0e19 && xp > hi) xp = hi;
+        X(i) = xp;
+    }
+    // varied (all-nonzero, distinct) multipliers guard against an entry whose constraint
+    // Hessians happen to cancel at lambda = 1
+    std::vector<double> lam((size_t) m);
+    for (int k = 0; k < m; k++) lam[(size_t) k] = 1.0 + 0.5 * std::sin(2.3 * (double) k + 1.1);
+    ProbeHessianPattern(X, lam.data(), 1.0, m, keys, n, keep, workspace);
+
+    // ---- 3. write the pruned pattern (guarded against the fixed buffer) ---------------------
+    int nnz = 0;
+    for (size_t e = 0; e < N; e++) if (keep[e]) nnz++;
+
+    if (nnz > workspace->hess_nnz_capacity) {
+        snprintf(workspace->text, sizeof(workspace->text),
+                 "numerical Hessian needs algorithm.hess_sparsity_ratio just above %f",
+                 (double) nnz / ((double) n * (double) n));
+        error_message(workspace->text);
+    }
+
+    int w = 0;
+    for (size_t e = 0; e < N; e++) if (keep[e]) {
+        workspace->hess_ir[w] = (unsigned int) (keys[e] / n);
+        workspace->hess_jc[w] = (unsigned int) (keys[e] % n);
+        w++;
+    }
+    return nnz;
+}
+
+// Fill the Hessian values over the detected lower-triangular pattern by central
+// second differences of the scalar Lagrangian: diagonal entries reuse the 2n
+// single-variable perturbations; off-diagonal entries use the central mixed
+// stencil (four evaluations each). Step h ~ eps^(1/4) (near-optimal for second
+// differences). H2 will reduce the off-diagonal cost via symmetric colouring.
+static void ComputeHessianNonZerosNumerical(MatrixXd& X, const double* lambda, double obj_factor,
+                                            int m, double* values, int nnz_hess, Workspace* workspace)
+{
+    const int n = workspace->nvars;
+    const double qrt_eps = 1.2243397568e-04;   // eps^(1/4); near-optimal step for 2nd differences
+
+    const double L0 = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+
+    // Single-variable +/- perturbations, reused for the diagonal entries.
+    std::vector<double> Lp((size_t) n), Lm((size_t) n), h((size_t) n);
+    for (int i = 0; i < n; i++) {
+        const double xi = X(i);
+        const double hi = qrt_eps * std::max(1.0, std::fabs(xi));
+        h[(size_t) i] = hi;
+        X(i) = xi + hi; Lp[(size_t) i] = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+        X(i) = xi - hi; Lm[(size_t) i] = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+        X(i) = xi;
+    }
+
+    for (int e = 0; e < nnz_hess; e++) {
+        const int a = (int) workspace->hess_ir[e];
+        const int b = (int) workspace->hess_jc[e];
+        if (a == b) {
+            // central second difference, O(h^2)
+            values[e] = (Lp[(size_t) a] - 2.0 * L0 + Lm[(size_t) a]) / (h[(size_t) a] * h[(size_t) a]);
+        } else {
+            // central mixed second difference, O(h^2): (L++ - L+- - L-+ + L--)/(4 ha hb)
+            const double xa = X(a), xb = X(b);
+            const double ha = h[(size_t) a], hb = h[(size_t) b];
+            X(a) = xa + ha; X(b) = xb + hb; const double Lpp = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+            X(a) = xa + ha; X(b) = xb - hb; const double Lpm = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+            X(a) = xa - ha; X(b) = xb + hb; const double Lmp = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+            X(a) = xa - ha; X(b) = xb - hb; const double Lmm = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+            X(a) = xa; X(b) = xb;
+            values[e] = (Lpp - Lpm - Lmp + Lmm) / (4.0 * ha * hb);
+        }
+    }
+}
+
+
 bool check_no_cancel(void *user_data)
 {
 #ifdef WIN32
@@ -101,8 +293,8 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
                              Index& nnz_h_lag, IndexStyleEnum& index_style)
 {
   int nnz;
-  int nnzA;
-  int nnzG;
+  int nnzA = 0;
+  int nnzG = 0;
   int i;
   double jsratio;
 
@@ -214,12 +406,43 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
   } // end if (autoderiv)
 
+  else if (workspace->algorithm->hessian=="numerical") {
+
+     // Lagrangian-Hessian sparsity built structurally from the constraint-Jacobian
+     // pattern. Only the NON-CONSTANT Jacobian entries (iGrow/jGcol) can contribute
+     // to the Hessian: a constant dg_k/dx_j means g_k is linear in x_j, so its second
+     // derivative vanishes. Excluding the constant block (iArow) keeps the pattern
+     // tight -- crucially, it drops the dense but linear differentiation-matrix coupling
+     // of pseudospectral methods. Any genuinely nonlinear pair has both variables in the
+     // non-constant set, so nothing is lost. Automatic derivatives expose only the full
+     // pattern (nnz), with no constant/non-constant split.
+     int nnz_hess;
+     if ( useAutomaticDifferentiation(*workspace->algorithm) )
+        nnz_hess = DetectHessianSparsityNumerical(n, m,
+                       workspace->iGrow.get(), workspace->jGcol.get(), nnz,
+                       (const int*)NULL, (const int*)NULL, 0, workspace);
+     else
+        nnz_hess = DetectHessianSparsityNumerical(n, m,
+                       workspace->iGrow.get(), workspace->jGcol.get(), nnzG,
+                       (const int*)NULL, (const int*)NULL, 0, workspace);
+
+     snprintf(workspace->text,sizeof(workspace->text),"\nHessian sparsity built numerically from the Jacobian pattern:");
+     psopt_print(workspace,workspace->text);
+     double hsratio = (double) ((double) nnz_hess/((double) (n*n)));
+     snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %i [ratio = %f] \n", nnz_hess, n*n, hsratio );
+     psopt_print(workspace,workspace->text);
+
+     nnz_h_lag = nnz_hess;
+
+  } // end numerical Hessian
+
     nnz_jac_g = nnz;
 
 
   // the hessian is in this case assumed to be a square dense matrix but we
   // only need the lower left corner (since it is symmetric)
-  if( !useAutomaticDifferentiation(*workspace->algorithm) || workspace->algorithm->hessian!="exact" )
+  if( ( !useAutomaticDifferentiation(*workspace->algorithm) || workspace->algorithm->hessian!="exact" )
+        && workspace->algorithm->hessian!="numerical" )
         nnz_h_lag = (int) ((n*n)+n)/2;
 
 /*   *
@@ -521,26 +744,39 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
 
   int i;
 
-  if (workspace->algorithm->hessian!="exact")
-    return false;
+  const bool numH    = (workspace->algorithm->hessian=="numerical");
+  const bool exactAD = (workspace->algorithm->hessian=="exact")
+                       && useAutomaticDifferentiation(*workspace->algorithm);
 
- if (!useAutomaticDifferentiation(*workspace->algorithm) ) return false;
+  if (!numH && !exactAD) return false;
 
   if (values == NULL) {
-    if (useAutomaticDifferentiation(*workspace->algorithm)) {
-
-	for(i=0;i<nele_hess;i++)
-	{
-		iRow[i] = workspace->hess_ir[i];
-		jCol[i] = workspace->hess_jc[i];
-	}
-
-    } // End if
+    // structure phase: the lower-triangular pattern (both paths) is in hess_ir/hess_jc
+    for(i=0;i<nele_hess;i++)
+    {
+        iRow[i] = workspace->hess_ir[i];
+        jCol[i] = workspace->hess_jc[i];
+    }
   }
   else {
     // return the values of the Hessian
 
-    if (useAutomaticDifferentiation(*workspace->algorithm) && nele_hess>0) {
+    if (numH) {
+
+       MatrixXd& X = *workspace->Xip;
+       memcpy( &X(0), x, workspace->nvars*sizeof(double) );
+       double  obj_factor_d = obj_factor;
+       double* lambda_d     = workspace->lambda_d.get();
+       for(i=0;i<m;i++) lambda_d[i] = lambda[i];
+
+       ComputeHessianNonZerosNumerical(X, lambda_d, obj_factor_d, m, values, nele_hess, workspace);
+
+       if (workspace->enable_nlp_counters) {
+           workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_hessian_evals++;
+       }
+
+    }
+    else if (nele_hess>0) {     // exactAD
 //    	double *xpr = workspace->Xsnopt->GetPr();
        double *xpr = &(*workspace->Xsnopt)(0);
 
