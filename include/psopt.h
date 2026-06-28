@@ -263,6 +263,13 @@ struct alg_str {
   // Appended at the end of the struct so that the offsets of all pre-existing fields are unchanged.
   int       diagnostic_level;
 
+  // Opt-in (default false): when algorithm.hessian=="numerical", compare the finite-difference
+  // Lagrangian Hessian against the CppAD Hessian once, entrywise, and report the agreement. The
+  // comparison is guarded - if the problem's functions are not AD-traceable (the usual reason
+  // for choosing numerical derivatives) the AD evaluation is skipped with a message rather than
+  // failing the solve. Appended at the end of the struct to preserve pre-existing field offsets.
+  bool      hessian_verify;
+
 };
 
 typedef struct alg_str Alg;
@@ -787,6 +794,8 @@ public:
   
 // A persistent variable for warm starts in SNOPT7
   int nS;  
+
+  bool hess_verify_done;   // numerical-Hessian FD-vs-AD check runs once per solve (H1)
 
 };
 

@@ -33,6 +33,7 @@ e-mail:    v.m.becerra@ieee.org
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -95,18 +96,21 @@ static double Lagrangian_num(MatrixXd& X, const double* lambda, double obj_facto
 }
 
 // One probe of the Hessian sparsity. At point X with multipliers lambda, estimate each
-// candidate (superset) entry by a cheap FORWARD mixed difference of the Lagrangian and flag
-// those above a relative threshold as structurally nonzero. Forward accuracy is irrelevant
-// here: a structurally-zero entry has every mixed a-b derivative vanishing, so it reads as
-// round-off, while a genuine entry reads as O(E_ab). The 2n single-variable perturbations
-// are reused across all off-diagonal candidates, so the probe costs ~ (2n + #off-diagonals)
-// Lagrangian evaluations. Diagonals are retained unconditionally by the caller.
+// candidate (superset) entry by a cheap FORWARD mixed difference of the Lagrangian and
+// accumulate, per entry, the largest magnitude seen across probes (maxAbsE) together with the
+// global maximum (globalMaxE). Thresholding is deferred to the caller so that a single GLOBAL
+// threshold is applied: a probe where the Hessian happens to be small cannot lower the bar and
+// admit round-off as a false positive. Forward accuracy is irrelevant here - a structurally-zero
+// entry has every mixed a-b derivative vanishing, so it reads as round-off. The 2n single-variable
+// perturbations are reused, so the probe costs ~ (2n + #off-diagonals) Lagrangian evaluations.
 static void ProbeHessianPattern(MatrixXd& X, const double* lambda, double obj_factor, int m,
                                 const std::vector<long>& keys, int n,
-                                std::vector<char>& keep, Workspace* workspace)
+                                std::vector<double>& maxAbsE, double& globalMaxE,
+                                double& maxLmag, Workspace* workspace)
 {
     const double qrt_eps = 1.2243397568e-04;          // eps^(1/4)
     const double L0 = Lagrangian_num(X, lambda, obj_factor, m, workspace);
+    if (std::fabs(L0) > maxLmag) maxLmag = std::fabs(L0);
 
     std::vector<double> Lp((size_t) n), h((size_t) n);
     for (int i = 0; i < n; i++) {
@@ -118,8 +122,6 @@ static void ProbeHessianPattern(MatrixXd& X, const double* lambda, double obj_fa
     }
 
     const size_t N = keys.size();
-    std::vector<double> E(N, 0.0);
-    double maxE = 0.0;
     for (size_t e = 0; e < N; e++) {
         const int a = (int) (keys[e] / n), b = (int) (keys[e] % n);
         if (a == b) continue;                          // diagonals kept unconditionally
@@ -127,13 +129,10 @@ static void ProbeHessianPattern(MatrixXd& X, const double* lambda, double obj_fa
         X(a) = xa + ha; X(b) = xb + hb;
         const double Lpp = Lagrangian_num(X, lambda, obj_factor, m, workspace);
         X(a) = xa; X(b) = xb;
-        const double Eab = (Lpp - Lp[(size_t) a] - Lp[(size_t) b] + L0) / (ha * hb);
-        E[e] = Eab;
-        if (std::fabs(Eab) > maxE) maxE = std::fabs(Eab);
+        const double Eab = std::fabs((Lpp - Lp[(size_t) a] - Lp[(size_t) b] + L0) / (ha * hb));
+        if (Eab > maxAbsE[e]) maxAbsE[e] = Eab;
+        if (Eab > globalMaxE) globalMaxE = Eab;
     }
-
-    const double thresh = std::max(1.0e-12, 1.0e-6 * maxE);
-    for (size_t e = 0; e < N; e++) if (std::fabs(E[e]) > thresh) keep[(size_t) e] = 1;
 }
 
 // Build the lower-triangular Lagrangian-Hessian sparsity pattern (row >= col). A structural
@@ -141,8 +140,9 @@ static void ProbeHessianPattern(MatrixXd& X, const double* lambda, double obj_fa
 // each constraint row of (variables in that row) x (variables in that row), plus every
 // diagonal. For pseudospectral / free-final-time discretisations this superset can be far
 // denser than the true Hessian (a t_f-scaled linear term registers as non-constant yet has
-// zero second derivative), so it is then pruned by probing: the FD Hessian is evaluated at a
-// non-degenerate point and entries that are zero there are dropped. Up to two (rows,cols,count)
+// zero second derivative), so it is then pruned by probing: the FD Hessian is evaluated at
+// several non-degenerate points (results unioned) and entries that are zero at every probe are
+// dropped. Up to two (rows,cols,count)
 // source blocks may be supplied (the second is optional; pass count2=0). Fills
 // workspace->hess_ir/hess_jc with the pruned pattern and returns the number of nonzeros.
 static int DetectHessianSparsityNumerical(int n, int m,
@@ -170,7 +170,7 @@ static int DetectHessianSparsityNumerical(int n, int m,
     std::sort(keys.begin(), keys.end());
     keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
 
-    // ---- 2. probe-and-prune ----------------------------------------------------------------
+    // ---- 2. probe-and-prune (union over several non-degenerate probes) ---------------------
     const size_t N = keys.size();
     std::vector<char> keep(N, 0);
     for (size_t e = 0; e < N; e++) if (keys[e] / n == keys[e] % n) keep[e] = 1;   // keep all diagonals
@@ -179,20 +179,45 @@ static int DetectHessianSparsityNumerical(int n, int m,
     MatrixXd& x0  = *workspace->x0;
     MatrixXd& xlb = *workspace->xlb;
     MatrixXd& xub = *workspace->xub;
-    for (int i = 0; i < n; i++) {
-        const double xi = x0(i);
-        // nudge each component away from zero by a distinct amount to break degeneracies
-        double xp = xi + 0.10 * std::max(1.0, std::fabs(xi)) * (1.0 + 0.5 * std::sin(0.7 * (double) i + 0.3));
-        const double lo = xlb(i), hi = xub(i);
-        if (lo > -1.0e19 && xp < lo) xp = lo;
-        if (hi <  1.0e19 && xp > hi) xp = hi;
-        X(i) = xp;
-    }
-    // varied (all-nonzero, distinct) multipliers guard against an entry whose constraint
-    // Hessians happen to cancel at lambda = 1
+
+    // Several probes at distinct points and multiplier vectors are unioned: an entry is kept if
+    // it is nonzero at ANY probe. This guards against an entry that is incidentally zero at one
+    // point or one lambda (state- or multiplier-dependent sparsity). Each probe nudges every
+    // component away from zero by a distinct amount (clipped to the variable bounds) and uses
+    // distinct, all-nonzero multipliers.
+    const int    NPROBE   = 3;
+    const double pAmp[3]  = { 0.05, 0.17, 0.31 };   // point nudge amplitudes (fractions of scale)
+    const double pFrq[3]  = { 0.70, 1.30, 0.40 };   // point phase frequencies
+    const double pPhs[3]  = { 0.30, 1.70, 3.10 };
+    const double lFrq[3]  = { 2.30, 1.10, 3.70 };   // multiplier frequencies
+    const double lPhs[3]  = { 1.10, 2.40, 0.60 };
+
     std::vector<double> lam((size_t) m);
-    for (int k = 0; k < m; k++) lam[(size_t) k] = 1.0 + 0.5 * std::sin(2.3 * (double) k + 1.1);
-    ProbeHessianPattern(X, lam.data(), 1.0, m, keys, n, keep, workspace);
+    std::vector<double> maxAbsE(N, 0.0);
+    double globalMaxE = 0.0;
+    double maxLmag    = 0.0;
+    for (int p = 0; p < NPROBE; p++) {
+        for (int i = 0; i < n; i++) {
+            const double xi = x0(i);
+            double xp = xi + pAmp[p] * std::max(1.0, std::fabs(xi))
+                             * (1.0 + 0.5 * std::sin(pFrq[p] * (double) i + pPhs[p]));
+            const double lo = xlb(i), hi = xub(i);
+            if (lo > -1.0e19 && xp < lo) xp = lo;
+            if (hi <  1.0e19 && xp > hi) xp = hi;
+            X(i) = xp;
+        }
+        for (int k = 0; k < m; k++)
+            lam[(size_t) k] = 1.0 + 0.5 * std::sin(lFrq[p] * (double) k + lPhs[p]);
+        ProbeHessianPattern(X, lam.data(), 1.0, m, keys, n, maxAbsE, globalMaxE, maxLmag, workspace);
+    }
+    // Keep an off-diagonal entry if its largest magnitude over all probes clears a single global
+    // threshold (diagonals already kept). The threshold is the larger of (i) a relative bar,
+    // 1e-6 of the global maximum second derivative, and (ii) a round-off floor: a forward mixed
+    // difference of the Lagrangian cannot resolve entries below ~ eps*|L|/delta^2, and with
+    // delta ~ eps^(1/4) that floor is ~ 1e-6*|L|. The floor stops probes with a large Lagrangian
+    // magnitude from admitting round-off as false positives.
+    const double thresh = std::max(1.0e-6 * globalMaxE, 1.0e-6 * maxLmag);
+    for (size_t e = 0; e < N; e++) if (maxAbsE[e] > thresh) keep[e] = 1;
 
     // ---- 3. write the pruned pattern (guarded against the fixed buffer) ---------------------
     int nnz = 0;
@@ -770,6 +795,62 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
        for(i=0;i<m;i++) lambda_d[i] = lambda[i];
 
        ComputeHessianNonZerosNumerical(X, lambda_d, obj_factor_d, m, values, nele_hess, workspace);
+
+       // Optional one-shot check: compare the FD Hessian to the CppAD Hessian at this same
+       // (x, lambda, obj_factor). Deferred until the Lagrangian Hessian is non-trivial (early
+       // iterates can have zero multipliers and a zero objective Hessian, which would compare
+       // zeros). Guarded - if the problem's functions are not AD-traceable (the usual reason for
+       // numerical derivatives) the AD evaluation throws and is skipped rather than failing the
+       // solve. The AD work buffers (gad, ad_hess) are always allocated.
+       if (workspace->algorithm->hessian_verify && !workspace->hess_verify_done) {
+           double vmax = 0.0;
+           for (i = 0; i < nele_hess; i++) if (std::fabs(values[i]) > vmax) vmax = std::fabs(values[i]);
+           if (vmax > 1.0e-10) {
+             workspace->hess_verify_done = true;        // attempt only once, at a meaningful iterate
+             try {
+               std::vector<double> xloc(x, x + n);
+               psopt_ad::ad_record(workspace->ad_hess, n, 1, x,
+                   [&](const adouble* xin, adouble* yout){
+                       yout[0] = Lagrangian_ad(const_cast<adouble*>(xin), lambda_d, obj_factor_d, m, workspace); });
+               psopt_ad::SparseTriplet Had =
+                   psopt_ad::ad_sparse_hessian(workspace->ad_hess, xloc.data(), /*reuse=*/false);
+
+               std::map<long,double> admap;
+               for (int e = 0; e < Had.nnz(); e++) {
+                   long r = Had.row[e], c = Had.col[e];
+                   if (r < c) { long t = r; r = c; c = t; }     // normalise to lower triangle
+                   admap[r * (long) n + c] = Had.val[e];
+               }
+               double maxabs = 0.0, hscale = 0.0;
+               int num_extra = 0;
+               for (int e = 0; e < nele_hess; e++) {
+                   const long key = (long) workspace->hess_ir[e] * (long) n + (long) workspace->hess_jc[e];
+                   const double vnum = values[e];
+                   std::map<long,double>::iterator it = admap.find(key);
+                   const double vad = (it == admap.end()) ? 0.0 : it->second;
+                   if (it != admap.end()) { if (std::fabs(vad) > hscale) hscale = std::fabs(vad); admap.erase(it); }
+                   else if (std::fabs(vnum) > 0.0) num_extra++;
+                   const double d = std::fabs(vnum - vad);
+                   if (d > maxabs) maxabs = d;
+               }
+               int n_missed = 0; double max_missed = 0.0;       // AD entries absent from the FD pattern
+               for (std::map<long,double>::iterator it = admap.begin(); it != admap.end(); ++it) {
+                   n_missed++;
+                   if (std::fabs(it->second) > max_missed) max_missed = std::fabs(it->second);
+                   if (std::fabs(it->second) > hscale)     hscale     = std::fabs(it->second);
+               }
+               snprintf(workspace->text, sizeof(workspace->text),
+                   "\nNumerical-Hessian check vs CppAD: max|FD-AD| = %.3e (Hessian scale %.3e); "
+                   "AD entries missed by pruning = %d (max |missed| = %.3e); extra FD entries = %d\n",
+                   maxabs, hscale, n_missed, max_missed, num_extra);
+               psopt_print(workspace, workspace->text);
+           } catch (...) {
+               snprintf(workspace->text, sizeof(workspace->text),
+                   "\nNumerical-Hessian check: CppAD evaluation unavailable for this problem; check skipped\n");
+               psopt_print(workspace, workspace->text);
+           }
+           }
+       }
 
        if (workspace->enable_nlp_counters) {
            workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_hessian_evals++;

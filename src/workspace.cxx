@@ -136,6 +136,7 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
     workspace->hess_nnz_capacity = 0;
     workspace->lambda_d  = NULL;
   }
+  workspace->hess_verify_done = false;
   
   if ( algorithm.nlp_method == "SNOPT") {
   	workspace->iGfun     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
