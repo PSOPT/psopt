@@ -799,6 +799,7 @@ public:
 
   unique_ptr<int[]>  hess_col_group;  // group index per variable for the index-set Hessian (H2)
   bool hess_maps_built;               // hess_col_group built once per solve (H2)
+  bool hess_use_indexset;             // auto-selected: index-set vs H1-direct Hessian values (H2c)
 
 };
 

@@ -36,6 +36,7 @@ e-mail:    v.m.becerra@ieee.org
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <chrono>
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -498,6 +499,47 @@ static void ComputeHessianIndexSetNumerical(MatrixXd& X, const double* lambda, d
 }
 
 
+// H2c: auto-select index-set vs H1-direct for the off-diagonal Hessian values.
+// Both methods share the 2n diagonal cost and evaluate every constraint per perturbation, so the
+// gg work is what differs: H1-direct evaluates 4 per off-diagonal entry (4*nnz_off), the index-set
+// method evaluates 4 per *distinct interacting colour-group pair* (4*P). Each off-diagonal entry
+// (a,b) maps to exactly one group pair (group(a),group(b)), so P <= nnz_off always; the index-set
+// method strictly compresses the gg work precisely when group pairs are reused across entries
+// (P < nnz_off), which is the mesh-independent local/hp structure. Returns the decision and reports
+// P and nnz_off through the out-parameters.
+static bool DecideHessianIndexSet(int n, int m, int nele_hess, Workspace* workspace,
+                                  int& P_out, int& noff_out)
+{
+    IGroup* ig = workspace->igroup.get();
+    const int* grp  = workspace->hess_col_group.get();
+    const int  nnzG = workspace->jac_nnzG;
+    const int* iG   = workspace->iGrow.get();
+    const int* jG   = workspace->jGcol.get();
+
+    std::vector< std::vector<int> > rowvars((size_t) m);
+    for (int e = 0; e < nnzG; e++) { const int r = iG[e]; if (r >= 0 && r < m) rowvars[(size_t) r].push_back(jG[e]); }
+
+    std::set<long> pairs;
+    for (int r = 0; r < m; r++) {
+        std::vector<int>& vs = rowvars[(size_t) r];
+        for (size_t p = 0; p < vs.size(); p++)
+            for (size_t q = 0; q < p; q++) {
+                int k = grp[vs[p]], l = grp[vs[q]];
+                if (k < 0 || l < 0 || k == l) continue;
+                if (k > l) { int t = k; k = l; l = t; }
+                pairs.insert((long) k * (long) ig->number + (long) l);
+            }
+    }
+
+    int noff = 0;
+    for (int e = 0; e < nele_hess; e++) if (workspace->hess_ir[e] != workspace->hess_jc[e]) noff++;
+
+    P_out = (int) pairs.size();
+    noff_out = noff;
+    return (P_out < noff);
+}
+
+
 bool check_no_cancel(void *user_data)
 {
 #ifdef WIN32
@@ -874,6 +916,11 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
 
         	getIndexGroups( workspace->igroup.get(), m, n, nnzG, workspace->iGrow.get(), workspace->jGcol.get(), workspace);
 
+        	// H2: the colour map and auto-select decision are derived from this colouring, so they
+        	// must be rebuilt whenever the colouring is (i.e. at every mesh refinement). The
+        	// workspace persists across meshes, so reset the build-once flag here.
+        	workspace->hess_maps_built = false;
+
 	     	for (i=0;i<nnzG;i++)
       	{
 				iRow[i] = workspace->iGrow[i]; // EIGEN_UPDATE
@@ -1008,17 +1055,31 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
        double* lambda_d     = workspace->lambda_d.get();
        for(i=0;i<m;i++) lambda_d[i] = lambda[i];
 
-       ComputeHessianNonZerosNumerical(X, lambda_d, obj_factor_d, m, values, nele_hess, workspace);
-
-       // H2a: build the variable->group colour map once per solve (from the constraint-Jacobian
-       // colouring, available once eval_jac_g has run), and verify it under hessian_verify. This
-       // installs the index-set infrastructure without changing the computed Hessian values.
+       // H2c: one-time-per-mesh setup. Build the colour map, count the distinct interacting
+       // group pairs, and auto-select the value path (index-set when it compresses the gg work,
+       // else H1-direct). hess_maps_built is reset in eval_jac_g whenever the colouring rebuilds,
+       // so this re-runs at every mesh refinement.
        if (!workspace->hess_maps_built && workspace->igroup->number > 0) {
            BuildHessianColourMap(n, workspace);
+           int P = 0, noff = 0;
+           workspace->hess_use_indexset = DecideHessianIndexSet(n, m, nele_hess, workspace, P, noff);
            workspace->hess_maps_built = true;
-           if (workspace->algorithm->hessian_verify)
+           if (workspace->algorithm->hessian_verify) {
                VerifyHessianColouring(n, m, nele_hess, workspace);
+               snprintf(workspace->text, sizeof(workspace->text),
+                   "H2c auto-select: interacting group pairs P = %d, off-diagonal entries = %d -> "
+                   "%s (gg-work factor %.2f)\n", P, noff,
+                   workspace->hess_use_indexset ? "index-set" : "H1-direct",
+                   (P > 0) ? (double) noff / (double) P : 1.0);
+               psopt_print(workspace, workspace->text);
+           }
        }
+
+       // value path: the auto-selected method writes the Hessian values.
+       if (workspace->hess_maps_built && workspace->hess_use_indexset)
+           ComputeHessianIndexSetNumerical(X, lambda_d, obj_factor_d, n, m, values, nele_hess, workspace);
+       else
+           ComputeHessianNonZerosNumerical(X, lambda_d, obj_factor_d, m, values, nele_hess, workspace);
 
        // Optional one-shot check: compare the FD Hessian to the CppAD Hessian at this same
        // (x, lambda, obj_factor). Deferred until the Lagrangian Hessian is non-trivial (early
@@ -1032,22 +1093,34 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
            if (vmax > 1.0e-10) {
              workspace->hess_verify_done = true;        // attempt only once, at a meaningful iterate
 
-             // H2b: index-set (colouring) Hessian vs H1 direct values. Pure finite differences -
-             // no AD needed - so this always runs. The solve still uses the direct values; this
-             // confirms the per-constraint recovery reconstructs the same Hessian.
+             // H2b/H2c: cross-check the two finite-difference methods against each other and time
+             // both at this iterate (cost study). Pure finite differences - no AD needed.
              {
-                 std::vector<double> outis((size_t) nele_hess, 0.0);
-                 ComputeHessianIndexSetNumerical(X, lambda_d, obj_factor_d, n, m, outis.data(), nele_hess, workspace);
+                 std::vector<double> vis((size_t) nele_hess, 0.0), vdir((size_t) nele_hess, 0.0);
+                 const int REP = 5;
+                 std::chrono::steady_clock::time_point ta = std::chrono::steady_clock::now();
+                 for (int rep = 0; rep < REP; rep++)
+                     ComputeHessianIndexSetNumerical(X, lambda_d, obj_factor_d, n, m, vis.data(), nele_hess, workspace);
+                 std::chrono::steady_clock::time_point tb = std::chrono::steady_clock::now();
+                 for (int rep = 0; rep < REP; rep++)
+                     ComputeHessianNonZerosNumerical(X, lambda_d, obj_factor_d, m, vdir.data(), nele_hess, workspace);
+                 std::chrono::steady_clock::time_point tc = std::chrono::steady_clock::now();
+                 const double t_is  = std::chrono::duration<double, std::micro>(tb - ta).count() / REP;
+                 const double t_dir = std::chrono::duration<double, std::micro>(tc - tb).count() / REP;
+
                  double maxd = 0.0, scale = 0.0, maxd_off = 0.0;
                  for (int e = 0; e < nele_hess; e++) {
-                     if (std::fabs(values[e]) > scale) scale = std::fabs(values[e]);
-                     const double d = std::fabs(outis[e] - values[e]);
+                     if (std::fabs(vdir[e]) > scale) scale = std::fabs(vdir[e]);
+                     const double d = std::fabs(vis[e] - vdir[e]);
                      if (d > maxd) maxd = d;
                      if (workspace->hess_ir[e] != workspace->hess_jc[e] && d > maxd_off) maxd_off = d;
                  }
                  snprintf(workspace->text, sizeof(workspace->text),
-                     "\nH2b index-set Hessian vs H1-direct: max|IS-direct| = %.3e "
-                     "(off-diagonal %.3e; Hessian scale %.3e)\n", maxd, maxd_off, scale);
+                     "\nH2 index-set vs H1-direct: max|IS-direct| = %.3e (off-diagonal %.3e; scale %.3e)\n"
+                     "H2c cost study: index-set %.1f us/eval_h, H1-direct %.1f us/eval_h, speed-up %.2fx "
+                     "(selected: %s)\n",
+                     maxd, maxd_off, scale, t_is, t_dir, (t_is > 0.0) ? t_dir / t_is : 1.0,
+                     workspace->hess_use_indexset ? "index-set" : "H1-direct");
                  psopt_print(workspace, workspace->text);
              }
 
