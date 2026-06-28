@@ -759,8 +759,17 @@ void Save(const MatrixXd& m, const char* filename)
   }
 
   if ( (fp = fopen(filename,"w")) == NULL )
-
-  {  error_message( "Error opening file in Save()"); }
+  {
+     // Non-throwing I/O failure: warn and skip the write, rather than throwing
+     // ErrorHandler - which, since Save is called from user code outside psopt(),
+     // escaped to std::terminate. The computation is unaffected; only this output
+     // is skipped.
+     if (PSOPT_extras::PrintLevel())
+        fprintf(stderr,
+           "\n**** ====> PSOPT: Save could not open \"%s\" for writing; "
+           "skipping (file not written). <====\n\n", filename);
+     return;
+  }
 
 
     for (i=0;i<m.rows();i++) { for (j=0;j<m.cols();j++) {
@@ -867,8 +876,16 @@ MatrixXd load_data(const char* filename, long nrows, long ncols)
   double value;
 
   if ( (fp = fopen(filename,"r")) == NULL )
-
-  {  error_message( "Error opening file in load_data()"); }
+  {
+     // Non-throwing I/O failure: warn and return an empty matrix, rather than
+     // throwing ErrorHandler (which escaped to std::terminate from user code). The
+     // caller can test the result with .size()==0; the plot/Save guards skip empty.
+     if (PSOPT_extras::PrintLevel())
+        fprintf(stderr,
+           "\n**** ====> PSOPT: load_data could not open \"%s\" for reading; "
+           "returning an empty matrix. <====\n\n", filename);
+     return MatrixXd();
+  }
 
 
   for (i=0;i<nrows;i++) { 
@@ -876,7 +893,11 @@ MatrixXd load_data(const char* filename, long nrows, long ncols)
 
            if ( fscanf(fp,"%lf", &value) != 1 ) {
                fclose(fp);
-               error_message("Error reading data in load_data(): file is too short or malformed");
+               if (PSOPT_extras::PrintLevel())
+                  fprintf(stderr,
+                     "\n**** ====> PSOPT: load_data could not read \"%s\" (file too "
+                     "short or malformed); returning an empty matrix. <====\n\n", filename);
+               return MatrixXd();
            }
            m(i,j) = value;
       } 

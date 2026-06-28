@@ -254,6 +254,15 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
     else
        filename = problem.outfilename;
     outfile = fopen( filename.c_str(), "w");
+    if (outfile == NULL) {
+        // Previously unchecked: a failed open here fprintf'd to NULL (a segfault).
+        // Warn and skip the summary instead; the solve itself is unaffected.
+        if (PSOPT_extras::PrintLevel())
+            fprintf(stderr,
+                "\n**** ====> PSOPT: print_psopt_summary could not open \"%s\" for "
+                "writing; skipping the summary. <====\n\n", filename.c_str());
+        return;
+    }
     fprintf(outfile,"\nPSOPT results summary");
     fprintf(outfile,"\n=====================\n");
 
@@ -458,8 +467,13 @@ void Save_to_json_file(const string& filename, Prob& problem, Sol& solution, Alg
     if (psopt_solution_failed("Save_to_json_file", solution)) return;
     FILE* fp = fopen(filename.c_str(), "w");
     if (fp == NULL) {
-        error_message("Error opening file in Save_to_json_file()");
-        return;   // error_message exits; this keeps static analysis happy
+        // Non-throwing I/O failure: warn and skip, rather than throwing ErrorHandler
+        // (which escaped to std::terminate from user code). The write is skipped.
+        if (PSOPT_extras::PrintLevel())
+            fprintf(stderr,
+                "\n**** ====> PSOPT: Save_to_json_file could not open \"%s\" for "
+                "writing; skipping (file not written). <====\n\n", filename.c_str());
+        return;
     }
 
     // Determine success exactly as print_psopt_summary() does.
