@@ -270,6 +270,14 @@ struct alg_str {
   // failing the solve. Appended at the end of the struct to preserve pre-existing field offsets.
   bool      hessian_verify;
 
+  // Post-failure access policy. "fail-fast" (default): if psopt() did not succeed
+  // (solution.error_flag set), any subsequent Sol accessor prints a diagnostic and
+  // stops the process cleanly with a non-zero exit code. "fail-soft": the accessors
+  // instead return empty matrices and the output utilities skip them, letting the
+  // caller continue. Resolved once into solution.on_error_fast by initialize_solution.
+  // Appended at the end of the struct to preserve pre-existing field offsets.
+  string    on_error;
+
 };
 
 typedef struct alg_str Alg;
@@ -518,6 +526,10 @@ public:
       integrated_cost = NULL;
       xad = NULL;
       mesh_stats = NULL;
+      // Safe defaults so the accessor guard is well-defined even on a Sol that has
+      // not yet been through psopt(): no error recorded, fail-fast policy.
+      error_flag = 0;
+      on_error_fast = true;
    }
    ~sol_str()
    {
@@ -563,6 +575,12 @@ public:
    // Per-node stationarity residual dH/du (one row per control), populated by solution_diagnostics
    // at diagnostic_level >= 2. Appended after smoothness as a data member; only allocated then.
    MatrixXd *stationarity_residual;
+   // Resolved post-failure access policy (from algorithm.on_error): true = fail-fast
+   // (stop on access to a failed solution), false = fail-soft (return empty, continue).
+   // Set by initialize_solution and defaulted to fail-fast by the constructor and by
+   // psopt() before its try. Appended as the last data member so the offsets of all
+   // pre-existing members are unchanged.
+   bool      on_error_fast;
    MatrixXd& get_states_in_phase(int iphase);
    MatrixXd& get_controls_in_phase(int iphase);
    MatrixXd& get_time_in_phase(int iphase);
@@ -835,7 +853,12 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 
 void deleteIndexGroups(IGroup* igroup, int ncols );
 
-int psopt(Sol& solution, Prob& problem, Alg& algorithm);
+// psopt() is total: it always returns, reporting any failure through
+// solution.error_flag (with solution.error_msg). It is marked [[nodiscard]] so a
+// caller who silently ignores that status gets a compiler warning; this is a
+// nudge only - discarding the result with (void)psopt(...) remains valid, and the
+// examples (built without -Werror) are unaffected.
+[[nodiscard]] int psopt(Sol& solution, Prob& problem, Alg& algorithm);
 
 void psopt_level2_setup(Prob& problem, Alg& algorithm);
 
@@ -1151,6 +1174,15 @@ adouble smooth_sign(adouble x, double a);
 void cross(adouble* x, adouble* y, adouble* z);
 
 void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace);
+
+// Shared, non-throwing post-failure policy used by the Sol accessors and by the
+// public output utilities that take a Sol. Returns false if solution.error_flag == 0
+// (the caller proceeds normally). Otherwise it prints a diagnostic naming the caller
+// and, per algorithm.on_error (resolved into solution.on_error_fast): fail-fast prints
+// a message and stops the process with std::exit(EXIT_FAILURE) (it does not return);
+// fail-soft returns true so the caller can skip the operation and continue. It never
+// throws, so nothing escapes the user's main().
+bool psopt_solution_failed(const char* fn, const Sol& solution);
 
 void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 

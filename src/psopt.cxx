@@ -232,22 +232,29 @@ static void recover_costates_adjoint(Prob& problem, Alg& algorithm, Sol& solutio
 
 int psopt(Sol& solution, Prob& problem, Alg& algorithm)
 {
-	
-	 unique_ptr<Workspace> workspace_up{ new Workspace{problem, algorithm,solution} }; 
-
-
-    initialize_solution(solution,problem,algorithm, workspace_up.get() );
-
+    // psopt() is total: no exception may escape it. The Workspace construction and
+    // initialize_solution() are inside the try as well, so a failure in set-up or in
+    // validate_user_input (which throws ErrorHandler) is reported through
+    // solution.error_flag rather than propagating out to the caller's main().
+    solution.error_flag = 0;
+    solution.error_msg  = "";
+    // Safe default for the post-failure accessor/utility policy, in case the failure
+    // occurs before initialize_solution() resolves algorithm.on_error.
+    solution.on_error_fast = true;
 
     try {
-           psopt_main(solution, problem, algorithm, workspace_up );
+        unique_ptr<Workspace> workspace_up{ new Workspace{problem, algorithm, solution} };
+
+        initialize_solution(solution, problem, algorithm, workspace_up.get());
+
+        psopt_main(solution, problem, algorithm, workspace_up);
     }
-    catch (ErrorHandler handler)
+    catch (ErrorHandler& handler)
     {
-           solution.error_msg = handler.error_message;
-           solution.error_flag = 1;
+        solution.error_msg  = handler.error_message;
+        solution.error_flag = 1;
     }
-    
+
     return solution.error_flag;
 }
 

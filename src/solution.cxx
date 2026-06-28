@@ -34,10 +34,57 @@ e-mail:    v.m.becerra@ieee.org
 using namespace std;
 
 
+// Single source of truth for the post-failure access policy (declared in psopt.h).
+// Shared by the Sol accessors below and by the public output utilities in print.cxx.
+// Returns false when the solve succeeded (caller proceeds). On a failed solve it prints
+// a diagnostic and either stops the process (fail-fast, does not return) or returns true
+// so the caller can skip and continue (fail-soft). Never throws.
+bool psopt_solution_failed(const char* fn, const Sol& solution)
+{
+   if (solution.error_flag == 0) return false;   // normal, solved case
+
+   if (PSOPT_extras::PrintLevel()) {
+      fprintf(stderr,
+         "\n**** ====> PSOPT: %s was called on a solution whose solve did not "
+         "succeed (error_flag is set). <====\n", fn);
+      if (!solution.error_msg.empty())
+         fprintf(stderr, "**** ====> reported error: %s <====\n",
+                 solution.error_msg.c_str());
+   }
+
+   if (solution.on_error_fast) {
+      if (PSOPT_extras::PrintLevel())
+         fprintf(stderr,
+            "**** ====> algorithm.on_error = \"fail-fast\": stopping now. Set "
+            "algorithm.on_error = \"fail-soft\" to continue with empty results "
+            "instead. <====\n\n");
+      std::exit(EXIT_FAILURE);
+   }
+
+   if (PSOPT_extras::PrintLevel())
+      fprintf(stderr,
+         "**** ====> algorithm.on_error = \"fail-soft\": skipping and continuing "
+         "with an empty result. <====\n\n");
+   return true;
+}
+
+
+// Accessor wrapper over the shared policy: returns NULL if the accessor may proceed, or
+// a persistent empty sentinel to hand back in the fail-soft case (fail-fast does not
+// return).
+static MatrixXd* psopt_accessor_guard(const char* accessor, const Sol& solution)
+{
+   static MatrixXd empty;
+   if (psopt_solution_failed(accessor, solution)) return &empty;
+   return NULL;
+}
+
+
 MatrixXd& Sol::get_states_in_phase(int iphase)
 {
   //   if (iphase <1 || iphase > workspace->problem->nphases)
   //        error_message("incorrect phase index in Prob::phases()");
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_states_in_phase", *this)) return *e;
      return states[iphase-1];
 }
 
@@ -45,6 +92,7 @@ MatrixXd& Sol::get_parameters_in_phase(int iphase)
 {
   //   if (iphase <1 || iphase > workspace->problem->nphases)
   //        error_message("incorrect phase index in Prob::phases()");
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_parameters_in_phase", *this)) return *e;
      return parameters[iphase-1];
 }
 
@@ -52,6 +100,7 @@ MatrixXd& Sol::get_parameters_in_phase(int iphase)
 
 MatrixXd& Sol::get_controls_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_controls_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases) {
           error_message("incorrect phase index in Sol::get_controls_in_phase()");
      }
@@ -60,6 +109,7 @@ MatrixXd& Sol::get_controls_in_phase(int iphase)
 
 MatrixXd& Sol::get_time_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_time_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_time_in_phase()");
      return nodes[iphase-1];
@@ -67,6 +117,7 @@ MatrixXd& Sol::get_time_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_costates_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_costates_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_costates_in_phase()");
      return dual.costates[iphase-1];
@@ -74,6 +125,7 @@ MatrixXd& Sol::get_dual_costates_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_terminal_costate_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_terminal_costate_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_terminal_costate_in_phase()");
      return dual.terminal_costates[iphase-1];
@@ -81,6 +133,7 @@ MatrixXd& Sol::get_dual_terminal_costate_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_hamiltonian_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_hamiltonian_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_hamiltonian_in_phase()");
      return dual.Hamiltonian[iphase-1];
@@ -88,6 +141,7 @@ MatrixXd& Sol::get_dual_hamiltonian_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_path_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_path_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_path_in_phase()");
      return dual.path[iphase-1];
@@ -95,6 +149,7 @@ MatrixXd& Sol::get_dual_path_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_events_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_events_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_events_in_phase()");
      return dual.events[iphase-1];
@@ -102,11 +157,13 @@ MatrixXd& Sol::get_dual_events_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_linkages()
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_linkages", *this)) return *e;
      return *dual.linkages;
 }
 
 MatrixXd& Sol::get_relative_local_error_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_relative_local_error_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Prob::phases()");
      return relative_errors[iphase-1];
@@ -114,6 +171,7 @@ MatrixXd& Sol::get_relative_local_error_in_phase(int iphase)
 
 MatrixXd& Sol::get_smoothness_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_smoothness_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_smoothness_in_phase()");
      return smoothness[iphase-1];
@@ -121,6 +179,7 @@ MatrixXd& Sol::get_smoothness_in_phase(int iphase)
 
 MatrixXd& Sol::get_stationarity_residual_in_phase(int iphase)
 {
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_stationarity_residual_in_phase", *this)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_stationarity_residual_in_phase()");
      return stationarity_residual[iphase-1];
@@ -162,6 +221,12 @@ void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace
 
    solution.error_flag = 0;
    solution.error_msg = "";
+
+   // Resolve the post-failure access policy (algorithm.on_error) once, into a Sol flag
+   // the accessors and output utilities can read without needing the Alg. Anything
+   // other than "fail-soft" (including the default "fail-fast" and any value not yet
+   // checked by validate_user_input) maps to fail-fast, the safe default.
+   solution.on_error_fast = (algorithm.on_error != "fail-soft");
 
    solution.mesh_stats = new MeshStats[ get_number_of_mesh_refinement_iterations(problem,algorithm)];
    for (i=0;i<get_number_of_mesh_refinement_iterations(problem,algorithm) ; i++)

@@ -47,6 +47,9 @@ void psopt_print(Workspace* workspace, const char* msg)
 
 void print_iterations_summary(Prob& problem,Alg& algorithm,Sol& solution, Workspace* workspace)
 {
+    // Total output utility: skip-or-stop (per algorithm.on_error) on a failed solve
+    // rather than reaching into the empty per-phase arrays.
+    if (psopt_solution_failed("print_iterations_summary", solution)) return;
 
 	FILE* outfile  = workspace->psopt_solution_summary_file;
         FILE* outfile2 = workspace->mesh_statistics;
@@ -142,6 +145,9 @@ void print_iterations_summary(Prob& problem,Alg& algorithm,Sol& solution, Worksp
 
 void print_iterations_summary_tex(Prob& problem,Alg& algorithm,Sol& solution, Workspace* workspace)
 {
+    // Total output utility: skip-or-stop (per algorithm.on_error) on a failed solve
+    // rather than reaching into the empty per-phase arrays.
+    if (psopt_solution_failed("print_iterations_summary_tex", solution)) return;
 
 
 	FILE* outfile = workspace->mesh_statistics_tex;
@@ -231,6 +237,9 @@ void print_iterations_summary_tex(Prob& problem,Alg& algorithm,Sol& solution, Wo
 
 void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
 {
+    // Total output utility: skip-or-stop (per algorithm.on_error) on a failed solve
+    // rather than reaching into the empty per-phase arrays.
+    if (psopt_solution_failed("print_psopt_summary", solution)) return;
     FILE* outfile;
     string auxstr;
     string filename;
@@ -444,6 +453,9 @@ static void psopt_json_matrix(FILE* fp, const MatrixXd& m)
 
 void Save_to_json_file(const string& filename, Prob& problem, Sol& solution, Alg& algorithm)
 {
+    // Total output utility: skip-or-stop (per algorithm.on_error) on a failed solve
+    // rather than reaching into the empty per-phase arrays.
+    if (psopt_solution_failed("Save_to_json_file", solution)) return;
     FILE* fp = fopen(filename.c_str(), "w");
     if (fp == NULL) {
         error_message("Error opening file in Save_to_json_file()");
@@ -541,6 +553,9 @@ void Save_to_json_file(const string& filename, Prob& problem, Sol& solution, Alg
 
 void print_algorithm_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
 {
+    // Total output utility: skip-or-stop (per algorithm.on_error) on a failed solve
+    // rather than reaching into the empty per-phase arrays.
+    if (psopt_solution_failed("print_algorithm_summary", solution)) return;
     FILE * outfile = workspace->psopt_solution_summary_file;
     string amrtype;
 
@@ -607,6 +622,9 @@ void print_algorithm_summary(Prob& problem, Alg& algorithm, Sol& solution, Works
 
 void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
 {
+    // Total output utility: skip-or-stop (per algorithm.on_error) on a failed solve
+    // rather than reaching into the empty per-phase arrays.
+    if (psopt_solution_failed("print_solution_summary", solution)) return;
     FILE * outfile = workspace->psopt_solution_summary_file;
 
     int i,j,k;
@@ -837,6 +855,9 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
 void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace)
 {
+    // Total output utility: skip-or-stop (per algorithm.on_error) on a failed solve
+    // rather than reaching into the empty per-phase arrays.
+    if (psopt_solution_failed("print_constraint_summary", solution)) return;
 
     int i, j, k, l;
 

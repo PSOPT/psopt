@@ -159,6 +159,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.print_level                 = 1;
   algorithm.diagnostic_level            = 0;
   algorithm.hessian_verify              = false;
+  algorithm.on_error                    = "fail-fast";
   algorithm.save_sparsity_pattern       = 0;
   algorithm.nsteps_error_integration    = 10;
   algorithm.ode_tolerance               = 1.e-3;

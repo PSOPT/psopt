@@ -65,8 +65,24 @@ using namespace std;
 using namespace Eigen;
 
 
+// Guard for the output utilities. A failed solve under algorithm.on_error="fail-soft"
+// hands back empty matrices, and generating a gnuplot data file from an empty matrix
+// has no meaning (and previously crashed). Any plot/multiplot/plot3 call whose data is
+// empty is skipped with a single warning rather than attempted. The check is policy-
+// independent: an empty matrix is never plottable, whatever its origin.
+static bool psopt_plot_skip_empty(const char* fn, bool empty)
+{
+   if (empty && PSOPT_extras::PrintLevel())
+      fprintf(stderr,
+         "\n**** ====> PSOPT: %s received empty data (e.g. from a solve that did not "
+         "succeed); skipping. <====\n\n", fn);
+   return empty;
+}
+
+
 void plot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
+         if (psopt_plot_skip_empty("plot", xa.size()==0 || ya.size()==0)) return;
 
          MatrixXd x = xa;
 
@@ -186,6 +202,7 @@ void plot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const cha
 
 void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, const char* xlabel, const char* ylabel, const char* legend, int nrows, int ncols, const char* terminal,  const char* output )
 {
+         if (psopt_plot_skip_empty("multiplot", xa.size()==0 || ya.size()==0)) return;
          MatrixXd x = xa;
 
 	      MatrixXd y = ya;
@@ -335,6 +352,7 @@ void multiplot(const MatrixXd& xa, const MatrixXd& ya, const string& title, cons
 
 void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
+         if (psopt_plot_skip_empty("plot", x1a.size()==0 || y1a.size()==0 || x2a.size()==0 || y2a.size()==0)) return;
 
          MatrixXd x1 = x1a;
 	 		MatrixXd y1 = y1a;
@@ -500,6 +518,7 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
 void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const MatrixXd& y2a, const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
+         if (psopt_plot_skip_empty("spplot", x1a.size()==0 || y1a.size()==0 || x2a.size()==0 || y2a.size()==0)) return;
 
          MatrixXd x1 = x1a;
 	     	MatrixXd y1 = y1a;
@@ -665,6 +684,7 @@ void spplot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const
 void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const MatrixXd& y2a, const MatrixXd& x3a, const MatrixXd& y3a,
           const string& title, const char* xlabel, const char* ylabel, const char* legend, const char* terminal, const char* output)
 {
+         if (psopt_plot_skip_empty("plot", x1a.size()==0 || y1a.size()==0 || x2a.size()==0 || y2a.size()==0 || x3a.size()==0 || y3a.size()==0)) return;
          MatrixXd x1 = x1a;
 	      MatrixXd y1 = y1a;
 	      MatrixXd x2 = x2a;
@@ -874,6 +894,7 @@ void plot(const MatrixXd& x1a, const MatrixXd& y1a, const MatrixXd& x2a, const M
 
 void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const string& title,  const char* legend, const char* terminal, const char* output)
 {
+         if (psopt_plot_skip_empty("polar", theta_a.size()==0 || r_a.size()==0)) return;
          MatrixXd theta = theta_a;
 	 		MatrixXd r = r_a;
 
@@ -987,6 +1008,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const string& title,  c
 
 void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_a, const MatrixXd& r2_a, const string& title,  const char* legend, const char* terminal, const char* output)
 {
+         if (psopt_plot_skip_empty("polar", theta_a.size()==0 || r_a.size()==0 || theta2_a.size()==0 || r2_a.size()==0)) return;
          MatrixXd theta = theta_a;
 	 		MatrixXd r = r_a;
 	 		MatrixXd theta2 = theta2_a;
@@ -1159,6 +1181,7 @@ void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_
 
 void polar(const MatrixXd& theta_a, const MatrixXd& r_a, const MatrixXd& theta2_a, const MatrixXd& r2_a, const MatrixXd& theta3_a, const MatrixXd& r3_a, const string& title,  const char* legend, const char* terminal, const char* output)
 {
+         if (psopt_plot_skip_empty("polar", theta_a.size()==0 || r_a.size()==0 || theta2_a.size()==0 || r2_a.size()==0 || theta3_a.size()==0 || r3_a.size()==0)) return;
 
          MatrixXd theta = theta_a;
 	 		MatrixXd r = r_a;
@@ -1401,6 +1424,8 @@ void surf(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const stri
 {
 	 // This function creates surface plots given the co-ordinate values (x,y) and the height matrix z.
 
+         if (psopt_plot_skip_empty("surf", xa.size()==0 || ya.size()==0 || za.size()==0)) return;
+
 	 		MatrixXd x = xa;
 	 		MatrixXd y = ya;
 			MatrixXd z = za;
@@ -1503,6 +1528,8 @@ void surf(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const stri
 void plot3(const MatrixXd& xa, const MatrixXd& ya, const MatrixXd& za, const string& title, const char* xlabel, const char* ylabel, const char* zlabel, const char* terminal, const char* output, const char* view)
 {
 	 // This function creates 3d plots given the co-ordinate values (x,y) and the height vector z.
+
+         if (psopt_plot_skip_empty("plot3", xa.size()==0 || ya.size()==0 || za.size()==0)) return;
 
 	 		MatrixXd x = xa;
 	 		MatrixXd y = ya;

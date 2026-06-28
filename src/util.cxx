@@ -747,6 +747,17 @@ void Save(const MatrixXd& m, const char* filename)
 
   FILE *fp;
 
+  // Skip-with-warning on empty input, for consistency with the plot utilities: a
+  // failed solve under algorithm.on_error="fail-soft" yields empty matrices, and
+  // writing an empty data file is of no use to the caller.
+  if (m.size() == 0) {
+     if (PSOPT_extras::PrintLevel())
+        fprintf(stderr,
+           "\n**** ====> PSOPT: Save() received empty data (e.g. from a solve that "
+           "did not succeed); skipping \"%s\". <====\n\n", filename);
+     return;
+  }
+
   if ( (fp = fopen(filename,"w")) == NULL )
 
   {  error_message( "Error opening file in Save()"); }

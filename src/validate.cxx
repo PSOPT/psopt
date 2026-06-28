@@ -95,6 +95,8 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("Incorrect derivatives option specified. Valid options are \"automatic\" and \"numerical\" ");
     if (algorithm.hessian != "exact" && algorithm.hessian!="limited-memory" && algorithm.hessian!="numerical")
        error_message("Incorrect algorithm.hessian option specified. Valid options are \"limited-memory\", \"exact\" and \"numerical\" ");
+    if (algorithm.on_error != "fail-fast" && algorithm.on_error != "fail-soft")
+       error_message("Incorrect algorithm.on_error option specified. Valid options are \"fail-fast\" and \"fail-soft\" ");
     if ((algorithm.hessian == "exact" || algorithm.hessian == "numerical") && algorithm.nlp_method !="IPOPT") {
        snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the '%s' algorithm.hessian option is only available with the IPOPT solver", algorithm.hessian.c_str());
        psopt_print(workspace,workspace->text);
