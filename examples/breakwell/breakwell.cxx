@@ -240,7 +240,6 @@ int main(void)
 //    algorithm.hessian                   = "exact";
 //    algorithm.mesh_refinement           = "automatic";
     algorithm.collocation_method          = "Legendre";
-//    algorithm.diff_matrix                  = "central-differences";
 //    algorithm.defect_scaling = "jacobian-based";
     algorithm.nlp_tolerance               = 1.e-6;
 

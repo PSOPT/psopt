@@ -272,7 +272,6 @@ int main(void)
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "Hermite-Simpson";
 //    algorithm.defect_scaling              = "jacobian-based";
-//    algorithm.diff_matrix                 = "central-differences";
 
 
 ////////////////////////////////////////////////////////////////////////////

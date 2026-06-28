@@ -243,8 +243,7 @@ int main(void)
     algorithm.hessian                     = "exact";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-    algorithm.collocation_method          = "trapezoidal";
-    algorithm.diff_matrix                 = "central-differences";
+    algorithm.collocation_method          = "Gauss";
     algorithm.mesh_refinement             = "automatic";
     algorithm.switch_order                = 0;
 

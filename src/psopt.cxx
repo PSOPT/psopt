@@ -367,10 +367,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	  else if (algorithm.diff_matrix=="reduced-roundoff") {
              workspace->differential_defects = "reduced-roundoff";
 	  }
-
-	  else if (algorithm.diff_matrix=="central-differences") {
-             workspace->differential_defects = "central-differences";
-	  }
     }
 
 
@@ -950,7 +946,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
    	  // the legacy near-endpoint linear-extrapolation workaround, needed only when the old
    	  // pi-weight + 1/sqrt(1-t^2) map blew up at the ends, has been removed.)
 
-    	  if ( ( algorithm.collocation_method == "Legendre" ) && algorithm.diff_matrix != "central-differences") {
+    	  if ( algorithm.collocation_method == "Legendre" ) {
                 // Smooth the costates, as they can be noisy in the case of standard Legendre or Chebyshev collocation.
                 // (see Farhroo and Ross "Costate estimation by a Legendre Pseudospectral Method", Journal of Guidance
                 //    Control and Dynamics, 2001).

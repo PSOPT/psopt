@@ -249,8 +249,7 @@ int main(void)
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.jac_sparsity_ratio          = 0.20;
-    algorithm.collocation_method          = "Legendre";
-    algorithm.diff_matrix                 = "central-differences";
+    algorithm.collocation_method          = "Radau";
     algorithm.mesh_refinement             = "automatic";
     algorithm.mr_max_growth_factor     = 0.3;
     algorithm.mr_max_iterations           = 3;

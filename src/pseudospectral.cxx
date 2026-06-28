@@ -48,137 +48,6 @@ double delta(long l, long N)
       return delta_l;
 }
 
-void diffmat_central_differences(MatrixXd& D, MatrixXd & x )
-{
-
-int i;
-
-double h1, h2, h;
-
-int N1 = length(x);
-
-int N = N1-1;
-
-D.resize(N1,N1);
-D.setZero();
-
-h = x(1)-x(0);
-
-D(0,0)  = -1/h;
-
-D(0,1)  =  1/h;
-
-for (i=1;i<N;i++) { // EIGEN_UPDATE
-    h2 = x(i+1)-x(i);
-    h1 = x(i)-x(i-1);
-    D(i,i+1) = 1/(h1+h2);
-    D(i,i-1) = -1/(h1+h2);
-}
-
-h = x(N-1)-x(N);
-
-D(N,N-1)  =1/h;
-
-D(N,N)=-1/h;
-
-}
-
-void diffmat_lagrange3pt(MatrixXd& D, MatrixXd & x )
-{
-
-int i;
-
-double  h;
-
-int N1 = length(x);
-
-int N = N1-1;
-
-
-D.resize(N1,N1);
-D.setZero();
-
-
-  h = x(1)-x(0);
-//D(1,1)  = -1/h;
-  D(0,0)  = -1/h;
-//D(1,2)  =  1/h;
-  D(0,1)  =  1/h;
-
-for (i=1;i<N;i++) { // EIGEN_UPDATE
-    // 3 Point differentiation based on lagrange polynomial interpolation
-    D(i,i-1)   =  (x(i)-x(i+1))/((x(i-1)-x(i))*(x(i-1)-x(i+1)));
-    D(i,i)     =  (2*x(i)-x(i-1)-x(i+1))/((x(i)-x(i-1))*(x(i)-x(i+1)));
-    D(i,i+1)   =  (x(i)-x(i-1))/((x(i+1)-x(i-1))*(x(i+1)-x(i)));
-
-}
-
-
-h = x(N-1)-x(N);
-
-D(N,N-1)  =1/h;
-
-D(N,N)=-1/h;
-
-}
-
-
-void diffmat_lagrange5pt(MatrixXd& D, MatrixXd & x )
-{
-
-int i;
-
-double h;
-
-int N1 = length(x);
-
-int N = N1-1;
-
-
-D.resize(N1,N1);
-D.setZero();
-
-
-  h = x(1)-x(0);
-
-  D(0,0)  = -1/h;
-
-  D(0,1)  = 1/h;
-
-    // 3 Point differentiation based on lagrange polynomial interpolation
-i=1; // EIGEN_UPDATE
-    D(i,i-1)   =  (x(i)-x(i+1))/((x(i-1)-x(i))*(x(i-1)-x(i+1)));
-    D(i,i)     =  (2*x(i)-x(i-1)-x(i+1))/((x(i)-x(i-1))*(x(i)-x(i+1)));
-    D(i,i+1)   =  (x(i)-x(i-1))/((x(i+1)-x(i-1))*(x(i+1)-x(i)));
-
-i=N-1; // EIGEN_UPDATE
-    D(i,i-1)   =  (x(i)-x(i+1))/((x(i-1)-x(i))*(x(i-1)-x(i+1)));
-    D(i,i)     =  (2*x(i)-x(i-1)-x(i+1))/((x(i)-x(i-1))*(x(i)-x(i+1)));
-    D(i,i+1)   =  (x(i)-x(i-1))/((x(i+1)-x(i-1))*(x(i+1)-x(i)));
-
-for (i=2;i<(N-1);i++) {  // EIGEN_UPDATE
-    // 5 Point central differentiation based on lagrange polynomial interpolation
-    double x1 = x(i-2);
-    double x2 = x(i-1);
-    double x3 = x(i);
-    double x4 = x(i+1);
-    double x5 = x(i+2);
-    D(i,i-2)   =  -((x2-x3)*(x3-x4)*(x3-x5))/((x1-x2)*(x1-x3)*(x1-x4)*(x1-x5));
-    D(i,i-1)   =  ((x1-x3)*(x3-x4)*(x3-x5))/((x1-x2)*(x2-x3)*(x2-x4)*(x2-x5));
-    D(i,i)     =  (x3*(4*x3*x3+2*x4*x5-3*x3*(x4+x5))+x2*(-3*x3*x3-x4*x5+2*x3*(x4+x5))+x1*(-3*x3*x3+2*x3*x4+2*x3*x5-x4*x5-x2*(-2*x3+x4+x5)))/((x1-x3)*(x2-x3)*(x3-x4)*(x3-x5));
-    D(i,i+1)   =  ((x1-x3)*(-x2+x3)*(x3-x5))/((x1-x4)*(-x2+x4)*(-x3+x4)*(x4-x5));
-    D(i,i+2)   =  ((-x1+x3)*(-x2+x3)*(x3-x4))/((-x1+x5)*(-x2+x5)*(-x3+x5)*(-x4+x5));
-
-}
-
-h = x(N-1)-x(N);
-
-D(N,N-1)  =1/h;
-
-D(N,N)=-1/h;
-
-}
-
 void legendre_points(int N, MatrixXd& x, MatrixXd& w)
 {
 // Finds the roots of the Legendre polynomials in (-1,1), also known as the Legendre points,
@@ -387,24 +256,6 @@ void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspa
 
   }
 
-  else if (workspace->differential_defects == "central-differences") {
-      diffmat_central_differences( D, x );
-        for(i=0;i<N1;i++) { // EIGEN_UPDATE
-                for(j=0;j<N1;j++) {
-                     D(i,j) = -D(i,j);
-                }
-        }
-  }
-
-  else if (workspace->differential_defects == "Lagrange-3pt") {
-      diffmat_lagrange3pt( D, x );
-        for(i=0;i<N1;i++) {  // EIGEN_UPDATE
-                for(j=0;j<N1;j++) {
-                     D(i,j) = -D(i,j);
-                }
-        }
-  }
-
   return;
 
 
@@ -520,16 +371,6 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
                 }
         }
 
-  }
-
-  else if (workspace->differential_defects == "central-differences") {
-      diffmat_central_differences( D, x );
-
-        for(i=0;i<N1;i++) {   // EIGEN_UPDATE
-                for(j=0;j<N1;j++) {
-                     D(i,j) = -D(i,j);
-                }
-        }
   }
 
 

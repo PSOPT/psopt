@@ -101,8 +101,8 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the '%s' algorithm.hessian option is only available with the IPOPT solver", algorithm.hessian.c_str());
        psopt_print(workspace,workspace->text);
     }
-    if (algorithm.diff_matrix != "standard" && algorithm.diff_matrix!="diff_matrix" && algorithm.diff_matrix!="central-differences" &&  algorithm.diff_matrix!="reduced-roundoff" )
-       error_message("Incorrect algorithm.diff_matrix option specified. Valid options are \"standard\", \"reduced-roundoff\" , \"central-differences\" ");
+    if (algorithm.diff_matrix != "standard" && algorithm.diff_matrix != "reduced-roundoff" )
+       error_message("Incorrect algorithm.diff_matrix option specified. Valid options are \"standard\" and \"reduced-roundoff\" ");
 
 
     if (algorithm.hessian == "exact" && algorithm.derivatives !="automatic") {

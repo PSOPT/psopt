@@ -268,30 +268,38 @@ void evaluate_solution(Prob& problem,Alg& algorithm,Sol& solution, Workspace* wo
    solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].epsilon_max = 0;
 	solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].nnodes = 0;
 
-	if (use_local_collocation(algorithm) && workspace->differential_defects=="trapezoidal") {
-             solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].method = "TRP";
-        }
+	// Discretisation-method abbreviation for the mesh-statistics reports (the text files and
+	// the LaTeX table), recorded once per mesh-refinement iteration for every refinement mode
+	// (hp-adaptive pseudospectral and local Betts alike). The integrated-residual transcription
+	// is checked first, as it can run on top of any collocation method. The final branch is
+	// defensive: validate_user_input rejects unknown collocation methods, so it should not be
+	// reached, but it labels the row with the raw method name rather than leaving it blank,
+	// guarding against this site drifting behind a future method.
+	{
+	    auto& ms = solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ];
+	    if (algorithm.transcription_method == "integrated-residual")
+	        ms.method = "IR";
+	    else if (use_local_collocation(algorithm) && workspace->differential_defects == "trapezoidal")
+	        ms.method = "TRP";
+	    else if (use_local_collocation(algorithm) && workspace->differential_defects == "Hermite-Simpson")
+	        ms.method = "H-S";
+	    else if (use_global_collocation(algorithm) && algorithm.collocation_method == "Legendre")
+	        ms.method = "LGL";
+	    else if (use_global_collocation(algorithm) && algorithm.collocation_method == "Chebyshev")
+	        ms.method = "CGL";
+	    else if (use_global_collocation(algorithm) && algorithm.collocation_method == "Radau")
+	        ms.method = "LGR";
+	    else if (use_global_collocation(algorithm) && algorithm.collocation_method == "Gauss")
+	        ms.method = "LG";
+	    else
+	        ms.method = algorithm.collocation_method;   // defensive: never blank
 
-        else if (use_local_collocation(algorithm)&& workspace->differential_defects == "Hermite-Simpson") {
-             solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].method = "H-S";
-        }
-
-	else if (use_global_collocation(algorithm)&&algorithm.collocation_method == "Legendre") {
-             solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].method = "LGL";
-        }
-
-	else if (use_global_collocation(algorithm)&&algorithm.collocation_method == "Chebyshev") {
-             solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].method = "CGL";
-        }
-
-	if ( solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].method == "LGL" || solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].method == "CGL" ) {
-	    if (algorithm.diff_matrix == "standard")
-	        solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].method += "-ST";
-	    else if ( algorithm.diff_matrix == "reduced-roundoff" )
-	        solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].method += "-RR";
-	    else if ( algorithm.diff_matrix == "central-differences")
-	        solution.mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].method += "-CD";
-
+	    if (ms.method == "LGL" || ms.method == "CGL") {
+	        if (algorithm.diff_matrix == "standard")
+	            ms.method += "-ST";
+	        else if (algorithm.diff_matrix == "reduced-roundoff")
+	            ms.method += "-RR";
+	    }
 	}
 
 
