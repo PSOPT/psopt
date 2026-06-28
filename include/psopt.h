@@ -1313,8 +1313,6 @@ class ErrorHandler
 
 class PSOPT_extras {
 
-//! Flag to indicate error condition
-   static DEC_THREAD int      errorFlag;
 //! Print level flag,  1: output sent to sderr, 0: no output sent
    static DEC_THREAD int      print_level;
 //! variable to store start time after tic() call.
@@ -1344,8 +1342,6 @@ public:
    static void SetPrintLevel( int plevel );
 
    static int PrintLevel();
-   
-   static void   RiseErrorFlag()   { errorFlag = true; }
 
 
    friend void error_message(const char *input_text);

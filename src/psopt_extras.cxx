@@ -33,7 +33,6 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
-DEC_THREAD int     PSOPT_extras::errorFlag   = 0;	   
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -77,15 +76,8 @@ void error_message(const char *error_text)
 
   fprintf(OUTPUT_STREAM,"%s", m1.c_str());
   fprintf(OUTPUT_STREAM,"%s", m2.c_str());
-  FILE* err_file = fopen("error_message.txt","w");
-  fprintf(err_file,"%s", m1.c_str() );
-  fprintf(err_file,"%s", m2.c_str() );
-  fclose(err_file);
-
 
  }
-
-  PSOPT_extras::RiseErrorFlag();
 
   throw ErrorHandler(m1+m2);
 
