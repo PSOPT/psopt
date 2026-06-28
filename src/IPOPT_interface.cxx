@@ -34,6 +34,7 @@ e-mail:    v.m.becerra@ieee.org
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <set>
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -281,6 +282,98 @@ static void ComputeHessianNonZerosNumerical(MatrixXd& X, const double* lambda, d
             values[e] = (Lpp - Lpm - Lmp + Lmm) / (4.0 * ha * hb);
         }
     }
+}
+
+
+// ---- H2a: index-set Hessian -- colouring map and verification ------------------------------
+//
+// The index-set ("colouring") Hessian computes the sparse Lagrangian Hessian in O(gamma^2)
+// group perturbations rather than H1's O(2n + 4*nnz_offdiag) per-entry differences (gamma is the
+// CPR colour count, ~ the per-node state+control coupling, which stays small and mesh-independent
+// as n grows). It reuses the constraint-Jacobian colouring already built for the sparse Jacobian
+// (workspace->igroup): two columns share a group only if they never co-occur in a constraint row,
+// so each constraint row has at most one variable per group -- the prerequisite for recovering a
+// constraint's Hessian entry from a per-row second difference (H2b).
+//
+// H2a installs only the colour map and a verification harness; the Hessian values are still
+// produced by H1's direct method, so the solve is unchanged.
+
+// Build hess_col_group[j] = colour group of variable j, from workspace->igroup.
+static void BuildHessianColourMap(int n, Workspace* workspace)
+{
+    IGroup* ig = workspace->igroup.get();
+    int* grp = workspace->hess_col_group.get();
+    for (int j = 0; j < n; j++) grp[j] = -1;
+    for (int k = 0; k < ig->number; k++)
+        for (int t = 0; t < ig->size[k]; t++)
+            grp[ ig->colindex[k][t] ] = k;
+}
+
+// Verify the colouring supports per-row Hessian recovery, and quantify objective-only coupling.
+// Reports: gamma (group count); per-row group collisions (must be 0 -- two variables of one
+// constraint row in the same group would be inseparable); and how many pruned off-diagonal
+// Hessian entries are NOT covered by any constraint row (objective-only couplings, which H2b
+// must obtain from a direct objective-Hessian computation rather than the constraint colouring).
+static void VerifyHessianColouring(int n, int m, int nele_hess, Workspace* workspace)
+{
+    IGroup* ig = workspace->igroup.get();
+    const int* grp  = workspace->hess_col_group.get();
+    const int  nnzG = workspace->jac_nnzG;
+    const int* iG   = workspace->iGrow.get();
+    const int* jG   = workspace->jGcol.get();
+
+    std::vector< std::vector<int> > rowvars((size_t) m);
+    for (int e = 0; e < nnzG; e++) { int r = iG[e]; if (r >= 0 && r < m) rowvars[(size_t) r].push_back(jG[e]); }
+
+    int per_row_collisions = 0;
+    std::set<long> ccoup;                                   // constraint-coupled pairs (lower triangle)
+    for (int r = 0; r < m; r++) {
+        std::vector<int>& vs = rowvars[(size_t) r];
+        std::vector<int> gs; gs.reserve(vs.size());
+        for (size_t t = 0; t < vs.size(); t++) gs.push_back(grp[vs[t]]);
+        std::sort(gs.begin(), gs.end());
+        for (size_t t = 1; t < gs.size(); t++) if (gs[t] == gs[t-1]) { per_row_collisions++; break; }
+        for (size_t p = 0; p < vs.size(); p++)
+            for (size_t q = 0; q < p; q++) {
+                long a = vs[p], b = vs[q]; if (a < b) { long t = a; a = b; b = t; }
+                ccoup.insert(a * (long) n + b);
+            }
+    }
+
+    int total_off = 0, obj_only = 0;
+    for (int e = 0; e < nele_hess; e++) {
+        const int a = (int) workspace->hess_ir[e], b = (int) workspace->hess_jc[e];
+        if (a == b) continue;
+        total_off++;
+        const long key = (long) a * (long) n + (long) b;
+        if (ccoup.find(key) == ccoup.end()) obj_only++;
+    }
+
+    // Structural diagnostics for the gamma blow-up: the Jacobian colouring gamma is bounded
+    // below by the densest non-constant Jacobian row; the *Hessian* colouring is bounded below
+    // by the densest Hessian column. A single variable coupled to almost everything (e.g. the
+    // free final time, whose time-scaling multiplies the differentiation matrix) forces gamma
+    // up regardless of the colouring, and is a candidate for direct (un-coloured) handling.
+    int max_jac_row = 0;
+    for (int r = 0; r < m; r++) if ((int) rowvars[(size_t) r].size() > max_jac_row) max_jac_row = (int) rowvars[(size_t) r].size();
+
+    std::vector<int> hdeg((size_t) n, 0);
+    for (int e = 0; e < nele_hess; e++) {
+        const int a = (int) workspace->hess_ir[e], b = (int) workspace->hess_jc[e];
+        if (a == b) continue;
+        hdeg[(size_t) a]++; hdeg[(size_t) b]++;
+    }
+    int max_hess_deg = 0, dense_cols = 0;
+    for (int j = 0; j < n; j++) { if (hdeg[(size_t) j] > max_hess_deg) max_hess_deg = hdeg[(size_t) j]; if (hdeg[(size_t) j] > n / 4) dense_cols++; }
+
+    snprintf(workspace->text, sizeof(workspace->text),
+        "\nH2a index-set colouring: groups gamma = %d (n = %d); per-row group collisions = %d "
+        "(must be 0); off-diagonal Hessian entries = %d, constraint-covered = %d, objective-only = %d\n"
+        "  diagnostics: densest non-constant Jacobian row = %d; densest Hessian column = %d; "
+        "Hessian columns with degree > n/4 = %d\n",
+        ig->number, n, per_row_collisions, total_off, total_off - obj_only, obj_only,
+        max_jac_row, max_hess_deg, dense_cols);
+    psopt_print(workspace, workspace->text);
 }
 
 
@@ -795,6 +888,16 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
        for(i=0;i<m;i++) lambda_d[i] = lambda[i];
 
        ComputeHessianNonZerosNumerical(X, lambda_d, obj_factor_d, m, values, nele_hess, workspace);
+
+       // H2a: build the variable->group colour map once per solve (from the constraint-Jacobian
+       // colouring, available once eval_jac_g has run), and verify it under hessian_verify. This
+       // installs the index-set infrastructure without changing the computed Hessian values.
+       if (!workspace->hess_maps_built && workspace->igroup->number > 0) {
+           BuildHessianColourMap(n, workspace);
+           workspace->hess_maps_built = true;
+           if (workspace->algorithm->hessian_verify)
+               VerifyHessianColouring(n, m, nele_hess, workspace);
+       }
 
        // Optional one-shot check: compare the FD Hessian to the CppAD Hessian at this same
        // (x, lambda, obj_factor). Deferred until the Lagrangian Hessian is non-trivial (early

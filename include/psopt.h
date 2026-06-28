@@ -797,6 +797,9 @@ public:
 
   bool hess_verify_done;   // numerical-Hessian FD-vs-AD check runs once per solve (H1)
 
+  unique_ptr<int[]>  hess_col_group;  // group index per variable for the index-set Hessian (H2)
+  bool hess_maps_built;               // hess_col_group built once per solve (H2)
+
 };
 
 

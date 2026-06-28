@@ -116,6 +116,8 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 		workspace->hess_ir   = new unsigned int[workspace->hess_nnz_capacity];
 		workspace->hess_jc   = new unsigned int[workspace->hess_nnz_capacity];
 		workspace->lambda_d  = make_unique<double[]>(max_ncons);
+		if (algorithm.hessian == "numerical")
+			workspace->hess_col_group = make_unique<int[]>(max_nvars);
 	}
 	else{
       workspace->hess_ir   = NULL;
@@ -137,6 +139,7 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
     workspace->lambda_d  = NULL;
   }
   workspace->hess_verify_done = false;
+  workspace->hess_maps_built  = false;
   
   if ( algorithm.nlp_method == "SNOPT") {
   	workspace->iGfun     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
