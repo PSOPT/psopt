@@ -485,9 +485,14 @@ static void ComputeHessianIndexSetNumerical(MatrixXd& X, const double* lambda, d
     }
 
     // ---- off-diagonal objective part: direct central mixed differences of the objective ----
+    // When the objective off-diagonal pattern has been detected (H2d), compute it only where the
+    // objective contributes; otherwise (not yet detected) compute over the full pattern (safe).
+    const bool obj_restricted = workspace->hess_obj_detected;
+    const char* obj_mark = workspace->hess_obj_offdiag.get();
     for (int e = 0; e < nele_hess; e++) {
         const int a = (int) workspace->hess_ir[e], b = (int) workspace->hess_jc[e];
         if (a == b) continue;
+        if (obj_restricted && !obj_mark[e]) continue;
         const double xa = X(a), xb = X(b), ha = h[(size_t) a], hb = h[(size_t) b];
         X(a) = xa + ha; X(b) = xb + hb; const double fpp = ff_num(X, workspace);
         X(a) = xa + ha; X(b) = xb - hb; const double fpm = ff_num(X, workspace);
@@ -537,6 +542,63 @@ static bool DecideHessianIndexSet(int n, int m, int nele_hess, Workspace* worksp
     P_out = (int) pairs.size();
     noff_out = noff;
     return (P_out < noff);
+}
+
+
+// H2d: detect the objective's own off-diagonal Hessian pattern, so the index-set value path
+// computes the objective contribution only where grad^2 f is nonzero instead of over the full
+// off-diagonal pattern. Robustness follows H1: the objective second derivative is probed at
+// several non-degenerate nudged points (reusing ProbeHessianPattern with lambda = 0, which makes
+// it probe the objective alone) and an entry is marked if it clears the relative / round-off-floor
+// threshold at ANY probe. Marks workspace->hess_obj_offdiag and reports the count.
+static int DetectObjectiveHessianPattern(int n, int m, int nele_hess, Workspace* workspace)
+{
+    char* mark = workspace->hess_obj_offdiag.get();
+    for (int e = 0; e < nele_hess; e++) mark[e] = 0;
+
+    std::vector<long> keys; std::vector<int> eidx;
+    keys.reserve((size_t) nele_hess); eidx.reserve((size_t) nele_hess);
+    for (int e = 0; e < nele_hess; e++) {
+        const int a = (int) workspace->hess_ir[e], b = (int) workspace->hess_jc[e];
+        if (a == b) continue;
+        keys.push_back((long) a * (long) n + (long) b);
+        eidx.push_back(e);
+    }
+    if (keys.empty()) return 0;
+
+    MatrixXd& X   = *workspace->Xip;
+    MatrixXd& x0  = *workspace->x0;
+    MatrixXd& xlb = *workspace->xlb;
+    MatrixXd& xub = *workspace->xub;
+    MatrixXd  Xsave = X;                                   // restore the real iterate afterwards
+
+    std::vector<double> zero((size_t) m, 0.0);
+    std::vector<double> maxAbsE(keys.size(), 0.0);
+    double gmax = 0.0, fmax = 0.0;
+
+    const int    NPROBE  = 3;
+    const double pAmp[3] = { 0.05, 0.17, 0.31 };
+    const double pFrq[3] = { 0.70, 1.30, 0.40 };
+    const double pPhs[3] = { 0.30, 1.70, 3.10 };
+    for (int p = 0; p < NPROBE; p++) {
+        for (int i = 0; i < n; i++) {
+            const double xi = x0(i);
+            double xp = xi + pAmp[p] * std::max(1.0, std::fabs(xi))
+                             * (1.0 + 0.5 * std::sin(pFrq[p] * (double) i + pPhs[p]));
+            const double lo = xlb(i), hi = xub(i);
+            if (lo > -1.0e19 && xp < lo) xp = lo;
+            if (hi <  1.0e19 && xp > hi) xp = hi;
+            X(i) = xp;
+        }
+        ProbeHessianPattern(X, zero.data(), 1.0, m, keys, n, maxAbsE, gmax, fmax, workspace);
+    }
+    X = Xsave;
+
+    const double thresh = std::max(1.0e-6 * gmax, 1.0e-6 * fmax);
+    int count = 0;
+    for (size_t j = 0; j < keys.size(); j++)
+        if (maxAbsE[j] > thresh) { mark[eidx[j]] = 1; count++; }
+    return count;
 }
 
 
@@ -918,8 +980,9 @@ bool IPOPT_PSOPT::eval_jac_g(Index n, const Number* x, bool new_x,
 
         	// H2: the colour map and auto-select decision are derived from this colouring, so they
         	// must be rebuilt whenever the colouring is (i.e. at every mesh refinement). The
-        	// workspace persists across meshes, so reset the build-once flag here.
+        	// workspace persists across meshes, so reset the build-once flags here.
         	workspace->hess_maps_built = false;
+        	workspace->hess_obj_detected = false;
 
 	     	for (i=0;i<nnzG;i++)
       	{
@@ -1063,15 +1126,34 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
            BuildHessianColourMap(n, workspace);
            int P = 0, noff = 0;
            workspace->hess_use_indexset = DecideHessianIndexSet(n, m, nele_hess, workspace, P, noff);
+           int objn = -1;
+           if (workspace->hess_use_indexset) {
+               // H2d: restrict the objective off-diagonal work to its own pattern. Allocate the
+               // mark buffer lazily here (only when the index-set method is actually selected) so
+               // that problems on the H1-direct path keep an unperturbed heap and stay
+               // bit-identical.
+               if (!workspace->hess_obj_offdiag)
+                   workspace->hess_obj_offdiag = make_unique<char[]>(workspace->hess_nnz_capacity);
+               objn = DetectObjectiveHessianPattern(n, m, nele_hess, workspace);
+               workspace->hess_obj_detected = true;
+           }
            workspace->hess_maps_built = true;
            if (workspace->algorithm->hessian_verify) {
                VerifyHessianColouring(n, m, nele_hess, workspace);
                snprintf(workspace->text, sizeof(workspace->text),
                    "H2c auto-select: interacting group pairs P = %d, off-diagonal entries = %d -> "
-                   "%s (gg-work factor %.2f)\n", P, noff,
+                   "%s (gg-work factor %.2f)%s", P, noff,
                    workspace->hess_use_indexset ? "index-set" : "H1-direct",
-                   (P > 0) ? (double) noff / (double) P : 1.0);
+                   (P > 0) ? (double) noff / (double) P : 1.0,
+                   "\n");
                psopt_print(workspace, workspace->text);
+               if (objn >= 0) {
+                   snprintf(workspace->text, sizeof(workspace->text),
+                       "H2d objective off-diagonal pattern: %d of %d entries carry the objective "
+                       "(objective ff work reduced %.1fx)\n",
+                       objn, noff, (objn > 0) ? (double) noff / (double) objn : (double) noff);
+                   psopt_print(workspace, workspace->text);
+               }
            }
        }
 

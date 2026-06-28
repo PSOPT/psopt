@@ -118,6 +118,8 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 		workspace->lambda_d  = make_unique<double[]>(max_ncons);
 		if (algorithm.hessian == "numerical")
 			workspace->hess_col_group = make_unique<int[]>(max_nvars);
+		// hess_obj_offdiag (H2d) is allocated lazily, only if/when the index-set method is
+		// actually selected, so that problems on the H1-direct path keep an unperturbed heap.
 	}
 	else{
       workspace->hess_ir   = NULL;
@@ -141,6 +143,7 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   workspace->hess_verify_done = false;
   workspace->hess_maps_built  = false;
   workspace->hess_use_indexset = false;
+  workspace->hess_obj_detected = false;
   
   if ( algorithm.nlp_method == "SNOPT") {
   	workspace->iGfun     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];

@@ -800,6 +800,8 @@ public:
   unique_ptr<int[]>  hess_col_group;  // group index per variable for the index-set Hessian (H2)
   bool hess_maps_built;               // hess_col_group built once per solve (H2)
   bool hess_use_indexset;             // auto-selected: index-set vs H1-direct Hessian values (H2c)
+  unique_ptr<char[]> hess_obj_offdiag; // 1 where the objective contributes an off-diagonal (H2d)
+  bool hess_obj_detected;             // objective off-diagonal pattern detected this mesh (H2d)
 
 };
 
