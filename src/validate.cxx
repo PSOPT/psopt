@@ -2,7 +2,7 @@
 
 This file is part of the PSOPT library, a software tool for computational optimal control
 
-Copyright (C) 2009-2020 Victor M. Becerra
+Copyright (C) 2009-2026 Victor M. Becerra
 
 This library is free software; you can redistribute it and/or
 modify it under the terms of the GNU Lesser General Public
@@ -21,7 +21,7 @@ or visit http://www.gnu.org/licenses/
 
 Author:    Professor Victor M. Becerra
 Address:   University of Portsmouth
-           School of Energy and Electronic Engineering
+           School of Electrical and Mechanical Engineering
            Portsmouth PO1 3DJ
            United Kingdom
 e-mail:    v.m.becerra@ieee.org
