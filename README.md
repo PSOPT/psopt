@@ -25,7 +25,7 @@ Introduction
 
 This is the PSOPT library, a software tool for computational [optimal control](http://www.scholarpedia.org/article/Optimal_control)
 
-PSOPT is an open source optimal control package written in C++ that uses [direct collocation methods](https://epubs.siam.org/doi/pdf/10.1137/16M1062569). These methods solve optimal control problems by approximating the time-dependent variables using global or local polynomials. This allows to discretize the differential equations and continuous constraints over a grid of nodes, and to compute any integrals associated with the problem using well known quadrature formulas. [Nonlinear programming](https://en.wikipedia.org/wiki/Nonlinear_programming) then is used to find local optimal solutions. PSOPT is able to deal with problems with the following characteristics:
+PSOPT is an open source optimal control package written in C++ that primarily uses [direct collocation methods](https://epubs.siam.org/doi/pdf/10.1137/16M1062569). These methods solve optimal control problems by approximating the time-dependent variables using global or local polynomials. This allows to discretize the differential equations and continuous constraints over a grid of nodes, and to compute any integrals associated with the problem using well known quadrature formulas. [Nonlinear programming](https://en.wikipedia.org/wiki/Nonlinear_programming) then is used to find local optimal solutions. PSOPT is able to deal with problems with the following characteristics:
 
 -  Single or multiphase problems
 -  Continuous time nonlinear dynamics
@@ -44,13 +44,16 @@ PSOPT is an open source optimal control package written in C++ that uses [direct
 
 The implementation has the following features:
 
-- Choice between Legendre, Chebyshev, trapezoidal, or Hermite-Simpson based collocation
+- Choice between Legendre, Chebyshev, Radau, Gauss, trapezoidal, or Hermite-Simpson based collocation
 - Automatic scaling
 - Automatic first and second derivatives using the CppAD library
-- Numerical differentiation by using sparse finite differences
-- Automatic mesh refinement
+- Optional numerical differentiation by using sparse finite differences for both Jacobian and Hessian.
+- Bett's automatic mesh refinement for local discretisations
+- HP-adaptive mesh refinement for pseudospectral discretisations (Radau, Gauss, Legendre, Chebyshev).
+- Integrated-residual transcription, useful for singular and non-smooth problems.
 - Automatic identification of the Jacobian and Hessian sparsity.
 - DAE formulation, so that differential and algebraic constraints can be implemented in the same C++ function.
+- A Python interface, enabling users to create models without writing a single line of C++, while benefiting from the speed and power of PSOPT's C++ core computational engine.
 
 The PSOPT interface uses both Eigen3 (a linear algebra template library) and CppAD (an automatic differentiation library).
 
