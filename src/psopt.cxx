@@ -729,9 +729,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         for (i=0; i<nphases; i++) {
             int norder  = problem.phase[i].current_number_of_intervals;
             double Tlen = (solution.nodes[i])(norder) - (solution.nodes[i])(0);
-            double h_node = Tlen/norder;                     // mesh node spacing (both reps)
-            double d_p = algorithm.ir_dair_delta_factor;     // K*h_node^expo by exact integer powers
-            for (int e=0; e<expo; e++) d_p *= h_node;         // expo==2 reproduces (K*h)*h bit-for-bit
+            double h_rel = 1.0/norder;                       // dimensionless node spacing h_node/Tlen
+            double d_p = algorithm.ir_dair_delta_factor;     // K*(h_node/Tlen)^expo, scale-invariant
+            for (int e=0; e<expo; e++) d_p *= h_rel;          // horizon-normalised: no T^expo blow-up
+            (void) Tlen;
             workspace->ir_delta_phase[i] = d_p;
             delta_max = std::max(delta_max, d_p);
         }
@@ -741,10 +742,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         workspace->trace_f_done = false;   // re-tape the objective gradient: residual -> cost J
         if (nphases == 1)
             snprintf(workspace->text,sizeof(workspace->text),
-                     "\nDAIR optimality sub-solve: min J s.t. |r| <= %e  (delta = K*h^%d)", delta_max, expo);
+                     "\nDAIR optimality sub-solve: min J s.t. |r| <= %e  (delta = K*(h/T)^%d)", delta_max, expo);
         else
             snprintf(workspace->text,sizeof(workspace->text),
-                     "\nDAIR optimality sub-solve: min J s.t. per-phase |r| <= delta_p (max %e, K*h^%d)", delta_max, expo);
+                     "\nDAIR optimality sub-solve: min J s.t. per-phase |r| <= delta_p (max %e, K*(h/T)^%d)", delta_max, expo);
         psopt_print(workspace,workspace->text);
         workspace->enable_nlp_counters = true;
         NLP_interface( algorithm, &x0, ff_num, gg_num, nlp_ncons, nlp_neq, &xlb, &xub, &lambda, 1, 1, workspace, problem.user_data );

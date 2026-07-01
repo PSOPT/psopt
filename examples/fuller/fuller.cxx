@@ -35,12 +35,14 @@
 ////////    started from a collocation solution (the feasibility ->  ////
 ////////    optimality workflow of the reference).                   ////
 ////////  * The explicit residual box (algorithm.ir_residual_bound)  ////
-////////    is used rather than the automatic ir_dair schedule       ////
-////////    delta = K*h^2: that schedule is tied to the mesh spacing ////
-////////    in absolute time and is NOT scale invariant, so for this ////
-////////    long horizon (T=300, h~3.75) the default K makes the box ////
-////////    enormous and non-binding.  The explicit box is also the  ////
-////////    reference's own interface (a user-specified accuracy).   ////
+////////    is used here so that each solve targets a directly        ////
+////////    specified accuracy - the reference's own interface - and ////
+////////    so the accuracy/cost Pareto front can be traced out by    ////
+////////    varying delta.  The automatic ir_dair schedule            ////
+////////    delta = K*(h/T)^2 (horizon-normalised, hence scale        ////
+////////    invariant) is also viable on this long horizon (T=300);   ////
+////////    the explicit box is chosen only for the clearer control   ////
+////////    it gives over the delta sequence.                         ////
 ////////  * Raising the local order beyond 2 does not further reduce ////
 ////////    the error here: on a fixed mesh the switch discontinui-  ////
 ////////    ties induce Gibbs-like local error that higher-degree    ////
