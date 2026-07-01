@@ -1,0 +1,30 @@
+[build-system]
+requires = ["scikit-build-core>=0.8", "pybind11>=2.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "psopt"
+version = "0.1.0"
+description = "Python binding for the PSOPT optimal control library (CasADi front end)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.20", "casadi>=3.6"]
+# License intentionally left to match the PSOPT distribution (see ../LICENSE.txt).
+
+[project.optional-dependencies]
+examples = ["matplotlib"]
+
+[tool.scikit-build]
+cmake.version = ">=3.15"
+wheel.packages = ["psopt"]
+
+# A standalone wheel build must be told where a prebuilt position-independent
+# libPSOPT lives; override these on install, e.g.
+#   pip install ./python \
+#     --config-settings=cmake.define.PSOPT_ROOT=/path/to/psopt \
+#     --config-settings=cmake.define.PSOPT_LIB=/path/to/psopt/build_pic/libPSOPT.a
+# When the binding is built from the top-level PSOPT tree with -DPSOPT_PYTHON=ON
+# these are unused (the in-tree PSOPT target is linked instead).
+[tool.scikit-build.cmake.define]
+PSOPT_ROOT = ""
+PSOPT_LIB = ""

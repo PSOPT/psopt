@@ -54,6 +54,7 @@ option(WITH_SNOPT_INTERFACE "Build interface for the SNOPT optimizer." OFF)
 option(BUILD_TESTS "Build tests for PSOPT." OFF)
 option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but generates PDFs)" OFF)
 option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror (for CI). Default OFF so normal builds are unaffected." OFF)
+option(PSOPT_PYTHON "Build the Python binding (CasADi front end)." OFF)
 
 # Automatic-differentiation backend. CPPAD (in-memory tapes) is the production backend; it
 # replaced ADOL-C, whose multi-GB on-disk tapes corrupt/exhaust disk at high node counts.
@@ -168,6 +169,13 @@ endif()
 
 if(${BUILD_TESTS})
     add_subdirectory(tests/)
+endif()
+
+if(PSOPT_PYTHON)
+   # The binding whole-archives libPSOPT into a shared extension, so the
+   # library must be position-independent.
+    set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    add_subdirectory(python/)
 endif()
 
 # ────────────────────────────────────────────────────────────────
