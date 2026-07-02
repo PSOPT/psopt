@@ -542,6 +542,19 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
 
       for(i=0; i<nf; i++) { // EIGEN_UPDATE: index i shifted by -1
             if ( ( fabs(JacCol1(i,0)) +  fabs(JacCol2(i,0)) + fabs(JacCol3(i,0)) )>=tol ) {
+                // Guard the numerical-path writes against the allocated buffer.
+                // jac_nnz_capacity is set (>0) only for the IPOPT workspace buffers;
+                // it is 0 on the SNOPT path (which passes its own buffers), so the
+                // guard is inactive there. error_message throws, aborting cleanly
+                // before any out-of-bounds write.
+                if ( workspace->jac_nnz_capacity > 0 &&
+                     ( nzcount_A >= workspace->jac_nnz_capacity ||
+                       nzcount_G >= workspace->jac_nnz_capacity ) ) {
+                    snprintf(workspace->text,sizeof(workspace->text),
+                        "detected Jacobian non-zeros exceed the allocated buffer (%d); increase algorithm.jac_sparsity_ratio",
+                        workspace->jac_nnz_capacity);
+                    error_message(workspace->text);
+                }
          	if ( fabs(JacCol1(i,0)-JacCol2(i,0))==0.0 && fabs(JacCol1(i,0)-JacCol3(i,0))==0.0 ) {
                         // Constant Jacobian element detected
               		      iArow[nzcount_A]=i;
