@@ -33,6 +33,15 @@ e-mail:    v.m.becerra@ieee.org
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
 
+// Jacobian buffers up to this many entries (dense bound max_nvars*max_ncons) are
+// allocated in full rather than at the sparsity-ratio estimate. For small problems
+// the dense bound is cheap, and allocating it removes any dependence of correctness
+// on jac_sparsity_ratio (a single-interval pseudospectral Jacobian is dense). Larger
+// problems keep the ratio estimate to bound memory; get_nlp_info guards its writes,
+// so an underestimate there aborts cleanly instead of overflowing the heap. At this
+// limit the six buffers together take about 32*limit bytes (~6.4 MB at 200000).
+static const long PSOPT_JAC_DENSE_LIMIT = 200000;
+
 
 
 void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
@@ -105,12 +114,22 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 
 
   if (algorithm.nlp_method=="IPOPT") {
-	workspace->iArow     = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
-	workspace->jAcol     = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
-	workspace->iGrow     = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
-	workspace->jGcol     = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
-	workspace->jac_Aij   = make_unique<double[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
-	workspace->jac_Gij   = make_unique<double[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons));
+	// The detected Jacobian non-zero count can never exceed the dense bound
+	// max_nvars*max_ncons. For small problems (dense bound below the limit) we
+	// allocate that bound in full, so correctness no longer depends on the
+	// sparsity estimate; for larger problems we keep the ratio-based estimate.
+	// The (long) cast prevents intermediate int overflow on large problems.
+	long jac_dense = (long) max_nvars * (long) max_ncons;
+	long jac_cap   = (long) (algorithm.jac_sparsity_ratio * (double) jac_dense);
+	if (jac_dense <= PSOPT_JAC_DENSE_LIMIT) jac_cap = jac_dense;
+	if (jac_cap < 1) jac_cap = 1;
+	workspace->jac_nnz_capacity = (int) jac_cap;
+	workspace->iArow     = make_unique<int[]>((size_t) jac_cap);
+	workspace->jAcol     = make_unique<int[]>((size_t) jac_cap);
+	workspace->iGrow     = make_unique<int[]>((size_t) jac_cap);
+	workspace->jGcol     = make_unique<int[]>((size_t) jac_cap);
+	workspace->jac_Aij   = make_unique<double[]>((size_t) jac_cap);
+	workspace->jac_Gij   = make_unique<double[]>((size_t) jac_cap);
 	if (algorithm.hessian == "exact" || algorithm.hessian == "numerical" ) {
 		workspace->hess_nnz_capacity = (int) (algorithm.hess_sparsity_ratio*max_nvars*max_nvars);
 		workspace->hess_ir   = new unsigned int[workspace->hess_nnz_capacity];
@@ -135,6 +154,7 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 	 workspace->jGcol     = NULL;
 	 workspace->jac_Aij   = NULL;
 	 workspace->jac_Gij   = NULL;
+    workspace->jac_nnz_capacity = 0;
     workspace->hess_ir   = NULL;
     workspace->hess_jc   = NULL;
     workspace->hess_nnz_capacity = 0;

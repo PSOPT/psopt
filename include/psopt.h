@@ -876,6 +876,9 @@ public:
   unique_ptr<char[]> hess_obj_offdiag; // 1 where the objective contributes an off-diagonal (H2d)
   bool hess_obj_detected;             // objective off-diagonal pattern detected this mesh (H2d)
 
+  int jac_nnz_capacity;               // allocated length of the Jacobian index/value buffers
+                                      // (iArow/jAcol/iGrow/jGcol/jac_Aij/jac_Gij); get_nlp_info
+                                      // guards its writes against this to avoid heap overflow
 };
 
 

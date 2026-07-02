@@ -688,6 +688,12 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 		[&](const adouble* xin, adouble* yout){ gg_ad(const_cast<adouble*>(xin), yout, workspace); });
 	psopt_ad::SparseTriplet J = psopt_ad::ad_sparse_jacobian(workspace->ad_g, x, /*reuse=*/false);
 	nnz = J.nnz();
+	if (nnz > workspace->jac_nnz_capacity) {
+		snprintf(workspace->text,sizeof(workspace->text),
+			"detected Jacobian non-zeros (%d) exceed the allocated buffer (%d); increase algorithm.jac_sparsity_ratio to just above %f",
+			nnz, workspace->jac_nnz_capacity, (double) nnz/((double)(n*m)) );
+		error_message(workspace->text);
+	}
 	for(i=0;i<nnz;i++)
 	{
 		workspace->jGcol[i] = J.col[i];
@@ -729,6 +735,12 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 			yout[0] = Lagrangian_ad(const_cast<adouble*>(xin), lambda, obj_factor, m, workspace); });
 	psopt_ad::SparseTriplet Hs = psopt_ad::ad_sparse_hessian(workspace->ad_hess, x, /*reuse=*/false);
 	nnz_hess = Hs.nnz();
+	if (nnz_hess > workspace->hess_nnz_capacity) {
+		snprintf(workspace->text,sizeof(workspace->text),
+			"detected Hessian non-zeros (%d) exceed the allocated buffer (%d); increase algorithm.hess_sparsity_ratio to just above %f",
+			nnz_hess, workspace->hess_nnz_capacity, (double) nnz_hess/((double)(n*n)) );
+		error_message(workspace->text);
+	}
 	for (i=0; i< nnz_hess; i++) {
 		workspace->hess_ir[i] = Hs.row[i];
 		workspace->hess_jc[i] = Hs.col[i];
