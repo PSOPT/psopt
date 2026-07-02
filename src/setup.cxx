@@ -40,12 +40,15 @@ void psopt_level1_setup(Prob& problem)
 
    int nphases = problem.nphases;
    problem.phase   = new Phases[nphases];
+   problem.user_dae             = nullptr;
+   problem.user_integrand_cost  = nullptr;
    for(i=0;i<nphases;i++) {
        problem.phase[i].nparameters = 0;
        problem.phase[i].nobserved   = 0;
        problem.phase[i].nsamples    = 0;
        problem.phase[i].zero_cost_integrand = false;
        problem.phase[i].regularization_factor = 0.0;
+       problem.phase[i].integer_control.control_index = -1;
        problem.phase[i].nodes.resize(1);
    }
 

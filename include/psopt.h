@@ -74,6 +74,7 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 #include <ctime>
 #include <cassert>
 #include <memory>
+#include <vector>
 
 
 // NOTE: a public header must not pull the whole std namespace into global
@@ -352,6 +353,19 @@ struct prob_scaling_str {
 typedef struct prob_scaling_str ProbScaling;
 
 
+// Declaration of a single integer (discrete-valued) control within a phase.
+// The control identified by control_index is restricted to the admissible set
+// held in values. An empty values vector (the default) means no integer control
+// is declared, in which case all integer-control machinery is dormant and the
+// phase behaves exactly as before. Consumed by the outer-convexification set-up
+// in psopt_level2_setup (see include/integer_controls.h).
+struct integer_control_str {
+   int         control_index;   // index (user control layout) of the integer control; -1 if none
+   RowVectorXd values;          // the M admissible discrete values; empty => none declared
+};
+typedef struct integer_control_str IntegerControl;
+
+
 struct phases_str {
 
    int nstates;
@@ -402,6 +416,10 @@ struct phases_str {
    Name name;
 
    Units units;
+
+   // Optional single integer (discrete-valued) control for this phase (v1).
+   // Dormant unless integer_control.values is non-empty. See integer_controls.h.
+   IntegerControl integer_control;
 
 };
 
@@ -504,9 +522,45 @@ public:
 
    void (*observation_function)(adouble* observed_variable, adouble* states, adouble* controls, adouble* parameters, adouble& time, int k, adouble* xad, int iphase, Workspace* workspace);
 
+   // Integer-control support: while the outer-convexification wrappers are installed
+   // as dae/integrand_cost during psopt(), the user's originals are stashed here and
+   // restored on exit. Null when no integer control is active. See integer_controls.h.
+   void    (*user_dae)(adouble* derivatives, adouble* path, adouble* states, adouble* controls, adouble* parameters, adouble& time, adouble* xad, int iphase, Workspace* workspace);
+   adouble (*user_integrand_cost)(adouble* states, adouble* controls, adouble* parameters, adouble& time,  adouble* xad, int iphase, Workspace* workspace);
+
 };
 
 typedef class prob_str Prob;
+
+
+// RAII guard for integer-control outer convexification. On construction, for any
+// phase whose integer_control is declared (values non-empty), it saves the user
+// layout, stashes the user dae/integrand_cost into problem.user_dae /
+// user_integrand_cost, installs the convexification wrappers, and expands the
+// control/path counts, bounds, scale and guess to the weights + SOS1 layout. On
+// destruction it restores the user layout (the solution is left in weights
+// layout). A complete no-op when no integer control is declared. Constructed at
+// the top of psopt(); defined in src/integer_controls.cxx.
+class IntegerControlExpansionGuard {
+public:
+   explicit IntegerControlExpansionGuard(Prob& problem);
+   ~IntegerControlExpansionGuard();
+   IntegerControlExpansionGuard(const IntegerControlExpansionGuard&) = delete;
+   IntegerControlExpansionGuard& operator=(const IntegerControlExpansionGuard&) = delete;
+private:
+   Prob& problem_;
+   bool  active_;
+   std::vector<bool>     phase_active_;
+   std::vector<int>      saved_ncontrols_;
+   std::vector<int>      saved_npath_;
+   std::vector<MatrixXd> saved_lower_controls_;
+   std::vector<MatrixXd> saved_upper_controls_;
+   std::vector<MatrixXd> saved_scale_controls_;
+   std::vector<MatrixXd> saved_lower_path_;
+   std::vector<MatrixXd> saved_upper_path_;
+   std::vector<MatrixXd> saved_scale_path_;
+   std::vector<MatrixXd> saved_guess_controls_;
+};
 
 
 

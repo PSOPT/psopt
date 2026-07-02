@@ -243,6 +243,11 @@ int psopt(Sol& solution, Prob& problem, Alg& algorithm)
     solution.on_error_fast = true;
 
     try {
+        // Integer-control outer convexification (no-op unless a phase declares
+        // an integer control). Expands the problem here, before the Workspace is
+        // sized from it, and restores the user layout on scope exit.
+        IntegerControlExpansionGuard psopt_ic_guard(problem);
+
         unique_ptr<Workspace> workspace_up{ new Workspace{problem, algorithm, solution} };
 
         initialize_solution(solution, problem, algorithm, workspace_up.get());
