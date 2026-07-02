@@ -152,6 +152,11 @@ public:
     if (linkages) delete linkages;
     if (terminal_costates) delete [] terminal_costates;
   }
+  // Same rule-of-three reasoning as sol_str (of which a Dual is a by-value member):
+  // owns raw phase-sized arrays with a destructor but no self-describing extent, so
+  // copying is deleted to prevent a shallow-copy double free.
+  dual_str(const dual_str&)            = delete;
+  dual_str& operator=(const dual_str&) = delete;
 };
 
 
@@ -280,6 +285,12 @@ struct alg_str {
   // Appended at the end of the struct to preserve pre-existing field offsets.
   string    on_error;
 
+  // Maximum number of admissible integer-parameter combinations that
+  // psopt_solve_integer will enumerate before aborting. The Cartesian product of
+  // all declared integer-parameter value sets must not exceed this. Default 4096.
+  // Appended at the end of the struct to preserve pre-existing field offsets.
+  int       max_integer_combinations;
+
 };
 
 typedef struct alg_str Alg;
@@ -365,6 +376,16 @@ struct integer_control_str {
 };
 typedef struct integer_control_str IntegerControl;
 
+// One discrete-valued (integer) static parameter of a phase. parameter_index is
+// the index in the phase's parameter layout; values holds the admissible discrete
+// set. A phase may declare several (see phases_str::integer_parameters). Consumed
+// by the psopt_solve_integer driver (see include/integer_parameters.h).
+struct integer_parameter_str {
+   int         parameter_index;   // index (phase parameter layout) of the integer parameter
+   RowVectorXd values;            // the admissible discrete values; empty => not a valid entry
+};
+typedef struct integer_parameter_str IntegerParameter;
+
 
 struct phases_str {
 
@@ -420,6 +441,12 @@ struct phases_str {
    // Optional single integer (discrete-valued) control for this phase (v1).
    // Dormant unless integer_control.values is non-empty. See integer_controls.h.
    IntegerControl integer_control;
+
+   // Optional discrete-valued (integer) static parameters for this phase (v1).
+   // Empty (the default) means none are declared and the phase behaves exactly as
+   // before. Populated by declare_integer_parameter and enumerated by
+   // psopt_solve_integer. See include/integer_parameters.h.
+   std::vector<IntegerParameter> integer_parameters;
 
 };
 
@@ -600,6 +627,16 @@ public:
       if (this->integrated_cost) delete [] this->integrated_cost;
       if (this->mesh_stats) delete [] this->mesh_stats;
    }
+   // A Sol owns raw arrays sized by the phase count (and mesh_stats by the number
+   // of mesh-refinement iterations, which needs the Alg and is not recoverable
+   // from a Sol alone), so a correct deep copy is not expressible from the object's
+   // own state. The implicitly-generated copy would be shallow: two Sols would
+   // share the same arrays and the destructor would free them twice. Copying is
+   // therefore deleted (rule of three) so that any accidental copy is a compile-
+   // time error rather than a run-time double free. To retain results, pass the Sol
+   // by reference or extract the values you need (cost, get_*_in_phase(), etc.).
+   sol_str(const sol_str&)            = delete;
+   sol_str& operator=(const sol_str&) = delete;
    MatrixXd *states;
 
    MatrixXd *controls;
