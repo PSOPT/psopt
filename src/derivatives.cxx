@@ -550,10 +550,17 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
                 if ( workspace->jac_nnz_capacity > 0 &&
                      ( nzcount_A >= workspace->jac_nnz_capacity ||
                        nzcount_G >= workspace->jac_nnz_capacity ) ) {
-                    snprintf(workspace->text,sizeof(workspace->text),
-                        "detected Jacobian non-zeros exceed the allocated buffer (%d); increase algorithm.jac_sparsity_ratio",
-                        workspace->jac_nnz_capacity);
-                    error_message(workspace->text);
+                    // Grow the workspace buffers to the detected count and refresh
+                    // the local pointers, so the buffer tracks the non-zero count
+                    // instead of aborting. The IPOPT buffers are workspace-owned
+                    // here; the SNOPT path has jac_nnz_capacity == 0 and is skipped.
+                    long need = ((nzcount_A > nzcount_G) ? nzcount_A : nzcount_G) + 1;
+                    psopt_grow_jacobian_buffers(workspace, need);
+                    iArow = workspace->iArow.get();
+                    jAcol = workspace->jAcol.get();
+                    Aij   = workspace->jac_Aij.get();
+                    jGrow = workspace->iGrow.get();
+                    jGcol = workspace->jGcol.get();
                 }
          	if ( fabs(JacCol1(i,0)-JacCol2(i,0))==0.0 && fabs(JacCol1(i,0)-JacCol3(i,0))==0.0 ) {
                         // Constant Jacobian element detected

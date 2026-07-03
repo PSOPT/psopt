@@ -661,7 +661,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
      nnz = nnzA+nnzG;
 
-     jsratio = (double) ((double)  nnz/((double) (n*m)));
+     jsratio = (double) ((double)  nnz/((double)n*(double)m));
 
      if (jsratio > workspace->algorithm->jac_sparsity_ratio)
      {
@@ -671,7 +671,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
      snprintf(workspace->text,sizeof(workspace->text),"\nJacobian sparsity detected numerically:");
      psopt_print(workspace,workspace->text);
-     snprintf(workspace->text,sizeof(workspace->text),"\n*** %i nonzero elements out of %i [ratio=%f]", nnz, n*m, jsratio );
+     snprintf(workspace->text,sizeof(workspace->text),"\n*** %i nonzero elements out of %.0f [ratio=%f]", nnz, (double)n*(double)m, jsratio );
      psopt_print(workspace,workspace->text);
      snprintf(workspace->text,sizeof(workspace->text),"\n*** %i nonzero elements are constant", nnzA );
      psopt_print(workspace,workspace->text);
@@ -688,12 +688,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 		[&](const adouble* xin, adouble* yout){ gg_ad(const_cast<adouble*>(xin), yout, workspace); });
 	psopt_ad::SparseTriplet J = psopt_ad::ad_sparse_jacobian(workspace->ad_g, x, /*reuse=*/false);
 	nnz = J.nnz();
-	if (nnz > workspace->jac_nnz_capacity) {
-		snprintf(workspace->text,sizeof(workspace->text),
-			"detected Jacobian non-zeros (%d) exceed the allocated buffer (%d); increase algorithm.jac_sparsity_ratio to just above %f",
-			nnz, workspace->jac_nnz_capacity, (double) nnz/((double)(n*m)) );
-		error_message(workspace->text);
-	}
+	psopt_grow_jacobian_buffers(workspace, nnz);   // size buffers to the detected non-zero count
 	for(i=0;i<nnz;i++)
 	{
 		workspace->jGcol[i] = J.col[i];
@@ -703,14 +698,14 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
         snprintf(workspace->text,sizeof(workspace->text),"\nJacobian sparsity detected using ADOLC:");
         psopt_print(workspace,workspace->text);
 
-        jsratio = (double) ((double)  nnz/((double) (n*m)));
+        jsratio = (double) ((double)  nnz/((double)n*(double)m));
 
         if (jsratio > workspace->algorithm->jac_sparsity_ratio) {
            snprintf(workspace->text,sizeof(workspace->text), "increase algorithm.jac_sparsity_ratio to just above %f", jsratio);
            error_message(workspace->text);
         }
 
-        snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %i [ratio=%f]\n", nnz, n*m, jsratio);
+        snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %.0f [ratio=%f]\n", nnz, (double)n*(double)m, jsratio);
         psopt_print(workspace,workspace->text);
 
   } // end if (autoderiv)
@@ -737,8 +732,8 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 	nnz_hess = Hs.nnz();
 	if (nnz_hess > workspace->hess_nnz_capacity) {
 		snprintf(workspace->text,sizeof(workspace->text),
-			"detected Hessian non-zeros (%d) exceed the allocated buffer (%d); increase algorithm.hess_sparsity_ratio to just above %f",
-			nnz_hess, workspace->hess_nnz_capacity, (double) nnz_hess/((double)(n*n)) );
+			"detected Hessian non-zeros (%d) exceed the allocated buffer (%ld); increase algorithm.hess_sparsity_ratio to just above %f",
+			nnz_hess, workspace->hess_nnz_capacity, (double) nnz_hess/((double)n*(double)n) );
 		error_message(workspace->text);
 	}
 	for (i=0; i< nnz_hess; i++) {
