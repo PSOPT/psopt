@@ -31,16 +31,17 @@ PSOPT is an open source optimal control package written in C++ that primarily us
 -  Continuous time nonlinear dynamics
 -  General endpoint constraints
 -  Nonlinear path constraints (equalities or inequalities) on states and/or control variables
-- Integral constraints
+-  Integral constraints
 -  Interior point constraints
 -  Bounds on controls and state variables
 -  General cost function with Lagrange and Mayer terms.
 -  Free or fixed initial and final conditions
-- Linear or nonlinear linkages between phases
+-  Linear or nonlinear linkages between phases
 -  Fixed or free initial time
 -  Fixed or free final time
-- Optimisation of static parameters
-- Parameter estimation problems with sampled measurements • Differential equations with delayed variables.
+-  Optimal control problems including the optimisation of static parameters, including real and integer (discrete-valued) parameters.
+-  Optimal control problems with mixed continuous and integer (discrete-valued) controls.
+-  Parameter estimation problems with sampled measurements • Differential equations with delayed variables.
 
 The implementation has the following features:
 
