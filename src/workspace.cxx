@@ -41,6 +41,7 @@ using namespace std;
 // so an underestimate there aborts cleanly instead of overflowing the heap. At this
 // limit the six buffers together take about 32*limit bytes (~6.4 MB at 200000).
 static const long PSOPT_JAC_DENSE_LIMIT = 200000;
+static const long PSOPT_HESS_DENSE_LIMIT = 200000;
 
 
 // Grow the six IPOPT Jacobian index/value buffers so they hold at least `needed`
@@ -80,6 +81,32 @@ void psopt_grow_jacobian_buffers(Workspace* workspace, long needed)
    workspace->jac_Aij = std::move(n_Aij);
    workspace->jac_Gij = std::move(n_Gij);
    workspace->jac_nnz_capacity = newcap;
+}
+
+
+void psopt_grow_hessian_buffers(Workspace* workspace, long needed)
+{
+   if (workspace->hess_nnz_capacity <= 0)      return;   // Hessian buffers not in use
+   if (needed <= workspace->hess_nnz_capacity) return;   // already large enough
+
+   long oldcap = workspace->hess_nnz_capacity;
+   long newcap = (needed * 3) / 2 + 1024;                // ~1.5x with headroom
+
+   unsigned int* n_ir = new unsigned int[(size_t) newcap];
+   unsigned int* n_jc = new unsigned int[(size_t) newcap];
+   for (long k = 0; k < oldcap; k++) {                   // preserve existing entries
+      n_ir[k] = workspace->hess_ir[k];
+      n_jc[k] = workspace->hess_jc[k];
+   }
+   delete [] workspace->hess_ir;   workspace->hess_ir = n_ir;
+   delete [] workspace->hess_jc;   workspace->hess_jc = n_jc;
+
+   if (workspace->hess_obj_offdiag) {                    // carry the lazily-allocated H2d marker
+      auto n_od = make_unique<char[]>((size_t) newcap);
+      for (long k = 0; k < oldcap; k++) n_od[k] = workspace->hess_obj_offdiag[k];
+      workspace->hess_obj_offdiag = std::move(n_od);
+   }
+   workspace->hess_nnz_capacity = newcap;
 }
 
 
@@ -176,10 +203,17 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 	workspace->jac_Aij   = make_unique<double[]>((size_t) jac_cap);
 	workspace->jac_Gij   = make_unique<double[]>((size_t) jac_cap);
 	if (algorithm.hessian == "exact" || algorithm.hessian == "numerical" ) {
-		workspace->hess_nnz_capacity = (long) (algorithm.hess_sparsity_ratio * (double)((long)max_nvars*(long)max_nvars));
-		if (workspace->hess_nnz_capacity < 1) workspace->hess_nnz_capacity = 1;
-		workspace->hess_ir   = new unsigned int[workspace->hess_nnz_capacity];
-		workspace->hess_jc   = new unsigned int[workspace->hess_nnz_capacity];
+		// Seed the Hessian index buffers, then grow to the DETECTED non-zero count on
+		// demand (see psopt_grow_hessian_buffers). Small problems allocate the dense
+		// bound in full and never grow; larger problems seed at the limit, so
+		// hess_sparsity_ratio no longer sizes the buffers. The (long) product avoids
+		// the int overflow of max_nvars^2.
+		long hess_dense = (long) max_nvars * (long) max_nvars;
+		long hess_cap   = (hess_dense <= PSOPT_HESS_DENSE_LIMIT) ? hess_dense : PSOPT_HESS_DENSE_LIMIT;
+		if (hess_cap < 1) hess_cap = 1;
+		workspace->hess_nnz_capacity = hess_cap;
+		workspace->hess_ir   = new unsigned int[(size_t) hess_cap];
+		workspace->hess_jc   = new unsigned int[(size_t) hess_cap];
 		workspace->lambda_d  = make_unique<double[]>(max_ncons);
 		if (algorithm.hessian == "numerical")
 			workspace->hess_col_group = make_unique<int[]>(max_nvars);

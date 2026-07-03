@@ -1110,6 +1110,7 @@ void Jacobian( void fun(MatrixXd& x, MatrixXd* f ), MatrixXd& x,
 void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
 void psopt_grow_jacobian_buffers(Workspace* workspace, long needed);
+void psopt_grow_hessian_buffers(Workspace* workspace, long needed);
 
 void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 

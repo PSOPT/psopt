@@ -226,12 +226,7 @@ static int DetectHessianSparsityNumerical(int n, int m,
     int nnz = 0;
     for (size_t e = 0; e < N; e++) if (keep[e]) nnz++;
 
-    if (nnz > workspace->hess_nnz_capacity) {
-        snprintf(workspace->text, sizeof(workspace->text),
-                 "numerical Hessian needs algorithm.hess_sparsity_ratio just above %f",
-                 (double) nnz / ((double) n * (double) n));
-        error_message(workspace->text);
-    }
+    psopt_grow_hessian_buffers(workspace, nnz);   // size buffers to the detected Hessian nnz
 
     int w = 0;
     for (size_t e = 0; e < N; e++) if (keep[e]) {
@@ -730,12 +725,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 			yout[0] = Lagrangian_ad(const_cast<adouble*>(xin), lambda, obj_factor, m, workspace); });
 	psopt_ad::SparseTriplet Hs = psopt_ad::ad_sparse_hessian(workspace->ad_hess, x, /*reuse=*/false);
 	nnz_hess = Hs.nnz();
-	if (nnz_hess > workspace->hess_nnz_capacity) {
-		snprintf(workspace->text,sizeof(workspace->text),
-			"detected Hessian non-zeros (%d) exceed the allocated buffer (%ld); increase algorithm.hess_sparsity_ratio to just above %f",
-			nnz_hess, workspace->hess_nnz_capacity, (double) nnz_hess/((double)n*(double)n) );
-		error_message(workspace->text);
-	}
+	psopt_grow_hessian_buffers(workspace, nnz_hess);   // size buffers to the detected Hessian nnz
 	for (i=0; i< nnz_hess; i++) {
 		workspace->hess_ir[i] = Hs.row[i];
 		workspace->hess_jc[i] = Hs.col[i];
@@ -743,13 +733,13 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
        snprintf(workspace->text,sizeof(workspace->text),"\nHessian sparsity detected using ADOLC:");
        psopt_print(workspace,workspace->text);
-       double hsratio = (double) ((double)  nnz_hess/((double) (n*n)));
+       double hsratio = (double) ((double)  nnz_hess/((double)n*(double)n));
        if (hsratio > workspace->algorithm->hess_sparsity_ratio) {
             snprintf(workspace->text,sizeof(workspace->text), "increase algorithm.hess_sparsity_ratio to just above %f", hsratio);
             error_message(workspace->text);
        }
 
-       snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %i [ratio = %f] \n", nnz_hess, n*n, hsratio );
+       snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %.0f [ratio = %f] \n", nnz_hess, (double)n*(double)n, hsratio );
        psopt_print(workspace,workspace->text);
 
        nnz_h_lag = nnz_hess;
@@ -778,8 +768,8 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
      snprintf(workspace->text,sizeof(workspace->text),"\nHessian sparsity built numerically from the Jacobian pattern:");
      psopt_print(workspace,workspace->text);
-     double hsratio = (double) ((double) nnz_hess/((double) (n*n)));
-     snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %i [ratio = %f] \n", nnz_hess, n*n, hsratio );
+     double hsratio = (double) ((double) nnz_hess/((double)n*(double)n));
+     snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %.0f [ratio = %f] \n", nnz_hess, (double)n*(double)n, hsratio );
      psopt_print(workspace,workspace->text);
 
      nnz_h_lag = nnz_hess;
@@ -793,7 +783,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
   // only need the lower left corner (since it is symmetric)
   if( ( !useAutomaticDifferentiation(*workspace->algorithm) || workspace->algorithm->hessian!="exact" )
         && workspace->algorithm->hessian!="numerical" )
-        nnz_h_lag = (int) ((n*n)+n)/2;
+        nnz_h_lag = (Index) ( ((long)n*(long)n + (long)n) / 2 );
 
 /*   *
      * *
