@@ -820,7 +820,7 @@ public:
    unique_ptr<double[]>  nrm_row;
    unsigned int*      hess_ir;
    unsigned int*      hess_jc;
-   int                hess_nnz_capacity;   // allocated length of hess_ir/hess_jc
+   long               hess_nnz_capacity;   // allocated length of hess_ir/hess_jc
    unsigned int*      iGfun;
    unsigned int*      jGvar;
    unique_ptr<int[]>  iGfun1;
@@ -913,7 +913,7 @@ public:
   unique_ptr<char[]> hess_obj_offdiag; // 1 where the objective contributes an off-diagonal (H2d)
   bool hess_obj_detected;             // objective off-diagonal pattern detected this mesh (H2d)
 
-  int jac_nnz_capacity;               // allocated length of the Jacobian index/value buffers
+  long jac_nnz_capacity;               // allocated length of the Jacobian index/value buffers
                                       // (iArow/jAcol/iGrow/jGcol/jac_Aij/jac_Gij); get_nlp_info
                                       // guards its writes against this to avoid heap overflow
 };
@@ -1108,6 +1108,8 @@ void Jacobian( void fun(MatrixXd& x, MatrixXd* f ), MatrixXd& x,
                 MatrixXd* grad, GRWORK* grw );
 
 void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
+
+void psopt_grow_jacobian_buffers(Workspace* workspace, long needed);
 
 void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
