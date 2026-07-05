@@ -104,7 +104,7 @@ target_compile_definitions(psopt PUBLIC
 # so they are PUBLIC usage requirements of consumers that include it.
 target_link_libraries(psopt
   PUBLIC  adolc Eigen3::Eigen IPOPT::ipopt
-  $<$<BOOL:${PSOPT_WITH_CASADI}>:casadi>
+  $<$<BOOL:${PSOPT_WITH_CASADI}>:casadi::casadi>
   $<$<BOOL:${PSOPT_WITH_OPENMP}>:OpenMP::OpenMP_CXX>
   $<$<BOOL:${PSOPT_WITH_MPI}>:MPI::MPI_CXX>)
 if(BLAS_FOUND)
