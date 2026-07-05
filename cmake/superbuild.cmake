@@ -47,22 +47,30 @@ ExternalProject_Add(ep_eigen
   ${_sb_common} CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SB_INSTALL} -DEIGEN_BUILD_DOC=OFF -DBUILD_TESTING=OFF)
 
 # ---- ColPack + ADOL-C (autotools) -------------------------------------------
+# Pin ColPack to v1.0.10 — the release whose GenerateSeedHessian/Jacobian API
+# matches ADOL-C 2.7.2 (master ColPack changed those signatures). Top-level
+# autotools; builds cleanly under GNU gcc.
 ExternalProject_Add(ep_colpack
-  GIT_REPOSITORY https://github.com/CSCsw/ColPack.git GIT_TAG master GIT_SHALLOW TRUE
-  # Use ColPack's CMake build (build/cmake) — builds just the library, avoiding
-  # the automake path's broken Examples targets.
-  SOURCE_SUBDIR build/cmake
-  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SB_INSTALL} -DCMAKE_PREFIX_PATH=${SB_INSTALL}
-             -DCMAKE_C_COMPILER=${SB_CC} -DCMAKE_CXX_COMPILER=${SB_CXX}
-             -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF ${SB_OMP_ARGS})
-# Modern ADOL-C uses CMake (top-level CMakeLists.txt); ENABLE_SPARSE pulls in
-# ColPack (found via CMAKE_PREFIX_PATH).
+  GIT_REPOSITORY https://github.com/CSCsw/ColPack.git GIT_TAG v1.0.10 GIT_SHALLOW TRUE
+  CONFIGURE_COMMAND cd <SOURCE_DIR> && autoreconf -fi && <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} CXX=${SB_CXX}
+  BUILD_COMMAND cd <SOURCE_DIR> && make -j
+  INSTALL_COMMAND cd <SOURCE_DIR> && make install
+  BUILD_IN_SOURCE 1)
+# Pin ADOL-C to release 2.7.2: it still ships the classic <adolc/adouble.h> that
+# PSOPT includes (ADOL-C master removed it), has a committed ./configure, and
+# installs adolc.pc. Autotools build with sparse drivers against our ColPack.
 ExternalProject_Add(ep_adolc
   DEPENDS ep_colpack
-  GIT_REPOSITORY https://github.com/coin-or/ADOL-C.git GIT_TAG master GIT_SHALLOW TRUE
-  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SB_INSTALL} -DCMAKE_PREFIX_PATH=${SB_INSTALL}
-             -DCMAKE_C_COMPILER=${SB_CC} -DCMAKE_CXX_COMPILER=${SB_CXX}
-             -DBUILD_SHARED_LIBS=ON -DENABLE_SPARSE=ON -DBUILD_TESTS=OFF)
+  GIT_REPOSITORY https://github.com/coin-or/ADOL-C.git GIT_TAG releases/2.7.2 GIT_SHALLOW TRUE
+  # ADOL-C 2.7.2 looks for libColPack under <colpack>/lib64; our ColPack installs
+  # to lib, so provide a lib64 -> lib symlink first (idempotent).
+  # macOS rejects the undefined ColPack symbols ADOL-C 2.7.2 leaves in
+  # libadolc.dylib (its Makefile doesn't add -lColPack to the shared lib, which
+  # only Linux tolerates). Link ColPack explicitly via LDFLAGS/LIBS.
+  CONFIGURE_COMMAND ln -sfn lib ${SB_INSTALL}/lib64 && cd <SOURCE_DIR> && <SOURCE_DIR>/configure --prefix=${SB_INSTALL} --with-colpack=${SB_INSTALL} --enable-sparse CC=${SB_CC} CXX=${SB_CXX} "LDFLAGS=-L${SB_INSTALL}/lib -Wl,-rpath,${SB_INSTALL}/lib" "LIBS=-lColPack"
+  BUILD_COMMAND cd <SOURCE_DIR> && make -j
+  INSTALL_COMMAND cd <SOURCE_DIR> && make install
+  BUILD_IN_SOURCE 1)
 
 # ---- METIS (fill-reducing ordering; speeds MUMPS and the HSL solvers) --------
 # ThirdParty-Metis installs libcoinmetis + coinmetis.pc; MUMPS and HSL pick it

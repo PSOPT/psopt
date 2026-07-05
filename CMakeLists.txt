@@ -102,8 +102,15 @@ target_compile_definitions(psopt PUBLIC
 
 # All three appear in the public header psopt.h (Eigen/Dense, adolc/*, IpTNLP),
 # so they are PUBLIC usage requirements of consumers that include it.
+# ADOL-C: link its namespaced CMake-config target directly when available
+# (superbuild), else the plain "adolc" from the pkg-config Find module (MacPorts).
+if(TARGET adolc::adolc)
+  target_link_libraries(psopt PUBLIC adolc::adolc)
+else()
+  target_link_libraries(psopt PUBLIC adolc)
+endif()
 target_link_libraries(psopt
-  PUBLIC  adolc Eigen3::Eigen IPOPT::ipopt
+  PUBLIC  Eigen3::Eigen IPOPT::ipopt
   $<$<BOOL:${PSOPT_WITH_CASADI}>:casadi::casadi>
   $<$<BOOL:${PSOPT_WITH_OPENMP}>:OpenMP::OpenMP_CXX>
   $<$<BOOL:${PSOPT_WITH_MPI}>:MPI::MPI_CXX>)

@@ -56,8 +56,30 @@ if(PSOPT_WITH_MPI)
                   "load on macOS 26 (dyld TLS-in-constructor). Use only where verified.")
 endif()
 
-# ---- ADOL-C (custom Findadolc has its own download+build fallback) ----------
-find_package(adolc REQUIRED)
+# ---- ADOL-C: prefer its modern CMake package (what the superbuild installs;
+#      target adolc::adolc carries the matching ColPack). Its config does
+#      find_dependency(OpenMP), so make OpenMP discoverable first (native under
+#      gcc). Fall back to the pkg-config Find module (e.g. MacPorts). Doing the
+#      config probe HERE (not inside Findadolc) avoids find_package re-entrancy.
+find_package(OpenMP QUIET)
+find_package(adolc CONFIG QUIET)
+if(TARGET adolc::adolc)
+  if(NOT TARGET adolc)
+    # IMPORTED (export-safe) wrapper that explicitly carries adolc::adolc's link
+    # + include usage requirements (copying includes guarantees propagation).
+    get_target_property(_adolc_inc adolc::adolc INTERFACE_INCLUDE_DIRECTORIES)
+    add_library(adolc INTERFACE IMPORTED GLOBAL)
+    set_target_properties(adolc PROPERTIES
+      INTERFACE_LINK_LIBRARIES adolc::adolc
+      INTERFACE_INCLUDE_DIRECTORIES "${_adolc_inc}")
+    # Belt-and-suspenders: ensure every PSOPT source sees the ADOL-C headers
+    # (the public psopt.h includes <adolc/adouble.h>).
+    include_directories(${_adolc_inc})
+  endif()
+  message(STATUS "Found ADOL-C (CMake config): ${_adolc_inc}")
+else()
+  find_package(adolc REQUIRED)   # module mode -> cmake/Findadolc.cmake (pkg-config)
+endif()
 
 # ---- IPOPT (required, PUBLIC) -----------------------------------------------
 find_package(IPOPT)

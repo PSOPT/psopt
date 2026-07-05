@@ -33,3 +33,11 @@ build/
 
 SuiteSparse
 lusol
+# out-of-source build directories
+build-sb/
+build-cas/
+build-modern/
+build-ex/
+build-claude/
+superbuild.log
+run.log
