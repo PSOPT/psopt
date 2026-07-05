@@ -193,7 +193,13 @@ if(PSOPT_WITH_CASADI)
     GIT_REPOSITORY https://github.com/casadi/casadi.git GIT_TAG main GIT_SHALLOW TRUE
     ${_sb_common}
     CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SB_INSTALL} -DCMAKE_PREFIX_PATH=${SB_INSTALL}
-               -DWITH_IPOPT=ON -DWITH_HSL=${PSOPT_WITH_HSL} -DWITH_PYTHON=OFF -DBUILD_TESTING=OFF)
+               -DWITH_IPOPT=ON -DWITH_HSL=${PSOPT_WITH_HSL} -DWITH_PYTHON=OFF -DBUILD_TESTING=OFF
+               # Alternative NLP/QP solver plugins so algorithm.casadi_solver can be
+               # sqpmethod (needs a QP solver), blocksqp, fatrop, etc. — not just ipopt.
+               -DWITH_QPOASES=ON -DWITH_BUILD_QPOASES=ON   # qpOASES QP -> enables sqpmethod
+               -DWITH_OSQP=ON    -DWITH_BUILD_OSQP=ON      # OSQP QP (alt for sqpmethod)
+               -DWITH_BLOCKSQP=ON                          # blockSQP NLP
+               -DWITH_FATROP=ON  -DWITH_BUILD_FATROP=ON)   # fatrop structure-exploiting NLP
   set(_casadi_dep ep_casadi)
 endif()
 
