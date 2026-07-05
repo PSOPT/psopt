@@ -196,10 +196,12 @@ if(PSOPT_WITH_CASADI)
                -DWITH_IPOPT=ON -DWITH_HSL=${PSOPT_WITH_HSL} -DWITH_PYTHON=OFF -DBUILD_TESTING=OFF
                # Alternative NLP/QP solver plugins so algorithm.casadi_solver can be
                # sqpmethod (needs a QP solver), blocksqp, fatrop, etc. — not just ipopt.
+               -DWITH_LAPACK=ON                            # required by qpOASES
                -DWITH_QPOASES=ON -DWITH_BUILD_QPOASES=ON   # qpOASES QP -> enables sqpmethod
-               -DWITH_OSQP=ON    -DWITH_BUILD_OSQP=ON      # OSQP QP (alt for sqpmethod)
-               -DWITH_BLOCKSQP=ON                          # blockSQP NLP
-               -DWITH_FATROP=ON  -DWITH_BUILD_FATROP=ON)   # fatrop structure-exploiting NLP
+               -DWITH_BLOCKSQP=ON)                         # blockSQP NLP
+               # (OSQP/fatrop omitted: CasADi's bundled external_projects builds
+               #  of libosqp/libblasfeo fail on macOS 26. qpOASES builds inline
+               #  and enables sqpmethod; blockSQP is built in.)
   set(_casadi_dep ep_casadi)
 endif()
 
