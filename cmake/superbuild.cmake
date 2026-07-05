@@ -12,6 +12,9 @@ file(MAKE_DIRECTORY ${SB_INSTALL})
 
 set(SB_CC  ${CMAKE_C_COMPILER})
 set(SB_CXX ${CMAKE_CXX_COMPILER})
+# Legacy C deps (METIS 4.0, older MUMPS/HSL C) predate C99 strictness; clang 21
+# makes implicit declarations/int a hard error. Relax it for those builds.
+set(SB_LEGACY_CFLAGS "-Wno-implicit-function-declaration -Wno-implicit-int -Wno-error=implicit-function-declaration")
 find_program(SB_FC NAMES gfortran-mp-15 gfortran-15 gfortran REQUIRED)
 set(SB_PKGCFG "${SB_INSTALL}/lib/pkgconfig")
 # OpenBLAS for MUMPS/IPOPT LAPACK; prefer a found one, else let ThirdParty pick.
@@ -21,6 +24,19 @@ if(SB_OPENBLAS)
   set(SB_BLAS_LFLAGS "-L${_obdir} -lopenblas")
 else()
   set(SB_BLAS_LFLAGS "")   # ThirdParty scripts fall back to a reference BLAS
+endif()
+
+# Apple clang needs explicit libomp flags for deps that require OpenMP (ColPack).
+set(SB_OMP_ARGS "")
+if(APPLE)
+  find_path(SB_OMP_INC omp.h HINTS /opt/local/include/libomp /opt/local/include /usr/local/include /opt/homebrew/include)
+  find_library(SB_OMP_LIB NAMES omp libomp HINTS /opt/local/lib/libomp /opt/local/lib /usr/local/lib /opt/homebrew/lib)
+  if(SB_OMP_INC AND SB_OMP_LIB)
+    set(SB_OMP_ARGS
+      "-DOpenMP_C_FLAGS=-Xpreprocessor -fopenmp -I${SB_OMP_INC}"   "-DOpenMP_C_LIB_NAMES=omp"
+      "-DOpenMP_CXX_FLAGS=-Xpreprocessor -fopenmp -I${SB_OMP_INC}" "-DOpenMP_CXX_LIB_NAMES=omp"
+      "-DOpenMP_omp_LIBRARY=${SB_OMP_LIB}")
+  endif()
 endif()
 
 message(STATUS "PSOPT superbuild -> ${SB_INSTALL}")
@@ -39,11 +55,12 @@ ExternalProject_Add(ep_eigen
 # ---- ColPack + ADOL-C (autotools) -------------------------------------------
 ExternalProject_Add(ep_colpack
   GIT_REPOSITORY https://github.com/CSCsw/ColPack.git GIT_TAG master GIT_SHALLOW TRUE
-  # ColPack's autotools live in build/automake (no top-level configure script).
-  CONFIGURE_COMMAND cd <SOURCE_DIR>/build/automake && autoreconf -fi && ./configure --prefix=${SB_INSTALL} CC=${SB_CC} CXX=${SB_CXX}
-  BUILD_COMMAND cd <SOURCE_DIR>/build/automake && make -j
-  INSTALL_COMMAND cd <SOURCE_DIR>/build/automake && make install
-  BUILD_IN_SOURCE 1)
+  # Use ColPack's CMake build (build/cmake) — builds just the library, avoiding
+  # the automake path's broken Examples targets.
+  SOURCE_SUBDIR build/cmake
+  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SB_INSTALL} -DCMAKE_PREFIX_PATH=${SB_INSTALL}
+             -DCMAKE_C_COMPILER=${SB_CC} -DCMAKE_CXX_COMPILER=${SB_CXX}
+             -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF ${SB_OMP_ARGS})
 ExternalProject_Add(ep_adolc
   DEPENDS ep_colpack
   GIT_REPOSITORY https://github.com/coin-or/ADOL-C.git GIT_TAG master GIT_SHALLOW TRUE
@@ -57,7 +74,7 @@ ExternalProject_Add(ep_adolc
 # up automatically via pkg-config (PKG_CONFIG_PATH below).
 ExternalProject_Add(ep_metis
   GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Metis.git GIT_TAG stable/2.0 GIT_SHALLOW TRUE
-  CONFIGURE_COMMAND cd <SOURCE_DIR> && ./get.Metis && <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC}
+  CONFIGURE_COMMAND cd <SOURCE_DIR> && ./get.Metis && <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} "CFLAGS=${SB_LEGACY_CFLAGS}"
   BUILD_COMMAND cd <SOURCE_DIR> && make -j
   INSTALL_COMMAND cd <SOURCE_DIR> && make install
   BUILD_IN_SOURCE 1)
