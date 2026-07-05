@@ -93,7 +93,21 @@ int psopt_casadi_solve(
     opts["ipopt.mu_strategy"]    = std::string("adaptive");
     opts["ipopt.hessian_approximation"] = std::string("limited-memory");
     if (algorithm.print_level == 0) opts["ipopt.print_level"] = 0;
+  } else if (plugin == "sqpmethod") {
+    // sqpmethod defaults to an EXACT Hessian of the Lagrangian, which is
+    // indefinite for most optimal-control NLPs; qpOASES then fails on the
+    // non-convex QP subproblem and (with error_on_fail=true) aborts. Use a
+    // limited-memory (BFGS, positive-definite) Hessian so the QP stays convex,
+    // and tolerate an occasional QP failure instead of crashing.
+    opts["hessian_approximation"] = std::string("limited-memory");
+    opts["max_iter"]              = algorithm.nlp_iter_max;
+    opts["error_on_fail"]         = false;
+    Dict qpopts; qpopts["error_on_fail"] = false;
+    if (algorithm.print_level == 0) { qpopts["printLevel"] = std::string("none"); opts["print_time"] = false; opts["print_iteration"] = false; }
+    opts["qpsol"]         = std::string("qpoases");
+    opts["qpsol_options"] = qpopts;
   } else {
+    opts["error_on_fail"] = false;
     if (algorithm.print_level == 0) opts["print_time"] = false;
   }
 
