@@ -130,6 +130,7 @@ if(BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 if(BUILD_TESTS)
+  enable_testing()   # so `ctest` works from the top-level build directory
   add_subdirectory(tests)
 endif()
 
