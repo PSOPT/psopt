@@ -51,10 +51,22 @@ ExternalProject_Add(ep_adolc
   INSTALL_COMMAND cd <SOURCE_DIR> && make install
   BUILD_IN_SOURCE 1)
 
-# ---- MUMPS (sequential, via COIN-OR ThirdParty) -----------------------------
+# ---- METIS (fill-reducing ordering; speeds MUMPS and the HSL solvers) --------
+# ThirdParty-Metis installs libcoinmetis + coinmetis.pc; MUMPS and HSL pick it
+# up automatically via pkg-config (PKG_CONFIG_PATH below).
+ExternalProject_Add(ep_metis
+  GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Metis.git GIT_TAG stable/2.0 GIT_SHALLOW TRUE
+  CONFIGURE_COMMAND cd <SOURCE_DIR> && ./get.Metis && <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC}
+  BUILD_COMMAND cd <SOURCE_DIR> && make -j
+  INSTALL_COMMAND cd <SOURCE_DIR> && make install
+  BUILD_IN_SOURCE 1)
+
+# ---- MUMPS (sequential, via COIN-OR ThirdParty; uses METIS ordering) --------
 ExternalProject_Add(ep_mumps
+  DEPENDS ep_metis
   GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git GIT_TAG stable/3.0 GIT_SHALLOW TRUE
-  CONFIGURE_COMMAND cd <SOURCE_DIR> && ./get.Mumps && <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} FC=${SB_FC} --with-lapack-lflags=${SB_BLAS_LFLAGS} --with-blas-lflags=${SB_BLAS_LFLAGS}
+  CONFIGURE_COMMAND cd <SOURCE_DIR> && ./get.Mumps
+          COMMAND ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${SB_PKGCFG} <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} FC=${SB_FC} --with-metis --with-lapack-lflags=${SB_BLAS_LFLAGS} --with-blas-lflags=${SB_BLAS_LFLAGS}
   BUILD_COMMAND cd <SOURCE_DIR> && make -j
   INSTALL_COMMAND cd <SOURCE_DIR> && make install
   BUILD_IN_SOURCE 1)
@@ -104,10 +116,10 @@ if(PSOPT_WITH_HSL)
   endif()
 
   ExternalProject_Add(ep_hsl
-    DEPENDS ${_hsl_extra_dep}
+    DEPENDS ${_hsl_extra_dep} ep_metis
     GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-HSL.git GIT_TAG stable/2.2 GIT_SHALLOW TRUE
     CONFIGURE_COMMAND ${_hsl_populate}
-            COMMAND cd <SOURCE_DIR> && <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} FC=${SB_FC} --with-lapack-lflags=${SB_BLAS_LFLAGS}
+            COMMAND ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${SB_PKGCFG} <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} FC=${SB_FC} --with-metis --with-lapack-lflags=${SB_BLAS_LFLAGS}
     BUILD_COMMAND cd <SOURCE_DIR> && make -j
     INSTALL_COMMAND cd <SOURCE_DIR> && make install
     BUILD_IN_SOURCE 1)
@@ -141,6 +153,11 @@ if(PSOPT_WITH_CASADI)
 endif()
 
 # ---- PSOPT itself (re-invoke this CMake with superbuild off, deps resolved) --
+# With HSL built, default to the OpenMP-parallel ma97 solver.
+set(_psopt_default_solver ${PSOPT_DEFAULT_LINEAR_SOLVER})
+if(PSOPT_WITH_HSL AND _psopt_default_solver STREQUAL "mumps")
+  set(_psopt_default_solver "ma97")
+endif()
 ExternalProject_Add(ep_psopt
   DEPENDS ep_eigen ep_adolc ep_ipopt ${_casadi_dep}
   SOURCE_DIR ${CMAKE_SOURCE_DIR}
@@ -152,7 +169,7 @@ ExternalProject_Add(ep_psopt
     -DCMAKE_C_COMPILER=${SB_CC} -DCMAKE_CXX_COMPILER=${SB_CXX}
     -DPSOPT_WITH_MUMPS=${PSOPT_WITH_MUMPS} -DPSOPT_WITH_HSL=${PSOPT_WITH_HSL}
     -DPSOPT_WITH_CASADI=${PSOPT_WITH_CASADI} -DPSOPT_WITH_SNOPT=${PSOPT_WITH_SNOPT}
-    -DPSOPT_DEFAULT_LINEAR_SOLVER=${PSOPT_DEFAULT_LINEAR_SOLVER}
+    -DPSOPT_DEFAULT_LINEAR_SOLVER=${_psopt_default_solver}
     -DBUILD_EXAMPLES=${BUILD_EXAMPLES} -DBUILD_TESTS=${BUILD_TESTS} -DHEADLESS=${HEADLESS}
   INSTALL_COMMAND "")
 

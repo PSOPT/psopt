@@ -1,10 +1,15 @@
 // CASADI_interface.cxx - CasADi NLP backend for PSOPT (guarded by USE_CASADI).
 //
-// Wraps PSOPT's objective/constraint callbacks as a CasADi Callback and solves
-// with casadi::nlpsol("ipopt", ...). The IPOPT linear solver is taken from
-// algorithm.ipopt_linear_solver, so a CasADi/IPOPT built with HSL uses ma57/97.
+// Solves PSOPT's transcribed NLP through casadi::nlpsol("ipopt", ...), so the
+// IPOPT linear solver (algorithm.ipopt_linear_solver) can be MUMPS or a
+// parallel HSL code (ma86/ma97). EXACT first derivatives are supplied to CasADi
+// by reusing PSOPT's own IPOPT_PSOPT TNLP (its eval_grad_f / eval_jac_g compute
+// the objective gradient and the sparse constraint Jacobian via ADOL-C), so no
+// finite differences are used. The Hessian is limited-memory (as in the native
+// IPOPT path), so second derivatives are not needed.
 //
-// See casadi_psopt.h for scope and limitations.
+// See casadi_psopt.h for scope. Requires a CasADi build with the IPOPT plugin
+// (provided by -DPSOPT_SUPERBUILD=ON -DPSOPT_WITH_CASADI=ON).
 
 #include "casadi_psopt.h"
 
@@ -14,59 +19,126 @@
 #include <vector>
 
 using namespace casadi;
+using Ipopt::Index;
+using Ipopt::Number;
 
-// Forward declaration of PSOPT's constraint-bounds helper (defined in the
-// PSOPT sources and reused by the IPOPT interface).
 void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace);
 
 namespace {
 
-// A CasADi Callback exposing PSOPT's NLP: x -> (f, g). Derivatives are obtained
-// by CasADi finite differences (enable_fd), so no analytic Jacobian is needed.
-class PsoptNlp : public Callback {
+// Exact objective gradient d f / d x (shape 1 x n) via IPOPT_PSOPT::eval_grad_f.
+class GradF : public Callback {
 public:
-  PsoptNlp(int nx, int ng,
-           double (*f)(MatrixXd&, Workspace*),
-           void   (*g)(MatrixXd&, MatrixXd*, Workspace*),
-           Workspace* ws)
-    : nx_(nx), ng_(ng), f_(f), g_(g), ws_(ws) {
-    Dict opts;
-    opts["enable_fd"] = true;          // finite-difference the callback
-    construct("psopt_nlp", opts);
-  }
-
-  // inputs: x (nx), p (0)  ; outputs: f (1), g (ng)
-  casadi_int get_n_in()  override { return 2; }
-  casadi_int get_n_out() override { return 2; }
+  GradF(int n, IPOPT_PSOPT* nlp) : n_(n), nlp_(nlp) { construct("psopt_grad_f"); }
+  casadi_int get_n_in()  override { return 2; }               // x, nominal f
+  casadi_int get_n_out() override { return 1; }               // jac (1 x n)
   Sparsity get_sparsity_in(casadi_int i) override {
-    return (i == 0) ? Sparsity::dense(nx_, 1) : Sparsity::dense(0, 1);
+    return (i == 0) ? Sparsity::dense(n_, 1) : Sparsity::dense(1, 1);
   }
-  Sparsity get_sparsity_out(casadi_int i) override {
-    return (i == 0) ? Sparsity::dense(1, 1) : Sparsity::dense(ng_, 1);
-  }
-  std::string get_name_in(casadi_int i)  override { return (i == 0) ? "x" : "p"; }
-  std::string get_name_out(casadi_int i) override { return (i == 0) ? "f" : "g"; }
-
+  Sparsity get_sparsity_out(casadi_int) override { return Sparsity::dense(1, n_); }
   std::vector<DM> eval(const std::vector<DM>& arg) const override {
-    const std::vector<double> xv = arg[0].nonzeros();
-    MatrixXd x(nx_, 1);
-    for (int j = 0; j < nx_; ++j) x(j, 0) = xv[j];
-
-    double fval = f_(x, ws_);
-
-    MatrixXd gvec(ng_, 1);
-    if (ng_ > 0) g_(x, &gvec, ws_);
-    std::vector<double> gv(ng_);
-    for (int j = 0; j < ng_; ++j) gv[j] = gvec(j, 0);
-
-    return { DM(fval), DM(gv) };
+    std::vector<double> x = arg[0].nonzeros();
+    std::vector<double> gf(n_, 0.0);
+    nlp_->eval_grad_f((Index)n_, x.data(), true, gf.data());
+    return { DM(reshape(DM(gf), 1, n_)) };
   }
-
 private:
-  int nx_, ng_;
-  double (*f_)(MatrixXd&, Workspace*);
-  void   (*g_)(MatrixXd&, MatrixXd*, Workspace*);
-  Workspace* ws_;
+  int n_; IPOPT_PSOPT* nlp_;
+};
+
+// Exact constraint Jacobian d g / d x (shape m x n, sparse) via eval_jac_g.
+class JacG : public Callback {
+public:
+  JacG(int n, int m, IPOPT_PSOPT* nlp,
+       std::vector<casadi_int> rows, std::vector<casadi_int> cols)
+    : n_(n), m_(m), nlp_(nlp), rows_(std::move(rows)), cols_(std::move(cols)) {
+    sp_ = Sparsity::triplet(m_, n_, rows_, cols_);
+    construct("psopt_jac_g");
+  }
+  casadi_int get_n_in()  override { return 2; }               // x, nominal g
+  casadi_int get_n_out() override { return 1; }               // jac (m x n)
+  Sparsity get_sparsity_in(casadi_int i) override {
+    return (i == 0) ? Sparsity::dense(n_, 1) : Sparsity::dense(m_, 1);
+  }
+  Sparsity get_sparsity_out(casadi_int) override { return sp_; }
+  std::vector<DM> eval(const std::vector<DM>& arg) const override {
+    std::vector<double> x = arg[0].nonzeros();
+    const int nnz = (int)rows_.size();
+    std::vector<double> vals(nnz, 0.0);
+    nlp_->eval_jac_g((Index)n_, x.data(), true, (Index)m_, (Index)nnz,
+                     nullptr, nullptr, vals.data());
+    // assemble in the sparsity's own nonzero order via triplet construction
+    return { DM::triplet(rows_, cols_, std::vector<double>(vals), m_, n_) };
+  }
+private:
+  int n_, m_; IPOPT_PSOPT* nlp_;
+  std::vector<casadi_int> rows_, cols_;
+  Sparsity sp_;
+};
+
+// Objective f(x) with an exact Jacobian (GradF held as a member so it outlives
+// the solve; get_jacobian returns it as a Function sharing the same node).
+class ObjFun : public Callback {
+public:
+  ObjFun(int n, IPOPT_PSOPT* nlp,
+         double (*f)(MatrixXd&, Workspace*), Workspace* ws)
+    : n_(n), nlp_(nlp), f_(f), ws_(ws), gradf_(n, nlp) { construct("psopt_f"); }
+  casadi_int get_n_in()  override { return 1; }
+  casadi_int get_n_out() override { return 1; }
+  Sparsity get_sparsity_in(casadi_int)  override { return Sparsity::dense(n_, 1); }
+  Sparsity get_sparsity_out(casadi_int) override { return Sparsity::dense(1, 1); }
+  std::string get_name_in(casadi_int)  override { return "x"; }
+  std::string get_name_out(casadi_int) override { return "f"; }
+  std::vector<DM> eval(const std::vector<DM>& arg) const override {
+    std::vector<double> xv = arg[0].nonzeros();
+    MatrixXd x(n_, 1);
+    for (int j = 0; j < n_; ++j) x(j, 0) = xv[j];
+    return { DM(f_(x, ws_)) };
+  }
+  bool has_jacobian() const override { return true; }
+  Function get_jacobian(const std::string&, const std::vector<std::string>&,
+                        const std::vector<std::string>&, const Dict&) const override {
+    return gradf_;
+  }
+private:
+  int n_; IPOPT_PSOPT* nlp_;
+  double (*f_)(MatrixXd&, Workspace*); Workspace* ws_;
+  GradF gradf_;
+};
+
+// Constraints g(x) with an exact Jacobian (JacG held as a member).
+class ConFun : public Callback {
+public:
+  ConFun(int n, int m, IPOPT_PSOPT* nlp,
+         void (*g)(MatrixXd&, MatrixXd*, Workspace*), Workspace* ws,
+         std::vector<casadi_int> rows, std::vector<casadi_int> cols)
+    : n_(n), m_(m), nlp_(nlp), g_(g), ws_(ws),
+      jacg_(n, m, nlp, rows, cols) { construct("psopt_g"); }
+  casadi_int get_n_in()  override { return 1; }
+  casadi_int get_n_out() override { return 1; }
+  Sparsity get_sparsity_in(casadi_int)  override { return Sparsity::dense(n_, 1); }
+  Sparsity get_sparsity_out(casadi_int) override { return Sparsity::dense(m_, 1); }
+  std::string get_name_in(casadi_int)  override { return "x"; }
+  std::string get_name_out(casadi_int) override { return "g"; }
+  std::vector<DM> eval(const std::vector<DM>& arg) const override {
+    std::vector<double> xv = arg[0].nonzeros();
+    MatrixXd x(n_, 1);
+    for (int j = 0; j < n_; ++j) x(j, 0) = xv[j];
+    MatrixXd gvec(m_, 1);
+    if (m_ > 0) g_(x, &gvec, ws_);
+    std::vector<double> gv(m_);
+    for (int j = 0; j < m_; ++j) gv[j] = gvec(j, 0);
+    return { DM(gv) };
+  }
+  bool has_jacobian() const override { return true; }
+  Function get_jacobian(const std::string&, const std::vector<std::string>&,
+                        const std::vector<std::string>&, const Dict&) const override {
+    return jacg_;
+  }
+private:
+  int n_, m_; IPOPT_PSOPT* nlp_;
+  void (*g_)(MatrixXd&, MatrixXd*, Workspace*); Workspace* ws_;
+  JacG jacg_;
 };
 
 } // namespace
@@ -82,17 +154,35 @@ int psopt_casadi_solve(
     MatrixXd*  xub,
     MatrixXd*  lambda,
     Workspace* workspace,
-    void*      /*user_data*/)
+    void*      user_data)
 {
   const int nx = workspace->nvars;
   const int ng = nlp_ncons;
 
-  // Build the CasADi NLP function from PSOPT's callbacks.
-  PsoptNlp nlp(nx, ng, f, g, workspace);
+  // Reuse PSOPT's exact-derivative TNLP for gradients/Jacobian (ADOL-C inside).
+  IPOPT_PSOPT nlpobj(workspace, user_data);
+  Index n = nx, m = ng, nnz_jac = 0, nnz_h = 0;
+  Ipopt::TNLP::IndexStyleEnum idx;
+  nlpobj.get_nlp_info(n, m, nnz_jac, nnz_h, idx);
 
-  // IPOPT options mirrored from the algorithm structure.
+  // Constraint-Jacobian sparsity pattern (rows/cols) from eval_jac_g(values=NULL).
+  std::vector<Index> iRow(nnz_jac), jCol(nnz_jac);
+  if (nnz_jac > 0)
+    nlpobj.eval_jac_g(n, nullptr, false, m, nnz_jac, iRow.data(), jCol.data(), nullptr);
+  std::vector<casadi_int> rows(nnz_jac), cols(nnz_jac);
+  for (int k = 0; k < (int)nnz_jac; ++k) { rows[k] = iRow[k]; cols[k] = jCol[k]; }
+
+  // Build the NLP with exact-derivative CasADi functions.
+  ObjFun objfun(nx, &nlpobj, f, workspace);
+  ConFun confun(nx, ng, &nlpobj, g, workspace, rows, cols);
+
+  MX x = MX::sym("x", nx);
+  MX fx = objfun(std::vector<MX>{x}).at(0);
+  MX gx = (ng > 0) ? confun(std::vector<MX>{x}).at(0) : MX::zeros(0, 1);
+  MXDict nlp = {{"x", x}, {"f", fx}, {"g", gx}};
+
   Dict opts;
-  opts["ipopt.linear_solver"]  = algorithm.ipopt_linear_solver;   // mumps / ma57 / ...
+  opts["ipopt.linear_solver"]  = algorithm.ipopt_linear_solver;   // mumps / ma97 / ...
   opts["ipopt.tol"]            = algorithm.nlp_tolerance;
   opts["ipopt.max_iter"]       = algorithm.nlp_iter_max;
   opts["ipopt.mu_strategy"]    = std::string("adaptive");
@@ -101,12 +191,9 @@ int psopt_casadi_solve(
 
   Function solver = nlpsol("psopt_casadi_solver", "ipopt", nlp, opts);
 
-  // Bounds and initial guess.
   std::vector<double> x0v(nx), lbx(nx), ubx(nx), lbg(ng), ubg(ng);
   for (int j = 0; j < nx; ++j) {
-    x0v[j] = (*x0)(j, 0);
-    lbx[j] = (*xlb)(j, 0);
-    ubx[j] = (*xub)(j, 0);
+    x0v[j] = (*x0)(j, 0); lbx[j] = (*xlb)(j, 0); ubx[j] = (*xub)(j, 0);
   }
   if (ng > 0) get_constraint_bounds(lbg.data(), ubg.data(), workspace);
 
@@ -118,7 +205,6 @@ int psopt_casadi_solve(
 
   DMDict res = solver(arg);
 
-  // Write the solution back.
   const std::vector<double> xopt = res.at("x").nonzeros();
   for (int j = 0; j < nx; ++j) (*x0)(j, 0) = xopt[j];
   if (ng > 0 && lambda != nullptr) {

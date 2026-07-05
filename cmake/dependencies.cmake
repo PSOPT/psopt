@@ -36,8 +36,8 @@ endif()
 # ---- HSL: lives inside IPOPT; just steer the default solver -----------------
 if(PSOPT_WITH_HSL)
   if(PSOPT_DEFAULT_LINEAR_SOLVER STREQUAL "mumps")
-    set(PSOPT_DEFAULT_LINEAR_SOLVER "ma57" CACHE STRING "" FORCE)
-    message(STATUS "PSOPT_WITH_HSL=ON — default linear solver set to ma57")
+    set(PSOPT_DEFAULT_LINEAR_SOLVER "ma97" CACHE STRING "" FORCE)
+    message(STATUS "PSOPT_WITH_HSL=ON — default linear solver set to ma97 (OpenMP-parallel)")
   endif()
   message(STATUS "PSOPT_WITH_HSL=ON — the linked IPOPT must have been built with HSL "
                  "(use -DPSOPT_SUPERBUILD=ON -DCOINHSL_SOURCE_DIR=... to build it)")
