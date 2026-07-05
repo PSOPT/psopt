@@ -168,6 +168,7 @@ static Row solve_fuller(int nodes, const std::string& trans,
     algorithm.nlp_iter_max   = 5000;
     algorithm.nlp_tolerance  = nlptol;
     algorithm.transcription_method = trans;
+    algorithm.ir_residual_scaling  = "none";  // preserve raw-residual box (pre-scaling anchor)
     algorithm.collocation_method   = "Hermite-Simpson";
     algorithm.print_level    = 0;
     if (trans == "integrated-residual") {

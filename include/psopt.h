@@ -223,6 +223,10 @@ struct alg_str {
                                     // box tolerance tied to the mesh as delta = ir_dair_delta_factor*(h/T)^2,
                                     // i.e. the horizon-normalised node spacing so the box is scale invariant.
   double    ir_dair_delta_factor;   // K in the DAIR box-tolerance schedule delta = K*(h/T)^expo (default 1)
+  string    ir_residual_scaling;    // robust-DAIR box: "state" (default) non-dimensionalises each
+                                    // residual component by scale.states(k)/scale.time, so a scalar
+                                    // box tolerance and the K schedule are model-independent; "none"
+                                    // bounds the raw residual (pre-scaling behaviour).
   int       ir_local_order;          // Nie-Kerrigan flexible-order local representation: if >=2,
                                      // each mesh element carries a degree-ir_local_order Lagrange
                                      // state (and control) through ir_local_order+1 local LGL nodes

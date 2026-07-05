@@ -140,6 +140,7 @@ static Row solve_x1(int nodes, const std::string& trans, const std::string& ir_o
     algorithm.nlp_tolerance      = nlptol;
     algorithm.collocation_method = "Hermite-Simpson";
     algorithm.transcription_method = trans;
+    algorithm.ir_residual_scaling  = "none";  // preserve raw-residual box (pre-scaling anchor)
     if (!ir_obj.empty()) algorithm.ir_objective = ir_obj;
     if (local_order > 0) algorithm.ir_local_order   = local_order;
     if (res_nodes  > 0)  algorithm.ir_residual_nodes = res_nodes;

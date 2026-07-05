@@ -568,7 +568,23 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                                  problem->phase[ip].nstates, m,
                                  workspace->algorithm->ir_local_order );
           integrated_residual_phase(ip, iphr, xad, t0r, tfr, params, workspace, &gad[rb]);
-          for (int t=0; t<cnt; t++) constraint_scaling(rb+t) = 1.0;
+          // Non-dimensionalise each residual component so a scalar box tolerance (and the DAIR K
+          // schedule) are model-independent: r_k has units [x_k]/[t], so scale it by
+          // scale.states(k)/scale.time. Row layout is (element, quad point, state innermost),
+          // hence state index = t % nstates. "none" preserves the raw-residual box.
+          if ( algorithm->ir_residual_scaling == "state" ) {
+              MatrixXd& sscale = problem->phase[ip].scale.states;
+              double    tscale = problem->phase[ip].scale.time;
+              if ( tscale <= 0.0 ) tscale = 1.0;
+              int       ns     = problem->phase[ip].nstates;
+              for (int t=0; t<cnt; t++) {
+                  double factor = sscale(t % ns) / tscale;
+                  gad[rb+t]               *= factor;
+                  constraint_scaling(rb+t) = factor;
+              }
+          } else {
+              for (int t=0; t<cnt; t++) constraint_scaling(rb+t) = 1.0;
+          }
           rb += cnt;
       }
   }
