@@ -1,48 +1,30 @@
-cmake_minimum_required(VERSION 3.10)
-project(PSOPT_Tests)
+cmake_minimum_required(VERSION 3.16)
+project(PSOPT_Tests LANGUAGES CXX)
 
-find_package(GTest)
 find_package(Threads REQUIRED)
 
-if(NOT ${GTest_FOUND})
-	message(STATUS "Google Test not found. It will be downloaded.")
-	# Download and unpack googletest at configure time
-	configure_file(CMakeLists.txt.in googletest-download/CMakeLists.txt)
-	execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
-	  RESULT_VARIABLE result
-	  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/googletest-download )
-	if(result)
-	  message(FATAL_ERROR "CMake step for googletest failed: ${result}")
-	endif()
-	execute_process(COMMAND ${CMAKE_COMMAND} --build .
-	  RESULT_VARIABLE result
-	  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/googletest-download )
-	if(result)
-	  message(FATAL_ERROR "Build step for googletest failed: ${result}")
-	endif()
-	
-	add_subdirectory(${CMAKE_CURRENT_BINARY_DIR}/googletest-src
-	  ${CMAKE_CURRENT_BINARY_DIR}/googletest-build
-	  EXCLUDE_FROM_ALL)
+# GoogleTest: use a system install if present, else fetch it.
+find_package(GTest QUIET)
+if(NOT GTest_FOUND)
+  message(STATUS "GoogleTest not found — fetching release-1.14.0")
+  include(FetchContent)
+  FetchContent_Declare(googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG release-1.14.0 GIT_SHALLOW TRUE)
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
 endif()
-		 
+
 file(GLOB SRC "*.cpp")
 add_executable(${PROJECT_NAME} ${SRC})
-add_dependencies(${PROJECT_NAME} PSOPT gtest)
+add_dependencies(${PROJECT_NAME} psopt)
 
+# PSOPT::psopt carries Eigen/ADOL-C/IPOPT as PUBLIC usage requirements.
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    gtest_main
+    GTest::gtest_main
     Threads::Threads
-    Eigen3::Eigen
-    adolc
-    PkgConfig::ipopt 
-    PSOPT
-    )
-
-if(${WITH_SNOPT_INTERFACE})
-    enable_language(Fortran)
-    target_link_libraries(${PROJECT_NAME} PRIVATE gfortran ${snopt7_LIBRARIES} PSOPT_SNOPT_interface)
-endif()
+    PSOPT::psopt)
 
 enable_testing()
-add_test(test ${PROJECT_NAME})
+add_test(NAME psopt_tests COMMAND ${PROJECT_NAME})

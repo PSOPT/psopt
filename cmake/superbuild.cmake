@@ -22,10 +22,23 @@ set(SB_LEGACY_CFLAGS "-Wno-implicit-function-declaration -Wno-implicit-int -Wno-
 find_program(SB_FC NAMES gfortran-mp-15 gfortran-15 gfortran REQUIRED)
 set(SB_PKGCFG "${SB_INSTALL}/lib/pkgconfig")
 # OpenBLAS for MUMPS/IPOPT LAPACK; prefer a found one, else let ThirdParty pick.
-find_library(SB_OPENBLAS NAMES openblas HINTS /opt/local/lib /usr/local/lib /usr/lib)
+# For PSOPT_WITH_INT64 (ILP64) prefer a 64-bit-integer BLAS (openblas64 /
+# libopenblas with INTERFACE64) and build MUMPS with 8-byte Fortran integers.
+set(SB_INT64_MUMPS_FLAGS "")
+if(PSOPT_WITH_INT64)
+  find_library(SB_OPENBLAS NAMES openblas64 openblas_ilp64 openblas HINTS /opt/claude/openblas64/lib /opt/local/lib /usr/local/lib /usr/lib)
+  # MUMPS with 64-bit ordinals: 8-byte default Fortran integer + INTSIZE64.
+  set(SB_INT64_MUMPS_FLAGS "ADD_FCFLAGS=-fdefault-integer-8" "ADD_CFLAGS=-DINTSIZE64")
+  message(STATUS "PSOPT_WITH_INT64=ON — building MUMPS/BLAS with 64-bit integers "
+                 "(full ILP64 IPOPT also needs a 64-bit-Index IPOPT; see docs)")
+else()
+  find_library(SB_OPENBLAS NAMES openblas HINTS /opt/local/lib /usr/local/lib /usr/lib)
+endif()
 if(SB_OPENBLAS)
   get_filename_component(_obdir ${SB_OPENBLAS} DIRECTORY)
-  set(SB_BLAS_LFLAGS "-L${_obdir} -lopenblas")
+  get_filename_component(_obname ${SB_OPENBLAS} NAME_WE)
+  string(REGEX REPLACE "^lib" "" _obname "${_obname}")
+  set(SB_BLAS_LFLAGS "-L${_obdir} -l${_obname}")
 else()
   set(SB_BLAS_LFLAGS "")   # ThirdParty scripts fall back to a reference BLAS
 endif()
@@ -87,7 +100,7 @@ ExternalProject_Add(ep_mumps
   DEPENDS ep_metis
   GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git GIT_TAG stable/3.0 GIT_SHALLOW TRUE
   CONFIGURE_COMMAND cd <SOURCE_DIR> && ./get.Mumps
-          COMMAND ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${SB_PKGCFG} <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} FC=${SB_FC} --with-metis --with-lapack-lflags=${SB_BLAS_LFLAGS} --with-blas-lflags=${SB_BLAS_LFLAGS}
+          COMMAND ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${SB_PKGCFG} <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} FC=${SB_FC} --with-metis --with-lapack-lflags=${SB_BLAS_LFLAGS} --with-blas-lflags=${SB_BLAS_LFLAGS} ${SB_INT64_MUMPS_FLAGS}
   BUILD_COMMAND cd <SOURCE_DIR> && make -j
   INSTALL_COMMAND cd <SOURCE_DIR> && make install
   BUILD_IN_SOURCE 1)
@@ -202,6 +215,7 @@ ExternalProject_Add(ep_psopt
     -DPSOPT_WITH_MUMPS=${PSOPT_WITH_MUMPS} -DPSOPT_WITH_HSL=${PSOPT_WITH_HSL}
     -DPSOPT_WITH_CASADI=${PSOPT_WITH_CASADI} -DPSOPT_WITH_SNOPT=${PSOPT_WITH_SNOPT}
     -DPSOPT_WITH_OPENMP=${PSOPT_WITH_OPENMP} -DPSOPT_WITH_MPI=${PSOPT_WITH_MPI}
+    -DPSOPT_WITH_INT64=${PSOPT_WITH_INT64}
     -DPSOPT_DEFAULT_LINEAR_SOLVER=${_psopt_default_solver}
     -DBUILD_EXAMPLES=${BUILD_EXAMPLES} -DBUILD_TESTS=${BUILD_TESTS} -DHEADLESS=${HEADLESS}
   INSTALL_COMMAND "")

@@ -31,8 +31,9 @@ option(PSOPT_WITH_SNOPT   "SNOPT NLP backend"                                  O
 option(PSOPT_WITH_OPENMP  "Enable OpenMP (threaded BLAS/HSL/ColPack, parallel MUMPS)" OFF)
 option(PSOPT_WITH_MPI     "Enable MPI (distributed-memory MUMPS; see macOS-26 caveat)" OFF)
 option(PSOPT_SUPERBUILD   "Download and build missing dependencies from source" OFF)
-option(BUILD_EXAMPLES     "Build examples from the example subdirectory."      OFF)
-option(BUILD_TESTS        "Build tests for PSOPT."                             OFF)
+option(PSOPT_WITH_INT64   "64-bit integer addressing (ILP64) for very large NLPs" OFF)
+option(BUILD_EXAMPLES     "Build examples from the example subdirectory."      ON)
+option(BUILD_TESTS        "Build tests for PSOPT."                             ON)
 option(HEADLESS           "Gnuplot writes PDFs instead of spawning windows."   OFF)
 set(PSOPT_DEFAULT_LINEAR_SOLVER "mumps" CACHE STRING
     "Default IPOPT linear_solver (mumps, ma27, ma57, ma86, ma97, pardiso)")
@@ -98,6 +99,7 @@ target_compile_definitions(psopt PUBLIC
   $<$<BOOL:${PSOPT_WITH_SNOPT}>:USE_SNOPT>
   $<$<BOOL:${PSOPT_WITH_CASADI}>:USE_CASADI>
   $<$<BOOL:${PSOPT_WITH_HSL}>:USE_HSL>
+  $<$<BOOL:${PSOPT_WITH_INT64}>:PSOPT_INT64>
   $<$<BOOL:${HEADLESS}>:HEADLESS>)
 
 # All three appear in the public header psopt.h (Eigen/Dense, adolc/*, IpTNLP),
@@ -162,4 +164,4 @@ message(STATUS "PSOPT ${PSOPT_VERSION}  solver stack: "
   "MUMPS=${PSOPT_WITH_MUMPS} HSL=${PSOPT_WITH_HSL} CASADI=${PSOPT_WITH_CASADI} SNOPT=${PSOPT_WITH_SNOPT} "
   "default_linear_solver=${PSOPT_DEFAULT_LINEAR_SOLVER}")
 message(STATUS "PSOPT parallelism: OPENMP=${PSOPT_WITH_OPENMP} MPI=${PSOPT_WITH_MPI}  "
-  "BLAS=${BLAS_FOUND} LAPACK=${LAPACK_FOUND}")
+  "INT64=${PSOPT_WITH_INT64}  BLAS=${BLAS_FOUND} LAPACK=${LAPACK_FOUND}")
