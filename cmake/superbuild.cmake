@@ -96,6 +96,17 @@ if(PSOPT_WITH_HSL)
     set(_hsl_populate ${CMAKE_COMMAND} -E copy_directory ${COINHSL_SOURCE_DIR} <SOURCE_DIR>/coinhsl)
     message(STATUS "HSL: using local source ${COINHSL_SOURCE_DIR}")
   elseif(PSOPT_HSL_ACCEPT_LICENSE)
+    # Guard against the common mistake of pointing at the ThirdParty-HSL build
+    # wrapper (which contains NO HSL source) instead of the Coin-HSL tarball.
+    if(PSOPT_HSL_URL MATCHES "ThirdParty-HSL" OR PSOPT_HSL_URL MATCHES "\\.git$")
+      message(FATAL_ERROR
+        "PSOPT_HSL_URL='${PSOPT_HSL_URL}' points at the ThirdParty-HSL build\n"
+        "wrapper, which does NOT contain HSL solver source (no MA27/57/86/97).\n"
+        "That wrapper is already used internally. Set PSOPT_HSL_URL to a Coin-HSL\n"
+        "SOURCE tarball (coinhsl-x.y.z.tar.gz), e.g. your download link from:\n"
+        "  https://licences.stfc.ac.uk/product/coin-hsl            (full HSL), or\n"
+        "  https://licences.stfc.ac.uk/product/coin-hsl-archive    (free MA27/MA28/MC19)")
+    endif()
     # Auto-download the Coin-HSL archive, unpack it into ThirdParty-HSL/coinhsl.
     message(STATUS "HSL: licence accepted — will auto-download ${PSOPT_HSL_URL}")
     ExternalProject_Add(ep_coinhsl_src
