@@ -181,15 +181,30 @@ int psopt_casadi_solve(
   MX gx = (ng > 0) ? confun(std::vector<MX>{x}).at(0) : MX::zeros(0, 1);
   MXDict nlp = {{"x", x}, {"f", fx}, {"g", gx}};
 
+  // Choose the CasADi nlpsol plugin (net-new: solvers PSOPT has no native path
+  // to, e.g. sqpmethod / fatrop). Default "ipopt".
+  std::string plugin = algorithm.casadi_solver.empty() ? std::string("ipopt")
+                                                        : algorithm.casadi_solver;
   Dict opts;
-  opts["ipopt.linear_solver"]  = algorithm.ipopt_linear_solver;   // mumps / ma97 / ...
-  opts["ipopt.tol"]            = algorithm.nlp_tolerance;
-  opts["ipopt.max_iter"]       = algorithm.nlp_iter_max;
-  opts["ipopt.mu_strategy"]    = std::string("adaptive");
-  opts["ipopt.hessian_approximation"] = std::string("limited-memory");
-  if (algorithm.print_level == 0) opts["ipopt.print_level"] = 0;
+  if (plugin == "ipopt") {
+    opts["ipopt.linear_solver"]  = algorithm.ipopt_linear_solver;   // mumps / ma97 / ...
+    opts["ipopt.tol"]            = algorithm.nlp_tolerance;
+    opts["ipopt.max_iter"]       = algorithm.nlp_iter_max;
+    opts["ipopt.mu_strategy"]    = std::string("adaptive");
+    // NOTE: exact Hessian is intentionally NOT requested here. The CasADi path
+    // wraps PSOPT's numeric objective/constraint callbacks opaquely, so CasADi
+    // cannot build the exact Hessian of the Lagrangian from them; that requires
+    // a symbolic (MX/SX) transcription. Exact ADOL-C Hessian is available only
+    // via the native nlp_method=="IPOPT" path (algorithm.hessian=="exact").
+    opts["ipopt.hessian_approximation"] = std::string("limited-memory");
+    if (algorithm.print_level == 0) opts["ipopt.print_level"] = 0;
+  } else {
+    // Generic options for non-IPOPT plugins (sqpmethod/fatrop/...); these carry
+    // their own defaults and option namespaces.
+    if (algorithm.print_level == 0) opts["print_time"] = false;
+  }
 
-  Function solver = nlpsol("psopt_casadi_solver", "ipopt", nlp, opts);
+  Function solver = nlpsol("psopt_casadi_solver", plugin, nlp, opts);
 
   std::vector<double> x0v(nx), lbx(nx), ubx(nx), lbg(ng), ubg(ng);
   for (int j = 0; j < nx; ++j) {

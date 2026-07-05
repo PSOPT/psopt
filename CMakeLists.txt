@@ -28,6 +28,8 @@ option(PSOPT_WITH_MUMPS   "IPOPT + MUMPS linear solver"                        O
 option(PSOPT_WITH_HSL     "IPOPT + HSL (MA27/57/97); needs Coin-HSL source"    OFF)
 option(PSOPT_WITH_CASADI  "Full CasADi NLP backend (CasADi -> IPOPT[+HSL])"    OFF)
 option(PSOPT_WITH_SNOPT   "SNOPT NLP backend"                                  OFF)
+option(PSOPT_WITH_OPENMP  "Enable OpenMP (threaded BLAS/HSL/ColPack, parallel MUMPS)" OFF)
+option(PSOPT_WITH_MPI     "Enable MPI (distributed-memory MUMPS; see macOS-26 caveat)" OFF)
 option(PSOPT_SUPERBUILD   "Download and build missing dependencies from source" OFF)
 option(BUILD_EXAMPLES     "Build examples from the example subdirectory."      OFF)
 option(BUILD_TESTS        "Build tests for PSOPT."                             OFF)
@@ -102,7 +104,15 @@ target_compile_definitions(psopt PUBLIC
 # so they are PUBLIC usage requirements of consumers that include it.
 target_link_libraries(psopt
   PUBLIC  adolc Eigen3::Eigen IPOPT::ipopt
-  $<$<BOOL:${PSOPT_WITH_CASADI}>:casadi>)
+  $<$<BOOL:${PSOPT_WITH_CASADI}>:casadi>
+  $<$<BOOL:${PSOPT_WITH_OPENMP}>:OpenMP::OpenMP_CXX>
+  $<$<BOOL:${PSOPT_WITH_MPI}>:MPI::MPI_CXX>)
+if(BLAS_FOUND)
+  target_link_libraries(psopt PUBLIC ${BLAS_LIBRARIES})
+endif()
+if(LAPACK_FOUND)
+  target_link_libraries(psopt PUBLIC ${LAPACK_LIBRARIES})
+endif()
 
 # ────────────────────────────────────────────────────────────────
 # EXAMPLES / TESTS
@@ -144,3 +154,5 @@ install(FILES
 message(STATUS "PSOPT ${PSOPT_VERSION}  solver stack: "
   "MUMPS=${PSOPT_WITH_MUMPS} HSL=${PSOPT_WITH_HSL} CASADI=${PSOPT_WITH_CASADI} SNOPT=${PSOPT_WITH_SNOPT} "
   "default_linear_solver=${PSOPT_DEFAULT_LINEAR_SOLVER}")
+message(STATUS "PSOPT parallelism: OPENMP=${PSOPT_WITH_OPENMP} MPI=${PSOPT_WITH_MPI}  "
+  "BLAS=${BLAS_FOUND} LAPACK=${LAPACK_FOUND}")

@@ -194,6 +194,7 @@ struct alg_str {
   string    diff_matrix;
   string    parameter_statistics;
   string    ipopt_linear_solver;
+  string    casadi_solver;   // nlpsol plugin when nlp_method=="CASADI": ipopt (default), sqpmethod, fatrop, ...
   double    jac_sparsity_ratio;
   double    hess_sparsity_ratio;
   int       print_level; // 1: detailed output on screen and files (default), 0: no output

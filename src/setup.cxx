@@ -146,6 +146,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
 #else
   algorithm.ipopt_linear_solver         = "mumps";
 #endif
+  algorithm.casadi_solver               = "ipopt";
   algorithm.print_level                 = 1;
   algorithm.save_sparsity_pattern       = 0;
   algorithm.nsteps_error_integration    = 10;

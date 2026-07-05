@@ -39,9 +39,10 @@ ExternalProject_Add(ep_eigen
 # ---- ColPack + ADOL-C (autotools) -------------------------------------------
 ExternalProject_Add(ep_colpack
   GIT_REPOSITORY https://github.com/CSCsw/ColPack.git GIT_TAG master GIT_SHALLOW TRUE
-  CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autoconf.sh && <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} CXX=${SB_CXX}
-  BUILD_COMMAND cd <SOURCE_DIR> && make -j
-  INSTALL_COMMAND cd <SOURCE_DIR> && make install
+  # ColPack's autotools live in build/automake (no top-level configure script).
+  CONFIGURE_COMMAND cd <SOURCE_DIR>/build/automake && autoreconf -fi && ./configure --prefix=${SB_INSTALL} CC=${SB_CC} CXX=${SB_CXX}
+  BUILD_COMMAND cd <SOURCE_DIR>/build/automake && make -j
+  INSTALL_COMMAND cd <SOURCE_DIR>/build/automake && make install
   BUILD_IN_SOURCE 1)
 ExternalProject_Add(ep_adolc
   DEPENDS ep_colpack
@@ -180,6 +181,7 @@ ExternalProject_Add(ep_psopt
     -DCMAKE_C_COMPILER=${SB_CC} -DCMAKE_CXX_COMPILER=${SB_CXX}
     -DPSOPT_WITH_MUMPS=${PSOPT_WITH_MUMPS} -DPSOPT_WITH_HSL=${PSOPT_WITH_HSL}
     -DPSOPT_WITH_CASADI=${PSOPT_WITH_CASADI} -DPSOPT_WITH_SNOPT=${PSOPT_WITH_SNOPT}
+    -DPSOPT_WITH_OPENMP=${PSOPT_WITH_OPENMP} -DPSOPT_WITH_MPI=${PSOPT_WITH_MPI}
     -DPSOPT_DEFAULT_LINEAR_SOLVER=${_psopt_default_solver}
     -DBUILD_EXAMPLES=${BUILD_EXAMPLES} -DBUILD_TESTS=${BUILD_TESTS} -DHEADLESS=${HEADLESS}
   INSTALL_COMMAND "")

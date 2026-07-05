@@ -18,6 +18,44 @@ if(NOT Eigen3_FOUND)
   FetchContent_MakeAvailable(Eigen3)
 endif()
 
+# ---- BLAS / LAPACK (used by IPOPT/MUMPS/HSL/CasADi/Sacado; carried by IPOPT
+#      transitively, but expose the imported targets when available) ----------
+find_package(BLAS QUIET)
+find_package(LAPACK QUIET)
+if(BLAS_FOUND)
+  message(STATUS "Found BLAS: ${BLAS_LIBRARIES}")
+endif()
+if(LAPACK_FOUND)
+  message(STATUS "Found LAPACK: ${LAPACK_LIBRARIES}")
+endif()
+
+# ---- OpenMP (opt-in): threaded BLAS/HSL(ma86/ma97)/ColPack --------------------
+if(PSOPT_WITH_OPENMP)
+  # Apple clang has no built-in OpenMP; point FindOpenMP at MacPorts/Homebrew libomp.
+  if(APPLE)
+    # MacPorts installs libomp under lib/libomp and include/libomp subdirs.
+    find_path(_omp_inc omp.h HINTS ${OpenMP_ROOT} /opt/local/include/libomp /opt/local/include /usr/local/include /opt/homebrew/include)
+    find_library(_omp_lib NAMES omp libomp HINTS ${OpenMP_ROOT} /opt/local/lib/libomp /opt/local/lib /usr/local/lib /opt/homebrew/lib)
+    if(_omp_inc AND _omp_lib)
+      foreach(_l C CXX)
+        set(OpenMP_${_l}_FLAGS "-Xpreprocessor -fopenmp -I${_omp_inc}" CACHE STRING "" FORCE)
+        set(OpenMP_${_l}_LIB_NAMES "omp" CACHE STRING "" FORCE)
+      endforeach()
+      set(OpenMP_omp_LIBRARY "${_omp_lib}" CACHE FILEPATH "" FORCE)
+    endif()
+  endif()
+  find_package(OpenMP REQUIRED)
+  message(STATUS "PSOPT_WITH_OPENMP=ON — OpenMP ${OpenMP_CXX_VERSION} (${OpenMP_omp_LIBRARY})")
+endif()
+
+# ---- MPI (opt-in): distributed-memory MUMPS ---------------------------------
+if(PSOPT_WITH_MPI)
+  find_package(MPI REQUIRED)
+  message(STATUS "PSOPT_WITH_MPI=ON — MPI ${MPI_CXX_VERSION}")
+  message(WARNING "PSOPT_WITH_MPI: MPI-coupled IPOPT/MUMPS is known to crash at "
+                  "load on macOS 26 (dyld TLS-in-constructor). Use only where verified.")
+endif()
+
 # ---- ADOL-C (custom Findadolc has its own download+build fallback) ----------
 find_package(adolc REQUIRED)
 
