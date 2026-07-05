@@ -1,0 +1,142 @@
+example	method	status	secs	objective
+alpine	IPOPT	SOLVED	17	2.026132e+03
+alpine	CASADI-ipopt	TIMEOUT	90	
+alpine	CASADI-sqpmethod	TIMEOUT	40	
+bioreactor	IPOPT	SOLVED	15	-6.263313e+00
+bioreactor	CASADI-ipopt	TIMEOUT	90	
+bioreactor	CASADI-sqpmethod	TIMEOUT	40	
+brac1	IPOPT	SOLVED	2	8.247591e-01
+brac1	CASADI-ipopt	SOLVED	18	8.247591e-01
+brac1	CASADI-sqpmethod	TIMEOUT	40	
+breakwell	IPOPT	SOLVED	33	4.444439e+00
+breakwell	CASADI-ipopt	TIMEOUT	90	
+breakwell	CASADI-sqpmethod	TIMEOUT	41	
+bryson_denham	IPOPT	SOLVED	1	3.999539e+00
+bryson_denham	CASADI-ipopt	SOLVED	25	3.999539e+00
+bryson_denham	CASADI-sqpmethod	TIMEOUT	40	
+bryson_max_range	IPOPT	SOLVED	1	-1.712313e+00
+bryson_max_range	CASADI-ipopt	SOLVED	29	-1.712313e+00
+bryson_max_range	CASADI-sqpmethod	TIMEOUT	40	
+catmix	IPOPT	SOLVED	1	-4.805320e-02
+catmix	CASADI-ipopt	SOLVED	7	-4.805320e-02
+catmix	CASADI-sqpmethod	TIMEOUT	40	
+chain	IPOPT	SOLVED	1	5.068480e+00
+chain	CASADI-ipopt	SOLVED	15	5.068480e+00
+chain	CASADI-sqpmethod	rc=134	1	
+climb	IPOPT	SOLVED	91	3.214467e+02
+climb	CASADI-ipopt	TIMEOUT	90	
+climb	CASADI-sqpmethod	TIMEOUT	40	
+coulomb	IPOPT	SOLVED	2	2.104992e+00
+coulomb	CASADI-ipopt	SOLVED	25	2.104992e+00
+coulomb	CASADI-sqpmethod	TIMEOUT	40	
+cracking	IPOPT	SOLVED	1	4.319519e-03
+cracking	CASADI-ipopt	SOLVED	59	4.319519e-03
+cracking	CASADI-sqpmethod	TIMEOUT	40	
+crane	IPOPT	SOLVED	19	5.152136e-03
+crane	CASADI-ipopt	TIMEOUT	90	
+crane	CASADI-sqpmethod	TIMEOUT	40	
+dae_i3	IPOPT	rc=134	0	
+dae_i3	CASADI-ipopt	rc=134	0	
+dae_i3	CASADI-sqpmethod	rc=134	0	
+delay1	IPOPT	SOLVED	1	3.770849e+00
+delay1	CASADI-ipopt	SOLVED	70	3.770849e+00
+delay1	CASADI-sqpmethod	TIMEOUT	40	
+dqc	IPOPT	SOLVED	2	6.000000e+00
+dqc	CASADI-ipopt	SOLVED	7	6.000000e+00
+dqc	CASADI-sqpmethod	TIMEOUT	40	
+geodesic	IPOPT	SOLVED	3	6.300000e+03
+geodesic	CASADI-ipopt	TIMEOUT	90	6.300000e+03
+geodesic	CASADI-sqpmethod	rc=134	15	
+glider	IPOPT	SOLVED	3	-1.403708e+03
+glider	CASADI-ipopt	SOLVED	90	-1.403708e+03
+glider	CASADI-sqpmethod	TIMEOUT	40	
+goddard	IPOPT	SOLVED	1	-1.024962e+00
+goddard	CASADI-ipopt	SOLVED	57	-1.024962e+00
+goddard	CASADI-sqpmethod	rc=134	7	
+heat	IPOPT	SOLVED	2	4.394414e-05
+heat	CASADI-ipopt	SOLVED	90	4.394415e-05
+heat	CASADI-sqpmethod	TIMEOUT	40	
+hypersensitive	IPOPT	SOLVED	1	1.350105e+00
+hypersensitive	CASADI-ipopt	SOLVED	6	1.350105e+00
+hypersensitive	CASADI-sqpmethod	TIMEOUT	40	1.350105e+00
+interior_point	IPOPT	SOLVED	1	9.205314e-01
+interior_point	CASADI-ipopt	SOLVED	3	9.205314e-01
+interior_point	CASADI-sqpmethod	rc=0	14	9.205314e-01
+isoperimetric	IPOPT	SOLVED	1	-3.755058e-01
+isoperimetric	CASADI-ipopt	SOLVED	18	-3.755058e-01
+isoperimetric	CASADI-sqpmethod	rc=134	17	
+lambert	IPOPT	SOLVED	2	0.000000e+00
+lambert	CASADI-ipopt	SOLVED	36	0.000000e+00
+lambert	CASADI-sqpmethod	TIMEOUT	40	
+launch	IPOPT	SOLVED	4	-7.529661e+03
+launch	CASADI-ipopt	TIMEOUT	90	
+launch	CASADI-sqpmethod	TIMEOUT	40	
+low_thrust	IPOPT	rc=134	0	
+low_thrust	CASADI-ipopt	rc=134	0	
+low_thrust	CASADI-sqpmethod	rc=134	1	
+lts	IPOPT	SOLVED	1	5.545739e-01
+lts	CASADI-ipopt	SOLVED	5	5.545739e-01
+lts	CASADI-sqpmethod	rc=134	11	
+manutec	IPOPT	SOLVED	2	2.040442e+01
+manutec	CASADI-ipopt	SOLVED	81	2.040442e+01
+manutec	CASADI-sqpmethod	TIMEOUT	40	
+missile	IPOPT	SOLVED	3	4.101381e+01
+missile	CASADI-ipopt	SOLVED	65	4.101381e+01
+missile	CASADI-sqpmethod	TIMEOUT	40	
+moon	IPOPT	SOLVED	2	1.420485e+00
+moon	CASADI-ipopt	SOLVED	31	1.420482e+00
+moon	CASADI-sqpmethod	TIMEOUT	41	
+mpec	IPOPT	SOLVED	2	1.870380e+00
+mpec	CASADI-ipopt	SOLVED	90	1.870380e+00
+mpec	CASADI-sqpmethod	TIMEOUT	40	1.870794e+00
+notorious	IPOPT	SOLVED	5	1.031574e+00
+notorious	CASADI-ipopt	SOLVED	86	1.031574e+00
+notorious	CASADI-sqpmethod	TIMEOUT	40	
+obstacle	IPOPT	SOLVED	9	4.571044e+00
+obstacle	CASADI-ipopt	SOLVED	54	4.571044e+00
+obstacle	CASADI-sqpmethod	TIMEOUT	40	
+param2	IPOPT	rc=134	0	
+param2	CASADI-ipopt	rc=134	0	
+param2	CASADI-sqpmethod	rc=134	0	
+predator	IPOPT	rc=134	0	
+predator	CASADI-ipopt	rc=134	0	
+predator	CASADI-sqpmethod	rc=134	0	
+rayleigh	IPOPT	SOLVED	2	4.477625e+01
+rayleigh	CASADI-ipopt	SOLVED	42	4.477625e+01
+rayleigh	CASADI-sqpmethod	TIMEOUT	41	
+reorientation	IPOPT	SOLVED	16	2.864281e+01
+reorientation	CASADI-ipopt	TIMEOUT	90	
+reorientation	CASADI-sqpmethod	TIMEOUT	40	
+shuttle_reentry	IPOPT	SOLVED	5	-3.413679e+01
+shuttle_reentry	CASADI-ipopt	TIMEOUT	90	
+shuttle_reentry	CASADI-sqpmethod	TIMEOUT	40	
+singular5	IPOPT	SOLVED	8	1.192620e-01
+singular5	CASADI-ipopt	TIMEOUT	90	
+singular5	CASADI-sqpmethod	TIMEOUT	40	
+stc1	IPOPT	SOLVED	2	1.696697e-01
+stc1	CASADI-ipopt	SOLVED	17	1.696697e-01
+stc1	CASADI-sqpmethod	TIMEOUT	41	1.696697e-01
+steps	IPOPT	SOLVED	1	1.000171e+00
+steps	CASADI-ipopt	SOLVED	46	1.000143e+00
+steps	CASADI-sqpmethod	TIMEOUT	40	
+twoburn	IPOPT	SOLVED	4	-2.371827e-01
+twoburn	CASADI-ipopt	TIMEOUT	90	
+twoburn	CASADI-sqpmethod	TIMEOUT	40	
+twolinkarm	IPOPT	SOLVED	2	2.988662e+00
+twolinkarm	CASADI-ipopt	SOLVED	19	2.988662e+00
+twolinkarm	CASADI-sqpmethod	TIMEOUT	40	
+twophase_robot	IPOPT	SOLVED	1	1.042568e+00
+twophase_robot	CASADI-ipopt	TIMEOUT	90	
+twophase_robot	CASADI-sqpmethod	TIMEOUT	41	
+twophase_schwartz	IPOPT	SOLVED	1	3.138721e-16
+twophase_schwartz	CASADI-ipopt	SOLVED	28	3.138721e-16
+twophase_schwartz	CASADI-sqpmethod	TIMEOUT	41	
+user	IPOPT	SOLVED	1	-1.712313e+00
+user	CASADI-ipopt	SOLVED	30	-1.712313e+00
+user	CASADI-sqpmethod	TIMEOUT	40	
+wheat	IPOPT	SOLVED	6	-1.758535e+00
+wheat	CASADI-ipopt	SOLVED	90	-1.757540e+00
+wheat	CASADI-sqpmethod	TIMEOUT	40	
+zpm	IPOPT	TIMEOUT	120	1.584997e+07
+zpm	CASADI-ipopt	TIMEOUT	90	
+zpm	CASADI-sqpmethod	TIMEOUT	40	
