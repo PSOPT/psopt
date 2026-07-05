@@ -59,19 +59,54 @@ ExternalProject_Add(ep_mumps
   INSTALL_COMMAND cd <SOURCE_DIR> && make install
   BUILD_IN_SOURCE 1)
 
-# ---- HSL (opt-in, license-gated; needs user-provided Coin-HSL source) -------
+# ---- HSL (opt-in, NON-FREE licence; notify then auto-download+build) --------
+# Coin-HSL (MA27/MA57/MA86/MA97) is NOT free software. We do not vendor it; the
+# superbuild fetches it automatically ONLY after the user acknowledges the
+# licence (PSOPT_HSL_ACCEPT_LICENSE=ON) or supplies a local tree
+# (COINHSL_SOURCE_DIR). The download URL is configurable (PSOPT_HSL_URL) so a
+# personalised/licensed link can be used.
 set(_ipopt_hsl_dep "")
 set(_ipopt_hsl_flag "--without-hsl")
+set(_hsl_extra_dep "")
 if(PSOPT_WITH_HSL)
-  if(NOT COINHSL_SOURCE_DIR OR NOT EXISTS "${COINHSL_SOURCE_DIR}")
+  message(WARNING
+    "\n============================ HSL LICENCE NOTICE ============================\n"
+    "PSOPT_WITH_HSL=ON. The HSL / Coin-HSL linear solvers (MA27/MA57/MA86/MA97)\n"
+    "are NON-FREE, licensed software from STFC. They are NOT redistributed by\n"
+    "PSOPT. A free licence for academic/personal use is available at:\n"
+    "    https://licences.stfc.ac.uk/product/coin-hsl\n"
+    "By setting PSOPT_HSL_ACCEPT_LICENSE=ON you confirm you have obtained a\n"
+    "licence and accept its terms; the source is then downloaded automatically.\n"
+    "===========================================================================\n")
+
+  if(COINHSL_SOURCE_DIR AND EXISTS "${COINHSL_SOURCE_DIR}")
+    # Use a local Coin-HSL tree the user already downloaded.
+    set(_hsl_populate ${CMAKE_COMMAND} -E copy_directory ${COINHSL_SOURCE_DIR} <SOURCE_DIR>/coinhsl)
+    message(STATUS "HSL: using local source ${COINHSL_SOURCE_DIR}")
+  elseif(PSOPT_HSL_ACCEPT_LICENSE)
+    # Auto-download the Coin-HSL archive, unpack it into ThirdParty-HSL/coinhsl.
+    message(STATUS "HSL: licence accepted — will auto-download ${PSOPT_HSL_URL}")
+    ExternalProject_Add(ep_coinhsl_src
+      URL ${PSOPT_HSL_URL}
+      DOWNLOAD_NO_EXTRACT FALSE
+      CONFIGURE_COMMAND "" BUILD_COMMAND "" INSTALL_COMMAND ""
+      SOURCE_DIR ${SB_PREFIX}/coinhsl-src)
+    set(_hsl_populate ${CMAKE_COMMAND} -E copy_directory ${SB_PREFIX}/coinhsl-src <SOURCE_DIR>/coinhsl)
+    set(_hsl_extra_dep ep_coinhsl_src)
+  else()
     message(FATAL_ERROR
-      "PSOPT_WITH_HSL=ON requires -DCOINHSL_SOURCE_DIR=<path to coinhsl-x.y.z>.\n"
-      "Register for a (free academic) licence and download Coin-HSL at\n"
-      "  https://licences.stfc.ac.uk/product/coin-hsl")
+      "PSOPT_WITH_HSL=ON but the non-free HSL licence has not been acknowledged.\n"
+      "Either:\n"
+      "  * accept the licence and auto-download:  -DPSOPT_HSL_ACCEPT_LICENSE=ON "
+      "(optionally -DPSOPT_HSL_URL=<your licensed link>), or\n"
+      "  * point at a local Coin-HSL tree:        -DCOINHSL_SOURCE_DIR=<path>\n"
+      "Obtain a (free academic) licence at https://licences.stfc.ac.uk/product/coin-hsl")
   endif()
+
   ExternalProject_Add(ep_hsl
+    DEPENDS ${_hsl_extra_dep}
     GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-HSL.git GIT_TAG stable/2.2 GIT_SHALLOW TRUE
-    CONFIGURE_COMMAND ${CMAKE_COMMAND} -E copy_directory ${COINHSL_SOURCE_DIR} <SOURCE_DIR>/coinhsl
+    CONFIGURE_COMMAND ${_hsl_populate}
             COMMAND cd <SOURCE_DIR> && <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} FC=${SB_FC} --with-lapack-lflags=${SB_BLAS_LFLAGS}
     BUILD_COMMAND cd <SOURCE_DIR> && make -j
     INSTALL_COMMAND cd <SOURCE_DIR> && make install

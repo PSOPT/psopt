@@ -34,7 +34,11 @@ option(BUILD_TESTS        "Build tests for PSOPT."                             O
 option(HEADLESS           "Gnuplot writes PDFs instead of spawning windows."   OFF)
 set(PSOPT_DEFAULT_LINEAR_SOLVER "mumps" CACHE STRING
     "Default IPOPT linear_solver (mumps, ma27, ma57, ma86, ma97, pardiso)")
-set(COINHSL_SOURCE_DIR "" CACHE PATH "Path to Coin-HSL source (required for PSOPT_WITH_HSL)")
+set(COINHSL_SOURCE_DIR "" CACHE PATH "Path to a local Coin-HSL source tree (skips download)")
+option(PSOPT_HSL_ACCEPT_LICENSE "I accept the non-free HSL licence; auto-download Coin-HSL" OFF)
+set(PSOPT_HSL_URL
+    "https://www.hsl.rl.ac.uk/download/coinhsl/2023.11.17/coinhsl-2023.11.17.tar.gz"
+    CACHE STRING "Coin-HSL source archive URL (override with your licensed/personalised link)")
 
 # Backwards-compat alias for the old option name.
 if(DEFINED WITH_SNOPT_INTERFACE)
