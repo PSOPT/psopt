@@ -31,6 +31,7 @@ e-mail:    v.m.becerra@ieee.org
 
 
 #include "psopt.h"
+#include "casadi_psopt.h"
 
 
 #ifdef USE_SNOPT
@@ -379,6 +380,19 @@ int NLP_interface(
         error_message(workspace->text);
 #endif
 
+    }
+
+    else if ( algorithm.nlp_method=="CASADI" )
+    {
+#ifdef USE_CASADI
+        // Solve PSOPT's NLP through CasADi's IPOPT plugin (enables HSL solvers).
+        psopt_casadi_solve(algorithm, x0, f, g, nlp_ncons, nlp_neq,
+                           xlb, xub, lambda, workspace, user_data);
+        return 0;
+#else
+        snprintf(workspace->text,sizeof(workspace->text),"\nCASADI method has been specified but not linked");
+        error_message(workspace->text);
+#endif
     }
 
     else if ( algorithm.nlp_method=="IPOPT" )
