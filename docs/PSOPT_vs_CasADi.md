@@ -66,10 +66,14 @@ copying.
 - **As built: none.** Same transcription, same IPOPT, identical solutions, and
   slower. It is a compatibility/plumbing layer.
 - **Potential, not yet realized:**
-  1. *Alternative solvers* (`sqpmethod`, `fatrop`, `worhp`, …) — the one genuine
-     capability gain over PSOPT's IPOPT/SNOPT-only set. **Blocked**: our CasADi
-     was built `WITH_IPOPT=ON` only; `sqpmethod` fails at init (needs a QP solver
-     such as qpOASES). Requires rebuilding CasADi with those plugins.
+  1. *Alternative solvers* (`sqpmethod`, `blockSQP`) — the genuine capability gain
+     over PSOPT's IPOPT/SNOPT-only set. **Now available**: CasADi is built with
+     qpOASES + blockSQP (`WITH_QPOASES`/`WITH_BLOCKSQP`), so
+     `algorithm.casadi_solver="sqpmethod"` runs (qpOASES solves the QP
+     subproblems). But with the finite-difference backend + limited-memory
+     Hessian it is impractically slow (bryson_denham did not converge in 400 s vs
+     IPOPT's 1 s), so it is only useful once exact derivatives are supplied (2).
+     (OSQP/fatrop omitted — their bundled builds fail on macOS 26.)
   2. *Exact derivatives* — the finite-difference penalty must be removed by
      feeding CasADi PSOPT's exact ADOL-C gradient/Jacobian (a documented
      follow-up; calling `IPOPT_PSOPT` standalone crashed and was reverted).
