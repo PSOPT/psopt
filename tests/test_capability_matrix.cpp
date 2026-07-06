@@ -11,8 +11,11 @@
 //   - collocation:  Legendre / Chebyshev / Radau / Gauss / trapezoidal / Hermite-Simpson
 //   - mesh:         non-adaptive (manual)  vs  adaptive (automatic refinement)
 //   - ps_method:    Ross-Fahroo  vs  Bellman
-// (The nlp_method axis {IPOPT, CASADI, SCIP} and linear-solver axis
-//  {mumps, ma97, spral} extend this in a CASADI/SCIP/HSL-enabled superbuild.)
+//   - linear solver / parallelism:  serial (MUMPS, 1 thread) vs OpenMP (SPRAL,
+//     8 threads) vs PARDISO / MKL-PARDISO (optional, guarded). Threads drive the
+//     solver AND the underlying BLAS (OpenBLAS via OPENBLAS_NUM_THREADS, Intel MKL
+//     via MKL_NUM_THREADS) -- PSOPT calls no BLAS/OpenMP/MPI itself.
+// (The nlp_method axis {IPOPT, CASADI, SCIP} extends this in a CASADI/SCIP build.)
 //////////////////////////////////////////////////////////////////////////////
 
 #include "gtest/gtest.h"
@@ -74,10 +77,17 @@ TEST_P(CapabilityMatrix, MinEnergyDoubleIntegrator_J_is_6)
     algorithm.nlp_iter_max        = 1000;
     algorithm.nlp_tolerance       = 1.e-6;
 
-    // Parallelism axis: OpenMP threads are consumed by a THREADED linear solver
-    // (ma97/spral/pardiso*); PSOPT itself has no OpenMP/MPI code paths, so serial
-    // = OMP_NUM_THREADS=1, "OpenMP" = 8. (MPI omitted: PSOPT has no MPI paths.)
-    setenv("OMP_NUM_THREADS", cfg.ompthreads, 1);
+    // Parallelism axis. PSOPT itself has NO OpenMP/MPI code paths and calls no BLAS
+    // directly; all parallelism lives BELOW it:
+    //   - the threaded linear solver (ma97/spral/pardiso*)  -> OMP_NUM_THREADS
+    //   - the dense BLAS/LAPACK it uses. Here IPOPT/MUMPS/SPRAL link OpenBLAS
+    //     (OPENBLAS_NUM_THREADS) while the MKL PARDISO path uses Intel MKL BLAS
+    //     (MKL_NUM_THREADS). Enable ALL of them so serial=1 is truly single-threaded
+    //     and "OpenMP"=8 actually threads the factorization + BLAS.
+    // (MPI omitted: PSOPT has no MPI code paths.)
+    setenv("OMP_NUM_THREADS",      cfg.ompthreads, 1);
+    setenv("OPENBLAS_NUM_THREADS", cfg.ompthreads, 1);
+    setenv("MKL_NUM_THREADS",      cfg.ompthreads, 1);
     if (std::string(cfg.solver) == "spral") {
         setenv("OMP_CANCELLATION","TRUE",1); setenv("OMP_NESTED","TRUE",1);
         setenv("OMP_PROC_BIND","TRUE",1);    setenv("OMP_STACKSIZE","64M",1);
