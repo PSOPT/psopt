@@ -127,10 +127,11 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
        int nstates   = problem.phase[i].nstates;
        int nevents   = problem.phase[i].nevents;
        int npath     = problem.phase[i].npath;
+       int ninterior = problem.phase[i].ninterior;
        int max_nodes = get_max_nodes(problem, i+1, &algorithm);
 
 
-       nlp_ncons  += nstates*(max_nodes+1)+ (nevents) + npath*(max_nodes+1) + 1;
+       nlp_ncons  += nstates*(max_nodes+1)+ (nevents) + npath*(max_nodes+1) + ninterior + 1;
 
 
        nlp_ncons += npath*(max_nodes);
@@ -227,8 +228,9 @@ int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
 	int nstates   = problem.phase[i].nstates;
         int nevents   = problem.phase[i].nevents;
         int npath     = problem.phase[i].npath;
+        int ninterior = problem.phase[i].ninterior;
 
-        int ncons_phase_i = nstates*(norder+1) + nevents + npath*(norder+1)+1;
+        int ncons_phase_i = nstates*(norder+1) + nevents + npath*(norder+1) + ninterior + 1;
 
         if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
                     ncons_phase_i += npath*norder;

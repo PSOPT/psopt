@@ -225,6 +225,7 @@ struct ulbounds_str {
 
     MatrixXd events;
     MatrixXd path;
+    MatrixXd interior;   // bounds on the interior-point constraints (ninterior x 1)
     MatrixXd states;
     MatrixXd controls;
     MatrixXd parameters;
@@ -304,6 +305,10 @@ struct phases_str {
    int nevents;
 
    int npath;
+
+   int ninterior;               // number of interior-point constraints (default 0)
+
+   MatrixXd interior_time;      // physical times at which each interior constraint applies (ninterior x 1)
 
    int current_number_of_intervals;
 
@@ -400,6 +405,11 @@ public:
    void (*events)(adouble* e, adouble* initial_states, adouble* final_states, adouble* parameters,adouble& t0, adouble& tf, adouble* xad, int iphase, Workspace* workspace);
 
    void (*linkages)( adouble* linkages, adouble* xad, Workspace* workspace);
+
+   // Optional interior-point constraints: called once per interior point (index),
+   // with the state/control interpolated at that interior time. Fill g[0..ninterior-1]
+   // (one scalar per interior point at its own time). NULL when ninterior==0.
+   void (*interior_point_constraints)(adouble* g, adouble* interior_states, adouble* interior_controls, adouble* parameters, adouble& time, int index, int iphase, Workspace* workspace);
 
    void (*observation_function)(adouble* observed_variable, adouble* states, adouble* controls, adouble* parameters, adouble& time, int k, adouble* xad, int iphase, Workspace* workspace);
 

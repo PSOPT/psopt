@@ -37,10 +37,12 @@ void psopt_level1_setup(Prob& problem)
 
    int nphases = problem.nphases;
    problem.phase   = new Phases[nphases];
+   problem.interior_point_constraints = NULL;   // default: no interior-point constraints
    for(i=0;i<nphases;i++) {
        problem.phase[i].nparameters = 0;
        problem.phase[i].nobserved   = 0;
        problem.phase[i].nsamples    = 0;
+       problem.phase[i].ninterior   = 0;         // default: no interior-point constraints
        problem.phase[i].zero_cost_integrand = false;
        problem.phase[i].regularization_factor = 0.0;
        problem.phase[i].nodes.resize(1);
@@ -88,6 +90,11 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
 	problem.phase[i].bounds.lower.parameters.resize(nparam,1);
 	problem.phase[i].bounds.lower.path.resize(npath,1);
 	problem.phase[i].bounds.upper.path.resize(npath,1);
+
+	int ninterior = problem.phase[i].ninterior;
+	problem.phase[i].bounds.lower.interior.resize(ninterior,1);
+	problem.phase[i].bounds.upper.interior.resize(ninterior,1);
+	problem.phase[i].interior_time.resize(ninterior,1);
 
 
 

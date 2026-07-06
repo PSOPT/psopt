@@ -350,6 +350,37 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
    	}
 
+        // Interior-point constraints: for each interior point m, interpolate the
+        // state (and control) to the normalized interior time s in [0,1] via the
+        // Lagrange endpoint weights (same machinery as Radau/Gauss endpoints),
+        // then evaluate the user constraint g at that point. Placed just before
+        // the t0<=tf slot; for ninterior==0 this block is skipped (no regression).
+        {
+            int ninterior = problem->phase[i].ninterior;
+            int ncontrols = problem->phase[i].ncontrols;
+            if ( ninterior > 0 && problem->interior_point_constraints != NULL ) {
+                adouble* ctrl_traj = new adouble[ (ncontrols>0? ncontrols:1)*(norder+1) ];
+                for (int kk=0; kk<norder+1; kk++) {
+                    get_controls(controls, xad, iphase, kk, workspace);
+                    for (int jj=0; jj<ncontrols; jj++) ctrl_traj[kk*ncontrols+jj] = controls[jj];
+                }
+                adouble* xinterp = new adouble[ nstates>0? nstates:1 ];
+                adouble* uinterp = new adouble[ ncontrols>0? ncontrols:1 ];
+                MatrixXd Lm;
+                for (int m=0; m<ninterior; m++) {
+                    double s = (problem->phase[i].interior_time)(m);   // normalized [0,1]
+                    lagrange_endpoint_weights(workspace->snodes[i], 2.0*s-1.0, Lm);
+                    for (int jj=0; jj<nstates; jj++)   { xinterp[jj]=0.0; for(int kk=0;kk<norder+1;kk++) xinterp[jj]+=Lm(0,kk)*states_traj[kk*nstates+jj]; }
+                    for (int jj=0; jj<ncontrols; jj++) { uinterp[jj]=0.0; for(int kk=0;kk<norder+1;kk++) uinterp[jj]+=Lm(0,kk)*ctrl_traj[kk*ncontrols+jj]; }
+                    adouble tk = t0 + (tf - t0)*s;
+                    adouble gv = 0.0;
+                    problem->interior_point_constraints(&gv, xinterp, uinterp, parameters, tk, m, iphase, workspace);
+                    gad[ phase_offset + ncons_phase_i - 1 - ninterior + m ] = gv;
+                }
+                delete [] ctrl_traj; delete [] xinterp; delete [] uinterp;
+            }
+        }
+
         // Add tf >= t0 constraint [ t0MIN-tfMAX <= t0-tf <= 0 ]
 
       gad[ phase_offset + ncons_phase_i - 1] =  (t0 - tf)*time_scaling;

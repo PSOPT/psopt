@@ -19,7 +19,7 @@ multi-phase / auxiliary states), as shown by the examples.
 | constraint | technique | example |
 |---|---|---|
 | **integral / isoperimetric** `∫ q dt ⋛ C` | auxiliary state `I' = q`, bound `I(t_f)` via an event | `isoperimetric` |
-| **interior-point** `g(x(t₁))⋛c` at an interior time | split the phase at `t₁`, constrain via an event + linkage | `interior_point` |
+| **interior-point** `g(x(t₁))⋛c` at an interior time | **NATIVE**: `problem.phase[i].ninterior`, `interior_time`, `interior_point_constraints()` (single phase); *or* the phase-split pattern | **`interior_ptc`** (native), `interior_point` (phase-split) |
 | **control-rate** `|u̇| ≤ R` | promote `u` to a state, new control `v=u̇`, bound `|v|≤R` | **`control_rate`** (new) |
 | **time-windowed path** `g(x)≤0` only for `t∈[t_a,t_b]` | smooth gate: `path = g − BIG·(1−gate(t))`, `gate≈1` in-window | **`path_window`** (new) |
 | **chance / robust** `P{g≤0} ≥ 1−ε` | deterministic tightening `g + k·σ ≤ 0`, `k=Φ⁻¹(1−ε)` | **`chance_constraint`** (new) |
@@ -37,12 +37,20 @@ Built + verified against native IPOPT (Apple-clang build):
   cost 12.0 → 13.87. A full version propagates `σ(t)` via a Lyapunov ODE as
   extra states.
 
+## Native interior-point constraints (NEW)
+`problem.phase[i].ninterior`, `interior_time` (normalized [0,1]), and the
+`interior_point_constraints(g, xinterp, uinterp, params, t, index, iphase, ws)`
+hook enforce a constraint on the state/control interpolated to an interior time
+**without splitting the phase**. It reuses the Radau/Gauss endpoint-interpolation
+(`lagrange_endpoint_weights`) and slots into the per-phase constraint block just
+before the t0≤tf slot; `ninterior==0` (the default) leaves the layout unchanged,
+so existing examples are byte-for-byte unregressed. Example: **`interior_ptc`**
+(waypoint `pos(0.3·T)=0.5`, which raises the min-energy cost 12→38.1).
+
 ## Genuinely missing (need native support / new backends — deferred)
-- **Native declarations** for integral and interior-point constraints (today they
-  require the reformulations above). A native `n_interior_points` could reuse the
-  Radau/Gauss endpoint-interpolation code (`lagrange_endpoint_weights`) to
-  interpolate the state to any interior time; a native integral constraint could
-  reuse the cost-quadrature. Both are invasive NLP-offset changes.
+- **Native integral-constraint declaration** (today via the aux-state/events
+  reformulation). Could reuse the cost-quadrature; an invasive NLP-offset change
+  analogous to the interior-point one just added.
 - **Uncertainty propagation** for true chance/robust control (covariance states).
 - **Mixed-integer / switching** constraints (need a MINLP backend, e.g. Bonmin).
 - **Conic (SOC/SDP)** structure (only smooth-nonlinear reformulations today).
