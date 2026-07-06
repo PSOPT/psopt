@@ -48,9 +48,25 @@ requires more than dropping in a solver:
   three tiers: converged / near-feasible / not-converged. Strong nonlinearity can still
   land in the near-feasible tier (drag `0.1·vel²` → ~1.3e-2, integer-schedule instability),
   better than first-order (~2.3e-2); keep the transcription linear for exact/global results.
-- **Beyond Phase D**: tight nonlinear MINLP would need SCIP's native nonlinear
-  expression interface (not reachable from PSOPT's opaque ADOL-C callbacks) or a full
-  SQP/outer-approximation with an NLP subproblem solver — a separate, larger effort.
+- **Refinement (Phase D+)**: two second-order/OA pieces improve the nonlinear case:
+  1. **Second-order correction (SOC)** in the SLP loop (curvature-aware re-solve) —
+     converges mild–moderate nonlinearity (drag `0.03·vel²` → 2.8e-8).
+  2. **Gauss-Newton feasibility polish** — after the SLP, pin the incumbent integer
+     schedule and drive the continuous states to feasibility with a trust-region-free
+     Gauss-Newton + SOC loop (no objective, pure restoration). Safe (skipped once
+     converged); tightens cases where the schedule admits a feasible completion.
+  Plus `psopt_ipopt_resolve()` (in `NLP_interface.cxx`) — the NLP-subproblem building
+  block for a full OA driver.
+- **Remaining frontier — tight GLOBAL nonlinear MINLP**: when the integer *schedule*
+  itself is infeasible for the exact dynamics (forcing the defects to zero pushes the
+  endpoint out of its bounds), no continuous polish suffices — a **different** schedule
+  is needed. That requires a **top-level Outer-Approximation driver** in `psopt.cxx`:
+  alternate the SCIP master (accumulating integer/OA cuts) with `psopt_ipopt_resolve()`
+  as the NLP subproblem (integers pinned), until the bounds meet. This must run at the
+  psopt() level because `IPOPT_PSOPT` is not re-entrant inside another backend's solve
+  (nesting IPOPT segfaults in `get_nlp_info`). This is the identified next architectural
+  step; alternatively use SCIP's native nonlinear expression interface (not reachable
+  from PSOPT's opaque ADOL-C callbacks) or CasADi's SCIP/bonmin plugins.
 
 ## In-core usage
 ```cpp

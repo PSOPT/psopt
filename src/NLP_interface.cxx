@@ -491,3 +491,31 @@ int NLP_interface(
 }
 
 
+// Re-solve the current continuous NLP with IPOPT, using whatever variable bounds
+// are in workspace->xlb/xub and the warm-start guess in workspace->x0, writing the
+// solution back to workspace->x0. Building block for a TOP-LEVEL outer-approximation
+// driver for mixed-integer OC (alternate the SCIP master and this NLP subproblem with
+// the integers pinned via their bounds). NOTE: must be invoked at the psopt() level,
+// NOT nested inside another backend's solve -- IPOPT_PSOPT::get_nlp_info is not
+// re-entrant within an active Ipopt lifecycle (it re-runs sparsity detection).
+// Returns the IPOPT ApplicationReturnStatus (0 == Solve_Succeeded).
+int psopt_ipopt_resolve(Workspace* workspace, void* user_data)
+{
+    Alg* algorithm = workspace->algorithm;
+    SmartPtr<TNLP> mynlp = new IPOPT_PSOPT(workspace, user_data);
+    SmartPtr<IpoptApplication> app = new IpoptApplication();
+    app->Options()->SetNumericValue("tol", algorithm->nlp_tolerance);
+    app->Options()->SetStringValue("mu_strategy", "adaptive");
+    app->Options()->SetStringValue("output_file", "ipopt.out");
+    app->Options()->SetStringValue("nlp_scaling_method", "gradient-based");
+    app->Options()->SetStringValue("linear_solver", algorithm->ipopt_linear_solver);
+    app->Options()->SetStringValue("hessian_approximation", "limited-memory");
+    app->Options()->SetIntegerValue("print_level", 0);
+    app->Options()->SetIntegerValue("max_iter", algorithm->nlp_iter_max);
+    app->Options()->SetStringValue("warm_start_init_point", "yes");
+    ApplicationReturnStatus status = app->Initialize();
+    if (status != Solve_Succeeded) return (int) status;
+    status = app->OptimizeTNLP(mynlp);
+    return (int) status;
+}
+
