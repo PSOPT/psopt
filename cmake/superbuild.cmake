@@ -186,8 +186,14 @@ endif()
 # SPRAL (ssids): open-source OpenMP-threaded sparse symmetric-indefinite solver
 # from STFC, a free alternative to PARDISO/ma97. Built with Meson; needs METIS 5,
 # BLAS/LAPACK (OpenBLAS), and hwloc (MacPorts /opt/local by default). Select at
-# runtime with algorithm.ipopt_linear_solver="spral".
+# runtime with algorithm.ipopt_linear_solver="spral". Verified: bryson_denham ->
+# 3.999539, obstacle -> 4.571044 (same optima as MUMPS). NOTE: SSIDS REQUIRES an
+# OpenMP environment or it aborts (info.flag=-53) -- run with, e.g.:
+#   OMP_CANCELLATION=TRUE OMP_NESTED=TRUE OMP_PROC_BIND=TRUE OMP_STACKSIZE=64M
+# Its threaded factorization pays off on LARGE problems; on small ones it is
+# comparable to (slightly slower than) serial MUMPS.
 set(_ipopt_spral_flag "--without-spral")
+set(_ipopt_spral_cflag "")
 set(_ipopt_spral_dep "")
 set(PSOPT_SPRAL_DEP_PREFIX "/opt/local" CACHE PATH "Prefix providing METIS 5 / OpenBLAS / hwloc for SPRAL")
 if(PSOPT_WITH_SPRAL)
@@ -201,7 +207,8 @@ if(PSOPT_WITH_SPRAL)
     BUILD_COMMAND meson compile -C <BINARY_DIR>
     INSTALL_COMMAND meson install -C <BINARY_DIR>)
   set(_ipopt_spral_dep ep_spral)
-  set(_ipopt_spral_flag "--with-spral-lflags=-L${SB_INSTALL}/lib -lspral -L${PSOPT_SPRAL_DEP_PREFIX}/lib -lopenblas -lmetis -lhwloc")
+  set(_ipopt_spral_flag "--with-spral-lflags=-L${SB_INSTALL}/lib -lspral -Wl,-rpath,${SB_INSTALL}/lib -L${PSOPT_SPRAL_DEP_PREFIX}/lib -lopenblas -lmetis -lhwloc")
+  set(_ipopt_spral_cflag "--with-spral-cflags=-I${SB_INSTALL}/include")
 endif()
 
 # ---- IPOPT (autotools; uses coinmumps + optional coinhsl via pkg-config) ----
@@ -211,7 +218,7 @@ ExternalProject_Add(ep_ipopt
   CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${SB_PKGCFG}
       <SOURCE_DIR>/configure --prefix=${SB_INSTALL}
       CC=${SB_CC} CXX=${SB_CXX} FC=${SB_FC}
-      --with-mumps ${_ipopt_hsl_flag} ${_ipopt_pardiso_flag} ${_ipopt_spral_flag}
+      --with-mumps ${_ipopt_hsl_flag} ${_ipopt_pardiso_flag} ${_ipopt_spral_flag} ${_ipopt_spral_cflag}
       --with-lapack-lflags=${SB_BLAS_LFLAGS} --with-blas-lflags=${SB_BLAS_LFLAGS}
       --disable-java --without-asl
   BUILD_COMMAND make -j
