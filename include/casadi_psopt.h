@@ -3,8 +3,8 @@
 // Routes PSOPT's already-transcribed sparse NLP through CasADi's IPOPT plugin,
 // so the solve can use HSL (ma57/ma97) as well as MUMPS. Reuses PSOPT's
 // objective/constraint callbacks and its variable/constraint bounds; CasADi
-// supplies derivatives by finite differences over those callbacks (exact
-// PSOPT-AD derivatives could be wired in later via Callback::get_jacobian).
+// supplies derivatives from PSOPT's exact ADOL-C first derivatives, and can
+// request an exact Hessian when algorithm.hessian=="exact" with IPOPT.
 //
 // Enabled by CMake option PSOPT_WITH_CASADI (which links CasADi and defines
 // USE_CASADI). Requires a CasADi build with the IPOPT plugin; the PSOPT

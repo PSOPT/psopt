@@ -13,7 +13,9 @@
 // penalty that made the backend 5-25x slower and time out on large problems
 // (bryson_denham: 24s FD -> 3s exact; obstacle 55s -> 11s; both match IPOPT).
 // With algorithm.derivatives=="numerical" the FD PsoptNlp path is used instead.
-// The Hessian is limited-memory BFGS built on these exact gradients.
+// The Hessian is limited-memory BFGS by default, but can be switched to an
+// exact Hessian when algorithm.hessian=="exact" and the selected CasADi
+// plugin is IPOPT.
 //
 // See casadi_psopt.h for scope. Requires a CasADi build with the requested
 // plugin (the PSOPT superbuild provides IPOPT).
@@ -37,7 +39,18 @@ namespace {
 
 // Dedicated ADOL-C tape tags for the CasADi backend, kept clear of PSOPT's
 // tags (tag_f=1..tag_gc=5) so re-used sparse patterns are never clobbered.
-static const int TAG_F = 21, TAG_G = 22;
+// TAG_HC: weighted-constraint Hessian tape (re-taped per Hessian eval).
+static const int TAG_F = 21, TAG_G = 22, TAG_HC = 24;
+
+// Build a symmetric CasADi DM from an ADOL-C lower-triangular sparse_hess result.
+static DM symm_from_lower(int n, int nnz, unsigned int* ir, unsigned int* jc, double* v) {
+  std::vector<casadi_int> R, C; std::vector<double> V;
+  for (int k = 0; k < nnz; ++k) {
+    R.push_back(ir[k]); C.push_back(jc[k]); V.push_back(v[k]);
+    if (ir[k] != jc[k]) { R.push_back(jc[k]); C.push_back(ir[k]); V.push_back(v[k]); }
+  }
+  return DM::triplet(R, C, V, n, n);
+}
 
 // ---------------------------------------------------------------------------
 // Exact derivatives via PSOPT's ADOL-C tapes, driven DIRECTLY with the
@@ -123,12 +136,144 @@ private:
   Sparsity sp_;
 };
 
+// ---------------------------------------------------------------------------
+// Reverse-mode (adjoint) overrides so CasADi can assemble the EXACT Hessian of
+// the Lagrangian. The adjoint of the objective is f_bar*grad_f, of the
+// constraints is jac_g'*g_bar; their Jacobians w.r.t. x are f_bar*Hess_f and
+// Hess(g_bar'*g). With f_bar=obj_factor, g_bar=lambda, CasADi's sum of these is
+// exactly PSOPT's Lagrangian Hessian (Lagrangian_ad -> sparse_hess).
+// ---------------------------------------------------------------------------
+
+// Jacobian of the objective adjoint x_bar = f_bar*grad_f w.r.t. (x, f_nom, f_bar).
+// Output (n x (n+2)) = [ f_bar*Hess_f | 0 | grad_f ].
+class ObjRevJac : public Callback {
+public:
+  ObjRevJac(int n) : n_(n) { construct("psopt_obj_revjac"); }
+  casadi_int get_n_in()  override { return 4; }  // x, f_nom, f_bar, xbar_nom
+  casadi_int get_n_out() override { return 3; }  // d xbar/dx, /d f_nom, /d f_bar
+  Sparsity get_sparsity_in(casadi_int i) override {
+    if (i == 0 || i == 3) return Sparsity::dense(n_, 1);
+    return Sparsity::dense(1, 1);              // f_nom, f_bar are scalars
+  }
+  Sparsity get_sparsity_out(casadi_int i) override {
+    return (i == 0) ? Sparsity::dense(n_, n_) : Sparsity::dense(n_, 1); }
+  std::vector<DM> eval(const std::vector<DM>& arg) const override {
+    std::vector<double> x = arg[0].nonzeros();
+    double f_bar = arg[2].nonzeros()[0];
+    std::vector<double> gf(n_); gradient(TAG_F, n_, x.data(), gf.data());
+    int opt[2] = {0, 0};
+    unsigned int* ir = nullptr; unsigned int* jc = nullptr; double* v = nullptr; int nnz = 0;
+    sparse_hess(TAG_F, n_, 0, x.data(), &nnz, &ir, &jc, &v, opt);
+    DM Hx = DM::zeros(n_, n_);
+    for (int k = 0; k < nnz; ++k) {            // f_bar * Hess_f (symmetric)
+      Hx(ir[k], jc[k]) = f_bar * v[k];
+      if (ir[k] != jc[k]) Hx(jc[k], ir[k]) = f_bar * v[k];
+    }
+    free(ir); free(jc); free(v);
+    return { Hx, DM::zeros(n_, 1), DM(gf) };   // d/dx, d/d f_nom, d/d f_bar
+  }
+private:
+  int n_;
+};
+
+// Objective adjoint: (x, f_nom, f_bar) -> x_bar = f_bar*grad_f.
+class ObjRev : public Callback {
+public:
+  ObjRev(int n) : n_(n), jac_(new ObjRevJac(n)) { construct("psopt_obj_rev"); }
+  casadi_int get_n_in()  override { return 3; }  // x, f_nom, f_bar
+  casadi_int get_n_out() override { return 1; }  // x_bar
+  Sparsity get_sparsity_in(casadi_int i) override {
+    return (i == 0) ? Sparsity::dense(n_, 1) : Sparsity::dense(1, 1); }
+  Sparsity get_sparsity_out(casadi_int) override { return Sparsity::dense(n_, 1); }
+  std::vector<DM> eval(const std::vector<DM>& arg) const override {
+    std::vector<double> x = arg[0].nonzeros();
+    double f_bar = arg[2].nonzeros()[0];
+    std::vector<double> gf(n_); gradient(TAG_F, n_, x.data(), gf.data());
+    std::vector<double> xb(n_); for (int i = 0; i < n_; ++i) xb[i] = f_bar * gf[i];
+    return { DM(xb) };
+  }
+  bool has_jacobian() const override { return true; }
+  Function get_jacobian(const std::string&, const std::vector<std::string>&,
+                        const std::vector<std::string>&, const Dict&) const override { return *jac_; }
+private:
+  int n_; std::shared_ptr<ObjRevJac> jac_;
+};
+
+// Jacobian of the constraint adjoint x_bar = jac_g'*g_bar w.r.t. (x, g_nom, g_bar).
+// Output (n x (n+2m)) = [ Hess(g_bar'*g) | 0 | jac_g' ].
+class ConRevJac : public Callback {
+public:
+  ConRevJac(int n, int m, Workspace* ws) : n_(n), m_(m), ws_(ws) { construct("psopt_con_revjac"); }
+  casadi_int get_n_in()  override { return 4; }  // x, g_nom, g_bar, xbar_nom
+  casadi_int get_n_out() override { return 3; }  // d xbar/dx, /d g_nom, /d g_bar
+  Sparsity get_sparsity_in(casadi_int i) override {
+    if (i == 0 || i == 3) return Sparsity::dense(n_, 1);
+    return Sparsity::dense(m_, 1);             // g_nom, g_bar
+  }
+  Sparsity get_sparsity_out(casadi_int i) override {
+    if (i == 0) return Sparsity::dense(n_, n_);      // d/dx = Hess(g_bar'g)
+    if (i == 1) return Sparsity::dense(n_, m_);      // d/d g_nom = 0
+    return Sparsity::dense(n_, m_);                  // d/d g_bar = jac_g'
+  }
+  std::vector<DM> eval(const std::vector<DM>& arg) const override {
+    std::vector<double> x = arg[0].nonzeros();
+    std::vector<double> gbar = arg[2].nonzeros();
+    DM Hx = DM::zeros(n_, n_);
+    DM JT = DM::zeros(n_, m_);
+    // constraint Jacobian transpose block via TAG_G
+    { int opt[4] = {0,0,0,0}; unsigned int* ri=nullptr; unsigned int* ci=nullptr; double* vv=nullptr; int nnz=0;
+      sparse_jac(TAG_G, m_, n_, 1, x.data(), &nnz, &ri, &ci, &vv, opt);
+      for (int k = 0; k < nnz; ++k) JT(ci[k], ri[k]) = vv[k];   // jac_g'[j,i]
+      free(ri); free(ci); free(vv); }
+    // Hess(g_bar'*g): re-tape L_c = sum gbar_i g_i, then sparse_hess (TAG_HC)
+    { trace_on(TAG_HC);
+      for (int i = 0; i < n_; ++i) ws_->xad[i] <<= x[i];
+      gg_ad(ws_->xad, ws_->gad, ws_);
+      adouble Lc = 0.0; for (int i = 0; i < m_; ++i) Lc += gbar[i] * ws_->gad[i];
+      double Lcv; Lc >>= Lcv; trace_off();
+      int opt[2] = {0,0}; unsigned int* ir=nullptr; unsigned int* jc=nullptr; double* v=nullptr; int nnz=0;
+      sparse_hess(TAG_HC, n_, 0, x.data(), &nnz, &ir, &jc, &v, opt);
+      for (int k = 0; k < nnz; ++k) { Hx(ir[k], jc[k]) = v[k]; if (ir[k]!=jc[k]) Hx(jc[k], ir[k]) = v[k]; }
+      free(ir); free(jc); free(v); }
+    return { Hx, DM::zeros(n_, m_), JT };
+  }
+private:
+  int n_, m_; Workspace* ws_;
+};
+
+// Constraint adjoint: (x, g_nom, g_bar) -> x_bar = jac_g'*g_bar.
+class ConRev : public Callback {
+public:
+  ConRev(int n, int m, Workspace* ws) : n_(n), m_(m), ws_(ws), jac_(new ConRevJac(n, m, ws)) {
+    construct("psopt_con_rev"); }
+  casadi_int get_n_in()  override { return 3; }  // x, g_nom, g_bar
+  casadi_int get_n_out() override { return 1; }
+  Sparsity get_sparsity_in(casadi_int i) override {
+    return (i == 0) ? Sparsity::dense(n_, 1) : Sparsity::dense(m_, 1); }
+  Sparsity get_sparsity_out(casadi_int) override { return Sparsity::dense(n_, 1); }
+  std::vector<DM> eval(const std::vector<DM>& arg) const override {
+    std::vector<double> x = arg[0].nonzeros();
+    std::vector<double> gbar = arg[2].nonzeros();
+    std::vector<double> xb(n_, 0.0);
+    int opt[4] = {0,0,0,0}; unsigned int* ri=nullptr; unsigned int* ci=nullptr; double* vv=nullptr; int nnz=0;
+    sparse_jac(TAG_G, m_, n_, 1, x.data(), &nnz, &ri, &ci, &vv, opt);
+    for (int k = 0; k < nnz; ++k) xb[ci[k]] += vv[k] * gbar[ri[k]];   // (jac_g' g_bar)
+    free(ri); free(ci); free(vv);
+    return { DM(xb) };
+  }
+  bool has_jacobian() const override { return true; }
+  Function get_jacobian(const std::string&, const std::vector<std::string>&,
+                        const std::vector<std::string>&, const Dict&) const override { return *jac_; }
+private:
+  int n_, m_; Workspace* ws_; std::shared_ptr<ConRevJac> jac_;
+};
+
 // Objective f(x) with an exact Jacobian (GradF). Held as a member so it outlives
 // the solve; get_jacobian hands it to CasADi.
 class ObjFun : public Callback {
 public:
   ObjFun(int n, Workspace* ws,
-         double (*f)(MatrixXd&, Workspace*)) : n_(n), ws_(ws), f_(f), gradf_(n, ws) {
+         double (*f)(MatrixXd&, Workspace*)) : n_(n), ws_(ws), f_(f), gradf_(n, ws), rev_(new ObjRev(n)) {
     construct("psopt_obj");
   }
   casadi_int get_n_in()  override { return 1; }
@@ -145,17 +290,21 @@ public:
                         const std::vector<std::string>&, const Dict&) const override {
     return gradf_;
   }
+  bool has_reverse(casadi_int nadj) const override { return nadj == 1; }
+  Function get_reverse(casadi_int, const std::string&, const std::vector<std::string>&,
+                       const std::vector<std::string>&, const Dict&) const override { return *rev_; }
 private:
   int n_; Workspace* ws_;
   double (*f_)(MatrixXd&, Workspace*);
   GradF gradf_;
+  std::shared_ptr<ObjRev> rev_;
 };
 
 // Constraints g(x) with an exact Jacobian (JacG).
 class ConFun : public Callback {
 public:
   ConFun(int n, int m, Workspace* ws,
-         void (*g)(MatrixXd&, MatrixXd*, Workspace*)) : n_(n), m_(m), ws_(ws), g_(g), jacg_(n, m, ws) {
+         void (*g)(MatrixXd&, MatrixXd*, Workspace*)) : n_(n), m_(m), ws_(ws), g_(g), jacg_(n, m, ws), rev_(new ConRev(n, m, ws)) {
     construct("psopt_con");
   }
   casadi_int get_n_in()  override { return 1; }
@@ -174,10 +323,14 @@ public:
                         const std::vector<std::string>&, const Dict&) const override {
     return jacg_;
   }
+  bool has_reverse(casadi_int nadj) const override { return nadj == 1; }
+  Function get_reverse(casadi_int, const std::string&, const std::vector<std::string>&,
+                       const std::vector<std::string>&, const Dict&) const override { return *rev_; }
 private:
   int n_, m_; Workspace* ws_;
   void (*g_)(MatrixXd&, MatrixXd*, Workspace*);
   JacG jacg_;
+  std::shared_ptr<ConRev> rev_;
 };
 
 // PSOPT NLP exposed to CasADi: x -> (f, g). Derivatives via CasADi FD.
@@ -237,12 +390,15 @@ int psopt_casadi_solve(
   std::string plugin = algorithm.casadi_solver.empty() ? std::string("ipopt")
                                                         : algorithm.casadi_solver;
   Dict opts;
+  const bool exact_hessian = exact && algorithm.hessian == "exact";
+
   if (plugin == "ipopt") {
     opts["ipopt.linear_solver"]  = algorithm.ipopt_linear_solver;   // mumps / ma97 / ...
     opts["ipopt.tol"]            = algorithm.nlp_tolerance;
     opts["ipopt.max_iter"]       = algorithm.nlp_iter_max;
     opts["ipopt.mu_strategy"]    = std::string("adaptive");
-    opts["ipopt.hessian_approximation"] = std::string("limited-memory");
+    opts["ipopt.hessian_approximation"] = exact_hessian ? std::string("exact")
+                                                        : std::string("limited-memory");
     if (algorithm.print_level == 0) opts["ipopt.print_level"] = 0;
   } else if (plugin == "sqpmethod") {
     // sqpmethod defaults to an EXACT Hessian of the Lagrangian, which is
