@@ -22,7 +22,7 @@ multi-phase / auxiliary states), as shown by the examples.
 | **interior-point** `g(x(t₁))⋛c` at an interior time | split the phase at `t₁`, constrain via an event + linkage | `interior_point` |
 | **control-rate** `|u̇| ≤ R` | promote `u` to a state, new control `v=u̇`, bound `|v|≤R` | **`control_rate`** (new) |
 | **time-windowed path** `g(x)≤0` only for `t∈[t_a,t_b]` | smooth gate: `path = g − BIG·(1−gate(t))`, `gate≈1` in-window | **`path_window`** (new) |
-| **chance / robust** `P{g≤0} ≥ 1−ε` | deterministic tightening `g + k·σ ≤ 0`, `k=Φ⁻¹(1−ε)` | **`chance_constraint`** (new) |
+| **chance / robust** `P{g≤0} ≥ 1−ε` | tighten `g + k·√(Var) ≤ 0`, `k=Φ⁻¹(1−ε)`; propagate `Σ(t)` via a Lyapunov ODE (extra states) for the exact time-varying back-off | **`chance_covariance`** (Σ propagation), `chance_constraint` (constant σ) |
 | **complementarity (MPEC)** `0 ≤ a ⊥ b ≥ 0` | smoothed NCP / relaxation `a·b ≤ μ`, `μ→0` | `mpec` |
 | **pure state** `g(x)≤0` (no control) | path constraint on states only (watch constraint order/index) | `obstacle` (mixed) |
 
@@ -45,6 +45,36 @@ Built + verified against native IPOPT (Apple-clang build):
   reuse the cost-quadrature. Both are invasive NLP-offset changes.
 - **Uncertainty propagation** for true chance/robust control (covariance states).
 - **Mixed-integer / switching** constraints (need a MINLP backend, e.g. Bonmin).
+## Native interior-point constraints (NEW)
+`problem.phase[i].ninterior`, `interior_time` (normalized [0,1]), and the
+`interior_point_constraints(g, xinterp, uinterp, params, t, index, iphase, ws)`
+hook enforce a constraint on the state/control interpolated to an interior time
+**without splitting the phase**. It reuses the Radau/Gauss endpoint-interpolation
+(`lagrange_endpoint_weights`) and slots into the per-phase constraint block just
+before the t0≤tf slot; `ninterior==0` (the default) leaves the layout unchanged,
+so existing examples are byte-for-byte unregressed. Example: **`interior_ptc`**
+(waypoint `pos(0.3·T)=0.5`, which raises the min-energy cost 12→38.1).
+
+## Native integral constraints (NEW)
+`problem.phase[i].nintegral` + the `integral_constraints(q, states, controls,
+params, t, iphase, ws)` hook + `bounds.*.integral` declare `I_L ≤ ∫q dt ≤ I_U`
+directly. PSOPT integrates each integrand with the **collocation quadrature**
+(the same `workspace->w` weights as the running cost) and bounds the result; it
+sits in the per-phase tail `[…|interior|integral|t0≤tf]`, and `nintegral==0`
+(default) leaves the layout unchanged (zero regression). Example: **`integral_ctc`**
+(area `∫pos dt=0.40` vs unconstrained 0.5 → cost 12→19.2).
+
+## Chance / robust via covariance propagation (NEW)
+`chance_covariance` shows the *exact* time-varying tightening: the state covariance
+`Σ(t)` is carried as extra states obeying the Lyapunov ODE `Σ' = AΣ + ΣAᵀ + W`, and a
+path constraint `g(μ) + k·√(Var) ≤ 0` (`k=Φ⁻¹(1−ε)`) backs the nominal limit off by a
+margin that GROWS as process noise accumulates. A minimum-time double integrator with a
+chance velocity cap: the cap extends `tf` 2.0→2.12 and the velocity rides the tightened
+limit `VMAX − k√P22` (P22 = w·tf, verified). No core changes — pure native mechanism.
+
+## Genuinely missing (need new machinery / backends — deferred)
+- **Mixed-integer / switching** constraints — MINLP backend (SCIP). See
+  `docs/MIXED_INTEGER_SCIP.md` for the integration status.
 - **Conic (SOC/SDP)** structure (only smooth-nonlinear reformulations today).
 
 See `docs/EXTENSIONS_STATUS.md` for the overall branch status.
