@@ -37,6 +37,21 @@ done, what is deferred, and any known issues.
 - **PARDISO** build plumbing (`PSOPT_PARDISO_LFLAGS` → `--with-pardiso`).
 - Selector is already pass-through (any solver IPOPT is built with is selectable).
 
+### Native constraint types (NEW)
+- **Interior-point** constraints (`ninterior`, `interior_point_constraints`) — state/
+  control interpolated to an interior time without a phase split; reuses the
+  Radau/Gauss endpoint interpolation. Example `interior_ptc`.
+- **Integral / isoperimetric** constraints (`nintegral`, `integral_constraints`) —
+  `I_L ≤ ∫q dt ≤ I_U` via the collocation quadrature. Example `integral_ctc`.
+- Both default to 0 count → zero regression on the 47 existing examples.
+- Reformulation examples for the rest: `control_rate`, `path_window`,
+  `chance_constraint`. See `docs/CONSTRAINTS.md`.
+
+### Mixed-integer optimal control via SCIP (NEW)
+- SCIP v11 + SoPlex built from source; standalone MILP MIOC demonstrator
+  `scip-mioc/mioc_scip.c` (integer thrust, global bang-off-bang). In-core backend
+  path documented in `docs/MIXED_INTEGER_SCIP.md`.
+
 ### AD-backend shootout
 - Five backends (ADOL-C/CppAD/CppADCodeGen/Sacado/Enzyme) built + benchmarked in
   `ad-backends/` — the decision input for a future PSOPT AD provider.
