@@ -224,6 +224,31 @@ ExternalProject_Add(ep_ipopt
   BUILD_COMMAND make -j
   INSTALL_COMMAND make install)
 
+# ---- SoPlex + SCIP (opt-in; free MILP/MINLP for mixed-integer optimal control) ----
+# SoPlex is SCIP's LP backend; SCIP uses the superbuild IPOPT as its NLP relaxation
+# solver for MINLP. GMP (both) and readline (SCIP shell) come from
+# PSOPT_SCIP_DEP_PREFIX (MacPorts /opt/local by default; a Homebrew/apt prefix works too).
+set(_psopt_scip_dep "")
+if(PSOPT_WITH_SCIP)
+  ExternalProject_Add(ep_soplex
+    GIT_REPOSITORY https://github.com/scipopt/soplex.git GIT_TAG master GIT_SHALLOW TRUE
+    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SB_INSTALL}
+               -DCMAKE_PREFIX_PATH=${SB_INSTALL}\;${PSOPT_SCIP_DEP_PREFIX}
+               -DCMAKE_C_COMPILER=${SB_CC} -DCMAKE_CXX_COMPILER=${SB_CXX}
+               -DCMAKE_BUILD_TYPE=Release -DGMP=on -DBOOST=off -DBUILD_TESTING=OFF)
+  ExternalProject_Add(ep_scip
+    DEPENDS ep_soplex ep_ipopt
+    GIT_REPOSITORY https://github.com/scipopt/scip.git GIT_TAG master GIT_SHALLOW TRUE
+    CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${SB_INSTALL}
+               -DCMAKE_PREFIX_PATH=${SB_INSTALL}\;${PSOPT_SCIP_DEP_PREFIX}
+               -DCMAKE_C_COMPILER=${SB_CC} -DCMAKE_CXX_COMPILER=${SB_CXX}
+               -DCMAKE_BUILD_TYPE=Release
+               -DSOPLEX_DIR=${SB_INSTALL} -DGMP=on -DREADLINE=on
+               -DIPOPT=on -DIPOPT_DIR=${SB_INSTALL}
+               -DZIMPL=off -DPAPILO=off -DSYM=none -DBUILD_TESTING=OFF)
+  set(_psopt_scip_dep ep_scip)
+endif()
+
 # ---- CasADi (CMake; with the IPOPT plugin, optional HSL) --------------------
 set(_casadi_dep "")
 if(PSOPT_WITH_CASADI)
@@ -251,7 +276,7 @@ if(PSOPT_WITH_HSL AND _psopt_default_solver STREQUAL "mumps")
   set(_psopt_default_solver "ma97")
 endif()
 ExternalProject_Add(ep_psopt
-  DEPENDS ep_eigen ep_adolc ep_ipopt ${_casadi_dep}
+  DEPENDS ep_eigen ep_adolc ep_ipopt ${_casadi_dep} ${_psopt_scip_dep}
   SOURCE_DIR ${CMAKE_SOURCE_DIR}
   CMAKE_ARGS
     -DPSOPT_SUPERBUILD=OFF

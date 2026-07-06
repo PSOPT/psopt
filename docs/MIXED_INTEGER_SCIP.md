@@ -36,6 +36,14 @@ requires more than dropping in a solver:
   optionally via CasADi's SCIP/bonmin plugins as an intermediate).
 
 ## Build reference
+Superbuild (SoPlex + SCIP as ExternalProjects; GMP + readline from
+`PSOPT_SCIP_DEP_PREFIX`, MacPorts `/opt/local` by default):
+```
+cmake -S . -B build -DPSOPT_SUPERBUILD=ON -DPSOPT_WITH_SCIP=ON \
+      -DPSOPT_SCIP_DEP_PREFIX=/opt/local
+cmake --build build -j4            # builds ep_soplex, ep_scip (uses ep_ipopt for MINLP NLP)
+```
+Standalone (the demonstrator here):
 ```
 bash /opt/claude/src/build_scip.sh      # SoPlex + SCIP -> /opt/claude/scip
 cd scip-mioc && bash build.sh && \
