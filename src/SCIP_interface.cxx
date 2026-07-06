@@ -153,54 +153,78 @@ int psopt_scip_solve(
             linear = (worst < 1e-7);
         }
 
-        // ---- build + solve the master MILP ----------------------------------
-        SCIP* scip = NULL;
-        SCIP_CALL( SCIPcreate(&scip) );
-        SCIP_CALL( SCIPincludeDefaultPlugins(scip) );
-        SCIP_CALL( SCIPcreateProbBasic(scip, "psopt_miop") );
-        SCIP_CALL( SCIPsetObjsense(scip, SCIP_OBJSENSE_MINIMIZE) );
-        SCIP_CALL( SCIPsetIntParam(scip, "display/verblevel", 0) );
-        // Linear problems get a tight one-shot solve; SLP masters only need a good
-        // feasible integer point each iteration, so bound them (looser gap + time).
-        if (linear) { SCIP_CALL( SCIPsetRealParam(scip, "limits/gap", 1e-9) ); }
-        else { SCIP_CALL( SCIPsetRealParam(scip, "limits/gap", 1e-4) );  // SLP masters: good feasible point suffices
-               SCIP_CALL( SCIPsetRealParam(scip, "limits/time", 30.0) ); }
+        // ---- master build+solve, optionally with an SOC constraint shift -----
+        // `shift[i]` moves constraint i's bounds by -shift[i]; used for the
+        // second-order correction below. (No SCIP_CALL inside a bool lambda.)
+        auto solveMaster = [&](const std::vector<double>& shift, MatrixXd& xout, SCIP_STATUS& sout) -> bool {
+            SCIP* scip = NULL;
+            SCIPcreate(&scip); SCIPincludeDefaultPlugins(scip);
+            SCIPcreateProbBasic(scip, "psopt_miop"); SCIPsetObjsense(scip, SCIP_OBJSENSE_MINIMIZE);
+            SCIPsetIntParam(scip, "display/verblevel", 0);
+            if (linear) { SCIPsetRealParam(scip, "limits/gap", 1e-9); }
+            else { SCIPsetRealParam(scip, "limits/gap", 1e-4); SCIPsetRealParam(scip, "limits/time", 30.0); }
+            std::vector<SCIP_VAR*> var(nx);
+            char nm[32];
+            for (int j = 0; j < nx; ++j) {
+                snprintf(nm, sizeof(nm), "x%d", j);
+                SCIP_VARTYPE ty = isInt[j] ? SCIP_VARTYPE_INTEGER : SCIP_VARTYPE_CONTINUOUS;
+                double lo = (*xlb)(j, 0), hi = (*xub)(j, 0);
+                if (pinned && isInt[j]) { lo = hi = pinval[j]; }
+                else if (!linear && !isInt[j] && !istime[j]) { lo = std::max(lo, xc(j,0)-Delta); hi = std::min(hi, xc(j,0)+Delta); }
+                if (lo <= -1e19) lo = -SCIPinfinity(scip);
+                if (hi >=  1e19) hi =  SCIPinfinity(scip);
+                if (lo > hi) { double m=0.5*(lo+hi); lo=hi=m; }
+                SCIPcreateVarBasic(scip, &var[j], nm, lo, hi, c[j], ty); SCIPaddVar(scip, var[j]);
+            }
+            for (int i = 0; i < ng; ++i) {
+                SCIP_CONS* cons; snprintf(nm, sizeof(nm), "g%d", i);
+                double sh = shift.empty() ? 0.0 : shift[i];
+                double lhs = gl[i] - gb(i, 0) + Jxc[i] - sh, rhs = gu[i] - gb(i, 0) + Jxc[i] - sh;
+                if (lhs <= -1e19) lhs = -SCIPinfinity(scip);
+                if (rhs >=  1e19) rhs =  SCIPinfinity(scip);
+                std::vector<SCIP_VAR*> vs; std::vector<double> cs;
+                for (size_t t = 0; t < rows[i].size(); ++t) { vs.push_back(var[rows[i][t].first]); cs.push_back(rows[i][t].second); }
+                SCIPcreateConsBasicLinear(scip, &cons, nm, (int) vs.size(),
+                                          vs.empty()?NULL:vs.data(), cs.empty()?NULL:cs.data(), lhs, rhs);
+                SCIPaddCons(scip, cons); SCIPreleaseCons(scip, &cons);
+            }
+            SCIPsolve(scip);
+            SCIP_SOL* sol = SCIPgetBestSol(scip);
+            sout = SCIPgetStatus(scip);
+            bool hs = (sol != NULL);
+            xout = xc;
+            if (hs) for (int j = 0; j < nx; ++j) xout(j,0) = SCIPgetSolVal(scip, sol, var[j]);
+            for (int j = 0; j < nx; ++j) SCIPreleaseVar(scip, &var[j]);
+            SCIPfree(&scip);
+            return hs;
+        };
 
-        std::vector<SCIP_VAR*> var(nx);
-        char nm[32];
-        for (int j = 0; j < nx; ++j) {
-            snprintf(nm, sizeof(nm), "x%d", j);
-            SCIP_VARTYPE ty = isInt[j] ? SCIP_VARTYPE_INTEGER : SCIP_VARTYPE_CONTINUOUS;
-            double lo = (*xlb)(j, 0), hi = (*xub)(j, 0);
-            if (pinned && isInt[j]) { lo = hi = pinval[j]; }   // polish phase: integers fixed
-            // trust region on continuous non-time variables (skip on a linear problem)
-            else if (!linear && !isInt[j] && !istime[j]) { lo = std::max(lo, xc(j,0)-Delta); hi = std::min(hi, xc(j,0)+Delta); }
-            if (lo <= -1e19) lo = -SCIPinfinity(scip);
-            if (hi >=  1e19) hi =  SCIPinfinity(scip);
-            if (lo > hi) { double m=0.5*(lo+hi); lo=hi=m; }
-            SCIP_CALL( SCIPcreateVarBasic(scip, &var[j], nm, lo, hi, c[j], ty) );
-            SCIP_CALL( SCIPaddVar(scip, var[j]) );
+        std::vector<double> noshift;
+        SCIP_STATUS sstat; MatrixXd xstar;
+        bool haveSol = solveMaster(noshift, xstar, sstat);
+
+        // ---- SECOND-ORDER CORRECTION (SQP-style): the linear step ignores
+        //      constraint curvature, which is what stalls first-order SLP. Evaluate
+        //      the TRUE constraints at the trial point, shift the model by that
+        //      residual, and re-solve -- one extra solve that captures curvature and
+        //      drives feasibility much faster. Kept only if it lowers the violation.
+        if (haveSol && !linear && ng > 0) {
+            MatrixXd gx(ng, 1); g(xstar, &gx, workspace);
+            std::vector<double> r(ng);
+            for (int i = 0; i < ng; ++i) {
+                double gmodel = gb(i, 0);
+                for (size_t t = 0; t < rows[i].size(); ++t)
+                    gmodel += rows[i][t].second * (xstar(rows[i][t].first,0) - xc(rows[i][t].first,0));
+                r[i] = gx(i, 0) - gmodel;         // nonlinear (curvature) residual at xstar
+            }
+            MatrixXd xsoc; SCIP_STATUS s2;
+            if (solveMaster(r, xsoc, s2)) {
+                double v1; VIOL_OF(xstar, v1);
+                double v2; VIOL_OF(xsoc,  v2);
+                if (v2 < v1) xstar = xsoc;        // accept the second-order-corrected step
+            }
         }
-        for (int i = 0; i < ng; ++i) {
-            SCIP_CONS* cons; snprintf(nm, sizeof(nm), "g%d", i);
-            double lhs = gl[i] - gb(i, 0) + Jxc[i], rhs = gu[i] - gb(i, 0) + Jxc[i];
-            if (lhs <= -1e19) lhs = -SCIPinfinity(scip);
-            if (rhs >=  1e19) rhs =  SCIPinfinity(scip);
-            std::vector<SCIP_VAR*> vs; std::vector<double> cs;
-            for (size_t t = 0; t < rows[i].size(); ++t) { vs.push_back(var[rows[i][t].first]); cs.push_back(rows[i][t].second); }
-            SCIP_CALL( SCIPcreateConsBasicLinear(scip, &cons, nm, (int) vs.size(),
-                                                 vs.empty()?NULL:vs.data(), cs.empty()?NULL:cs.data(), lhs, rhs) );
-            SCIP_CALL( SCIPaddCons(scip, cons) );
-            SCIP_CALL( SCIPreleaseCons(scip, &cons) );
-        }
-        SCIP_CALL( SCIPsolve(scip) );
-        SCIP_SOL* sol = SCIPgetBestSol(scip);
-        SCIP_STATUS sstat = SCIPgetStatus(scip);
-        MatrixXd xstar = xc; bool haveSol = (sol != NULL);
-        if (haveSol) { for (int j = 0; j < nx; ++j) xstar(j,0) = SCIPgetSolVal(scip, sol, var[j]);
-                       status_optimal = (sstat == SCIP_STATUS_OPTIMAL); }
-        for (int j = 0; j < nx; ++j) SCIP_CALL( SCIPreleaseVar(scip, &var[j]) );
-        SCIP_CALL( SCIPfree(&scip) );
+        if (haveSol) status_optimal = (sstat == SCIP_STATUS_OPTIMAL);
 
         if (!haveSol) {
             // An INFEASIBLE master means the trust region is too tight to satisfy the

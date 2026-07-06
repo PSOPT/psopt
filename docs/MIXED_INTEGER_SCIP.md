@@ -37,13 +37,17 @@ requires more than dropping in a solver:
   if the dynamics/cost are nonlinear. Example: `examples/scip_miop` — integer thrust
   `u∈{-1,0,1}`, global bang-off-bang, Σ|u|=8, solved via `nlp_method="SCIP"`.
   Build: `-DPSOPT_WITH_SCIP=ON` (compiles `SCIP_interface.cxx`, links `libscip`).
-- **Phase D (done, heuristic)**: NONLINEAR dynamics via a Sequential-Linear-Programming
-  loop in `SCIP_interface.cxx` — re-linearise about the incumbent, let SCIP re-optimise
-  the MILP within a trust region on the continuous variables, then a second phase pins
-  the integer schedule and polishes the continuous states. First-order, so it returns a
-  **near-feasible** integer solution, not guaranteed tight/global feasibility (violation
-  scales with the nonlinearity; e.g. quadratic drag `0.03·vel²` → ~7e-3). Example:
-  `examples/scip_nlmiop`. For exact/global results keep the transcription linear.
+- **Phase D (done)**: NONLINEAR dynamics via a Sequential-Linear-Programming loop in
+  `SCIP_interface.cxx` — re-linearise about the incumbent, let SCIP re-optimise the MILP
+  within a trust region on the continuous variables, plus a second phase that pins the
+  integer schedule and polishes the continuous states. A **second-order correction (SOC)**
+  — evaluate the true constraints at the trial point, shift the model by that curvature
+  residual, and re-solve — is the key heuristic: it converts the stalling first-order SLP
+  into a **converging** solver. On the `scip_nlmiop` example (quadratic drag `0.03·vel²`)
+  it drives the violation to **2.8e-8** (vs a first-order stall at ~7e-3). Reported in
+  three tiers: converged / near-feasible / not-converged. Strong nonlinearity can still
+  land in the near-feasible tier (drag `0.1·vel²` → ~1.3e-2, integer-schedule instability),
+  better than first-order (~2.3e-2); keep the transcription linear for exact/global results.
 - **Beyond Phase D**: tight nonlinear MINLP would need SCIP's native nonlinear
   expression interface (not reachable from PSOPT's opaque ADOL-C callbacks) or a full
   SQP/outer-approximation with an NLP subproblem solver — a separate, larger effort.
