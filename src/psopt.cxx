@@ -293,6 +293,22 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     }
 
+    else if ( algorithm.collocation_method == "Gauss" ) {
+        for(i=0; i<nphases; i++) {
+            lgnodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i], workspace );
+            sort_vector(workspace->snodes[i],workspace->sindex[i]);
+            rearrange_vector(workspace->w[i], workspace->sindex[i] );
+        }
+    }
+
+    else if ( algorithm.collocation_method == "Radau" ) {
+        for(i=0; i<nphases; i++) {
+            lgrnodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i], workspace );
+            sort_vector(workspace->snodes[i],workspace->sindex[i]);
+            rearrange_vector(workspace->w[i], workspace->sindex[i] );
+        }
+    }
+
     else if ( ( use_local_collocation(algorithm) && (iter_nodes==1)) || (use_local_collocation(algorithm) && (iter_nodes>1) && (algorithm.mesh_refinement=="manual") )  ) {
 
 	    for(i=0; i<nphases; i++)
@@ -311,6 +327,17 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     else {
         	hotflag = 1;
 			hot_start_nlp_guess(x0, lambda, solution,problem,algorithm, workspace->prev_states, workspace->prev_controls, workspace->prev_costates, workspace->prev_path, workspace->prev_nodes, workspace->prev_param, *workspace->prev_t0, *workspace->prev_tf, workspace);
+    }
+
+    // Endpoint interpolation weights for boundary conditions. For global
+    // collocation, the initial/final states are the interpolant evaluated at
+    // t=-1 / t=+1. LGL/CGL include the endpoints (weights reduce to unit
+    // vectors); Radau/Gauss do not, so these interpolate to the true endpoints.
+    if ( use_global_collocation(algorithm) ) {
+        for(i=0; i<nphases; i++) {
+            lagrange_endpoint_weights(workspace->snodes[i], -1.0, workspace->Lt0[i]);
+            lagrange_endpoint_weights(workspace->snodes[i], +1.0, workspace->Ltf[i]);
+        }
     }
 
   	// Define NLP bounds on the decision vector

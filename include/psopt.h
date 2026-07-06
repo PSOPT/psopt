@@ -534,6 +534,8 @@ public:
    MatrixXd*  D2;
    MatrixXd*  snodes;
    MatrixXd*  old_snodes;
+   MatrixXd*  Lt0;   // Lagrange interpolation weights to t=-1 (initial endpoint), per phase
+   MatrixXd*  Ltf;   // Lagrange interpolation weights to t=+1 (final endpoint), per phase
    MatrixXd*  xlb;
    MatrixXd*  xub;
    MatrixXd*  x0;
@@ -716,6 +718,12 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm);
 void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace* workspace);
 
 void lglnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& P, MatrixXd& D, Workspace* workspace);
+
+void lgnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D, Workspace* workspace);
+
+void lgrnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D, Workspace* workspace);
+
+void lagrange_endpoint_weights(const MatrixXd& x, double t, MatrixXd& L);
 
 void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspace);
 

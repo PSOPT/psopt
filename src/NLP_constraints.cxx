@@ -170,14 +170,37 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
             get_states(states, xad, iphase, k, workspace);
 
-            if (k==0) {  // EIGEN_UPDATE
-               for(j=0;j<nstates;j++)
-                    initial_states[j] = states[j];
+            // Global collocation: accumulate the endpoint interpolant
+            // (Lt0/Ltf); unit vectors for LGL/CGL, true interpolation for
+            // Radau/Gauss. Local methods use the first/last node directly.
+            if ( use_global_collocation(*algorithm) ) {
+               // Ensure the endpoint interpolation weights are sized (they only
+               // depend on snodes, always set before gg_ad); compute once. Then
+               // zero-initialise the endpoint states at k==0.
+               if (k==0) {
+                   if ((int)(workspace->Lt0[i].size()) != norder+1) {
+                       lagrange_endpoint_weights(workspace->snodes[i], -1.0, workspace->Lt0[i]);
+                       lagrange_endpoint_weights(workspace->snodes[i], +1.0, workspace->Ltf[i]);
+                   }
+                   for(j=0;j<nstates;j++) { initial_states[j] = 0.0; final_states[j] = 0.0; }
+               }
+               // Accumulate only non-zero weights (LGL/CGL contribute a single
+               // node -> no spurious 0*state tape entries; Radau/Gauss interpolate).
+               double l0 = (workspace->Lt0[i])(k), lf = (workspace->Ltf[i])(k);
+               for(j=0;j<nstates;j++) {
+                    if (l0 != 0.0) initial_states[j] += l0 * states[j];
+                    if (lf != 0.0) final_states[j]  += lf * states[j];
+               }
             }
-
-            if (k==(norder)) { // EIGEN_UPDATE
-               for(j=0;j<nstates;j++)
-                    final_states[j] = states[j];
+            else {
+               if (k==0) {  // EIGEN_UPDATE
+                  for(j=0;j<nstates;j++)
+                       initial_states[j] = states[j];
+               }
+               if (k==(norder)) { // EIGEN_UPDATE
+                  for(j=0;j<nstates;j++)
+                       final_states[j] = states[j];
+               }
             }
 
             time = convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );

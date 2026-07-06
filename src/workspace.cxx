@@ -49,6 +49,8 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   workspace->D         = new MatrixXd[nphases];
   workspace->snodes    = new MatrixXd[nphases];
   workspace->old_snodes= new MatrixXd[nphases];
+  workspace->Lt0       = new MatrixXd[nphases];
+  workspace->Ltf       = new MatrixXd[nphases];
   workspace->xlb       = new MatrixXd;
   workspace->xub       = new MatrixXd;
   workspace->x0        = new MatrixXd;
@@ -489,6 +491,8 @@ work_str::~work_str()
   delete [] this->D;
   delete [] this->snodes;
   delete [] this->old_snodes;
+  delete [] this->Lt0;
+  delete [] this->Ltf;
   delete    this->xlb;
   delete    this->xub;
   delete    this->x0;

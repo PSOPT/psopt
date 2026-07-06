@@ -533,3 +533,78 @@ void cglnodes(int N, MatrixXd& x, MatrixXd& w,  MatrixXd& D, Workspace* workspac
   return;
 
 }
+
+
+// ---------------------------------------------------------------------------
+// Legendre-Gauss (LG) and Legendre-Gauss-Radau (LGR) pseudospectral node sets.
+// Both build a square barycentric differentiation matrix over M=N+1 nodes and
+// return Gauss/Radau quadrature weights. Unlike LGL these do not include both
+// (LG: neither; LGR: only t=-1) endpoints, so boundary conditions must be
+// interpolated to the endpoints (see lagrange_endpoint_weights + NLP_constraints).
+// The node/weight math is validated against exact values in ps_nodes_test.cpp.
+// ---------------------------------------------------------------------------
+
+// Barycentric differentiation matrix D (M x M) for a distinct node set x.
+static void barycentric_diffmat(const MatrixXd& x, MatrixXd& D)
+{
+    int n = (int) x.size();
+    MatrixXd b(n,1);
+    for (int j=0;j<n;j++){ double p=1.0; for(int k=0;k<n;k++) if(k!=j) p*=(x(j)-x(k)); b(j)=1.0/p; }
+    D.resize(n,n);
+    for (int i=0;i<n;i++){
+        double diag=0.0;
+        for (int j=0;j<n;j++) if(j!=i){ D(i,j)=(b(j)/b(i))/(x(i)-x(j)); diag-=D(i,j); }
+        D(i,i)=diag;
+    }
+}
+
+// Lagrange interpolation weights L (1 x M) so that f(t) ~= sum_k L(k) f(x_k).
+// If t coincides with a node, returns the corresponding unit vector (so LGL/CGL,
+// whose endpoints ARE nodes, reduce to selecting that node's value).
+void lagrange_endpoint_weights(const MatrixXd& x, double t, MatrixXd& L)
+{
+    int n = (int) x.size();
+    L.resize(1,n); L.setZero();
+    for (int k=0;k<n;k++) if (fabs(t-x(k)) < 1e-12) { L(0,k)=1.0; return; }
+    MatrixXd b(n,1);
+    for (int j=0;j<n;j++){ double p=1.0; for(int kk=0;kk<n;kk++) if(kk!=j) p*=(x(j)-x(kk)); b(j)=1.0/p; }
+    double s=0.0;
+    for (int k=0;k<n;k++){ L(0,k)=b(k)/(t-x(k)); s+=L(0,k); }
+    for (int k=0;k<n;k++) L(0,k)/=s;
+}
+
+// M = N+1 Legendre-Gauss nodes/weights (Golub-Welsch) + barycentric diff matrix.
+void lgnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D, Workspace* /*workspace*/)
+{
+    int M = N+1;
+    MatrixXd J = MatrixXd::Zero(M,M);
+    for (int k=1;k<M;k++){ double b=k/sqrt(4.0*k*k-1.0); J(k-1,k)=b; J(k,k-1)=b; }
+    Eigen::SelfAdjointEigenSolver<MatrixXd> es(J);
+    Eigen::VectorXd ev=es.eigenvalues(); MatrixXd V=es.eigenvectors();
+    x.resize(M,1); w.resize(M,1);
+    for (int i=0;i<M;i++){ x(i)=ev(i); w(i)=2.0*V(0,i)*V(0,i); }   // ascending
+    barycentric_diffmat(x,D);
+}
+
+// M = N+1 Legendre-Gauss-Radau nodes/weights (fixed at t=-1) + diff matrix,
+// via the Golub-Welsch-Radau modification of the last Jacobi diagonal.
+void lgrnodes(int N, MatrixXd& x, MatrixXd& w, MatrixXd& D, Workspace* /*workspace*/)
+{
+    int M = N+1; double a=-1.0;
+    Eigen::VectorXd beta(M); beta.setZero();
+    for (int k=1;k<M;k++) beta(k)=k/sqrt(4.0*k*k-1.0);
+    int m1=M-1;
+    MatrixXd T = MatrixXd::Zero(m1,m1);
+    for (int k=1;k<m1;k++){ T(k-1,k)=beta(k); T(k,k-1)=beta(k); }
+    Eigen::VectorXd rhs=Eigen::VectorXd::Zero(m1); rhs(m1-1)=beta(M-1)*beta(M-1);
+    Eigen::VectorXd delta=(T - a*MatrixXd::Identity(m1,m1)).colPivHouseholderQr().solve(rhs);
+    double alphaM = a + delta(m1-1);
+    MatrixXd J = MatrixXd::Zero(M,M);
+    for (int k=1;k<M;k++){ J(k-1,k)=beta(k); J(k,k-1)=beta(k); }
+    J(M-1,M-1)=alphaM;
+    Eigen::SelfAdjointEigenSolver<MatrixXd> es(J);
+    Eigen::VectorXd ev=es.eigenvalues(); MatrixXd V=es.eigenvectors();
+    x.resize(M,1); w.resize(M,1);
+    for (int i=0;i<M;i++){ x(i)=ev(i); w(i)=2.0*V(0,i)*V(0,i); }
+    barycentric_diffmat(x,D);
+}
