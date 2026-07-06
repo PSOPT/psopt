@@ -79,9 +79,16 @@ handles them natively:
   `c(T)=b(T)²=0.64` (rank-1), `det ≥ 0` held throughout. Larger matrices use all leading
   principal minors (Sylvester's criterion).
 
-## Genuinely missing (need new machinery / backends — deferred)
-- **Mixed-integer / switching** constraints — MINLP backend (SCIP). See
-  `docs/MIXED_INTEGER_SCIP.md` for the integration status.
+## Status
+The constraint catalogue is now fully covered — every type above is either a native
+declaration or a demonstrated native-mechanism example. **Mixed-integer** control has an
+in-core `nlp_method="SCIP"` backend (exact for linear transcriptions; nonlinear via an
+SLP + second-order-correction loop that converges for mild–moderate nonlinearity) — see
+`docs/MIXED_INTEGER_SCIP.md`.
+
+Remaining refinements (not new constraint *types*):
+- Tight global MINLP for *strongly* nonconvex nonlinear dynamics (would need SCIP's native
+  nonlinear expression interface or a full SQP/outer-approximation).
 
 See `docs/EXTENSIONS_STATUS.md` for the overall branch status.
 </content>
