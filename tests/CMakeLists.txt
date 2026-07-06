@@ -14,7 +14,7 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-file(GLOB SRC "*.cpp")
+file(GLOB SRC CONFIGURE_DEPENDS "*.cpp")
 add_executable(${PROJECT_NAME} ${SRC})
 add_dependencies(${PROJECT_NAME} psopt)
 
