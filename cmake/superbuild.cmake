@@ -183,14 +183,35 @@ if(PSOPT_PARDISO_LFLAGS)
   message(STATUS "IPOPT: building with PARDISO (${PSOPT_PARDISO_LFLAGS})")
 endif()
 
+# SPRAL (ssids): open-source OpenMP-threaded sparse symmetric-indefinite solver
+# from STFC, a free alternative to PARDISO/ma97. Built with Meson; needs METIS 5,
+# BLAS/LAPACK (OpenBLAS), and hwloc (MacPorts /opt/local by default). Select at
+# runtime with algorithm.ipopt_linear_solver="spral".
+set(_ipopt_spral_flag "--without-spral")
+set(_ipopt_spral_dep "")
+set(PSOPT_SPRAL_DEP_PREFIX "/opt/local" CACHE PATH "Prefix providing METIS 5 / OpenBLAS / hwloc for SPRAL")
+if(PSOPT_WITH_SPRAL)
+  ExternalProject_Add(ep_spral
+    GIT_REPOSITORY https://github.com/ralna/spral.git GIT_TAG master GIT_SHALLOW TRUE
+    CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${SB_CC} CXX=${SB_CXX} FC=${SB_FC}
+        meson setup <BINARY_DIR> <SOURCE_DIR> --prefix=${SB_INSTALL} -Ddefault_library=shared
+        -Dlibblas=openblas -Dliblapack=openblas -Dlibmetis=metis -Dlibhwloc=hwloc
+        -Dlibmetis_path=${PSOPT_SPRAL_DEP_PREFIX}/lib -Dlibblas_path=${PSOPT_SPRAL_DEP_PREFIX}/lib -Dlibhwloc_path=${PSOPT_SPRAL_DEP_PREFIX}/lib
+        -Dopenmp=true -Dexamples=false -Dtests=false -Dbinaries=false
+    BUILD_COMMAND meson compile -C <BINARY_DIR>
+    INSTALL_COMMAND meson install -C <BINARY_DIR>)
+  set(_ipopt_spral_dep ep_spral)
+  set(_ipopt_spral_flag "--with-spral-lflags=-L${SB_INSTALL}/lib -lspral -L${PSOPT_SPRAL_DEP_PREFIX}/lib -lopenblas -lmetis -lhwloc")
+endif()
+
 # ---- IPOPT (autotools; uses coinmumps + optional coinhsl via pkg-config) ----
 ExternalProject_Add(ep_ipopt
-  DEPENDS ep_mumps ${_ipopt_hsl_dep}
+  DEPENDS ep_mumps ${_ipopt_hsl_dep} ${_ipopt_spral_dep}
   GIT_REPOSITORY https://github.com/coin-or/Ipopt.git GIT_TAG stable/3.14 GIT_SHALLOW TRUE
   CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${SB_PKGCFG}
       <SOURCE_DIR>/configure --prefix=${SB_INSTALL}
       CC=${SB_CC} CXX=${SB_CXX} FC=${SB_FC}
-      --with-mumps ${_ipopt_hsl_flag} ${_ipopt_pardiso_flag}
+      --with-mumps ${_ipopt_hsl_flag} ${_ipopt_pardiso_flag} ${_ipopt_spral_flag}
       --with-lapack-lflags=${SB_BLAS_LFLAGS} --with-blas-lflags=${SB_BLAS_LFLAGS}
       --disable-java --without-asl
   BUILD_COMMAND make -j

@@ -32,6 +32,7 @@ option(PSOPT_WITH_OPENMP  "Enable OpenMP (threaded BLAS/HSL/ColPack, parallel MU
 option(PSOPT_WITH_MPI     "Enable MPI (distributed-memory MUMPS; see macOS-26 caveat)" OFF)
 option(PSOPT_SUPERBUILD   "Download and build missing dependencies from source" OFF)
 option(PSOPT_WITH_INT64   "64-bit integer addressing (ILP64) for very large NLPs" OFF)
+option(PSOPT_WITH_SPRAL   "Build the open-source SPRAL (ssids) threaded sparse solver into IPOPT" OFF)
 option(BUILD_EXAMPLES     "Build examples from the example subdirectory."      ON)
 option(BUILD_TESTS        "Build tests for PSOPT."                             ON)
 option(HEADLESS           "Gnuplot writes PDFs instead of spawning windows."   OFF)
