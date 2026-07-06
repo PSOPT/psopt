@@ -18,7 +18,7 @@ multi-phase / auxiliary states), as shown by the examples.
 ## Advanced constraints (expressed via the mechanisms above)
 | constraint | technique | example |
 |---|---|---|
-| **integral / isoperimetric** `∫ q dt ⋛ C` | auxiliary state `I' = q`, bound `I(t_f)` via an event | `isoperimetric` |
+| **integral / isoperimetric** `∫ q dt ⋛ C` | **NATIVE**: `problem.phase[i].nintegral`, `integral_constraints()`, `bounds.*.integral`; *or* the aux-state pattern | **`integral_ctc`** (native), `isoperimetric` (aux-state) |
 | **interior-point** `g(x(t₁))⋛c` at an interior time | **NATIVE**: `problem.phase[i].ninterior`, `interior_time`, `interior_point_constraints()` (single phase); *or* the phase-split pattern | **`interior_ptc`** (native), `interior_point` (phase-split) |
 | **control-rate** `|u̇| ≤ R` | promote `u` to a state, new control `v=u̇`, bound `|v|≤R` | **`control_rate`** (new) |
 | **time-windowed path** `g(x)≤0` only for `t∈[t_a,t_b]` | smooth gate: `path = g − BIG·(1−gate(t))`, `gate≈1` in-window | **`path_window`** (new) |
@@ -47,12 +47,19 @@ before the t0≤tf slot; `ninterior==0` (the default) leaves the layout unchange
 so existing examples are byte-for-byte unregressed. Example: **`interior_ptc`**
 (waypoint `pos(0.3·T)=0.5`, which raises the min-energy cost 12→38.1).
 
-## Genuinely missing (need native support / new backends — deferred)
-- **Native integral-constraint declaration** (today via the aux-state/events
-  reformulation). Could reuse the cost-quadrature; an invasive NLP-offset change
-  analogous to the interior-point one just added.
+## Native integral constraints (NEW)
+`problem.phase[i].nintegral` + the `integral_constraints(q, states, controls,
+params, t, iphase, ws)` hook + `bounds.*.integral` declare `I_L ≤ ∫q dt ≤ I_U`
+directly. PSOPT integrates each integrand with the **collocation quadrature**
+(the same `workspace->w` weights as the running cost) and bounds the result; it
+sits in the per-phase tail `[…|interior|integral|t0≤tf]`, and `nintegral==0`
+(default) leaves the layout unchanged (zero regression). Example: **`integral_ctc`**
+(area `∫pos dt=0.40` vs unconstrained 0.5 → cost 12→19.2).
+
+## Genuinely missing (need new machinery / backends — deferred)
 - **Uncertainty propagation** for true chance/robust control (covariance states).
-- **Mixed-integer / switching** constraints (need a MINLP backend, e.g. Bonmin).
+- **Mixed-integer / switching** constraints — MINLP backend (SCIP). See
+  `docs/MIXED_INTEGER_SCIP.md` for the integration status.
 - **Conic (SOC/SDP)** structure (only smooth-nonlinear reformulations today).
 
 See `docs/EXTENSIONS_STATUS.md` for the overall branch status.

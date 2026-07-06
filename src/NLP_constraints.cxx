@@ -357,7 +357,9 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
         // the t0<=tf slot; for ninterior==0 this block is skipped (no regression).
         {
             int ninterior = problem->phase[i].ninterior;
+            int nintegral = problem->phase[i].nintegral;
             int ncontrols = problem->phase[i].ncontrols;
+            // Layout tail: [ ... interior(ninterior) | integral(nintegral) | t0<=tf(1) ]
             if ( ninterior > 0 && problem->interior_point_constraints != NULL ) {
                 adouble* ctrl_traj = new adouble[ (ncontrols>0? ncontrols:1)*(norder+1) ];
                 for (int kk=0; kk<norder+1; kk++) {
@@ -375,9 +377,28 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                     adouble tk = t0 + (tf - t0)*s;
                     adouble gv = 0.0;
                     problem->interior_point_constraints(&gv, xinterp, uinterp, parameters, tk, m, iphase, workspace);
-                    gad[ phase_offset + ncons_phase_i - 1 - ninterior + m ] = gv;
+                    gad[ phase_offset + ncons_phase_i - 1 - nintegral - ninterior + m ] = gv;
                 }
                 delete [] ctrl_traj; delete [] xinterp; delete [] uinterp;
+            }
+
+            // Integral (isoperimetric) constraints: I_m = sum_k (tf-t0)/2 * q_m(node k) * w(k),
+            // the same global quadrature used for the running cost. Skipped when nintegral==0.
+            if ( nintegral > 0 && problem->integral_constraints != NULL ) {
+                MatrixXd& wq = workspace->w[i];
+                adouble* qacc = new adouble[nintegral];
+                adouble* qk   = new adouble[nintegral];
+                for (int m=0;m<nintegral;m++) qacc[m]=0.0;
+                for (int kk=0; kk<norder+1; kk++) {
+                    get_states(states, xad, iphase, kk, workspace);
+                    get_controls(controls, xad, iphase, kk, workspace);
+                    adouble tq = convert_to_original_time_ad( (workspace->snodes[i])(kk), t0, tf );
+                    problem->integral_constraints(qk, states, controls, parameters, tq, iphase, workspace);
+                    for (int m=0;m<nintegral;m++) qacc[m] += ((tf-t0)/2.0)*qk[m]*wq(kk);
+                }
+                for (int m=0;m<nintegral;m++)
+                    gad[ phase_offset + ncons_phase_i - 1 - nintegral + m ] = qacc[m];
+                delete [] qacc; delete [] qk;
             }
         }
 

@@ -204,15 +204,23 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 	}
 
 
-        // Bounds for the interior-point constraints (placed just before the
-        // t0<=tf slot; skipped when ninterior==0).
+        // Bounds for the interior-point and integral constraints (tail of the
+        // per-phase block: [ ... interior | integral | t0<=tf ]). Both skipped
+        // when their count is 0.
         {
             int ninterior = problem->phase[i].ninterior;
+            int nintegral = problem->phase[i].nintegral;
             for (int m=0; m<ninterior; m++) {
-                int jj = lam_phase_offset + ncons_phase_i - 1 - ninterior + m;
+                int jj = lam_phase_offset + ncons_phase_i - 1 - nintegral - ninterior + m;
                 double interior_sc = (algorithm->scaling=="user") ? 1.0 : constraint_scaling(jj);
                 g_l[jj] = (problem->phase[i].bounds.lower.interior)(m)*interior_sc;
                 g_u[jj] = (problem->phase[i].bounds.upper.interior)(m)*interior_sc;
+            }
+            for (int m=0; m<nintegral; m++) {
+                int jj = lam_phase_offset + ncons_phase_i - 1 - nintegral + m;
+                double integral_sc = (algorithm->scaling=="user") ? 1.0 : constraint_scaling(jj);
+                g_l[jj] = (problem->phase[i].bounds.lower.integral)(m)*integral_sc;
+                g_u[jj] = (problem->phase[i].bounds.upper.integral)(m)*integral_sc;
             }
         }
 
