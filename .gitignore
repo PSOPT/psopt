@@ -42,3 +42,9 @@ __pycache__/
 *.pyc
 *.egg-info/
 dist/
+# out-of-source build directories (any build-*), run scratch, and logs
+build-*/
+mmrun/
+superbuild.log
+run.log
+*_superbuild.log
