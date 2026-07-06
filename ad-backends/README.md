@@ -54,4 +54,17 @@ from source: coin-or/CppAD, joaoleal/CppADCodeGen, Trilinos/Sacado (C++20, Kokko
 OFF), EnzymeAD/Enzyme (vs llvm-20); ADOL-C 2.7.2 from the PSOPT superbuild.
 Operator-overload drivers compile with `g++-mp-15`; Enzyme with `llvm-20 clang`.
 Full run captured in `RESULTS.txt`.
+
+## Closeout / status
+This shootout is **complete**: all five backends build, validate against finite
+differences, and are benchmarked — the decision input is done. The **PSOPT
+integration** (a `derivatives="enzyme"` / `"cppadcodegen"` provider in
+`src/derivatives.cxx`) is **deferred** as its own effort:
+- *Enzyme first* — lowest source churn (differentiates the compiled `double`
+  callbacks, no scalar-templated problem API), beats ADOL-C, and is not
+  architecturally blocked. Needs the LLVM/Enzyme clang toolchain.
+- *CppADCodeGen second* — fastest, but requires a scalar-templated problem API
+  (a larger refactor of the `dae`/cost path).
+Until then, ADOL-C remains PSOPT's integrated AD; this directory is the reference
+harness and evidence for the integration when it is undertaken.
 </content>
