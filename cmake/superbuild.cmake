@@ -101,7 +101,11 @@ ExternalProject_Add(ep_mumps
   GIT_REPOSITORY https://github.com/coin-or-tools/ThirdParty-Mumps.git GIT_TAG stable/3.0 GIT_SHALLOW TRUE
   CONFIGURE_COMMAND cd <SOURCE_DIR> && ./get.Mumps
           COMMAND ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${SB_PKGCFG} <SOURCE_DIR>/configure --prefix=${SB_INSTALL} CC=${SB_CC} FC=${SB_FC} --with-metis --with-lapack-lflags=${SB_BLAS_LFLAGS} --with-blas-lflags=${SB_BLAS_LFLAGS} ${SB_INT64_MUMPS_FLAGS}
-  BUILD_COMMAND cd <SOURCE_DIR> && make -j
+  # MUMPS' Makefile does not order its Fortran module dependencies, so a parallel
+  # `make -j` intermittently fails ("Cannot open module file 'mumps_lr_common.mod'").
+  # Try parallel first, then fall back to a serial `make` which resolves the modules
+  # in order and finishes whatever the parallel pass missed.
+  BUILD_COMMAND cd <SOURCE_DIR> && sh -c "make -j || make"
   INSTALL_COMMAND cd <SOURCE_DIR> && make install
   BUILD_IN_SOURCE 1)
 
@@ -245,7 +249,10 @@ if(PSOPT_WITH_SCIP)
                -DCMAKE_BUILD_TYPE=Release
                -DSOPLEX_DIR=${SB_INSTALL} -DGMP=on -DREADLINE=on
                -DIPOPT=on -DIPOPT_DIR=${SB_INSTALL}
-               -DZIMPL=off -DPAPILO=off -DSYM=none -DBUILD_TESTING=OFF)
+               # AMPL=off: SCIP's bundled AMPL .nl reader (amplmp/src/os.cpp) pulls in
+               # Apple <mach/message.h>, which MacPorts gcc-15 cannot parse. Not needed
+               # for the transcription-based MIOC use case.
+               -DAMPL=off -DZIMPL=off -DPAPILO=off -DSYM=none -DBUILD_TESTING=OFF)
   set(_psopt_scip_dep ep_scip)
 endif()
 
