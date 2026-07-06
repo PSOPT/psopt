@@ -103,7 +103,10 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 
 
 
-  if (algorithm.nlp_method=="IPOPT") {
+  // The SCIP mixed-integer backend runs IPOPT NLP subproblems (integers pinned),
+  // which trigger IPOPT_PSOPT::get_nlp_info -> it writes the Jacobian-sparsity
+  // arrays. So allocate them for SCIP too (leaving them NULL segfaults get_nlp_info).
+  if (algorithm.nlp_method=="IPOPT" || algorithm.nlp_method=="SCIP") {
 	workspace->iArow     = new int[(int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons)];
 	workspace->jAcol     = new int[(int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons)];
 	workspace->iGrow     = new int[(int) (algorithm.jac_sparsity_ratio*max_nvars*max_ncons)];

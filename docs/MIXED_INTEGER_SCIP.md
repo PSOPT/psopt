@@ -55,18 +55,24 @@ requires more than dropping in a solver:
      schedule and drive the continuous states to feasibility with a trust-region-free
      Gauss-Newton + SOC loop (no objective, pure restoration). Safe (skipped once
      converged); tightens cases where the schedule admits a feasible completion.
-  Plus `psopt_ipopt_resolve()` (in `NLP_interface.cxx`) — the NLP-subproblem building
-  block for a full OA driver.
-- **Remaining frontier — tight GLOBAL nonlinear MINLP**: when the integer *schedule*
-  itself is infeasible for the exact dynamics (forcing the defects to zero pushes the
-  endpoint out of its bounds), no continuous polish suffices — a **different** schedule
-  is needed. That requires a **top-level Outer-Approximation driver** in `psopt.cxx`:
-  alternate the SCIP master (accumulating integer/OA cuts) with `psopt_ipopt_resolve()`
-  as the NLP subproblem (integers pinned), until the bounds meet. This must run at the
-  psopt() level because `IPOPT_PSOPT` is not re-entrant inside another backend's solve
-  (nesting IPOPT segfaults in `get_nlp_info`). This is the identified next architectural
-  step; alternatively use SCIP's native nonlinear expression interface (not reachable
-  from PSOPT's opaque ADOL-C callbacks) or CasADi's SCIP/bonmin plugins.
+  3. **Outer-Approximation (OA) driver** — when residual infeasibility remains, alternate
+     a SCIP **master** (integers + an objective epigraph + *accumulated* OA linearisation
+     cuts `g(p)+J_p(x−p)`) with an **IPOPT NLP subproblem** that pins the master's integer
+     schedule and solves the continuous problem to true nonlinear feasibility
+     (`psopt_ipopt_resolve()`), adding each subproblem point as a new cut. This searches
+     *different* integer schedules (not just polishing one), improving strongly-nonlinear
+     cases (drag `0.1·vel²`: 1.3e-2 → 8.8e-3 through the IPOPT subproblem; the master then
+     proves no better schedule under the cuts). For a feasible schedule the subproblem
+     drives the violation to ~0.
+  - The nested IPOPT call was unblocked by a real bug fix: the SCIP branch now allocates
+    the Jacobian-sparsity workspace (`workspace.cxx`), which `IPOPT_PSOPT::get_nlp_info`
+    writes — leaving it NULL (as the SCIP path did) segfaulted, which had looked like a
+    reentrancy limit but was just an unallocated buffer.
+- **Remaining frontier**: OA is exact/global only for *convex* MINLP; for nonconvex
+  dynamics it is a strong heuristic (no-good/spatial-branching cuts, or SCIP's native
+  nonlinear expression interface, would be needed for a global guarantee). A genuinely
+  infeasible discretisation (no integer schedule reaches the bounds) is reported as the
+  least-infeasible near-feasible point.
 
 ## In-core usage
 ```cpp

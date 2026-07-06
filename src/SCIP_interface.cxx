@@ -56,7 +56,7 @@ int psopt_scip_solve(
     MatrixXd*  xub,
     MatrixXd*  lambda,
     Workspace* workspace,
-    void*      /*user_data*/)
+    void*      user_data)
 {
     Prob& problem = *workspace->problem;
     const int nx = workspace->nvars;
@@ -264,67 +264,94 @@ int psopt_scip_solve(
         }
     }
 
-    // ---- Outer-Approximation refinement (the tight-MINLP step) -----------------
-    // If the SLP left residual nonlinear infeasibility, PIN the incumbent integer
-    // schedule and drive the CONTINUOUS states to true feasibility with a
-    // trust-region-FREE Gauss-Newton loop: with integers fixed the linearised
-    // defects determine the continuous trajectory, and the second-order correction
-    // (SOC) supplies the curvature, giving Newton-like convergence. (A nested IPOPT
-    // NLP subproblem would be the textbook OA step but PSOPT's IPOPT_PSOPT is not
-    // re-entrant within the solve lifecycle, so we use the in-backend Gauss-Newton.)
+    // ---- Outer-Approximation driver (tight nonlinear MINLP) --------------------
+    // Alternate: (master) a SCIP MILP over the integers with accumulated OA
+    // linearisation cuts g(p)+J_p(x-p) and an objective epigraph, giving an integer
+    // schedule + lower bound; (subproblem) pin that schedule and solve the continuous
+    // NLP EXACTLY with IPOPT (true nonlinear dynamics) for an upper bound; add its
+    // linearisation as a new cut. This finds a FEASIBLE integer schedule even when the
+    // SLP incumbent was infeasible. Nested IPOPT is safe now that the SCIP branch
+    // allocates the Jacobian-sparsity workspace (see workspace.cxx).
     if (!linear && bestViol > FEASTOL) {
+        extern int psopt_ipopt_resolve(Workspace*, void*);
         double v_before = bestViol;
-        for (int j = 0; j < nx; ++j) if (isInt[j]) pinval[j] = std::floor(best(j,0) + 0.5);
-        pinned = true; Delta = 1e30;                 // pin integers, no trust region
-        MatrixXd xg = best;
-        for (int it = 0; it < 12 && bestViol > FEASTOL; ++it) {
-            // linearise at xg
-            MatrixXd gb(ng > 0 ? ng : 1, 1); if (ng > 0) g(xg, &gb, workspace);
-            double f0 = f(xg, workspace);
-            std::vector<double> c(nx, 0.0);
-            std::vector<std::vector<std::pair<int,double> > > rows(ng > 0 ? ng : 1);
-            MatrixXd xj(nx,1), gj(ng > 0 ? ng : 1, 1);
-            for (int j = 0; j < nx; ++j) { xj = xg; xj(j,0)+=1.0; c[j]=f(xj,workspace)-f0;
-                if (ng>0){ g(xj,&gj,workspace); for (int i=0;i<ng;++i){ double v=gj(i,0)-gb(i,0); if (v>tol||v<-tol) rows[i].push_back(std::make_pair(j,v)); } } }
-            std::vector<double> Jxg(ng > 0 ? ng : 1, 0.0);
-            for (int i=0;i<ng;++i) for (size_t t=0;t<rows[i].size();++t) Jxg[i]+=rows[i][t].second*xg(rows[i][t].first,0);
-            // one SCIP LP solve (integers pinned, no TR) + a second-order correction
-            auto solveG = [&](const std::vector<double>& shift, MatrixXd& xout)->bool{
-                SCIP* scip=NULL; SCIPcreate(&scip); SCIPincludeDefaultPlugins(scip);
-                SCIPcreateProbBasic(scip,"oa_nlp"); SCIPsetObjsense(scip,SCIP_OBJSENSE_MINIMIZE);
-                SCIPsetIntParam(scip,"display/verblevel",0); SCIPsetRealParam(scip,"limits/gap",1e-9);
-                std::vector<SCIP_VAR*> var(nx); char nm[32];
-                for (int j=0;j<nx;++j){ snprintf(nm,sizeof(nm),"x%d",j);
-                    double lo=(*xlb)(j,0), hi=(*xub)(j,0);
-                    if (isInt[j]) { lo=hi=pinval[j]; }
-                    if (lo<=-1e19) lo=-SCIPinfinity(scip); if (hi>=1e19) hi=SCIPinfinity(scip); if (lo>hi){double m=0.5*(lo+hi);lo=hi=m;}
-                    // zero objective: this is a FEASIBILITY-restoration step (find a
-                    // continuous completion of the pinned schedule; SOC then tightens it)
-                    SCIPcreateVarBasic(scip,&var[j],nm,lo,hi,0.0,SCIP_VARTYPE_CONTINUOUS); SCIPaddVar(scip,var[j]); }
-                for (int i=0;i<ng;++i){ SCIP_CONS* cons; snprintf(nm,sizeof(nm),"g%d",i);
-                    double sh=shift.empty()?0.0:shift[i];
-                    double lhs=gl[i]-gb(i,0)+Jxg[i]-sh, rhs=gu[i]-gb(i,0)+Jxg[i]-sh;
+        // linearise f and g at a point p -> gradf (in cpt) and rows (Jp) and gp
+        auto linearize = [&](const MatrixXd& p, std::vector<double>& cpt,
+                             std::vector<std::vector<std::pair<int,double> > >& rws, MatrixXd& gp, double& f0){
+            gp.resize(ng>0?ng:1,1); if (ng>0) g(const_cast<MatrixXd&>(p),&gp,workspace);
+            f0 = f(const_cast<MatrixXd&>(p),workspace);
+            cpt.assign(nx,0.0); rws.assign(ng>0?ng:1, std::vector<std::pair<int,double> >());
+            MatrixXd xj(nx,1), gj(ng>0?ng:1,1);
+            for (int j=0;j<nx;++j){ xj=p; xj(j,0)+=1.0; cpt[j]=f(xj,workspace)-f0;
+                if (ng>0){ g(xj,&gj,workspace); for(int i=0;i<ng;++i){ double v=gj(i,0)-gp(i,0); if(v>tol||v<-tol) rws[i].push_back(std::make_pair(j,v)); } } } };
+
+        std::vector<MatrixXd> cutPts;                 // points we have linearised at
+        std::vector<std::vector<double> > cutC;       // gradf at each
+        std::vector<std::vector<std::vector<std::pair<int,double> > > > cutJ;
+        std::vector<MatrixXd> cutG; std::vector<double> cutF0;
+        { std::vector<double> c0; std::vector<std::vector<std::pair<int,double> > > r0; MatrixXd g0; double f0;
+          linearize(best,c0,r0,g0,f0); cutPts.push_back(best); cutC.push_back(c0); cutJ.push_back(r0); cutG.push_back(g0); cutF0.push_back(f0); }
+
+        const int OA_MAX = 8;
+        for (int oa = 0; oa < OA_MAX && bestViol > FEASTOL; ++oa) {
+            // ---- MASTER: min eta s.t. OA cuts + integrality --------------------
+            SCIP* scip=NULL; SCIPcreate(&scip); SCIPincludeDefaultPlugins(scip);
+            SCIPcreateProbBasic(scip,"oa_master"); SCIPsetObjsense(scip,SCIP_OBJSENSE_MINIMIZE);
+            SCIPsetIntParam(scip,"display/verblevel",0); SCIPsetRealParam(scip,"limits/gap",1e-6);
+            SCIPsetRealParam(scip,"limits/time",30.0);
+            std::vector<SCIP_VAR*> var(nx); SCIP_VAR* eta; char nm[40];
+            for (int j=0;j<nx;++j){ snprintf(nm,sizeof(nm),"x%d",j);
+                SCIP_VARTYPE ty = isInt[j]?SCIP_VARTYPE_INTEGER:SCIP_VARTYPE_CONTINUOUS;
+                double lo=(*xlb)(j,0), hi=(*xub)(j,0);
+                if (lo<=-1e19) lo=-SCIPinfinity(scip); if (hi>=1e19) hi=SCIPinfinity(scip);
+                SCIPcreateVarBasic(scip,&var[j],nm,lo,hi,0.0,ty); SCIPaddVar(scip,var[j]); }
+            SCIPcreateVarBasic(scip,&eta,"eta",-SCIPinfinity(scip),SCIPinfinity(scip),1.0,SCIP_VARTYPE_CONTINUOUS);
+            SCIPaddVar(scip,eta);
+            for (size_t k=0;k<cutPts.size();++k){ const MatrixXd& p=cutPts[k];
+                // objective epigraph:  eta - sum gradf_j x_j >= f0 - sum gradf_j p_j
+                { std::vector<SCIP_VAR*> vs; std::vector<double> cs; double rhs=cutF0[k];
+                  vs.push_back(eta); cs.push_back(1.0);
+                  for (int j=0;j<nx;++j){ if (cutC[k][j]>tol||cutC[k][j]<-tol){ vs.push_back(var[j]); cs.push_back(-cutC[k][j]); rhs -= cutC[k][j]*p(j,0);} }
+                  SCIP_CONS* c; snprintf(nm,sizeof(nm),"obj%zu",k);
+                  SCIPcreateConsBasicLinear(scip,&c,nm,(int)vs.size(),vs.data(),cs.data(),rhs,SCIPinfinity(scip));
+                  SCIPaddCons(scip,c); SCIPreleaseCons(scip,&c); }
+                // constraint cuts:  gl <= g(p)+Jp(x-p) <= gu
+                for (int i=0;i<ng;++i){ double Jp=0.0; for (size_t t=0;t<cutJ[k][i].size();++t) Jp+=cutJ[k][i][t].second*p(cutJ[k][i][t].first,0);
+                    double lhs=gl[i]-cutG[k](i,0)+Jp, rhs=gu[i]-cutG[k](i,0)+Jp;
                     if (lhs<=-1e19) lhs=-SCIPinfinity(scip); if (rhs>=1e19) rhs=SCIPinfinity(scip);
                     std::vector<SCIP_VAR*> vs; std::vector<double> cs;
-                    for (size_t t=0;t<rows[i].size();++t){ vs.push_back(var[rows[i][t].first]); cs.push_back(rows[i][t].second); }
-                    SCIPcreateConsBasicLinear(scip,&cons,nm,(int)vs.size(),vs.empty()?NULL:vs.data(),cs.empty()?NULL:cs.data(),lhs,rhs);
-                    SCIPaddCons(scip,cons); SCIPreleaseCons(scip,&cons); }
-                SCIPsolve(scip); SCIP_SOL* sol=SCIPgetBestSol(scip); bool hs=(sol!=NULL); xout=xg;
-                if (hs) for (int j=0;j<nx;++j) xout(j,0)=SCIPgetSolVal(scip,sol,var[j]);
-                for (int j=0;j<nx;++j) SCIPreleaseVar(scip,&var[j]); SCIPfree(&scip); return hs; };
-            std::vector<double> noshift; MatrixXd xstep;
-            if (!solveG(noshift, xstep)) break;
-            if (ng > 0) { MatrixXd gx(ng,1); g(xstep,&gx,workspace); std::vector<double> r(ng);
-                for (int i=0;i<ng;++i){ double gm=gb(i,0); for (size_t t=0;t<rows[i].size();++t) gm+=rows[i][t].second*(xstep(rows[i][t].first,0)-xg(rows[i][t].first,0)); r[i]=gx(i,0)-gm; }
-                MatrixXd xsoc; if (solveG(r,xsoc)){ double v1;VIOL_OF(xstep,v1); double v2;VIOL_OF(xsoc,v2); if (v2<v1) xstep=xsoc; } }
-            double vv; VIOL_OF(xstep, vv); double oo=f(xstep,workspace);
-            xg = xstep;
-            if (vv < bestViol || (vv < FEASTOL && oo < bestObj)) { best = xstep; bestViol = vv; bestObj = oo; }
+                    for (size_t t=0;t<cutJ[k][i].size();++t){ vs.push_back(var[cutJ[k][i][t].first]); cs.push_back(cutJ[k][i][t].second); }
+                    if (vs.empty()) continue;
+                    SCIP_CONS* c; snprintf(nm,sizeof(nm),"g%zu_%d",k,i);
+                    SCIPcreateConsBasicLinear(scip,&c,nm,(int)vs.size(),vs.data(),cs.data(),lhs,rhs);
+                    SCIPaddCons(scip,c); SCIPreleaseCons(scip,&c); } }
+            SCIPsolve(scip); SCIP_SOL* sol=SCIPgetBestSol(scip);
+            MatrixXd xmas = best; bool hm=(sol!=NULL);
+            if (hm) for (int j=0;j<nx;++j) xmas(j,0)=SCIPgetSolVal(scip,sol,var[j]);
+            SCIPreleaseVar(scip,&eta); for (int j=0;j<nx;++j) SCIPreleaseVar(scip,&var[j]); SCIPfree(&scip);
+            if (!hm) break;                                    // master infeasible: no schedule left
+
+            // ---- SUBPROBLEM: pin the schedule, solve continuous NLP with IPOPT --
+            MatrixXd xlb_s=*xlb, xub_s=*xub;
+            for (int j=0;j<nx;++j) if (isInt[j]){ double v=std::floor(xmas(j,0)+0.5); (*xlb)(j,0)=v; (*xub)(j,0)=v; }
+            *x0 = xmas;                                        // warm start
+            int st = psopt_ipopt_resolve(workspace, user_data);
+            *xlb=xlb_s; *xub=xub_s;
+            (void) st;
+            MatrixXd xnlp = *x0; double vnlp; VIOL_OF(xnlp,vnlp); double onlp=f(xnlp,workspace);
+            // The IPOPT subproblem returns the best continuous completion of the pinned
+            // schedule; keep it whenever it is less infeasible (or feasible & cheaper).
+            if (vnlp < bestViol - 1e-12 || (vnlp < FEASTOL && onlp < bestObj)) { best=xnlp; bestViol=vnlp; bestObj=onlp; }
+            // add this NLP point as a new OA cut so the master avoids it next round
+            { std::vector<double> ck; std::vector<std::vector<std::pair<int,double> > > rk; MatrixXd gk; double fk;
+              linearize(xnlp,ck,rk,gk,fk); cutPts.push_back(xnlp); cutC.push_back(ck); cutJ.push_back(rk); cutG.push_back(gk); cutF0.push_back(fk); }
+            snprintf(workspace->text,sizeof(workspace->text),
+                     ">>> OA iter %d: NLP subproblem (IPOPT, integers pinned) viol=%.2e obj=%.5g -> best viol %.2e\n",
+                     oa, vnlp, onlp, bestViol);
+            psopt_print(workspace, workspace->text);
         }
-        pinned = false;
         snprintf(workspace->text, sizeof(workspace->text),
-                 ">>> OA refinement (integers pinned, Gauss-Newton continuous polish): violation %.2e -> %.2e\n",
-                 v_before, bestViol);
+                 ">>> OA driver (SCIP master <-> IPOPT NLP subproblem): violation %.2e -> %.2e\n", v_before, bestViol);
         psopt_print(workspace, workspace->text);
     }
 
