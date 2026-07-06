@@ -25,15 +25,30 @@ requires more than dropping in a solver:
    PSOPT `Sol` structure (states/controls per phase).
 
 ## Recommended path
-- **Phase A (done)**: SCIP built + standalone MILP/MIQP MIOC demonstrator.
-- **Phase B**: add the integer-declaration plumbing to `psopt.h`/`setup.cxx`
-  (`integer_controls`, `integer_parameters` per phase) — inert for existing problems.
-- **Phase C**: a `SCIP_interface.cxx` backend for the **MILP/MIQP transcription
-  subclass** (linear/quadratic dynamics & cost), routing the transcribed variables +
-  integrality to SCIP and unpacking the solution. This covers switched-linear and
-  many practical MIOC problems without needing SCIP's full nonlinear NLPI.
-- **Phase D**: general MINLP via SCIP's expression interface (largest effort;
-  optionally via CasADi's SCIP/bonmin plugins as an intermediate).
+- **Phase A (done)**: SCIP built + standalone MILP/MIQP MIOC demonstrator (`scip-mioc/`).
+- **Phase B (done)**: integer-declaration plumbing — `problem.phase[i].integer_controls`
+  and `integer_parameters` in `psopt.h`/`setup.cxx`; inert for existing problems.
+- **Phase C (done)**: `src/SCIP_interface.cxx` — an in-core `algorithm.nlp_method="SCIP"`
+  backend for the **linear-transcription subclass**. It linearises PSOPT's transcription
+  about the feasible guess `x0` (exact when the free-variable model is linear; the raw
+  transcription is bilinear in the free times `t0,tf`, so linearising at `x0`—not 0—is
+  essential), marks the declared integer variables, and hands SCIP an explicit MILP;
+  the incumbent is unpacked back into the PSOPT solution. A linearity self-check warns
+  if the dynamics/cost are nonlinear. Example: `examples/scip_miop` — integer thrust
+  `u∈{-1,0,1}`, global bang-off-bang, Σ|u|=8, solved via `nlp_method="SCIP"`.
+  Build: `-DPSOPT_WITH_SCIP=ON` (compiles `SCIP_interface.cxx`, links `libscip`).
+- **Phase D (remaining)**: general MINLP via SCIP's expression interface for nonlinear
+  dynamics (largest effort; optionally via CasADi's SCIP/bonmin plugins).
+
+## In-core usage
+```cpp
+problem.phase[1].integer_controls.resize(1,1);
+problem.phase[1].integer_controls(0) = 0;   // control 0 is integer at every node
+algorithm.nlp_method = "SCIP";              // + linear dynamics & a linear objective
+```
+Keep the transcription linear in the free variables: linear dynamics, and a linear
+objective (use an auxiliary control `a>=|u|` with `INT a dt` instead of `INT|u|dt`).
+The SCIP backend does a one-shot MILP solve — use `mesh_refinement="manual"`.
 
 ## Build reference
 Superbuild (SoPlex + SCIP as ExternalProjects; GMP + readline from

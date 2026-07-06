@@ -104,6 +104,7 @@ target_compile_definitions(psopt PUBLIC
   PSOPT_DEFAULT_LINEAR_SOLVER="${PSOPT_DEFAULT_LINEAR_SOLVER}"
   $<$<BOOL:${PSOPT_WITH_SNOPT}>:USE_SNOPT>
   $<$<BOOL:${PSOPT_WITH_CASADI}>:USE_CASADI>
+  $<$<BOOL:${PSOPT_WITH_SCIP}>:USE_SCIP>
   $<$<BOOL:${PSOPT_WITH_HSL}>:USE_HSL>
   $<$<BOOL:${PSOPT_WITH_INT64}>:PSOPT_INT64>
   $<$<BOOL:${HEADLESS}>:HEADLESS>)
@@ -120,6 +121,7 @@ endif()
 target_link_libraries(psopt
   PUBLIC  Eigen3::Eigen IPOPT::ipopt
   $<$<BOOL:${PSOPT_WITH_CASADI}>:casadi::casadi>
+  $<$<BOOL:${PSOPT_WITH_SCIP}>:libscip>
   $<$<BOOL:${PSOPT_WITH_OPENMP}>:OpenMP::OpenMP_CXX>
   $<$<BOOL:${PSOPT_WITH_MPI}>:MPI::MPI_CXX>)
 if(BLAS_FOUND)

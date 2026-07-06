@@ -395,6 +395,22 @@ int NLP_interface(
 #endif
     }
 
+    else if ( algorithm.nlp_method=="SCIP" )
+    {
+#ifdef USE_SCIP
+        // Solve the (linear-transcription) mixed-integer problem with SCIP.
+        extern int psopt_scip_solve(Alg&, MatrixXd*, double(*)(MatrixXd&,Workspace*),
+                                    void(*)(MatrixXd&,MatrixXd*,Workspace*), int, int,
+                                    MatrixXd*, MatrixXd*, MatrixXd*, Workspace*, void*);
+        psopt_scip_solve(algorithm, x0, f, g, nlp_ncons, nlp_neq,
+                         xlb, xub, lambda, workspace, user_data);
+        return 0;
+#else
+        snprintf(workspace->text,sizeof(workspace->text),"\nSCIP method has been specified but not linked (build with -DPSOPT_WITH_SCIP=ON)");
+        error_message(workspace->text);
+#endif
+    }
+
     else if ( algorithm.nlp_method=="IPOPT" )
     {
 

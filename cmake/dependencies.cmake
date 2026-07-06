@@ -113,3 +113,14 @@ if(PSOPT_WITH_CASADI)
   endif()
   message(STATUS "Found CasADi — CasADi NLP backend enabled")
 endif()
+
+# ---- SCIP + SoPlex (only when the mixed-integer backend is enabled) ---------
+if(PSOPT_WITH_SCIP)
+  find_package(SCIP QUIET)
+  if(NOT SCIP_FOUND)
+    message(FATAL_ERROR
+      "PSOPT_WITH_SCIP=ON but SCIP was not found. Build it from source with "
+      "-DPSOPT_SUPERBUILD=ON -DPSOPT_WITH_SCIP=ON, or install SCIP and set SCIP_DIR.")
+  endif()
+  message(STATUS "Found SCIP ${SCIP_VERSION} — mixed-integer (SCIP) NLP backend enabled")
+endif()

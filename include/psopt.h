@@ -313,6 +313,11 @@ struct phases_str {
 
    int nintegral;               // number of integral (isoperimetric) constraints (default 0)
 
+   MatrixXd integer_controls;   // 0-based indices of controls that are integer-valued (empty = none).
+                                // Only honoured by the SCIP mixed-integer backend; the discretised
+                                // control is constrained integer at every collocation node.
+   MatrixXd integer_parameters; // 0-based indices of static parameters that are integer-valued.
+
    int current_number_of_intervals;
 
    Bounds bounds;
