@@ -33,11 +33,9 @@ build/
 
 SuiteSparse
 lusol
-# out-of-source build directories
-build-sb/
-build-cas/
-build-modern/
-build-ex/
-build-claude/
+# out-of-source build directories (any build-*), run scratch, and logs
+build-*/
+mmrun/
 superbuild.log
 run.log
+*_superbuild.log
