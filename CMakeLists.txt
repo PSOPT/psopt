@@ -38,6 +38,8 @@ option(HEADLESS           "Gnuplot writes PDFs instead of spawning windows."   O
 set(PSOPT_DEFAULT_LINEAR_SOLVER "mumps" CACHE STRING
     "Default IPOPT linear_solver (mumps, ma27, ma57, ma86, ma97, pardiso)")
 set(COINHSL_SOURCE_DIR "" CACHE PATH "Path to a local Coin-HSL source tree (skips download)")
+set(PSOPT_PARDISO_LFLAGS "" CACHE STRING
+    "Link flags for a PARDISO library (commercial Panua PARDISO or Intel MKL) to build IPOPT with; then select algorithm.ipopt_linear_solver=\"pardiso\" or \"pardisomkl\"")
 option(PSOPT_HSL_ACCEPT_LICENSE "I accept the non-free HSL licence; auto-download Coin-HSL" OFF)
 set(PSOPT_HSL_URL
     "https://www.hsl.rl.ac.uk/download/coinhsl/2023.11.17/coinhsl-2023.11.17.tar.gz"

@@ -172,6 +172,17 @@ if(PSOPT_WITH_HSL)
   set(_ipopt_hsl_flag "--with-hsl")
 endif()
 
+# PARDISO: build IPOPT with the (commercial Panua/Intel-MKL) PARDISO solver when
+# the user supplies its link flags in PSOPT_PARDISO_LFLAGS. PARDISO/MKL are NOT
+# redistributed and are typically unavailable on arm64 macOS; without them
+# IPOPT is MUMPS(+optional HSL)-only. Once built, select at runtime with
+# algorithm.ipopt_linear_solver="pardiso" (Panua) or "pardisomkl" (MKL).
+set(_ipopt_pardiso_flag "--without-pardiso")
+if(PSOPT_PARDISO_LFLAGS)
+  set(_ipopt_pardiso_flag "--with-pardiso=${PSOPT_PARDISO_LFLAGS}")
+  message(STATUS "IPOPT: building with PARDISO (${PSOPT_PARDISO_LFLAGS})")
+endif()
+
 # ---- IPOPT (autotools; uses coinmumps + optional coinhsl via pkg-config) ----
 ExternalProject_Add(ep_ipopt
   DEPENDS ep_mumps ${_ipopt_hsl_dep}
@@ -179,7 +190,7 @@ ExternalProject_Add(ep_ipopt
   CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${SB_PKGCFG}
       <SOURCE_DIR>/configure --prefix=${SB_INSTALL}
       CC=${SB_CC} CXX=${SB_CXX} FC=${SB_FC}
-      --with-mumps ${_ipopt_hsl_flag}
+      --with-mumps ${_ipopt_hsl_flag} ${_ipopt_pardiso_flag}
       --with-lapack-lflags=${SB_BLAS_LFLAGS} --with-blas-lflags=${SB_BLAS_LFLAGS}
       --disable-java --without-asl
   BUILD_COMMAND make -j
