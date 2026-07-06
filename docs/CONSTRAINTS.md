@@ -25,6 +25,8 @@ multi-phase / auxiliary states), as shown by the examples.
 | **chance / robust** `P{g≤0} ≥ 1−ε` | tighten `g + k·√(Var) ≤ 0`, `k=Φ⁻¹(1−ε)`; propagate `Σ(t)` via a Lyapunov ODE (extra states) for the exact time-varying back-off | **`chance_covariance`** (Σ propagation), `chance_constraint` (constant σ) |
 | **complementarity (MPEC)** `0 ≤ a ⊥ b ≥ 0` | smoothed NCP / relaxation `a·b ≤ μ`, `μ→0` | `mpec` |
 | **pure state** `g(x)≤0` (no control) | path constraint on states only (watch constraint order/index) | `obstacle` (mixed) |
+| **second-order cone** `‖Ax+b‖≤cᵀx+d` | smooth convex path constraint (norm form, tiny apex smoothing) | **`conic_soc`** (new) |
+| **semidefinite** `M(x)⪰0` (LMI) | leading principal minors ≥ 0 (Sylvester) as path constraints | **`conic_sdp`** (new) |
 
 ## New illustrative examples (added on branch `ecbrown`)
 Built + verified against native IPOPT (Apple-clang build):
@@ -72,10 +74,22 @@ margin that GROWS as process noise accumulates. A minimum-time double integrator
 chance velocity cap: the cap extends `tf` 2.0→2.12 and the velocity rides the tightened
 limit `VMAX − k√P22` (P22 = w·tf, verified). No core changes — pure native mechanism.
 
+## Conic constraints (NEW)
+Both cone types are convex and expressible as smooth path constraints, so PSOPT/IPOPT
+handles them natively:
+- **Second-order (Lorentz) cone** `‖Ax+b‖₂ ≤ cᵀx+d` — `conic_soc`: a 2-D point mass with a
+  thrust cone `‖(ax,ay)‖ ≤ amax`; the thrust rides the cone (`‖a‖ = 0.8` on the arc),
+  Optimal Solution Found. The **norm form** `√(·)−amax` (small apex smoothing) conditions
+  far better for IPOPT than the squared form (whose Hessian degenerates on the active arc);
+  automatic mesh refinement helps.
+- **Semidefinite (LMI)** `M(x) ⪰ 0` — `conic_sdp`: `M=[[1,b],[b,c]]⪰0` via the leading
+  minors (`1>0`, `det = c−b² ≥ 0`); minimising `c(T)` drives `M` to the **PSD boundary**
+  `c(T)=b(T)²=0.64` (rank-1), `det ≥ 0` held throughout. Larger matrices use all leading
+  principal minors (Sylvester's criterion).
+
 ## Genuinely missing (need new machinery / backends — deferred)
 - **Mixed-integer / switching** constraints — MINLP backend (SCIP). See
   `docs/MIXED_INTEGER_SCIP.md` for the integration status.
-- **Conic (SOC/SDP)** structure (only smooth-nonlinear reformulations today).
 
 See `docs/EXTENSIONS_STATUS.md` for the overall branch status.
 </content>
