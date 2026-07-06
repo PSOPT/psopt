@@ -37,6 +37,29 @@ done, what is deferred, and any known issues.
 - **PARDISO** build plumbing (`PSOPT_PARDISO_LFLAGS` → `--with-pardiso`).
 - Selector is already pass-through (any solver IPOPT is built with is selectable).
 
+### Threading / parallelism (how to actually get parallel runs)
+PSOPT's own code is serial — it contains **no OpenMP pragmas and no MPI calls**, and
+calls **no BLAS directly** (it uses Eigen kernels). All parallelism therefore lives
+*below* PSOPT and is enabled entirely by environment variables + the linear-solver
+choice:
+- **Threaded linear solver**: pick one built with OpenMP — `ipopt_linear_solver="spral"`
+  (free) or `"ma97"` (HSL) — controlled by `OMP_NUM_THREADS` (MUMPS is sequential).
+- **Dense BLAS/LAPACK** used inside IPOPT/MUMPS/SPRAL/HSL has its **own** thread knob,
+  separate from `OMP_NUM_THREADS`:
+  - OpenBLAS (the default here; `otool -L libipopt` → `libopenblas`) → `OPENBLAS_NUM_THREADS`
+  - Intel MKL (used by `ipopt_linear_solver="pardisomkl"`) → `MKL_NUM_THREADS`
+
+Standard recipe — set the count in ALL of them so it is honoured whichever BLAS/solver
+is linked (otherwise OpenBLAS/MKL spin up their own default pool and "serial" isn't):
+```sh
+N=8
+export OMP_NUM_THREADS=$N OPENBLAS_NUM_THREADS=$N MKL_NUM_THREADS=$N
+export OMP_CANCELLATION=TRUE OMP_NESTED=TRUE OMP_PROC_BIND=TRUE OMP_STACKSIZE=64M   # SPRAL/SSIDS
+# then: algorithm.ipopt_linear_solver = "spral";   (serial: N=1, all of the above = 1)
+```
+MPI is intentionally unsupported: PSOPT never invokes distributed MUMPS, and the MPI
+build is documented to crash on macOS 26.
+
 ### Native constraint types (NEW)
 - **Interior-point** constraints (`ninterior`, `interior_point_constraints`) — state/
   control interpolated to an interior time without a phase split; reuses the
