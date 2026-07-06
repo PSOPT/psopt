@@ -17,6 +17,9 @@
 
 #include "gtest/gtest.h"
 #include <psopt.h>
+#include <cstdlib>
+#include <string>
+#include <cmath>
 
 namespace cm {
 adouble endpoint_cost(adouble*, adouble*, adouble*, adouble&, adouble&, adouble*, int, Workspace*) { return 0.0; }
@@ -29,6 +32,8 @@ void linkages(adouble*, adouble*, Workspace*) {}
 
 struct Cfg {
     const char* name; const char* deriv; const char* colloc; const char* mesh; const char* ps; double tol;
+    const char* solver;      // ipopt_linear_solver: mumps / spral / ma97 / pardiso / pardisomkl
+    const char* ompthreads;  // OMP_NUM_THREADS for a threaded solver (serial="1", OpenMP="8")
 };
 
 class CapabilityMatrix : public ::testing::TestWithParam<Cfg> {};
@@ -59,16 +64,35 @@ TEST_P(CapabilityMatrix, MinEnergyDoubleIntegrator_J_is_6)
     problem.phases(1).guess.controls = zeros(1,N);
     problem.phases(1).guess.time = linspace(0.0,1.0,N);
 
-    algorithm.nlp_method         = "IPOPT";
-    algorithm.scaling            = "automatic";
-    algorithm.derivatives        = cfg.deriv;
-    algorithm.collocation_method = cfg.colloc;
-    algorithm.mesh_refinement    = cfg.mesh;
-    algorithm.ps_method          = cfg.ps;
-    algorithm.nlp_iter_max       = 1000;
-    algorithm.nlp_tolerance      = 1.e-6;
+    algorithm.nlp_method          = "IPOPT";
+    algorithm.scaling             = "automatic";
+    algorithm.derivatives         = cfg.deriv;
+    algorithm.collocation_method  = cfg.colloc;
+    algorithm.mesh_refinement     = cfg.mesh;
+    algorithm.ps_method           = cfg.ps;
+    algorithm.ipopt_linear_solver = cfg.solver;
+    algorithm.nlp_iter_max        = 1000;
+    algorithm.nlp_tolerance       = 1.e-6;
+
+    // Parallelism axis: OpenMP threads are consumed by a THREADED linear solver
+    // (ma97/spral/pardiso*); PSOPT itself has no OpenMP/MPI code paths, so serial
+    // = OMP_NUM_THREADS=1, "OpenMP" = 8. (MPI omitted: PSOPT has no MPI paths.)
+    setenv("OMP_NUM_THREADS", cfg.ompthreads, 1);
+    if (std::string(cfg.solver) == "spral") {
+        setenv("OMP_CANCELLATION","TRUE",1); setenv("OMP_NESTED","TRUE",1);
+        setenv("OMP_PROC_BIND","TRUE",1);    setenv("OMP_STACKSIZE","64M",1);
+    }
 
     psopt(solution, problem, algorithm);
+
+    // GUARD the optional linear solvers (spral / ma97 / pardiso / pardisomkl):
+    // if one is not installed, IPOPT fails to load its library (or "solves" to a
+    // non-optimal point) -- treat any non-MUMPS solver that does not cleanly
+    // reproduce J* as "not installed" and SKIP, so the suite runs on any build.
+    const bool solved_ok = (solution.nlp_return_code == 0) && (solution.error_flag == false)
+                           && (std::fabs(solution.get_cost() - 6.0) < 0.5);
+    if (!solved_ok && std::string(cfg.solver) != "mumps")
+        GTEST_SKIP() << "linear solver '" << cfg.solver << "' not installed in this IPOPT build";
 
     ASSERT_EQ(solution.error_flag, false) << "config '" << cfg.name << "' failed to solve";
     EXPECT_NEAR(solution.get_cost(), 6.0, cfg.tol)
@@ -76,16 +100,21 @@ TEST_P(CapabilityMatrix, MinEnergyDoubleIntegrator_J_is_6)
 }
 
 static const Cfg kConfigs[] = {
-    // name                deriv         colloc            mesh         ps_method       tol
-    {"analytic_Legendre",  "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3},
-    {"finite_diff",        "numerical",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3}, // FD vs analytic
-    {"Chebyshev",          "automatic",  "Chebyshev",      "manual",    "Ross-Fahroo",  6.0e-2},
-    {"Radau",              "automatic",  "Radau",          "manual",    "Ross-Fahroo",  5.0e-3},
-    {"Gauss",              "automatic",  "Gauss",          "manual",    "Ross-Fahroo",  5.0e-3},
-    {"trapezoidal",        "automatic",  "trapezoidal",    "manual",    "Ross-Fahroo",  3.5e-2},
-    {"Hermite_Simpson",    "automatic",  "Hermite-Simpson","manual",    "Ross-Fahroo",  1.0e-2},
-    {"adaptive_mesh",      "automatic",  "Legendre",       "automatic", "Ross-Fahroo",  5.0e-3}, // adaptive vs non
-    {"Bellman",            "automatic",  "Legendre",       "automatic", "Bellman",      5.0e-3}, // Bellman vs Ross-Fahroo
+    // name                deriv         colloc            mesh         ps_method       tol      solver         threads
+    {"analytic_Legendre",  "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"},
+    {"finite_diff",        "numerical",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"}, // FD vs analytic
+    {"Chebyshev",          "automatic",  "Chebyshev",      "manual",    "Ross-Fahroo",  6.0e-2,  "mumps",       "1"},
+    {"Radau",              "automatic",  "Radau",          "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"},
+    {"Gauss",              "automatic",  "Gauss",          "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"},
+    {"trapezoidal",        "automatic",  "trapezoidal",    "manual",    "Ross-Fahroo",  3.5e-2,  "mumps",       "1"},
+    {"Hermite_Simpson",    "automatic",  "Hermite-Simpson","manual",    "Ross-Fahroo",  1.0e-2,  "mumps",       "1"},
+    {"adaptive_mesh",      "automatic",  "Legendre",       "automatic", "Ross-Fahroo",  5.0e-3,  "mumps",       "1"}, // adaptive vs non
+    {"Bellman",            "automatic",  "Legendre",       "automatic", "Bellman",      5.0e-3,  "mumps",       "1"}, // Bellman vs Ross-Fahroo
+    // --- parallelism / linear-solver axis (guarded: skip if the solver is not built) ---
+    {"serial_mumps",       "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"}, // serial
+    {"openmp8_spral",      "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "spral",       "8"}, // OpenMP, 8 threads
+    {"pardiso",            "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "pardiso",     "8"}, // Panua PARDISO
+    {"pardiso_mkl",        "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "pardisomkl",  "8"}, // Intel MKL PARDISO
 };
 
 INSTANTIATE_TEST_SUITE_P(Axes, CapabilityMatrix, ::testing::ValuesIn(kConfigs),
