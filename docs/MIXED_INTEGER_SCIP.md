@@ -37,8 +37,16 @@ requires more than dropping in a solver:
   if the dynamics/cost are nonlinear. Example: `examples/scip_miop` — integer thrust
   `u∈{-1,0,1}`, global bang-off-bang, Σ|u|=8, solved via `nlp_method="SCIP"`.
   Build: `-DPSOPT_WITH_SCIP=ON` (compiles `SCIP_interface.cxx`, links `libscip`).
-- **Phase D (remaining)**: general MINLP via SCIP's expression interface for nonlinear
-  dynamics (largest effort; optionally via CasADi's SCIP/bonmin plugins).
+- **Phase D (done, heuristic)**: NONLINEAR dynamics via a Sequential-Linear-Programming
+  loop in `SCIP_interface.cxx` — re-linearise about the incumbent, let SCIP re-optimise
+  the MILP within a trust region on the continuous variables, then a second phase pins
+  the integer schedule and polishes the continuous states. First-order, so it returns a
+  **near-feasible** integer solution, not guaranteed tight/global feasibility (violation
+  scales with the nonlinearity; e.g. quadratic drag `0.03·vel²` → ~7e-3). Example:
+  `examples/scip_nlmiop`. For exact/global results keep the transcription linear.
+- **Beyond Phase D**: tight nonlinear MINLP would need SCIP's native nonlinear
+  expression interface (not reachable from PSOPT's opaque ADOL-C callbacks) or a full
+  SQP/outer-approximation with an NLP subproblem solver — a separate, larger effort.
 
 ## In-core usage
 ```cpp

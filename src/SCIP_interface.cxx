@@ -5,14 +5,25 @@
  parameters are solved to GLOBAL optimality (branch-and-bound), which the
  continuous IPOPT/CasADi backends cannot do.
 
- SCIP cannot branch on PSOPT's opaque ADOL-C nonlinear callbacks, so this backend
- targets the LINEAR-TRANSCRIPTION subclass: linear dynamics/constraints and a
- linear objective (use auxiliary variables for |u|, etc., exactly as in a MILP).
- For such problems the constraint map is g(x)=J x + b with a CONSTANT Jacobian J,
- which is recovered by unit perturbations and handed to SCIP as explicit linear
- constraints; integrality comes from problem.phase[i].integer_controls /
- integer_parameters. A linearity self-check warns if the transcription is nonlinear
- (then the SCIP model is only a linearization at 0).
+ SCIP cannot branch on PSOPT's opaque ADOL-C nonlinear callbacks, so the backend
+ works on LINEARISATIONS of the transcription:
+
+  - LINEAR transcription (linear dynamics/constraints + linear objective -- use
+    auxiliary controls for |u| etc., as in a MILP): the constraint map g(x)=Jx+b
+    has a CONSTANT Jacobian, recovered by unit perturbations about the feasible
+    guess x0 and handed to SCIP as explicit linear constraints. ONE MILP solve is
+    globally optimal and exact. Integrality comes from integer_controls /
+    integer_parameters.
+
+  - NONLINEAR transcription: a Sequential-Linear-Programming loop -- re-linearise
+    about the incumbent, let SCIP re-optimise the MILP within a trust region on the
+    continuous variables, iterate; a second phase pins the integer schedule and
+    polishes the continuous states. This is a first-order HEURISTIC: it reaches a
+    near-feasible integer solution but not guaranteed tight/global feasibility.
+    A linearity self-check picks the exact one-shot path vs. the SLP loop.
+
+ Linearising about x0 (not 0) is essential: the transcription is bilinear in the
+ free times t0,tf, so x=0 (=> tf=0) degenerately zeroes every integral.
 
  Compiled into libpsopt only when PSOPT_WITH_SCIP=ON (guarded by USE_SCIP).
  Author: added on branch ecbrown, 2026-07.
@@ -56,129 +67,199 @@ int psopt_scip_solve(
     std::vector<double> gl(ng > 0 ? ng : 1), gu(ng > 0 ? ng : 1);
     if (ng > 0) get_constraint_bounds(gl.data(), gu.data(), workspace);
 
-    // ---- linear model about the FEASIBLE base point x0 (not 0): the start/end
-    //      times t0,tf are decision variables that multiply the dynamics/cost, so
-    //      x=0 (=> tf=0) degenerately zeroes every integral. Linearising at x0
-    //      (correct t0,tf) is exact for a transcription that is linear in the free
-    //      variables.  g(x) ~= b + J (x - x0),  obj ~= f0 + c'(x - x0).
-    MatrixXd base = *x0;
-    MatrixXd gb(ng > 0 ? ng : 1, 1);
-    if (ng > 0) g(base, &gb, workspace);
-    double f0 = f(base, workspace);
-
-    std::vector<double> c(nx, 0.0);
-    std::vector<std::vector<std::pair<int,double> > > rows(ng > 0 ? ng : 1); // per-constraint (var,coeff)
-    MatrixXd xj(nx, 1), gj(ng > 0 ? ng : 1, 1);
-    for (int j = 0; j < nx; ++j) {
-        xj = base; xj(j, 0) += 1.0;
-        c[j] = f(xj, workspace) - f0;
-        if (ng > 0) {
-            g(xj, &gj, workspace);
-            for (int i = 0; i < ng; ++i) {
-                double v = gj(i, 0) - gb(i, 0);
-                if (v > tol || v < -tol) rows[i].push_back(std::make_pair(j, v));
-            }
-        }
-    }
-    // J*x0 per row (to convert the shifted model back to absolute variables x)
-    std::vector<double> Jx0(ng > 0 ? ng : 1, 0.0);
-    for (int i = 0; i < ng; ++i)
-        for (size_t t = 0; t < rows[i].size(); ++t) Jx0[i] += rows[i][t].second * base(rows[i][t].first, 0);
-
-    // ---- linearity self-check: perturb the free (non-time) variables and verify
-    //      g reproduces the linear prediction (time vars held fixed to avoid the
-    //      benign t0,tf bilinearity). Warns if the dynamics/cost are nonlinear.
-    {
-        std::vector<char> istime(nx, 0);
-        { int xo = 0; for (int p = 0; p < problem.nphases; ++p) { int nv = get_nvars_phase_i(problem, p, workspace); istime[xo+nv-2]=1; istime[xo+nv-1]=1; xo += nv; } }
-        MatrixXd xd = base, gd(ng > 0 ? ng : 1, 1);
-        for (int j = 0; j < nx; ++j) if (!istime[j]) xd(j, 0) += 0.5;
-        if (ng > 0) g(xd, &gd, workspace);
-        double worst = 0.0;
-        for (int i = 0; i < ng; ++i) {
-            double lin = gb(i, 0);
-            for (size_t t = 0; t < rows[i].size(); ++t) if (!istime[rows[i][t].first]) lin += 0.5 * rows[i][t].second;
-            worst = std::max(worst, std::fabs(gd(i, 0) - lin));
-        }
-        if (worst > 1e-6) {
-            snprintf(workspace->text, sizeof(workspace->text),
-                "\n*** SCIP backend: transcription appears NONLINEAR (residual %.2e); the MILP\n"
-                "*** is only a linearization. Use linear dynamics + a linear objective for\n"
-                "*** exact mixed-integer results.\n", worst);
-            psopt_print(workspace, workspace->text);
-        }
-    }
+    // ---- time-variable mask (t0,tf: last two of each phase) --------------------
+    std::vector<char> istime(nx, 0);
+    { int xo = 0; for (int p = 0; p < problem.nphases; ++p) { int nv = get_nvars_phase_i(problem, p, workspace); istime[xo+nv-2]=1; istime[xo+nv-1]=1; xo += nv; } }
 
     // ---- integrality: map declared integer controls/params to NLP indices ------
     std::vector<char> isInt(nx, 0);
-    int xoff = 0;
-    for (int p = 0; p < problem.nphases; ++p) {
+    { int xoff = 0;
+      for (int p = 0; p < problem.nphases; ++p) {
         int norder = problem.phase[p].current_number_of_intervals;
         int nc = problem.phase[p].ncontrols, ns = problem.phase[p].nstates;
         MatrixXd& ic = problem.phase[p].integer_controls;
-        for (int r = 0; r < ic.size(); ++r) {
-            int cj = (int) ic(r);
-            for (int k = 0; k <= norder; ++k) { int idx = xoff + k*nc + cj; if (idx >= 0 && idx < nx) isInt[idx] = 1; }
-        }
+        for (int r = 0; r < ic.size(); ++r) { int cj = (int) ic(r);
+            for (int k = 0; k <= norder; ++k) { int idx = xoff + k*nc + cj; if (idx >= 0 && idx < nx) isInt[idx] = 1; } }
         MatrixXd& ip = problem.phase[p].integer_parameters;
         int pbase = xoff + (nc + ns)*(norder + 1);
         for (int r = 0; r < ip.size(); ++r) { int pj = (int) ip(r); int idx = pbase + pj; if (idx >= 0 && idx < nx) isInt[idx] = 1; }
         xoff += get_nvars_phase_i(problem, p, workspace);
-    }
+      } }
 
-    // ---- build and solve the SCIP MILP -----------------------------------------
-    SCIP* scip = NULL;
-    SCIP_CALL( SCIPcreate(&scip) );
-    SCIP_CALL( SCIPincludeDefaultPlugins(scip) );
-    SCIP_CALL( SCIPcreateProbBasic(scip, "psopt_miop") );
-    SCIP_CALL( SCIPsetObjsense(scip, SCIP_OBJSENSE_MINIMIZE) );
-    SCIP_CALL( SCIPsetRealParam(scip, "limits/gap", 1e-9) );
+    // Nonlinear-constraint violation of a point (scaled space).
+    MatrixXd gtmp(ng > 0 ? ng : 1, 1);
+    #define VIOL_OF(X, OUT) do { OUT = 0.0; if (ng>0){ g((X), &gtmp, workspace); \
+        for (int _i=0;_i<ng;_i++){ double lo=gl[_i]-gtmp(_i,0), hi=gtmp(_i,0)-gu[_i]; \
+            if (lo>OUT) OUT=lo; if (hi>OUT) OUT=hi; } } } while(0)
 
-    std::vector<SCIP_VAR*> var(nx);
-    char nm[32];
-    for (int j = 0; j < nx; ++j) {
-        snprintf(nm, sizeof(nm), "x%d", j);
-        SCIP_VARTYPE t = isInt[j] ? SCIP_VARTYPE_INTEGER : SCIP_VARTYPE_CONTINUOUS;
-        double lo = (*xlb)(j, 0), hi = (*xub)(j, 0);
-        if (lo <= -1e19) lo = -SCIPinfinity(scip);
-        if (hi >=  1e19) hi =  SCIPinfinity(scip);
-        SCIP_CALL( SCIPcreateVarBasic(scip, &var[j], nm, lo, hi, c[j], t) );
-        SCIP_CALL( SCIPaddVar(scip, var[j]) );
-    }
-    for (int i = 0; i < ng; ++i) {
-        SCIP_CONS* cons; snprintf(nm, sizeof(nm), "g%d", i);
-        // g_l <= b + J(x - x0) <= g_u  =>  g_l - b + J*x0 <= J*x <= g_u - b + J*x0
-        double lhs = gl[i] - gb(i, 0) + Jx0[i], rhs = gu[i] - gb(i, 0) + Jx0[i];
-        if (lhs <= -1e19) lhs = -SCIPinfinity(scip);
-        if (rhs >=  1e19) rhs =  SCIPinfinity(scip);
-        std::vector<SCIP_VAR*> vs; std::vector<double> cs;
-        for (size_t t = 0; t < rows[i].size(); ++t) { vs.push_back(var[rows[i][t].first]); cs.push_back(rows[i][t].second); }
-        SCIP_CALL( SCIPcreateConsBasicLinear(scip, &cons, nm, (int) vs.size(),
-                                             vs.empty() ? NULL : vs.data(),
-                                             cs.empty() ? NULL : cs.data(), lhs, rhs) );
-        SCIP_CALL( SCIPaddCons(scip, cons) );
-        SCIP_CALL( SCIPreleaseCons(scip, &cons) );
-    }
+    // ---- Sequential-Linear-Programming with a trust region ---------------------
+    // Each iteration linearises the transcription about the current point xc,
+    // g(x) ~= b + J(x-xc), obj ~= f0 + c'(x-xc), and lets SCIP re-optimise the
+    // MILP (integers free, continuous non-time vars restricted to a trust region).
+    // For a LINEAR transcription the first solve is already exact (one iteration).
+    // Base point x0: essential because the raw transcription is bilinear in the
+    // free times t0,tf, so xc must carry a feasible (nonzero) tf.
+    MatrixXd xc = *x0, best = *x0;
+    double bestViol = 1e30, bestObj = 1e30, bestMerit = 1e30;
+    const double MERIT_RHO = 1e4, FEASTOL = 1e-6;
+    const int    MAXITER = 40;
+    double Delta = 5.0;                    // trust-region radius (scaled units)
+    bool linear = false;
+    int  status_optimal = 0;
 
-    SCIP_CALL( SCIPsolve(scip) );
+    // Two-phase SLP: iterations < PIN_AT search the integer schedule (integers
+    // free); afterwards, if still infeasible, the incumbent integer schedule is
+    // PINNED and the remaining iterations polish the continuous states (LP masters
+    // -> Newton-like, drives the nonlinear defects to feasibility).
+    const int PIN_AT = 12;
+    bool pinned = false;
+    std::vector<double> pinval(nx, 0.0);
 
-    SCIP_SOL* sol = SCIPgetBestSol(scip);
-    if (sol != NULL) {
-        for (int j = 0; j < nx; ++j) (*x0)(j, 0) = SCIPgetSolVal(scip, sol, var[j]);
+    for (int iter = 0; iter < MAXITER; ++iter)
+    {
+        if (!linear && !pinned && iter >= PIN_AT && bestViol > FEASTOL) {
+            pinned = true; xc = best; Delta = 3.0; bestMerit = 1e30;
+            for (int j = 0; j < nx; ++j) if (isInt[j]) pinval[j] = std::floor(best(j,0)+0.5);
+            snprintf(workspace->text, sizeof(workspace->text),
+                     ">>> SLP+SCIP: pinning integer schedule, polishing continuous states\n");
+            psopt_print(workspace, workspace->text);
+        }
+        // ---- linearise at xc -------------------------------------------------
+        MatrixXd gb(ng > 0 ? ng : 1, 1);
+        if (ng > 0) g(xc, &gb, workspace);
+        double f0 = f(xc, workspace);
+        std::vector<double> c(nx, 0.0);
+        std::vector<std::vector<std::pair<int,double> > > rows(ng > 0 ? ng : 1);
+        MatrixXd xj(nx, 1), gj(ng > 0 ? ng : 1, 1);
+        for (int j = 0; j < nx; ++j) {
+            xj = xc; xj(j, 0) += 1.0;
+            c[j] = f(xj, workspace) - f0;
+            if (ng > 0) { g(xj, &gj, workspace);
+                for (int i = 0; i < ng; ++i) { double v = gj(i,0)-gb(i,0); if (v>tol||v<-tol) rows[i].push_back(std::make_pair(j,v)); } }
+        }
+        std::vector<double> Jxc(ng > 0 ? ng : 1, 0.0);
+        for (int i = 0; i < ng; ++i)
+            for (size_t t = 0; t < rows[i].size(); ++t) Jxc[i] += rows[i][t].second * xc(rows[i][t].first, 0);
+
+        // linearity detection on the first pass (hold time vars fixed)
+        if (iter == 0) {
+            MatrixXd xd = xc, gd(ng > 0 ? ng : 1, 1);
+            for (int j = 0; j < nx; ++j) if (!istime[j]) xd(j,0) += 0.5;
+            if (ng > 0) g(xd, &gd, workspace);
+            double worst = 0.0;
+            for (int i = 0; i < ng; ++i) { double lin = gb(i,0);
+                for (size_t t = 0; t < rows[i].size(); ++t) if (!istime[rows[i][t].first]) lin += 0.5*rows[i][t].second;
+                worst = std::max(worst, std::fabs(gd(i,0)-lin)); }
+            linear = (worst < 1e-7);
+        }
+
+        // ---- build + solve the master MILP ----------------------------------
+        SCIP* scip = NULL;
+        SCIP_CALL( SCIPcreate(&scip) );
+        SCIP_CALL( SCIPincludeDefaultPlugins(scip) );
+        SCIP_CALL( SCIPcreateProbBasic(scip, "psopt_miop") );
+        SCIP_CALL( SCIPsetObjsense(scip, SCIP_OBJSENSE_MINIMIZE) );
+        SCIP_CALL( SCIPsetIntParam(scip, "display/verblevel", 0) );
+        // Linear problems get a tight one-shot solve; SLP masters only need a good
+        // feasible integer point each iteration, so bound them (looser gap + time).
+        if (linear) { SCIP_CALL( SCIPsetRealParam(scip, "limits/gap", 1e-9) ); }
+        else { SCIP_CALL( SCIPsetRealParam(scip, "limits/gap", 1e-4) );  // SLP masters: good feasible point suffices
+               SCIP_CALL( SCIPsetRealParam(scip, "limits/time", 30.0) ); }
+
+        std::vector<SCIP_VAR*> var(nx);
+        char nm[32];
+        for (int j = 0; j < nx; ++j) {
+            snprintf(nm, sizeof(nm), "x%d", j);
+            SCIP_VARTYPE ty = isInt[j] ? SCIP_VARTYPE_INTEGER : SCIP_VARTYPE_CONTINUOUS;
+            double lo = (*xlb)(j, 0), hi = (*xub)(j, 0);
+            if (pinned && isInt[j]) { lo = hi = pinval[j]; }   // polish phase: integers fixed
+            // trust region on continuous non-time variables (skip on a linear problem)
+            else if (!linear && !isInt[j] && !istime[j]) { lo = std::max(lo, xc(j,0)-Delta); hi = std::min(hi, xc(j,0)+Delta); }
+            if (lo <= -1e19) lo = -SCIPinfinity(scip);
+            if (hi >=  1e19) hi =  SCIPinfinity(scip);
+            if (lo > hi) { double m=0.5*(lo+hi); lo=hi=m; }
+            SCIP_CALL( SCIPcreateVarBasic(scip, &var[j], nm, lo, hi, c[j], ty) );
+            SCIP_CALL( SCIPaddVar(scip, var[j]) );
+        }
+        for (int i = 0; i < ng; ++i) {
+            SCIP_CONS* cons; snprintf(nm, sizeof(nm), "g%d", i);
+            double lhs = gl[i] - gb(i, 0) + Jxc[i], rhs = gu[i] - gb(i, 0) + Jxc[i];
+            if (lhs <= -1e19) lhs = -SCIPinfinity(scip);
+            if (rhs >=  1e19) rhs =  SCIPinfinity(scip);
+            std::vector<SCIP_VAR*> vs; std::vector<double> cs;
+            for (size_t t = 0; t < rows[i].size(); ++t) { vs.push_back(var[rows[i][t].first]); cs.push_back(rows[i][t].second); }
+            SCIP_CALL( SCIPcreateConsBasicLinear(scip, &cons, nm, (int) vs.size(),
+                                                 vs.empty()?NULL:vs.data(), cs.empty()?NULL:cs.data(), lhs, rhs) );
+            SCIP_CALL( SCIPaddCons(scip, cons) );
+            SCIP_CALL( SCIPreleaseCons(scip, &cons) );
+        }
+        SCIP_CALL( SCIPsolve(scip) );
+        SCIP_SOL* sol = SCIPgetBestSol(scip);
+        SCIP_STATUS sstat = SCIPgetStatus(scip);
+        MatrixXd xstar = xc; bool haveSol = (sol != NULL);
+        if (haveSol) { for (int j = 0; j < nx; ++j) xstar(j,0) = SCIPgetSolVal(scip, sol, var[j]);
+                       status_optimal = (sstat == SCIP_STATUS_OPTIMAL); }
+        for (int j = 0; j < nx; ++j) SCIP_CALL( SCIPreleaseVar(scip, &var[j]) );
+        SCIP_CALL( SCIPfree(&scip) );
+
+        if (!haveSol) {
+            // An INFEASIBLE master means the trust region is too tight to satisfy the
+            // linearised constraints -> GROW Delta; any other no-solution -> shrink.
+            bool infeas = (sstat == SCIP_STATUS_INFEASIBLE || sstat == SCIP_STATUS_INFORUNBD);
+            snprintf(workspace->text, sizeof(workspace->text),
+                     ">>> SLP+SCIP iter %2d: master %s -> %s Delta\n", iter,
+                     infeas ? "infeasible" : "no solution", infeas ? "growing" : "shrinking");
+            psopt_print(workspace, workspace->text);
+            if (infeas) { Delta *= 2.5; if (Delta > 200.0) break; }
+            else        { Delta *= 0.4; if (Delta < 1e-6) break; }
+            continue;
+        }
+
+        // ---- evaluate the TRUE nonlinear model at xstar ----------------------
+        double viol; VIOL_OF(xstar, viol);
+        double objx = f(xstar, workspace);
+        double merit = objx + MERIT_RHO * viol;
+
+        if (linear) { best = xstar; bestObj = objx; bestViol = viol; break; }  // exact single shot
+
+        double step = 0.0; for (int j = 0; j < nx; ++j) step = std::max(step, std::fabs(xstar(j,0)-xc(j,0)));
+
+        bool accepted = (merit < bestMerit - 1e-12);
+        // Always retain the least-infeasible incumbent (feasibility first).
+        if (viol < bestViol - 1e-12 || (viol < FEASTOL && objx < bestObj)) { best = xstar; bestViol = viol; bestObj = objx; }
         snprintf(workspace->text, sizeof(workspace->text),
-                 "\n>>> SCIP mixed-integer solve: %s, objective (scaled) = %.8g\n",
-                 SCIPgetStatus(scip) == SCIP_STATUS_OPTIMAL ? "optimal" : "feasible",
-                 SCIPgetSolOrigObj(scip, sol));
+                 ">>> SLP+SCIP iter %2d: viol=%.2e obj=%.5g step=%.2e Delta=%.2g %s\n",
+                 iter, viol, objx, step, Delta, accepted ? "accept" : "reject");
         psopt_print(workspace, workspace->text);
+        if (accepted) {                           // accepted step
+            bestMerit = merit; xc = xstar;
+            Delta = std::min(Delta * 1.5, 50.0);
+            if (bestViol < FEASTOL && step < 1e-6) break;   // converged
+        } else {                                  // rejected: shrink (gently) and retry from xc
+            Delta *= 0.6; if (Delta < 1e-4) break;
+        }
+    }
+
+    for (int j = 0; j < nx; ++j) (*x0)(j, 0) = best(j, 0);
+    if (linear || bestViol < FEASTOL) {
+        snprintf(workspace->text, sizeof(workspace->text),
+                 "\n>>> SCIP mixed-integer solve (%s): objective (scaled) = %.8g, max constraint violation = %.2e\n",
+                 linear ? (status_optimal ? "MILP, global optimum" : "MILP, feasible")
+                        : "SLP+SCIP converged", bestObj, bestViol);
+    } else if (bestViol < 2.0e-2) {
+        snprintf(workspace->text, sizeof(workspace->text),
+                 "\n>>> SCIP mixed-integer solve (SLP+SCIP, NEAR-feasible heuristic): objective (scaled) = %.8g,\n"
+                 ">>> max constraint violation = %.2e. First-order SLP; refine with a finer mesh / better guess,\n"
+                 ">>> or use a linear transcription for exact results.\n", bestObj, bestViol);
     } else {
         snprintf(workspace->text, sizeof(workspace->text),
-                 "\n*** SCIP: no feasible mixed-integer solution found\n");
-        psopt_print(workspace, workspace->text);
+                 "\n*** SCIP mixed-integer solve did not reach feasibility (best violation %.2e).\n"
+                 "*** For nonlinear dynamics the SLP+SCIP loop is a heuristic; try a better guess,\n"
+                 "*** a finer mesh, or a linear transcription.\n", bestViol);
     }
+    psopt_print(workspace, workspace->text);
 
-    for (int j = 0; j < nx; ++j) SCIP_CALL( SCIPreleaseVar(scip, &var[j]) );
-    SCIP_CALL( SCIPfree(&scip) );
-
+    #undef VIOL_OF
     if (lambda) lambda->setZero();   // integer OC has no classical costates; duals not mapped
     return 0;
 }
