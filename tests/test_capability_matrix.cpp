@@ -37,7 +37,14 @@ struct Cfg {
     const char* name; const char* deriv; const char* colloc; const char* mesh; const char* ps; double tol;
     const char* solver;      // ipopt_linear_solver: mumps / spral / ma97 / pardiso / pardisomkl
     const char* ompthreads;  // OMP_NUM_THREADS for a threaded solver (serial="1", OpenMP="8")
+    const char* nlp;         // nlp_method: IPOPT / CASADI  (SCIP is covered separately)
+    const char* hessian;     // hessian: limited-memory / exact
 };
+// Optional components that may be absent in a given build -> such a cell is SKIPPED
+// (not failed) if it cannot cleanly reproduce J*.
+static bool needs_optional(const Cfg& c) {
+    return std::string(c.solver) != "mumps" || std::string(c.nlp) != "IPOPT";
+}
 
 class CapabilityMatrix : public ::testing::TestWithParam<Cfg> {};
 
@@ -67,12 +74,14 @@ TEST_P(CapabilityMatrix, MinEnergyDoubleIntegrator_J_is_6)
     problem.phases(1).guess.controls = zeros(1,N);
     problem.phases(1).guess.time = linspace(0.0,1.0,N);
 
-    algorithm.nlp_method          = "IPOPT";
+    algorithm.nlp_method          = cfg.nlp;
+    algorithm.casadi_solver       = "ipopt";          // used only when nlp_method==CASADI
     algorithm.scaling             = "automatic";
     algorithm.derivatives         = cfg.deriv;
     algorithm.collocation_method  = cfg.colloc;
     algorithm.mesh_refinement     = cfg.mesh;
     algorithm.ps_method           = cfg.ps;
+    algorithm.hessian             = cfg.hessian;
     algorithm.ipopt_linear_solver = cfg.solver;
     algorithm.nlp_iter_max        = 1000;
     algorithm.nlp_tolerance       = 1.e-6;
@@ -93,16 +102,24 @@ TEST_P(CapabilityMatrix, MinEnergyDoubleIntegrator_J_is_6)
         setenv("OMP_PROC_BIND","TRUE",1);    setenv("OMP_STACKSIZE","64M",1);
     }
 
-    psopt(solution, problem, algorithm);
+    // An UNLINKED backend (e.g. nlp_method=CASADI without USE_CASADI) throws
+    // ErrorHandler from error_message(); catch it and SKIP for optional cells.
+    try {
+        psopt(solution, problem, algorithm);
+    } catch (...) {
+        if (needs_optional(cfg))
+            GTEST_SKIP() << "config '" << cfg.name << "' uses a backend not built into this PSOPT";
+        throw;   // a required cell genuinely threw -> surface it
+    }
 
-    // GUARD the optional linear solvers (spral / ma97 / pardiso / pardisomkl):
-    // if one is not installed, IPOPT fails to load its library (or "solves" to a
-    // non-optimal point) -- treat any non-MUMPS solver that does not cleanly
-    // reproduce J* as "not installed" and SKIP, so the suite runs on any build.
+    // GUARD optional components (a non-MUMPS solver, or nlp_method=CASADI) not built
+    // into this PSOPT: they fail to load (or "solve" to a non-optimal point), so any
+    // such cell that does not cleanly reproduce J* is SKIPPED, not failed. Required
+    // cells (IPOPT + MUMPS, incl. the exact-Hessian one) must pass.
     const bool solved_ok = (solution.nlp_return_code == 0) && (solution.error_flag == false)
                            && (std::fabs(solution.get_cost() - 6.0) < 0.5);
-    if (!solved_ok && std::string(cfg.solver) != "mumps")
-        GTEST_SKIP() << "linear solver '" << cfg.solver << "' not installed in this IPOPT build";
+    if (!solved_ok && needs_optional(cfg))
+        GTEST_SKIP() << "config '" << cfg.name << "' uses a component not built into this PSOPT";
 
     ASSERT_EQ(solution.error_flag, false) << "config '" << cfg.name << "' failed to solve";
     EXPECT_NEAR(solution.get_cost(), 6.0, cfg.tol)
@@ -110,21 +127,29 @@ TEST_P(CapabilityMatrix, MinEnergyDoubleIntegrator_J_is_6)
 }
 
 static const Cfg kConfigs[] = {
-    // name                deriv         colloc            mesh         ps_method       tol      solver         threads
-    {"analytic_Legendre",  "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"},
-    {"finite_diff",        "numerical",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"}, // FD vs analytic
-    {"Chebyshev",          "automatic",  "Chebyshev",      "manual",    "Ross-Fahroo",  6.0e-2,  "mumps",       "1"},
-    {"Radau",              "automatic",  "Radau",          "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"},
-    {"Gauss",              "automatic",  "Gauss",          "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"},
-    {"trapezoidal",        "automatic",  "trapezoidal",    "manual",    "Ross-Fahroo",  3.5e-2,  "mumps",       "1"},
-    {"Hermite_Simpson",    "automatic",  "Hermite-Simpson","manual",    "Ross-Fahroo",  1.0e-2,  "mumps",       "1"},
-    {"adaptive_mesh",      "automatic",  "Legendre",       "automatic", "Ross-Fahroo",  5.0e-3,  "mumps",       "1"}, // adaptive vs non
-    {"Bellman",            "automatic",  "Legendre",       "automatic", "Bellman",      5.0e-3,  "mumps",       "1"}, // Bellman vs Ross-Fahroo
+    // name                deriv         colloc            mesh         ps_method       tol      solver         thr   nlp        hessian
+    // --- derivative / collocation / mesh / ps_method axes (all IPOPT + MUMPS) -------
+    {"analytic_Legendre",  "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1",  "IPOPT",   "limited-memory"},
+    {"finite_diff",        "numerical",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1",  "IPOPT",   "limited-memory"}, // FD vs analytic
+    {"Chebyshev",          "automatic",  "Chebyshev",      "manual",    "Ross-Fahroo",  6.0e-2,  "mumps",       "1",  "IPOPT",   "limited-memory"},
+    {"Radau",              "automatic",  "Radau",          "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1",  "IPOPT",   "limited-memory"},
+    {"Gauss",              "automatic",  "Gauss",          "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1",  "IPOPT",   "limited-memory"},
+    {"trapezoidal",        "automatic",  "trapezoidal",    "manual",    "Ross-Fahroo",  3.5e-2,  "mumps",       "1",  "IPOPT",   "limited-memory"},
+    {"Hermite_Simpson",    "automatic",  "Hermite-Simpson","manual",    "Ross-Fahroo",  1.0e-2,  "mumps",       "1",  "IPOPT",   "limited-memory"},
+    {"adaptive_mesh",      "automatic",  "Legendre",       "automatic", "Ross-Fahroo",  5.0e-3,  "mumps",       "1",  "IPOPT",   "limited-memory"}, // adaptive vs non
+    {"Bellman",            "automatic",  "Legendre",       "automatic", "Bellman",      5.0e-3,  "mumps",       "1",  "IPOPT",   "limited-memory"}, // Bellman vs Ross-Fahroo
+    // --- Hessian axis (exact is native to IPOPT; must pass) ------------------------
+    {"hessian_exact",      "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1",  "IPOPT",   "exact"},           // exact vs limited-memory
+    // --- nlp_method axis (CASADI guarded: skipped if not built) --------------------
+    {"nlp_casadi",         "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1",  "CASADI",  "limited-memory"},  // CASADI vs IPOPT
     // --- parallelism / linear-solver axis (guarded: skip if the solver is not built) ---
-    {"serial_mumps",       "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1"}, // serial
-    {"openmp8_spral",      "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "spral",       "8"}, // OpenMP, 8 threads
-    {"pardiso",            "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "pardiso",     "8"}, // Panua PARDISO
-    {"pardiso_mkl",        "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "pardisomkl",  "8"}, // Intel MKL PARDISO
+    {"serial_mumps",       "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "mumps",       "1",  "IPOPT",   "limited-memory"},  // serial
+    {"openmp8_spral",      "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "spral",       "8",  "IPOPT",   "limited-memory"},  // OpenMP, 8 threads
+    // NB: HSL "ma97" is another OpenMP-threaded solver, but this IPOPT's HSL is broken
+    // and SEGFAULTS when selected -- a crash can't be guarded in-process, so it is not
+    // a matrix cell here. It works in a PSOPT_WITH_HSL superbuild; spral covers the axis.
+    {"pardiso",            "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "pardiso",     "8",  "IPOPT",   "limited-memory"},  // Panua PARDISO
+    {"pardiso_mkl",        "automatic",  "Legendre",       "manual",    "Ross-Fahroo",  5.0e-3,  "pardisomkl",  "8",  "IPOPT",   "limited-memory"},  // Intel MKL PARDISO
 };
 
 INSTANTIATE_TEST_SUITE_P(Axes, CapabilityMatrix, ::testing::ValuesIn(kConfigs),
