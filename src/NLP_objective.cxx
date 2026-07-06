@@ -110,7 +110,9 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
                 R += he * wq(q) * rsq;
             }
         }
-        return R;
+        { adouble _dt = tf - t0;                       // MIRNS: mean residual (residual integral / duration)
+          adouble _dtp = 0.5*(_dt + sqrt(_dt*_dt + 1.0));  // smooth-positive duration (no sign flip)
+          return R / _dtp; }
     }
 
 
@@ -179,7 +181,9 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
             R += hk * wq(q) * rsq;
         }
     }
-    return R;
+    { adouble _dt = tf - t0;                           // MIRNS: mean residual
+      adouble _dtp = 0.5*(_dt + sqrt(_dt*_dt + 1.0));      // smooth-positive duration
+      return R / _dtp; }
 }
 
 
