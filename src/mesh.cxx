@@ -33,6 +33,108 @@ e-mail:    v.m.becerra@ieee.org
 
 using namespace Eigen;
 
+static double clamp_double(double x, double lo, double hi)
+{
+   if (x < lo) return lo;
+   if (x > hi) return hi;
+   return x;
+}
+
+static double derivative_variation_score(const MatrixXd& Xdot)
+{
+   if (Xdot.rows() == 0 || Xdot.cols() < 2) return 0.0;
+
+   double total = 0.0;
+   int samples = 0;
+   for (int i = 0; i < Xdot.rows(); ++i) {
+      double scale = 1.0 + Xdot.row(i).cwiseAbs().maxCoeff();
+      for (int k = 0; k < Xdot.cols() - 1; ++k) {
+         total += std::fabs(Xdot(i, k + 1) - Xdot(i, k)) / scale;
+         ++samples;
+      }
+   }
+   if (samples == 0) return 0.0;
+   return clamp_double(total / samples, 0.0, 1.0);
+}
+
+static double trajectory_variation_score(const MatrixXd& M)
+{
+   if (M.rows() == 0 || M.cols() < 2) return 0.0;
+
+   double total = 0.0;
+   int samples = 0;
+   for (int i = 0; i < M.rows(); ++i) {
+      double scale = 1.0 + M.row(i).cwiseAbs().maxCoeff();
+      for (int k = 0; k < M.cols() - 1; ++k) {
+         total += std::fabs(M(i, k + 1) - M(i, k)) / scale;
+         ++samples;
+      }
+   }
+   if (samples == 0) return 0.0;
+   return clamp_double(total / samples, 0.0, 1.0);
+}
+
+static double phase_quality_score(const Sol& solution, int iphase, const MatrixXd& Xdot)
+{
+   const int i = iphase - 1;
+   double xdot_score = derivative_variation_score(Xdot);
+   double costate_score = trajectory_variation_score(solution.dual.costates[i]);
+   double hamiltonian_score = trajectory_variation_score(solution.dual.Hamiltonian[i]);
+
+   return clamp_double(0.50 * xdot_score + 0.35 * costate_score + 0.15 * hamiltonian_score,
+                       0.0, 1.0);
+}
+
+static double adaptive_increment_factor(const Alg& algorithm,
+                                        const MatrixXd& history,
+                                        const MatrixXd& Xdot,
+                                        const Sol& solution,
+                                        int iphase,
+                                        int current_iteration)
+{
+   double factor = algorithm.mr_max_increment_factor;
+   const double derivative_score = phase_quality_score(solution, iphase, Xdot);
+
+   if (algorithm.derivatives == "automatic") {
+      factor += 0.12;
+   } else {
+      factor -= 0.12;
+   }
+
+   if (algorithm.hessian == "exact") {
+      factor += 0.10;
+   } else {
+      factor -= 0.05;
+   }
+
+   if (algorithm.nlp_method == "CASADI" && algorithm.casadi_solver == "ipopt") {
+      factor += 0.05;
+   }
+
+   if (algorithm.ps_method == "Bellman") {
+      factor -= 0.05;
+   }
+
+   factor += 0.10 * derivative_score;
+
+   if (current_iteration >= 2 && history.rows() >= 2) {
+      const double prev = history(current_iteration - 2, 1);
+      const double last = history(current_iteration - 1, 1);
+      if (prev > 0.0 && last > 0.0) {
+         const double ratio = last / prev;
+         if (ratio < 0.3) {
+            factor += 0.10;
+         } else if (ratio > 0.9) {
+            factor -= 0.10;
+         } else if (ratio > 0.6) {
+            factor -= 0.05;
+         }
+      }
+   }
+
+   return clamp_double(factor, 0.08, 0.92);
+}
+
 void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace )
 {
    int iphase;
@@ -47,7 +149,7 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 	int max_increment;
 	double yerror;
 
-  	for(iphase=1;iphase<=problem.nphases;iphase++) {
+	for(iphase=1;iphase<=problem.nphases;iphase++) {
     	int decrease_count=0;
 		int Ncurrent = problem.phase[iphase-1].current_number_of_intervals+1;
 
@@ -58,6 +160,11 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
       x    = emax_history.block(0,0, workspace->current_mesh_refinement_iteration, 1); 
 
       evec = emax_history.block(0,1, workspace->current_mesh_refinement_iteration, 1); 
+
+      double tuned_increment_factor = adaptive_increment_factor(algorithm, emax_history,
+                                                                workspace->Xdot[iphase-1],
+                                                                solution, iphase,
+                                                                workspace->current_mesh_refinement_iteration);
 
       y.resize(evec.rows(),1);
       
@@ -124,18 +231,18 @@ void compute_next_mesh_size( Prob& problem, Alg& algorithm, Sol& solution, Works
 
            xd = (int) exp( (yd- theta(1))/theta(0) );
 
-			  max_increment = std::max( (int) algorithm.mr_max_increment_factor*Ncurrent, 1);
+			  max_increment = std::max( (int) (tuned_increment_factor*Ncurrent), 1);
 
 			  Nd = std::min( Ncurrent + max_increment, std::max( xd, (Ncurrent+1)  ) );
 
-			  snprintf(workspace->text,sizeof(workspace->text),"\nPhase %i: extrapolated number of nodes: %i, accepted number of nodes %d\n", iphase, xd, Nd);
+			  snprintf(workspace->text,sizeof(workspace->text),"\nPhase %i: extrapolated number of nodes: %i, accepted number of nodes %d (adaptive increment factor=%f)\n", iphase, xd, Nd, tuned_increment_factor);
 
 		    }
 
 		    else {
 			// Take a cautious step forward and hope for the best
-			Nd = Ncurrent + 1;
-			snprintf(workspace->text,sizeof(workspace->text),"\nPhase %i: cautious step forward, next number of nodes %d\n", iphase, Nd);
+			Nd = Ncurrent + std::max((int) (tuned_increment_factor * Ncurrent), 1);
+			snprintf(workspace->text,sizeof(workspace->text),"\nPhase %i: cautious step forward, next number of nodes %d (adaptive increment factor=%f)\n", iphase, Nd, tuned_increment_factor);
 		    }
 
 		    psopt_print(workspace,workspace->text);
@@ -365,5 +472,3 @@ void construct_new_mesh(Prob& problem,Alg& algorithm,Sol& solution, Workspace* w
 
 
 }
-
-

@@ -360,6 +360,7 @@ void print_algorithm_summary(Prob& problem, Alg& algorithm, Sol& solution, Works
     fprintf(outfile,"\n***************************************** ALGORITHM OPTIONS *********************************************");
     fprintf(outfile,"\n*********************************************************************************************************");
     fprintf(outfile,"\nCOLLOCATION METHOD:             %s", algorithm.collocation_method.c_str()   );
+    fprintf(outfile,"\nPS METHOD:                      %s", algorithm.ps_method.c_str()   );
     if (use_global_collocation(algorithm)) {
     fprintf(outfile,"\nDIFFERENTIATION MATRIX:         %s", algorithm.diff_matrix.c_str()   );
     }
@@ -855,6 +856,5 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
     delete [] g_u;
 
 }
-
 
 

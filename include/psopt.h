@@ -187,7 +187,7 @@ struct alg_str {
   string    scaling;
   string    derivatives;
   string    constraint_scaling;
-  string    ps_method;
+  string    ps_method;       // "Ross-Fahroo" (default) or "Bellman"
   string    collocation_method;
   string    hessian;
   string    defect_scaling;
@@ -784,6 +784,10 @@ bool check_for_equidistributed_error(Prob& problem,Alg& algorithm,Sol& solution)
 bool use_local_collocation(Alg & algorithm);
 
 bool use_global_collocation(Alg & algorithm);
+
+bool use_ross_fahroo_ps_method(Alg & algorithm);
+
+bool use_bellman_ps_method(Alg & algorithm);
 
 void bilinear_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, MatrixXd& Y, MatrixXd& Z);
 

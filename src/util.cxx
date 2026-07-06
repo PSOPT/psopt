@@ -488,6 +488,20 @@ bool use_global_collocation(Alg & algorithm)
 
 
 
+bool use_ross_fahroo_ps_method(Alg & algorithm)
+{
+     return (algorithm.ps_method == "Ross-Fahroo");
+}
+
+
+
+bool use_bellman_ps_method(Alg & algorithm)
+{
+     return (algorithm.ps_method == "Bellman");
+}
+
+
+
 bool need_midpoint_controls(Alg& algorithm, Workspace* workspace)
 {
     bool retval;
@@ -1069,4 +1083,3 @@ MatrixXd log10(const MatrixXd& m) {
 MatrixXd sqrt(const MatrixXd& m) { 
      return m.array().sqrt(); 
      }
-

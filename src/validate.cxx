@@ -46,12 +46,18 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("Incorrect differential defect scaling option specified. Valid options are \"state-based\" and \"jacobian-based\" ");
     if (algorithm.derivatives != "automatic" && algorithm.derivatives!="numerical")
        error_message("Incorrect derivatives option specified. Valid options are \"automatic\" and \"numerical\" ");
+    if (algorithm.ps_method != "Ross-Fahroo" && algorithm.ps_method != "Bellman")
+       error_message("Incorrect ps_method option specified. Valid options are \"Ross-Fahroo\" and \"Bellman\" ");
     if (algorithm.hessian != "exact" && algorithm.hessian!="limited-memory")
        error_message("Incorrect algorithm.hessian option specified. Valid options are \"limited-memory\" and \"exact\" ");
     if (algorithm.hessian == "exact" &&
         (algorithm.nlp_method == "SNOPT" ||
          (algorithm.nlp_method == "CASADI" && algorithm.casadi_solver != "ipopt"))) {
        snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the 'exact' algorithm.hessian option is only available with IPOPT or CASADI+ipopt");
+       psopt_print(workspace,workspace->text);
+    }
+    if (algorithm.ps_method == "Bellman" && algorithm.mesh_refinement != "automatic") {
+       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the Bellman pseudospectral method is intended for automatic mesh refinement");
        psopt_print(workspace,workspace->text);
     }
     if (algorithm.diff_matrix != "standard" && algorithm.diff_matrix!="diff_matrix" && algorithm.diff_matrix!="central-differences" &&  algorithm.diff_matrix!="reduced-roundoff" )

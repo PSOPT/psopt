@@ -134,6 +134,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.defect_scaling              = "state-based";
   algorithm.derivatives                 = "automatic";
   algorithm.constraint_scaling          = "automatic";
+  algorithm.ps_method                   = "Ross-Fahroo";
   algorithm.nlp_iter_max                = 1000;
   algorithm.nlp_tolerance               = 1.e-6;
   algorithm.jac_sparsity_ratio  	       = 0.5;
@@ -167,4 +168,3 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
 
   return;
 }
-

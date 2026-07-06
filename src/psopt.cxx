@@ -33,13 +33,118 @@ e-mail:    v.m.becerra@ieee.org
 
 #include "psopt.h"
 
+static void setup_bellman_bootstrap(Prob& problem, Alg& algorithm)
+{
+    if (!use_bellman_ps_method(algorithm)) {
+        return;
+    }
+
+    if (problem.nphases != 1) {
+        return;
+    }
+
+    if (problem.phase == NULL) {
+        error_message("Bellman bootstrap requires phase data to be initialized before psopt()");
+    }
+
+    if (problem.nlinkages != 0) {
+        error_message("Bellman bootstrap currently supports only single-phase problems without user-defined linkages");
+    }
+
+    if (problem.phase[0].nevents != 0 || problem.events != NULL) {
+        fprintf(stderr, "\n*** Warning: Bellman bootstrap is only applied automatically to event-free single-phase problems");
+        return;
+    }
+
+    Phases* old_phase = problem.phase;
+    Phases* new_phase = new Phases[2];
+    new_phase[0] = old_phase[0];
+    new_phase[1] = old_phase[0];
+    delete [] old_phase;
+
+    problem.phase = new_phase;
+    problem.nphases = 2;
+    problem.multi_segment_flag = true;
+    problem.continuous_controls_flag = false;
+
+    int nstates = problem.phase[0].nstates;
+    int nlinkages = nstates + 1;
+
+    problem.phase[1].nparameters = 0;
+    problem.phase[1].guess.parameters.resize(0, 1);
+    problem.phase[1].scale.parameters.resize(0, 1);
+    problem.phase[1].nobserved = 0;
+    problem.phase[1].nsamples = 0;
+    problem.phase[1].observations.resize(0, 0);
+    problem.phase[1].observation_nodes.resize(0, 0);
+    problem.phase[1].residual_weights.resize(0, 0);
+    problem.phase[1].covariance.resize(0, 0);
+
+    problem.nlinkages = nlinkages;
+    problem.scale.linkages.resize(nlinkages, 1);
+    problem.bounds.lower.linkage.resize(nlinkages, 1);
+    problem.bounds.upper.linkage.resize(nlinkages, 1);
+    problem.bounds.lower.linkage.setZero();
+    problem.bounds.upper.linkage.setZero();
+
+    if (!isEmpty(problem.bounds.lower.times)) {
+        int ntime = (int) length(problem.bounds.lower.times);
+        if (ntime != 2) {
+            error_message("Bellman bootstrap expects a single-phase time bounds vector with two entries");
+        }
+
+        double t0 = problem.bounds.lower.times(0);
+        double tf = problem.bounds.upper.times(1);
+        double tm = 0.5 * (t0 + tf);
+
+        MatrixXd lower_times(1, 3);
+        MatrixXd upper_times(1, 3);
+        lower_times(0) = problem.bounds.lower.times(0);
+        lower_times(1) = tm;
+        lower_times(2) = problem.bounds.lower.times(1);
+        upper_times(0) = problem.bounds.upper.times(0);
+        upper_times(1) = tm;
+        upper_times(2) = problem.bounds.upper.times(1);
+        problem.bounds.lower.times = lower_times;
+        problem.bounds.upper.times = upper_times;
+
+        problem.phase[0].bounds.lower.StartTime = lower_times(0);
+        problem.phase[0].bounds.upper.StartTime = upper_times(0);
+        problem.phase[0].bounds.lower.EndTime = lower_times(1);
+        problem.phase[0].bounds.upper.EndTime = upper_times(1);
+        problem.phase[1].bounds.lower.StartTime = lower_times(1);
+        problem.phase[1].bounds.upper.StartTime = upper_times(1);
+        problem.phase[1].bounds.lower.EndTime = lower_times(2);
+        problem.phase[1].bounds.upper.EndTime = upper_times(2);
+    }
+    else {
+        double t0 = problem.phase[0].bounds.lower.StartTime;
+        double tf = problem.phase[0].bounds.upper.EndTime;
+        double tm = 0.5 * (t0 + tf);
+
+        problem.phase[0].bounds.lower.EndTime = tm;
+        problem.phase[0].bounds.upper.EndTime = tm;
+        problem.phase[1].bounds.lower.StartTime = tm;
+        problem.phase[1].bounds.upper.StartTime = tm;
+    }
+
+    if (!isEmpty(problem.phase[0].guess.time)) {
+        int guess_nodes = (int) length(problem.phase[0].guess.time);
+        double t0 = problem.phase[0].bounds.lower.StartTime;
+        double tm = problem.phase[0].bounds.upper.EndTime;
+        double tf = problem.phase[1].bounds.upper.EndTime;
+        problem.phase[0].guess.time = linspace(t0, tm, guess_nodes);
+        problem.phase[1].guess.time = linspace(tm, tf, guess_nodes);
+    }
+}
 
 
 
 int psopt(Sol& solution, Prob& problem, Alg& algorithm)
 {
-	
-	 unique_ptr<Workspace> workspace_up{ new Workspace{problem, algorithm,solution} }; 
+    setup_bellman_bootstrap(problem, algorithm);
+		
+		 unique_ptr<Workspace> workspace_up{ new Workspace{problem, algorithm,solution} }; 
 
 
     initialize_solution(solution,problem,algorithm, workspace_up.get() );
@@ -848,6 +953,11 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
          }
     }
 
+    // Covector mapping theorem:
+    // The NLP multipliers are transformed into continuous-time costates, path
+    // multipliers, and linkage multipliers using the collocation weights,
+    // scaling, and method-specific endpoint corrections above.
+
     if (!useAutomaticDifferentiation(algorithm) && algorithm.nlp_method=="IPOPT")  {
 //          deleteIndexGroups( workspace->igroup, workspace->nvars );
     }
@@ -913,5 +1023,3 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
   return;
 
 }
-
-
