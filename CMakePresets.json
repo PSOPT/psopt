@@ -1,0 +1,88 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "windows-msvc",
+      "displayName": "Windows x64 (MSVC, vcpkg)",
+      "description": "Build PSOPT in Visual Studio with the MSVC toolchain; dependencies via vcpkg. Set VCPKG_ROOT, and provide ADOL-C via ADOLC_ROOT (built separately). See docs/BUILD_WINDOWS.md.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "PSOPT_AUTO_COMPILER": "OFF",
+        "PSOPT_WITH_MUMPS": "ON",
+        "BUILD_EXAMPLES": "ON",
+        "BUILD_TESTS": "OFF",
+        "HEADLESS": "ON"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "windows-msvc-debug",
+      "displayName": "Windows x64 (MSVC, vcpkg) — Debug",
+      "inherits": "windows-msvc",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "windows-intel",
+      "displayName": "Windows x64 (MSVC C++ + Intel oneAPI: MKL + ifx Fortran)",
+      "description": "MSVC builds PSOPT's C++; Intel oneMKL supplies BLAS/LAPACK (and MKL PARDISO as IPOPT's linear solver, ipopt_linear_solver=pardisomkl); Intel Fortran (ifx) builds the Fortran deps (MUMPS/IPOPT). Run configure from an 'Intel oneAPI command prompt' (after setvars.bat) so MKLROOT and ifx are on PATH.",
+      "inherits": "windows-msvc",
+      "cacheVariables": {
+        "BLA_VENDOR": "Intel10_64lp"
+      }
+    },
+    {
+      "name": "windows-casadi-nofortran",
+      "displayName": "Windows x64 (MSVC, CasADi backend — NO Fortran)",
+      "description": "Pure-C++ NLP path: CasADi with a C++ solver (fatrop, or sqpmethod+qpOASES) instead of IPOPT/MUMPS, so NO Fortran compiler is needed. Still requires ADOL-C (C++, no Fortran). At run time set algorithm.nlp_method=\"CASADI\" and casadi_solver=\"fatrop\" (or \"sqpmethod\").",
+      "inherits": "windows-msvc",
+      "cacheVariables": {
+        "PSOPT_WITH_IPOPT": "OFF",
+        "PSOPT_WITH_MUMPS": "OFF",
+        "PSOPT_WITH_CASADI": "ON"
+      }
+    },
+    {
+      "name": "windows-superbuild",
+      "displayName": "Windows x64 (MinGW/MSYS2, from-source superbuild)",
+      "description": "Build ALL dependencies from source (Eigen/ColPack/ADOL-C/METIS/MUMPS/IPOPT) via -DPSOPT_SUPERBUILD=ON using the MinGW-w64 GNU toolchain (gcc/g++/gfortran) under MSYS2. This is NOT MSVC: the autotools/make/Fortran superbuild needs a GNU/Unix environment. Run from an MSYS2 MINGW64 shell (pacman -S: gcc gcc-fortran cmake make autoconf automake libtool patch openblas gettext-devel pkgconf). Uses the 'MSYS Makefiles' generator, NOT Ninja: the autotools deps (autoreconf/./configure are shell scripts) must run through a Unix shell — Ninja on Windows dispatches recipe commands to cmd.exe, which cannot execute them ('autoreconf ... is not recognized'). MSYS2 make runs recipes via /bin/sh. superbuild.cmake is macOS-tuned; expect further Windows portability fixes. Experimental/untested.",
+      "generator": "MSYS Makefiles",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "PSOPT_SUPERBUILD": "ON",
+        "PSOPT_AUTO_COMPILER": "OFF",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BUILD_EXAMPLES": "ON",
+        "BUILD_TESTS": "OFF",
+        "HEADLESS": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc-superbuild",
+      "displayName": "Windows x64 (MSVC, from-source superbuild — CasADi, no Fortran)",
+      "description": "One-command MSVC build: -DPSOPT_SUPERBUILD=ON builds Eigen (CMake), ADOL-C (via its Visual Studio solution / msbuild), and CasADi (CMake, WITH_IPOPT=OFF) from source, then PSOPT with PSOPT_WITH_IPOPT=OFF. Boost/OpenBLAS still come from vcpkg (VCPKG_ROOT; forwarded to the PSOPT sub-build). Run from a Developer PowerShell for VS 18. EXPERIMENTAL/UNTESTED — ADOL-C's .sln output paths and MSVC source portability will likely need iteration; this is the 'automate the manual appendix' path.",
+      "inherits": "windows-msvc",
+      "cacheVariables": {
+        "PSOPT_SUPERBUILD": "ON",
+        "PSOPT_WITH_IPOPT": "OFF",
+        "PSOPT_WITH_MUMPS": "OFF",
+        "PSOPT_WITH_CASADI": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows-msvc",             "configurePreset": "windows-msvc" },
+    { "name": "windows-msvc-debug",       "configurePreset": "windows-msvc-debug" },
+    { "name": "windows-intel",            "configurePreset": "windows-intel" },
+    { "name": "windows-casadi-nofortran", "configurePreset": "windows-casadi-nofortran" },
+    { "name": "windows-superbuild",       "configurePreset": "windows-superbuild" },
+    { "name": "windows-msvc-superbuild",  "configurePreset": "windows-msvc-superbuild" }
+  ]
+}
