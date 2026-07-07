@@ -1,0 +1,12 @@
+# Script to strip Boost defines from config.h and adolc_settings.h files
+if(EXISTS "${FILE}")
+    string(ASCII 10 NL)
+    string(ASCII 13 CR)
+    file(READ "${FILE}" CONTENT)
+    string(REPLACE "#define HAVE_BOOST_POOL_POOL_ALLOC_HPP 1" "/* #undef HAVE_BOOST_POOL_POOL_ALLOC_HPP */" CONTENT "${CONTENT}")
+    string(REPLACE "#define HAVE_BOOST_SYSTEM" "/* #undef HAVE_BOOST_SYSTEM */" CONTENT "${CONTENT}")
+    string(REPLACE "#define HAVE_BOOST${NL}" "/* #undef HAVE_BOOST */${NL}" CONTENT "${CONTENT}")
+    string(REPLACE "#define HAVE_BOOST${CR}${NL}" "/* #undef HAVE_BOOST */${CR}${NL}" CONTENT "${CONTENT}")
+    string(REPLACE "#define USE_BOOST_POOL 1" "/* #undef USE_BOOST_POOL */" CONTENT "${CONTENT}")
+    file(WRITE "${FILE}" "${CONTENT}")
+endif()

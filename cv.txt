@@ -1,0 +1,12 @@
+
+PSOPT results summary
+=====================
+
+Problem: 					casadi-verify
+CPU time (seconds):				1.706715e+00
+NLP solver used: 				CASADI
+PSOPT release number: 				2025-05-08-53-g364c835
+PSOPT build date: 				2026-07-06 09:40:22
+Date and time of this run: 			Mon Jul  6 09:44:07 2026
+
+NLP solver reports: 				Problem: 					casadi-verify

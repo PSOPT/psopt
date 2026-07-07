@@ -74,9 +74,9 @@ private:
    *
    */
   //@{
-  //  IPOPT_PSOPT();
-  snoptProbLocal(const IPOPT_PSOPT&);
-  snoptProbLocal& operator=(const IPOPT_PSOPT&);
+  //  snoptProbLocal();
+  snoptProbLocal(const snoptProbLocal&);
+  snoptProbLocal& operator=(const snoptProbLocal&);
   //@}
 
 };

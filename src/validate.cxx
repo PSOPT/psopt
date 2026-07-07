@@ -38,6 +38,10 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
     if (algorithm.nlp_method != "IPOPT" && algorithm.nlp_method != "SNOPT" && algorithm.nlp_method != "CASADI" && algorithm.nlp_method != "SCIP" )
        error_message("Incorrect NLP method specified. The only valid values are \"IPOPT\", \"SNOPT\", \"CASADI\", or \"SCIP\" ");
+#ifndef USE_IPOPT
+    if (algorithm.nlp_method == "IPOPT" || algorithm.nlp_method == "SCIP")
+       error_message("This PSOPT was built without the IPOPT backend (PSOPT_WITH_IPOPT=OFF). Set algorithm.nlp_method=\"CASADI\".");
+#endif
     if (algorithm.collocation_method != "Legendre" && algorithm.collocation_method!="Chebyshev" && algorithm.collocation_method!="Radau" && algorithm.collocation_method!="Gauss" && algorithm.collocation_method!="trapezoidal" && algorithm.collocation_method!="Hermite-Simpson")
        error_message("Incorrect collocation method specified. Valid options are \"Legendre\", \"Chebyshev\", \"Radau\", \"Gauss\", \"trapezoidal\", and \"Hermite-Simpson\" ");
     if (algorithm.scaling != "automatic" && algorithm.scaling!="user")

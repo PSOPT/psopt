@@ -2,7 +2,7 @@
 #
 # Search order:
 #   1. IPOPT_ROOT / IPOPT_DIR (CMake var or env) prefix.
-#   2. pkg-config "ipopt" (honours PKG_CONFIG_PATH, e.g. /opt/claude/ipopt/lib/pkgconfig).
+#   2. pkg-config "ipopt" (honours PKG_CONFIG_PATH, e.g. /opt/ipopt/lib/pkgconfig).
 #   3. Standard system prefixes.
 #
 # Sets IPOPT_FOUND and an imported target IPOPT::ipopt with include dirs + libs.

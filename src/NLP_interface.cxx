@@ -413,6 +413,7 @@ int NLP_interface(
 
     else if ( algorithm.nlp_method=="IPOPT" )
     {
+#ifdef USE_IPOPT
 
 
   // Create a new instance of nlp
@@ -477,7 +478,11 @@ int NLP_interface(
   solution->nlp_return_code = (int) status;
 
   return (int) status;
-
+#else
+        snprintf(workspace->text,sizeof(workspace->text),"\nIPOPT method specified but not linked (build with -DPSOPT_WITH_IPOPT=ON, or set algorithm.nlp_method=\"CASADI\")");
+        error_message(workspace->text);
+        return 1;
+#endif
 
     }
 
@@ -501,6 +506,7 @@ int NLP_interface(
 // Returns the IPOPT ApplicationReturnStatus (0 == Solve_Succeeded).
 int psopt_ipopt_resolve(Workspace* workspace, void* user_data)
 {
+#ifdef USE_IPOPT
     Alg* algorithm = workspace->algorithm;
     SmartPtr<TNLP> mynlp = new IPOPT_PSOPT(workspace, user_data);
     SmartPtr<IpoptApplication> app = new IpoptApplication();
@@ -517,5 +523,9 @@ int psopt_ipopt_resolve(Workspace* workspace, void* user_data)
     if (status != Solve_Succeeded) return (int) status;
     status = app->OptimizeTNLP(mynlp);
     return (int) status;
+#else
+    (void) workspace; (void) user_data;
+    return 1;   // IPOPT backend not built (PSOPT_WITH_IPOPT=OFF)
+#endif
 }
 

@@ -52,11 +52,7 @@ using Eigen::RowVectorXi;
 
 
 
-#ifdef WIN32
-extern "C" {
-_CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
-}
-#endif
+#include <errno.h>
 
 #define CINDEX( i )    ((i)-1)
 
@@ -1252,12 +1248,11 @@ bool isSymmetric(const MatrixXd& m);
 #endif
 
 
+#ifdef USE_IPOPT
 #include <IpIpoptApplication.hpp>
 #include "ipopt_psopt.h"
-
-
-
 using namespace Ipopt;
+#endif
 
 
 

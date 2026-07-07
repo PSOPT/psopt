@@ -2,7 +2,7 @@
 # build. Each dep is found first; Eigen (header-only) and ADOL-C have a
 # fetch/build fallback. Heavy deps (IPOPT, CasADi) must be found here — build
 # them from source with -DPSOPT_SUPERBUILD=ON, or point at a prefix
-# (e.g. -DIPOPT_ROOT=/opt/claude/ipopt, -DCMAKE_PREFIX_PATH=...).
+# (e.g. -DIPOPT_ROOT=/opt/ipopt, -DCMAKE_PREFIX_PATH=...).
 include(FetchContent)
 
 # ---- Eigen3 (header-only; fetch if missing) ---------------------------------
@@ -81,16 +81,21 @@ else()
   find_package(adolc REQUIRED)   # module mode -> cmake/Findadolc.cmake (pkg-config)
 endif()
 
-# ---- IPOPT (required, PUBLIC) -----------------------------------------------
-find_package(IPOPT)
-if(NOT IPOPT_FOUND)
-  message(FATAL_ERROR
-    "IPOPT not found. Either:\n"
-    "  * point at an install:  -DIPOPT_ROOT=/opt/claude/ipopt  (or add its lib/pkgconfig to PKG_CONFIG_PATH), or\n"
-    "  * build everything from source:  cmake -DPSOPT_SUPERBUILD=ON ...")
-endif()
-if(IPOPT_VERSION)
-  message(STATUS "Found IPOPT ${IPOPT_VERSION}")
+# ---- IPOPT (PUBLIC; optional — off => CasADi-only, no IPOPT/Fortran) --------
+if(PSOPT_WITH_IPOPT)
+  find_package(IPOPT)
+  if(NOT IPOPT_FOUND)
+    message(FATAL_ERROR
+      "IPOPT not found. Either:\n"
+      "  * point at an install:  -DIPOPT_ROOT=/opt/ipopt  (or add its lib/pkgconfig to PKG_CONFIG_PATH), or\n"
+      "  * build everything from source:  cmake -DPSOPT_SUPERBUILD=ON ..., or\n"
+      "  * build without IPOPT (CasADi-only):  -DPSOPT_WITH_IPOPT=OFF -DPSOPT_WITH_CASADI=ON")
+  endif()
+  if(IPOPT_VERSION)
+    message(STATUS "Found IPOPT ${IPOPT_VERSION}")
+  endif()
+else()
+  message(STATUS "PSOPT_WITH_IPOPT=OFF — building without the IPOPT backend (CasADi-only)")
 endif()
 
 # ---- HSL: lives inside IPOPT; just steer the default solver -----------------
