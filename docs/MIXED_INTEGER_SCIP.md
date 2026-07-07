@@ -1,8 +1,8 @@
 # Mixed-integer optimal control via SCIP — status & integration path
 
 ## Status
-- **SCIP v11 + SoPlex built from source** (`/opt/claude/src/build_scip.sh` →
-  `/opt/claude/scip`), arm64 macOS, GMP from MacPorts.
+- **SCIP v11 + SoPlex built from source** (`/opt/src/build_scip.sh` →
+  `/opt/scip`), arm64 macOS, GMP from MacPorts.
 - **Working MIOC demonstrator**: `scip-mioc/mioc_scip.c` — a double integrator with
   integer thrust `u_k∈{−1,0,1}` transcribed to a MILP and solved to global optimality
   (bang-off-bang, total actuation 8.0). Standalone (links SCIP, not PSOPT) so the
@@ -94,8 +94,8 @@ cmake --build build -j4            # builds ep_soplex, ep_scip (uses ep_ipopt fo
 ```
 Standalone (the demonstrator here):
 ```
-bash /opt/claude/src/build_scip.sh      # SoPlex + SCIP -> /opt/claude/scip
+bash /opt/src/build_scip.sh      # SoPlex + SCIP -> /opt/scip
 cd scip-mioc && bash build.sh && \
-  DYLD_LIBRARY_PATH=/opt/claude/scip/lib:/opt/local/lib ./mioc_scip
+  DYLD_LIBRARY_PATH=/opt/scip/lib:/opt/local/lib ./mioc_scip
 ```
 </content>

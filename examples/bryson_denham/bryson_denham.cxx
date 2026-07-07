@@ -16,6 +16,7 @@
 
 
 #include "psopt.h"
+#include <cstdlib>   // std::getenv / std::atof — for the PSOPT_P_L model-parameter override
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Define the end point (Mayer) cost function //////////
@@ -157,7 +158,12 @@ int main(void)
     problem.phases(1).bounds.lower.states(1) 		= -10.0;
     problem.phases(1).bounds.lower.states(2) 		= -10.0;
 
-    problem.phases(1).bounds.upper.states(0)	 	= 1.0/9.0;
+    // Model parameter L (state upper bound x1 <= L). Overridable via the
+    // environment variable PSOPT_P_L for parameter-effect testing; the default
+    // 1/9 leaves the problem statement unchanged (the constraint itself is not
+    // added, removed, or altered — only its numeric bound). J*(L) = 4/(9 L).
+    const char* _psopt_p_L = std::getenv("PSOPT_P_L");
+    problem.phases(1).bounds.upper.states(0)	 	= _psopt_p_L ? std::atof(_psopt_p_L) : 1.0/9.0;
     problem.phases(1).bounds.upper.states(1) 		= 10.0;
     problem.phases(1).bounds.upper.states(2) 		= 10.0;
 

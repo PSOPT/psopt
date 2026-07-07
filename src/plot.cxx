@@ -48,11 +48,7 @@ e-mail:    v.m.becerra@ieee.org
 #include <stdlib.h>
 #endif
 
-#ifdef WIN32
-extern "C" {
-_CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
-}
-#endif
+#include <errno.h>
 
 #include "psopt.h"
 #include <math.h>

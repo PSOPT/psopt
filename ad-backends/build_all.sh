@@ -15,7 +15,7 @@ export SDKROOT="$(xcrun --show-sdk-path)"
 
 GXX=/opt/local/bin/g++-mp-15
 CLANGXX=/opt/local/libexec/llvm-20/bin/clang++
-HERE=/opt/claude/ad-shootout
+HERE=/opt/ad-shootout
 PFX=$HERE/install
 DEPS=$HOME/src/psopt/build-sb/_deps/install     # superbuilt ADOL-C
 EIG=/opt/local/include/eigen3

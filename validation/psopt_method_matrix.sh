@@ -9,7 +9,7 @@ PSOPT=~/src/psopt
 EPB=$PSOPT/build-sb/ep_psopt-prefix/src/ep_psopt-build
 DEPS=$PSOPT/build-sb/_deps/install
 export DYLD_LIBRARY_PATH=$DEPS/lib:$DEPS/lib/casadi:$DEPS/lib64
-OUT=/opt/claude/psopt/method-matrix; mkdir -p "$OUT"
+OUT=/opt/psopt/method-matrix; mkdir -p "$OUT"
 RES=$OUT/RESULTS.tsv
 printf "example\tmethod\tstatus\tsecs\tobjective\n" > "$RES"
 

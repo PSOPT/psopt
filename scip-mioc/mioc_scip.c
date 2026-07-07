@@ -17,7 +17,7 @@
  *
  * SCIP returns the globally optimal integer (bang-off-bang) control schedule.
  *
- * Build: see build.sh (links the SCIP built into /opt/claude/scip).
+ * Build: see build.sh (links the SCIP built into /opt/scip).
  */
 #include <stdio.h>
 #include <stdlib.h>

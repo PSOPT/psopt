@@ -92,7 +92,7 @@ algorithm.derivatives = "automatic";  // PSOPT's own f/g derivative mode (unchan
 ```
 
 ## Reproduce
-`/opt/claude/src/psopt_casadi_benchmark.sh` (rebuilds each example under both
+`/opt/src/psopt_casadi_benchmark.sh` (rebuilds each example under both
 backends from the superbuild tree; results in
-`/opt/claude/psopt/casadi-benchmark/RESULTS.tsv`).
+`/opt/psopt/casadi-benchmark/RESULTS.tsv`).
 </content>

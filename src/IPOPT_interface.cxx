@@ -29,6 +29,10 @@ e-mail:    v.m.becerra@ieee.org
 **********************************************************************************************/
 
 
+#ifdef WIN32
+#include <windows.h>
+#endif
+
 #include "psopt.h"
 
 

@@ -22,11 +22,11 @@ continuous relaxation.
 
 ## Build & run
 ```
-bash build.sh        # links the SCIP built into /opt/claude/scip (SoPlex LP backend)
-DYLD_LIBRARY_PATH=/opt/claude/scip/lib:/opt/local/lib ./mioc_scip
+bash build.sh        # links the SCIP built into /opt/scip (SoPlex LP backend)
+DYLD_LIBRARY_PATH=/opt/scip/lib:/opt/local/lib ./mioc_scip
 ```
 SCIP (v11) + SoPlex are built from source (github.com/scipopt) via
-`/opt/claude/src/build_scip.sh`.
+`/opt/src/build_scip.sh`.
 
 ## Relationship to PSOPT
 This is a **standalone** demonstrator (links SCIP, not PSOPT) — deliberately not wired
