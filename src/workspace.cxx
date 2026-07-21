@@ -120,7 +120,9 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   int max_ncons = get_max_number_nlp_constraints(problem, algorithm);
 
   int max_nodes = get_max_nodes_in_all_phases(problem, algorithm);
-
+  workspace->problem = &problem ;
+  workspace->algorithm = &algorithm ;
+  workspace->solution = &solution ;
   workspace->P         = make_unique<MatrixXd[]>(nphases);
   workspace->sindex    = make_unique<RowVectorXi[]>(nphases);
   workspace->w         = make_unique<MatrixXd[]>(nphases);
