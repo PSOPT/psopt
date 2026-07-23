@@ -289,13 +289,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
   get_local_time( solution.start_date_and_time );
 
 
-
-  workspace->problem   = &problem;
-
-  workspace->algorithm = &algorithm;
-
-  workspace->solution  = &solution;
-
   int nlp_ncons;
   int nlp_neq;
   int offset = 0;   // accumulated in the per-phase loop before use; init to 0
