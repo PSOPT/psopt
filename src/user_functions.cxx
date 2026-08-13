@@ -36,6 +36,77 @@ using namespace std;
 
 
 
+
+// ---------------------------------------------------------------------------
+// Initial history of a phase with delayed states or controls.
+//
+// For t in [t0-d, t0) the delayed accessors below are asked for a trajectory value at a
+// time before the phase begins. A delay differential equation is not well posed without
+// an initial history function there, so PSOPT needs one of two things: either the user
+// supplies problem.initial_history, or PSOPT falls back on the constant history
+// phi(t) = x(t0), psi(t) = u(t0), which is what every earlier release did silently and
+// which keeps the state continuous at t0.
+//
+// Returns true when the user's history supplied the value, in which case *value holds it.
+// ---------------------------------------------------------------------------
+
+static bool evaluate_initial_history(adouble* value, int index, bool want_state,
+                                     int iphase, adouble& delayed_time, adouble* xad,
+                                     Workspace* workspace)
+{
+   Prob& problem = *workspace->problem;
+
+   if ( problem.initial_history == NULL ) return false;
+
+   int i = iphase-1;
+
+   adouble* hstates   = workspace->history_states[i].get();
+   adouble* hcontrols = workspace->history_controls[i].get();
+   adouble* params    = workspace->parameters[i].get();
+
+   get_parameters( params, xad, iphase, workspace );
+
+   for (int k=0; k<problem.phase[i].nstates;   k++) hstates[k]   = 0.0;
+   for (int k=0; k<problem.phase[i].ncontrols; k++) hcontrols[k] = 0.0;
+
+   problem.initial_history( hstates, hcontrols, params, delayed_time, xad, iphase, workspace );
+
+   *value = want_state ? hstates[index] : hcontrols[index];
+
+   return true;
+}
+
+// A one-off notice when the initial time of a phase using delayed variables is free. The
+// comparison that detects t-d < t0 is taken on a taped quantity, so it is decided once,
+// when the tape is recorded, and stays decided as t0 moves during the solve. With t0
+// fixed -- as it is in every delayed example distributed with PSOPT -- this is harmless.
+
+static void warn_if_initial_time_is_free(int iphase, Workspace* workspace)
+{
+   Prob& problem   = *workspace->problem;
+   Alg&  algorithm = *workspace->algorithm;
+   int   i         = iphase-1;
+
+   if ( workspace->delay_free_time_warned ) return;
+   if ( !useAutomaticDifferentiation(algorithm) ) return;
+
+   double lo = problem.phase[i].bounds.lower.StartTime;
+   double up = problem.phase[i].bounds.upper.StartTime;
+
+   if ( lo == up ) return;
+
+   workspace->delay_free_time_warned = true;
+
+   snprintf(workspace->text,sizeof(workspace->text),
+      "\n>>> Warning: phase %d uses delayed variables and has a free initial time."
+      "\n    The test that decides whether a delayed time falls before t0 is recorded on"
+      "\n    the derivative tape, so it is fixed at the value t0 had when the tape was"
+      "\n    taken. If t0 moves across a delay boundary during the solve the derivatives"
+      "\n    will be silently wrong. Fix t0, or use algorithm.derivatives = \"numerical\".",
+      iphase);
+   psopt_print(workspace,workspace->text);
+}
+
 void get_delayed_control(adouble* delayed_control, int control_index, int iphase, adouble& time, double delay, adouble* xad, Workspace* workspace)
 {
 
@@ -47,15 +118,41 @@ void get_delayed_control(adouble* delayed_control, int control_index, int iphase
  adouble delayed_time;
  adouble* time_array = workspace->time_array_tmp.get();;
  adouble* single_control_traj = workspace->single_trajectory_tmp.get();
+
+ // control_index counts from zero, as every other index of the user interface does.
+ // Releases before 2026 documented it as counting from one, so code written to that
+ // description reads the wrong control, silently, whenever the index happens to be in
+ // range. The check below catches the case where it is not.
+ if ( control_index < 0 || control_index >= problem.phase[i].ncontrols ) {
+     char msg[256];
+     snprintf(msg,sizeof(msg),
+        "get_delayed_control: control index %d is out of range for phase %d, which has %d "
+        "controls. The index counts from zero.", control_index, iphase, problem.phase[i].ncontrols);
+     error_message(msg);
+ }
+
  get_individual_control_trajectory(single_control_traj, control_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
 	time_array[k]  =  convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
  }
- if ( time-delay>t0 ) // Careful because this if-then statement may not be differentiable
-        delayed_time= time-delay;
- else
-          delayed_time=t0; // what is best to do here?
+ // The test is taken on a taped quantity; see warn_if_initial_time_is_free.
+ warn_if_initial_time_is_free(iphase, workspace);
+
+ // The history is defined on [t0-d, t0); at a delayed time of exactly t0 the value
+ // wanted is the trajectory's own, u(t0). The distinction is invisible with the default
+ // constant history, whose value there is u(t0) anyway, but a user history that steps at
+ // t0 would otherwise be applied at one node too many -- worth h/6 of the jump in a
+ // Hermite-Simpson quadrature, which is far larger than the discretization error.
+ if ( time-delay >= t0 ) {
+        delayed_time = time-delay;
+ }
+ else {
+        delayed_time = time-delay;
+        if ( evaluate_initial_history( delayed_control, control_index, false,
+                                       iphase, delayed_time, xad, workspace ) ) return;
+        delayed_time = t0;   // default: the constant history psi(t) = u(t0)
+ }
 
  spline_interpolation( delayed_control, delayed_time, time_array, single_control_traj, norder+1, workspace);
 
@@ -74,16 +171,34 @@ void get_delayed_state(adouble* delayed_state, int state_index, int iphase, adou
  adouble delayed_time;
  adouble* time_array = workspace->time_array_tmp.get();
  adouble* single_state_traj =  workspace->single_trajectory_tmp.get();
+
+ // state_index counts from zero; see the note in get_delayed_control.
+ if ( state_index < 0 || state_index >= problem.phase[i].nstates ) {
+     char msg[256];
+     snprintf(msg,sizeof(msg),
+        "get_delayed_state: state index %d is out of range for phase %d, which has %d "
+        "states. The index counts from zero.", state_index, iphase, problem.phase[i].nstates);
+     error_message(msg);
+ }
+
  get_individual_state_trajectory(single_state_traj, state_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
         ts = (workspace->snodes[i])(k);
 	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
  }
- if ( time-delay>t0 )
-        delayed_time= time-delay;
- else
-          delayed_time=t0; // nothing best to do here...
+ warn_if_initial_time_is_free(iphase, workspace);
+
+ // See the note in get_delayed_control on the boundary case.
+ if ( time-delay >= t0 ) {
+        delayed_time = time-delay;
+ }
+ else {
+        delayed_time = time-delay;
+        if ( evaluate_initial_history( delayed_state, state_index, true,
+                                       iphase, delayed_time, xad, workspace ) ) return;
+        delayed_time = t0;   // default: the constant history phi(t) = x(t0)
+ }
 
  if ( use_global_collocation(algorithm) &&  norder<100  ) {
  	lagrange_interpolation_ad( delayed_state, delayed_time, time_array, single_state_traj, norder+1, workspace);

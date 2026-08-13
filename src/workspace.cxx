@@ -292,6 +292,9 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   workspace->interp_states_pe   = make_unique<unique_ptr<adouble[]>[]>(nphases);
   workspace->interp_controls_pe = make_unique<unique_ptr<adouble[]>[]>(nphases);
   workspace->lam_resid  = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->history_states   = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->history_controls = make_unique<unique_ptr<adouble[]>[]>(nphases);
+  workspace->delay_free_time_warned = false;
 
 
 
@@ -325,6 +328,9 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
         if (nparam>=1) {
           workspace->prev_param[i].resize(nparam,1);
         }
+
+        workspace->history_states[i]   = make_unique<adouble[]>(nstates  >0 ? nstates  : 1);
+        workspace->history_controls[i] = make_unique<adouble[]>(ncontrols>0 ? ncontrols: 1);
 
         workspace->states[i]= make_unique<adouble[]>(nstates);
         workspace->controls[i] = make_unique<adouble[]>(ncontrols);

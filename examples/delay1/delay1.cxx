@@ -60,8 +60,8 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    adouble x2 = states[1];
    adouble x3 = states[2];
 
-   get_delayed_state( &x1delayed, 1, iphase, time, tau, xad, workspace);
-   get_delayed_state( &x2delayed, 2, iphase, time, tau, xad, workspace);
+   get_delayed_state( &x1delayed, 0, iphase, time, tau, xad, workspace);
+   get_delayed_state( &x2delayed, 1, iphase, time, tau, xad, workspace);
 
    adouble u = controls[0];
 

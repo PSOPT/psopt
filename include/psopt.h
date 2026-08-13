@@ -572,6 +572,21 @@ public:
 
    void (*observation_function)(adouble* observed_variable, adouble* states, adouble* controls, adouble* parameters, adouble& time, int k, adouble* xad, int iphase, Workspace* workspace);
 
+   // Initial history of a problem with delayed states or controls. A delay differential
+   // equation is not well posed without one: for t in [t0-d, t0) the right hand side asks
+   // for states and controls at times before the phase begins, where no trajectory has
+   // been defined. If this pointer is null, PSOPT uses the constant history
+   //
+   //     phi(t) = x(t0),   psi(t) = u(t0),      t < t0,
+   //
+   // which keeps the state continuous at t0 and is the behaviour of every earlier
+   // release. Setting it lets the user state the history that the problem actually has --
+   // a steady state different from the initial condition, or a recorded input. The
+   // function is called with a time strictly before t0 and must fill states[0..nstates-1]
+   // and controls[0..ncontrols-1]; it is evaluated on the AD tape, so it must be built
+   // from adouble arithmetic like any other user function.
+   void (*initial_history)(adouble* states, adouble* controls, adouble* parameters, adouble& time, adouble* xad, int iphase, Workspace* workspace);
+
    // Integer-control support: while the outer-convexification wrappers are installed
    // as dae/integrand_cost during psopt(), the user's originals are stashed here and
    // restored on exit. Null when no integer control is active. See integer_controls.h.
@@ -868,6 +883,8 @@ public:
    unique_ptr<unique_ptr<adouble[]>[]>  final_controls;
    unique_ptr<unique_ptr<adouble[]>[]>  events;
    unique_ptr<unique_ptr<adouble[]>[]>  path;
+   unique_ptr<unique_ptr<adouble[]>[]>  history_states;    // scratch for problem.initial_history
+   unique_ptr<unique_ptr<adouble[]>[]>  history_controls;
    unique_ptr<unique_ptr<adouble[]>[]>  states_traj;
    unique_ptr<unique_ptr<adouble[]>[]>  derivs_traj;
    adouble**  second_derivs_traj;
@@ -926,6 +943,7 @@ public:
    double     pe_sigma_hat;        // estimated residual standard deviation, eq. sigma_hat
    long       pe_dof;              // degrees of freedom of the NLP, n_f = n_z - rank(Jc)
    long       pe_nobs;             // number of scalar observations, N_s
+   bool       delay_free_time_warned;  // the free-t0 warning of get_delayed_state is printed once
    double     pe_objective;        // sum of squared weighted residuals at the solution, J*
 
 // Multipliers of the simple variable bounds at the solution, as reported by the NLP
