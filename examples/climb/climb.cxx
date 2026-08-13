@@ -455,6 +455,12 @@ int main(void)
 
     algorithm.nlp_method                  	= "IPOPT";
     algorithm.scaling                     	= "automatic";
+    // Numerical derivatives are required here, not merely preferred: the
+    // atmosphere model takes the value of the altitude (h.value()) and selects
+    // its layer by a comparison on a taped quantity, so under automatic
+    // differentiation the air density and speed of sound would carry no
+    // sensitivity to altitude at all, and the layer would be frozen at the
+    // altitude at which the tape was recorded. See doc/PSOPT_ISSUES.md.
     algorithm.derivatives                 	= "numerical";
     algorithm.collocation_method            = "trapezoidal";
     algorithm.nlp_iter_max                	= 1000;
@@ -577,7 +583,7 @@ void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta, Const
 
   i=1;
   j=NTAB;                                       // setting up for binary search
-  while (j<=i+1) {
+  while (j>i+1) {                    // binary search: PDAS atmos.f90 has DO WHILE(j > i+1)
     k=(i+j)/2;                                              // integer division
     if (h < htab(k-1)) {
       j=k;

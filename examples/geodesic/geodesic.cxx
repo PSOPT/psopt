@@ -183,7 +183,7 @@ int main(void)
     problem.phases(1).ncontrols 		= 2;
     problem.phases(1).nevents   		= 6;
     problem.phases(1).npath         = 1;
-    problem.phases(1).nodes         << 20;
+    problem.phases(1).nodes         << 40;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -216,7 +216,7 @@ int main(void)
     double phiU   =  2.0*pi;    
     
     // Coordinates of LHR: 51.4700° N, 0.4543° W
-    double lat_lhr = 51.74*pi/180.0;
+    double lat_lhr = 51.4700*pi/180.0;
     double lon_lhr = 0.4543*pi/180.0;    
      // Coordinates of JFK: 40.6413° N, 73.7781° W
     double lat_jfk = 40.6413*pi/180.0;
@@ -292,18 +292,50 @@ int main(void)
     MatrixXd time_guess =  linspace(0.0,7.0,nnodes);
 
 
-    u_guess << linspace(theta0,thetaf,nnodes),
-               linspace(phi0,phif,nnodes);
-    
+    // Position guess: interpolate the parametric angles between the two airports and
+    // place the points on the spheroid, so the guess satisfies the path constraint.
+
+    MatrixXd ang_guess(2,nnodes);
+
+    ang_guess << linspace(theta0,thetaf,nnodes),
+                 linspace(phi0,phif,nnodes);
+
     for (int i = 0;i< nnodes;i++) {
 
-      x_guess(0,i) = a*sin(u_guess(0,i))*cos(u_guess(1,i));
-      x_guess(1,i) = a*sin(u_guess(0,i))*sin(u_guess(1,i));
-      x_guess(2,i) = b*cos(u_guess(0,i));   
-    
+      x_guess(0,i) = a*sin(ang_guess(0,i))*cos(ang_guess(1,i));
+      x_guess(1,i) = a*sin(ang_guess(0,i))*sin(ang_guess(1,i));
+      x_guess(2,i) = b*cos(ang_guess(0,i));
+
     }
 
-    
+    // Control guess: the controls are the spherical angles of the VELOCITY vector, not
+    // of the position, so guess them as the direction of travel along the guessed path.
+    // Guessing the position angles here instead leaves the initial guess inconsistent
+    // with the dynamics, and the solver is then liable to converge to a path several
+    // kilometres longer than the geodesic while reporting success.
+
+    double L_guess = 0.0;
+
+    for (int i = 0;i< nnodes;i++) {
+
+      int  ia = (i < nnodes-1) ? i : nnodes-2;
+      double dx = x_guess(0,ia+1)-x_guess(0,ia);
+      double dy = x_guess(1,ia+1)-x_guess(1,ia);
+      double dz = x_guess(2,ia+1)-x_guess(2,ia);
+      double dn = sqrt(dx*dx+dy*dy+dz*dz);
+
+      u_guess(0,i) = acos(dz/dn);                        // polar angle of the velocity
+      u_guess(1,i) = atan2(dy,dx);                       // azimuth of the velocity
+      if ( u_guess(1,i) < 0.0 ) u_guess(1,i) += 2.0*pi;  // keep phi within its bounds
+
+      if (i < nnodes-1) L_guess += dn;
+
+    }
+
+    // Time guess: the length of the guessed path divided by the speed.
+
+    time_guess = linspace(0.0, L_guess/C->V, nnodes);
+
     problem.phases(1).guess.controls       = u_guess;
     problem.phases(1).guess.states         = x_guess;
     problem.phases(1).guess.time           = time_guess;
@@ -313,7 +345,7 @@ int main(void)
 ///////////////////  Enter algorithm options  //////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
     algorithm.nlp_iter_max                = 1000;
-    algorithm.nlp_tolerance               = 1.e-4;
+    algorithm.nlp_tolerance               = 1.e-6;
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
