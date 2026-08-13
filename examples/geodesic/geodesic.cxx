@@ -351,6 +351,11 @@ int main(void)
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "trapezoidal";
     algorithm.mesh_refinement             = "automatic";
+    // The default ODE tolerance of 1e-3 is met by the first trapezoidal mesh, so the
+    // refinement stops immediately and the answer is 0.2 km above the geodesic. At 1e-6
+    // the refinement runs to completion and the computed length agrees with the exact
+    // geodesic on this spheroid (5549.6819 km) to six significant figures.
+    algorithm.ode_tolerance               = 1.e-6;
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -400,15 +405,15 @@ int main(void)
 	        "Geodesic problem", "x", "y", "z",
 	       "pdf", "trajectory.pdf", "30,97");
 	       
-	 plot(t,states,problem.name, "time (s)", "states", "x y z");
+	 plot(t,states,problem.name, "time (h)", "states (km)", "x y z");
 
-    plot(t,controls,problem.name, "time (s)", "controls", "theta phi");
+    plot(t,controls,problem.name, "time (h)", "controls (rad)", "theta phi");
                     
 	       
-	 plot(t,states,problem.name, "time (s)", "states", "x y z",
+	 plot(t,states,problem.name, "time (h)", "states (km)", "x y z",
                            "pdf", "geodesic_states.pdf");
 
-    plot(t,controls,problem.name, "time (s)", "controls", "theta phi",
+    plot(t,controls,problem.name, "time (h)", "controls (rad)", "theta phi",
                            "pdf", "geodesic_controls.pdf");
 
 }
