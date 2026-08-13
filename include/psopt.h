@@ -920,6 +920,23 @@ public:
                                        // and in direct-box mode, where the scalar is used)
    clock_t    start_ticks;
 
+// Diagnostics of the last parameter-statistics calculation (see
+// compute_parameter_statistics in src/parameter_estimation.cxx), kept here so that the
+// report writer can quote them without recomputing anything.
+   double     pe_sigma_hat;        // estimated residual standard deviation, eq. sigma_hat
+   long       pe_dof;              // degrees of freedom of the NLP, n_f = n_z - rank(Jc)
+   long       pe_nobs;             // number of scalar observations, N_s
+   double     pe_objective;        // sum of squared weighted residuals at the solution, J*
+
+// Multipliers of the simple variable bounds at the solution, as reported by the NLP
+// solver: the two one-sided multipliers, and their absolute sum. The sum tells a bound
+// that is genuinely active from one the solution merely touches (used by the parameter
+// covariance); the two vectors are the dual starting point of a hot start. All three are
+// empty when no solve has yet reported them.
+   MatrixXd   bound_multipliers;
+   MatrixXd   zL_previous;
+   MatrixXd   zU_previous;
+
 // tape tags to be used by ADOL_C
 
   psopt_ad::ADHandle ad_f, ad_g, ad_hess, ad_fg, ad_gc;  // tags promoted to AD handles (step 2b)

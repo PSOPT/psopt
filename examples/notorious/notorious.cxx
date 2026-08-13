@@ -240,6 +240,7 @@ int main(void)
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "trapezoidal";
+    algorithm.parameter_statistics        = "yes";
     algorithm.nlp_iter_max                =  200;
     algorithm.nlp_tolerance               = 1.e-4;
 //    algorithm.mesh_refinement             = "automatic";

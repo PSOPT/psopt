@@ -229,6 +229,7 @@ int main(void)
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "Hermite-Simpson";
+    algorithm.parameter_statistics        = "yes";
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
 //    algorithm.jac_sparsity_ratio          = 0.52;

@@ -265,6 +265,7 @@ int main(void)
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "Legendre";
+    algorithm.parameter_statistics        = "yes";
 //    algorithm.mesh_refinement             = "automatic";
 //    algorithm.defect_scaling              = "jacobian-based";
 //    algorithm.nlp_iter_max                = 1000;

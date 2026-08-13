@@ -775,9 +775,14 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
 
     int ncons = get_number_nlp_constraints(problem, workspace);
 
-    MatrixXd Jctmp(ncons,nvars);
+    // Eigen leaves the storage of a newly constructed matrix uninitialised, and the
+    // sparse automatic-differentiation branch below writes only the structurally nonzero
+    // entries. Every other entry of Jctmp would then be whatever happened to be in memory.
+    MatrixXd Jctmp = MatrixXd::Zero(ncons,nvars);
 
-    Jc.resize(ncons,nvars);
+    // Room for the constraint rows plus one unit row per decision variable sitting at a
+    // bound (appended below).
+    Jc.resize(ncons+nvars,nvars);
 
     MatrixXd& JacCol1 = *workspace->JacCol1;
     MatrixXd& xp      = *workspace->xp;
@@ -846,7 +851,49 @@ void compute_jacobian_of_constraints_with_respect_to_variables(MatrixXd& Jc, Mat
        lam_phase_offset+= ncons_phase_i;
    }
 
-     Jc = Jc.block(0,0, icount-1, Jc.cols() );
+   // icount is post-incremented as each row is copied, so rows 0..icount-1 are valid and
+   // the assembled block has icount rows. Truncating it to icount-1 silently dropped one
+   // active constraint, enlarging the computed null space by one dimension.
+
+   // Simple bounds that are active at the solution are constraints as much as the
+   // equalities are: a variable pinned at a bound is not free to vary and must not
+   // contribute a direction to the null space. In a parameter estimation problem this
+   // always includes the fixed initial and final times, and any parameter that has
+   // converged onto one of its bounds. Each active bound contributes a unit row. Rows that
+   // merely repeat an equality already present are harmless, because the null space is
+   // taken from a rank-revealing decomposition.
+
+   // A bound counts only if the solution is not free to move away from it. A variable
+   // whose two bounds coincide is fixed outright and always counts. Otherwise the bound
+   // must be active with a non-zero multiplier: a trajectory that merely grazes a state
+   // bound at one node, with a zero multiplier, is still free to move inwards and does not
+   // remove a degree of freedom. Where the solver supplied no bound multipliers, only
+   // fixed variables are counted, which errs towards a larger null space and so towards
+   // wider, not narrower, confidence intervals.
+
+   const double bound_tol = 1.0e-8;
+
+   MatrixXd& zbnd = workspace->bound_multipliers;
+   bool have_z = ( zbnd.size() == nvars );
+   double zmax = 0.0;
+   if ( have_z ) for (j=0;j<nvars;j++) zmax = std::max(zmax, zbnd(j));
+   const double z_tol = 1.0e-8*(1.0+zmax);
+
+   for (j=0; j<nvars; j++) {
+       double xj = X(j), lo = XL(j), up = XU(j);
+       bool at_lower = ( lo > -PSOPT::inf/2.0 ) && ( fabs(xj-lo) <= bound_tol*(1.0+fabs(lo)) );
+       bool at_upper = ( up <  PSOPT::inf/2.0 ) && ( fabs(xj-up) <= bound_tol*(1.0+fabs(up)) );
+       bool fixed    = ( lo > -PSOPT::inf/2.0 ) && ( up < PSOPT::inf/2.0 )
+                       && ( fabs(up-lo) <= bound_tol*(1.0+fabs(lo)) );
+       bool binding  = fixed || ( (at_lower || at_upper) && have_z && zbnd(j) > z_tol );
+       if ( binding ) {
+           for (k=0;k<nvars;k++) Jc(icount,k) = 0.0;
+           Jc(icount,j) = 1.0;
+           icount++;
+       }
+   }
+
+   Jc = Jc.block(0,0, icount, Jc.cols() );
 
    workspace->use_constraint_scaling = 1;
 

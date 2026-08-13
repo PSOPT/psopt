@@ -838,16 +838,10 @@ bool IPOPT_PSOPT::get_starting_point(Index n, bool init_x, Number* x,
                                    Index m, bool init_lambda,
                                    Number* lambda)
 {
-  // Here, we assume we only have starting values for x, if you code
-  // your own NLP, you can provide starting values for the dual variables
-  // if you wish
   assert(init_x == true);
-//  assert(init_z == false);
-//  assert(init_lambda == false);
 
   Index i;
 
-//double *x0 = (workspace->x0)->GetPr();
   double *x0 = &(*workspace->x0)(0);
 
   // initialize to the given starting point
@@ -856,7 +850,6 @@ bool IPOPT_PSOPT::get_starting_point(Index n, bool init_x, Number* x,
   {
 	  x[i] = x0[i];
   }
-
 
   return true;
 }
@@ -1071,6 +1064,19 @@ void IPOPT_PSOPT::finalize_solution(SolverReturn status,
 
 
     memcpy( &(*workspace->lambda)(0), lambda, m*sizeof(double) );
+
+    // Keep the bound multipliers: the covariance calculation needs to know which simple
+    // bounds are genuinely active, and a variable that merely touches a bound with a zero
+    // multiplier is still free to move inwards.
+
+    workspace->bound_multipliers.resize(n,1);
+    workspace->zL_previous.resize(n,1);
+    workspace->zU_previous.resize(n,1);
+    for(int ii=0;ii<n;ii++) {
+        workspace->zL_previous(ii)      = z_L[ii];
+        workspace->zU_previous(ii)      = z_U[ii];
+        workspace->bound_multipliers(ii)= fabs(z_L[ii]) + fabs(z_U[ii]);
+    }
 
   for(int ii=0;ii<n;ii++) solution->xad[ii]=x[ii];
 

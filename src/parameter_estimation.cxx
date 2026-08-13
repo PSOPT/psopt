@@ -405,6 +405,28 @@ void extract_parameter_covariance(MatrixXd& Cp, MatrixXd& C, Workspace* workspac
 
 
 
+// Scale factors of the static parameters, in the order in which
+// extract_parameter_covariance lays out the rows and columns of Cp: phase by phase, and
+// within a phase in declaration order. The scaled decision variable is s*p (see
+// get_parameters), so a covariance computed in scaled variables is brought to physical
+// units by dividing entry (i,j) by s_i*s_j.
+static void get_parameter_scale_factors(MatrixXd& s, Workspace* workspace)
+{
+     Prob& problem = *(workspace->problem);
+     int n = 0;
+     for (int i = 0; i < problem.nphases; i++) n += problem.phase[i].nparameters;
+     s = ones( n>0 ? n : 1, 1);
+     int c = 0;
+     for (int i = 0; i < problem.nphases; i++) {
+         MatrixXd& ps = problem.phase[i].scale.parameters;
+         for (int j = 0; j < problem.phase[i].nparameters; j++) {
+             double f = ( ps.size() > j ) ? ps(j) : 1.0;
+             s(c++) = ( f != 0.0 ) ? f : 1.0;
+         }
+     }
+}
+
+
 bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, MatrixXd& phigh, MatrixXd& r, Workspace* workspace)
 {
       MatrixXd Jr, Jc;
@@ -481,30 +503,38 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
           }
       }
 
-      long M= JcT.rows();
-      long N= JcT.cols();
+      long M= JcT.rows();          // number of decision variables, n_z
 
+      // Null space of the active constraint set, from a rank-revealing QR of Jc^T. With
+      // column pivoting Jc^T P = Q R, so the leading rank(Jc) columns of Q span the range
+      // of Jc^T and the remaining ones span the null space of Jc. The rank must be
+      // computed rather than assumed: the constraint block carries structurally empty rows
+      // (the defect array is sized for norder+1 nodes while a local discretization fills
+      // norder of them), and the active-bound rows appended by
+      // compute_jacobian_of_constraints_with_respect_to_variables may repeat a condition
+      // that an event constraint already imposes.
 
-      if ((M-N)<=0) return false;
+      Eigen::ColPivHouseholderQR<MatrixXd> qr_of_JcT(JcT);
+      qr_of_JcT.setThreshold(1.0e-10);
 
+      long rank_Jc = qr_of_JcT.rank();
+      long ndof    = M - rank_Jc;    // degrees of freedom of the NLP, n_f = n_z - n_c
 
+      if ( ndof <= 0 ) return false;
 
-       MatrixXd Q = JcT.fullPivHouseholderQr().matrixQ();
-      
-      MatrixXd I2( N+(M-N) , (M-N) );
-      
-      I2 << zeros(N,M-N),
-            eye(M-N);
-            
-       MatrixXd Z = Q*I2;            
-            
+      MatrixXd Q = qr_of_JcT.householderQ();
+      MatrixXd Z = Q.rightCols(ndof);
 
       // Calculation of covariance matrix w.r.t all decision variables.
       // See the paper:
       // Kostina et al (2003) "Computation of covariance matrices for constrained parameter estimation
       // problems using LSQR".
-
-
+      //
+      //     C_z = sigma_hat^2 * Z ( Z^T Jr^T Jr Z )^{-1} Z^T
+      //
+      // Note the inverse: the reduced Gauss-Newton matrix Z^T Jr^T Jr Z is an
+      // *information* matrix, and reporting it in place of its inverse gives, roughly, the
+      // reciprocal of the covariance.
 
       MatrixXd& J1 = Jr;
       MatrixXd CC;
@@ -513,11 +543,60 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
 
       F = Z.transpose()*J1.transpose()*J1*Z;
 
-      F.completeOrthogonalDecomposition().pseudoInverse();
+      MatrixXd Finv = F.completeOrthogonalDecomposition().pseudoInverse();
 
-        CC = Z*F*Z.transpose();
+      // Residual variance factor. Z (Z^T Jr^T Jr Z)^{-1} Z^T is the covariance only when
+      // the residual weights have been set to 1/sigma, so that the weighted residuals have
+      // unit variance. When the noise level is not known in advance, which is the usual
+      // case, it is estimated from the residuals themselves,
+      //
+      //     sigma_hat^2 = J* / (N_s - n_f),
+      //
+      // with J* the sum of squared weighted residuals at the solution, N_s the number of
+      // scalar observations and n_f the degrees of freedom. When the weights really are
+      // 1/sigma this factor comes out near unity of its own accord, so estimating it is
+      // also the right thing to do in that case.
+
+      long n_obs = 0;
+      for (int iph=1; iph<=problem.nphases; iph++)
+          n_obs += problem.phases(iph).nsamples*problem.phases(iph).nobserved;
+
+      double Jstar  = r.squaredNorm();
+      double sigma2 = 1.0;
+
+      if ( n_obs - ndof > 0 ) {
+          sigma2 = Jstar/((double)(n_obs - ndof));
+      }
+      else {
+          snprintf(workspace->text,sizeof(workspace->text),
+                   "\n>>> Warning: %ld scalar observations against %ld degrees of freedom, so the"
+                   "\n    residual variance cannot be estimated; sigma_hat^2 = 1 has been assumed.",
+                   n_obs, ndof);
+          psopt_print(workspace,workspace->text);
+      }
+
+      workspace->pe_sigma_hat = sqrt(sigma2);
+      workspace->pe_dof       = ndof;
+      workspace->pe_nobs      = n_obs;
+      workspace->pe_objective = Jstar;
+
+      CC = sigma2*(Z*Finv*Z.transpose());
 
       extract_parameter_covariance(Cp, CC, workspace);
+
+      // The Jacobians above are taken with respect to the *scaled* decision variables, so
+      // CC and Cp are covariances in scaled units, while the parameter values reported
+      // beside them are physical. Convert: with a scaled variable s*p, entry (i,j) is
+      // divided by s_i*s_j.
+
+      MatrixXd pscale;
+      get_parameter_scale_factors(pscale, workspace);
+
+      for (i=0; i<Cp.rows(); i++) {
+          for (j=0; j<Cp.cols(); j++) {
+              Cp(i,j) /= ( pscale(i)*pscale(j) );
+          }
+      }
 
       // Compute confidence intervals
 
@@ -528,21 +607,21 @@ bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, Mat
       plow.resize( total_number_of_parameters, 1);
       phigh.resize(total_number_of_parameters,1);
 
-      int NN=0;
+      int NN = (int) workspace->pe_nobs;
 
-      for (iphase=1; iphase<=problem.nphases; iphase++)
-      {
-         NN += problem.phases(iphase).nsamples*problem.phases(iphase).nobserved;
-      }
+      // The t distribution carries N_s - n_f degrees of freedom, with n_f the degrees of
+      // freedom of the NLP computed above. Counting parameters in place of n_f happens to
+      // agree whenever the parameters are the only free quantities, but not in general: a
+      // problem with a free initial state, or a free final time, has more.
 
-	  int np = total_number_of_parameters;
+      long ndof_t = workspace->pe_dof;
 
       for (iphase=1; iphase<=problem.nphases; iphase++)
       {
 
       double tt;
 
-      tt = inverse_twotailed_t_cdf(alpha, (NN-np) );
+      tt = inverse_twotailed_t_cdf(alpha, (int)(NN-ndof_t) );
 
       // Compute the limits of the confidence intervals
 
