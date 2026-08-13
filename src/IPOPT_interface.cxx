@@ -630,7 +630,7 @@ bool IPOPT_PSOPT::intermediate_callback(AlgorithmMode mode,
 bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
                              Index& nnz_h_lag, IndexStyleEnum& index_style)
 {
-  int nnz;
+  int nnz  = 0;
   int nnzA = 0;
   int nnzG = 0;
   int i;
