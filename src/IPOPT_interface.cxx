@@ -851,6 +851,35 @@ bool IPOPT_PSOPT::get_starting_point(Index n, bool init_x, Number* x,
 	  x[i] = x0[i];
   }
 
+  // A hot start (warm_start_init_point = yes, set by NLP_interface whenever PSOPT
+  // restarts from a previous solution) makes IPOPT ask for the dual variables as well.
+  // Returning true while writing only x left z_L, z_U and lambda holding whatever was in
+  // the freshly allocated buffers, and IPOPT then began its iteration from uninitialised
+  // duals: the result of every hot-started solve -- which means every mesh-refinement
+  // sequence -- depended on the contents of memory, and could change when an unrelated
+  // allocation elsewhere in the program moved the heap.
+  //
+  // Where the previous solve had the same dimensions, its duals are the natural warm
+  // start; otherwise the duals of the bound constraints are set to unity, which is what
+  // IPOPT's own initializer uses, and the constraint multipliers to zero.
+
+  if ( init_z ) {
+      bool reuse =    ( workspace->zL_previous.size() == n )
+                   && ( workspace->zU_previous.size() == n );
+      for (i=0; i<n; i++) {
+          z_L[i] = reuse ? workspace->zL_previous(i) : 1.0;
+          z_U[i] = reuse ? workspace->zU_previous(i) : 1.0;
+      }
+  }
+
+  if ( init_lambda ) {
+      MatrixXd& lam = *workspace->lambda;
+      bool reuse = ( lam.size() >= m );
+      for (i=0; i<m; i++) {
+          lambda[i] = reuse ? lam(i) : 0.0;
+      }
+  }
+
   return true;
 }
 
