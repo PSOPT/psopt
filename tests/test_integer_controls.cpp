@@ -77,7 +77,9 @@ TEST(IntegerControls, GuessToWeightsOutOfRange)
 }
 
 // declare_integer_control records the control index and value set on the phase;
-// an undeclared phase is dormant (empty value set, index -1).
+// an undeclared phase is dormant (no declarations at all). Declarations accumulate,
+// and re-declaring the same control index replaces the earlier entry rather than
+// adding a second one.
 TEST(IntegerControls, DeclareIntegerControl)
 {
     Prob problem;
@@ -86,15 +88,60 @@ TEST(IntegerControls, DeclareIntegerControl)
     psopt_level1_setup(problem);
 
     // Dormant by default.
-    EXPECT_EQ(problem.phases(1).integer_control.control_index, -1);
-    EXPECT_EQ(problem.phases(1).integer_control.values.size(), 0);
+    EXPECT_EQ(problem.phases(1).integer_controls.size(), 0u);
 
     RowVectorXd values(2); values << -0.05236, 0.05236;
     declare_integer_control(problem, 1, 0, values);
 
-    EXPECT_EQ(problem.phases(1).integer_control.control_index, 0);
-    ASSERT_EQ(problem.phases(1).integer_control.values.size(), 2);
-    EXPECT_DOUBLE_EQ(problem.phases(1).integer_control.values(0), -0.05236);
-    EXPECT_DOUBLE_EQ(problem.phases(1).integer_control.values(1),  0.05236);
-    EXPECT_GT(problem.phases(1).integer_control.values.size(), 0);   // now active
+    ASSERT_EQ(problem.phases(1).integer_controls.size(), 1u);
+    EXPECT_EQ(problem.phases(1).integer_controls[0].control_index, 0);
+    ASSERT_EQ(problem.phases(1).integer_controls[0].values.size(), 2);
+    EXPECT_DOUBLE_EQ(problem.phases(1).integer_controls[0].values(0), -0.05236);
+    EXPECT_DOUBLE_EQ(problem.phases(1).integer_controls[0].values(1),  0.05236);
+
+    // A second control adds an entry; the product size is the product of the sets.
+    RowVectorXd onoff(3); onoff << 0.0, 1.0, 2.0;
+    declare_integer_control(problem, 1, 1, onoff);
+
+    ASSERT_EQ(problem.phases(1).integer_controls.size(), 2u);
+    EXPECT_EQ(problem.phases(1).integer_controls[1].control_index, 1);
+    EXPECT_EQ(integer_control_product_size(problem.phases(1).integer_controls), 6);
+
+    // Re-declaring control 0 replaces its value set, leaving the count unchanged
+    // and the declaration order intact.
+    RowVectorXd replacement(4); replacement << -1.0, 0.0, 1.0, 2.0;
+    declare_integer_control(problem, 1, 0, replacement);
+
+    ASSERT_EQ(problem.phases(1).integer_controls.size(), 2u);
+    EXPECT_EQ(problem.phases(1).integer_controls[0].control_index, 0);
+    EXPECT_EQ(problem.phases(1).integer_controls[0].values.size(), 4);
+    EXPECT_EQ(integer_control_product_size(problem.phases(1).integer_controls), 12);
+}
+
+// integer_control_decode maps a product index onto one mode index per declared
+// control, in mixed radix with the first declared control as the leading digit,
+// so that product mode 0 sets every control to its first admissible value.
+TEST(IntegerControls, DecodeProductMode)
+{
+    Prob problem;
+    problem.nphases   = 1;
+    problem.nlinkages = 0;
+    psopt_level1_setup(problem);
+
+    RowVectorXd two(2);   two   << 0.0, 1.0;         // M_1 = 2
+    RowVectorXd three(3); three << 0.0, 1.0, 2.0;    // M_2 = 3
+    declare_integer_control(problem, 1, 0, two);
+    declare_integer_control(problem, 1, 1, three);
+
+    const std::vector<IntegerControl>& v = problem.phases(1).integer_controls;
+    ASSERT_EQ(integer_control_product_size(v), 6);
+
+    std::vector<int> modes;
+    const int expected[6][2] = { {0,0}, {0,1}, {0,2}, {1,0}, {1,1}, {1,2} };
+    for (int p = 0; p < 6; p++) {
+        integer_control_decode(v, p, modes);
+        ASSERT_EQ(modes.size(), 2u);
+        EXPECT_EQ(modes[0], expected[p][0]) << "product mode " << p;
+        EXPECT_EQ(modes[1], expected[p][1]) << "product mode " << p;
+    }
 }

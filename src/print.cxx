@@ -778,9 +778,24 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
     int nparam = get_total_number_of_parameters(problem);
 
-    MatrixXd Cp(nparam,nparam), plow(nparam,1), phigh(nparam,1), p(nparam,1), r;
+    // The calculation itself was done by store_parameter_statistics, called from
+    // psopt() whatever the print level; this block only formats its results.
 
-    bool peout = compute_parameter_statistics(Cp, p, plow, phigh,r, workspace);
+    const MatrixXd& Cp    = solution.parameter_covariance;
+    const MatrixXd& plow  = solution.parameter_confidence_low;
+    const MatrixXd& phigh = solution.parameter_confidence_high;
+    const MatrixXd& r     = solution.observation_residuals;
+
+    MatrixXd p(nparam>0 ? nparam : 1, 1);
+    {
+        int c = 0;
+        for (int iph = 1; iph <= problem.nphases; iph++) {
+            MatrixXd pp = solution.get_parameters_in_phase(iph);
+            for (int q = 0; q < problem.phases(iph).nparameters; q++) p(c++) = pp(q);
+        }
+    }
+
+    bool peout = solution.parameter_statistics_ok;
 
     int pcount = 0;
 

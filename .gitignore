@@ -52,6 +52,14 @@ __pycache__/
 *.pyc
 *.egg-info/
 dist/
+# PSOPT run artefacts. The unit tests solve real problems, and PSOPT writes its
+# summary, solution and mesh-statistics files into the working directory, which for
+# ctest is the repository root.
+psopt_solution_*.txt
+mesh_statistics*.txt
+mesh_statistics*.tex
+ipopt.out
+
 # out-of-source build directories (any build-*), run scratch, and logs
 build-*/
 mmrun/

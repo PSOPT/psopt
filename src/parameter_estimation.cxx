@@ -427,6 +427,31 @@ static void get_parameter_scale_factors(MatrixXd& s, Workspace* workspace)
 }
 
 
+void store_parameter_statistics(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
+{
+     if ( problem.observation_function == NULL )          return;
+     if ( algorithm.parameter_statistics != "yes" )       return;
+
+     int nparam = get_total_number_of_parameters(problem);
+
+     MatrixXd Cp(nparam,nparam), plow(nparam,1), phigh(nparam,1), p(nparam,1), r;
+
+     bool ok = compute_parameter_statistics(Cp, p, plow, phigh, r, workspace);
+
+     solution.parameter_statistics_ok = ok;
+     solution.observation_residuals   = r;
+
+     if ( ok ) {
+         solution.parameter_covariance      = Cp;
+         solution.parameter_confidence_low  = plow;
+         solution.parameter_confidence_high = phigh;
+         solution.sigma_hat                 = workspace->pe_sigma_hat;
+         solution.parameter_dof             = workspace->pe_dof;
+         solution.n_observations            = workspace->pe_nobs;
+     }
+}
+
+
 bool compute_parameter_statistics(MatrixXd& Cp, MatrixXd& p, MatrixXd& plow, MatrixXd& phigh, MatrixXd& r, Workspace* workspace)
 {
       MatrixXd Jr, Jc;

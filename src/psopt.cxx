@@ -1346,6 +1346,12 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 
 
+  // The parameter statistics are a result of the solve, not a side effect of printing:
+  // they are computed here so that a caller reaches them through the solution object
+  // whatever print_level is set to. The report below then formats what is already there.
+
+  store_parameter_statistics(problem, algorithm, solution, workspace);
+
   if (algorithm.print_level>0) {
 
     print_algorithm_summary(problem, algorithm, solution, workspace);

@@ -684,6 +684,24 @@ public:
    MatrixXd *integrand_cost;
    Dual     dual;
 
+   // Statistics of the estimated parameters, filled when the problem carries an
+   // observation function and algorithm.parameter_statistics is "yes". They were
+   // previously written to the summary file and nowhere else, so a caller could not
+   // reach them without parsing it. parameter_covariance is n_p x n_p in physical
+   // units; parameter_confidence_low and _high are the 95 per cent limits;
+   // sigma_hat is the estimated residual standard deviation; parameter_dof is the
+   // number of degrees of freedom n_f of the discretized problem, and n_observations
+   // the number N_s of scalar observations. parameter_statistics_ok records whether
+   // the calculation succeeded; when it did not, the matrices are empty.
+   MatrixXd parameter_covariance;
+   MatrixXd observation_residuals;   // one entry per scalar observation, in phase order
+   MatrixXd parameter_confidence_low;
+   MatrixXd parameter_confidence_high;
+   double   sigma_hat            = 0.0;
+   long     parameter_dof        = 0;
+   long     n_observations       = 0;
+   bool     parameter_statistics_ok = false;
+
    double  *endpoint_cost;
    double  *integrated_cost;
    double   cost;
@@ -1428,6 +1446,12 @@ void resample_trajectory(MatrixXd& Y, MatrixXd& X, MatrixXd& Ydata, MatrixXd& Xd
 void load_parameter_estimation_data(Prob& problem, int iphase, const char* filename);
 
 bool compute_parameter_statistics(MatrixXd& Qp, MatrixXd& p, MatrixXd& plow, MatrixXd& phigh, MatrixXd& r, Workspace* workspace);
+
+// Runs the calculation above and records its results on the solution object. Called by
+// psopt() whenever the problem carries an observation function and
+// algorithm.parameter_statistics is "yes", independently of print_level: the statistics
+// are a result, not a side effect of printing.
+void store_parameter_statistics(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
 double inverse_twotailed_t_cdf(double A, int ndf);
 
