@@ -91,8 +91,8 @@ Each example reproduces its native C++ baseline:
 | `bryson_denham.py` | single phase                              | 3.9995386676223115| 3.999539e+00 (bit-identical) |
 | `launch.py`        | 4 phases, 24 linkages (Delta-III ascent)  | −7529.6612513     | −7.529661e+03 (within NLP tol) |
 | `cracking.py`      | parameters + observation (estimation)     | 4.319519e-03      | 4.319519e-03 (bit-identical) |
-| `bryson_ir.py`     | integrated-residual transcription         | 5.049038e-06      | 5.049038e-06      |
-| `bryson_mesh.py`   | hp mesh refinement (10→25 nodes)          | 3.9999969178      | 3.999997e+00      |
+| `bryson_ir.py`     | integrated-residual transcription         | 3.498289481767e-04| 3.498289481767e-04 (bit-identical) |
+| `bryson_mesh.py`   | hp mesh refinement (10→29 nodes)          | 3.9999969175      | 3.999997e+00      |
 | `lotka_integer.py` | binary integer control, sum-up rounding   | 1.348104 / 1.351850, 4 switches (40 nodes) | 1.348103 / 1.351850, 4 switches |
 | `integer_parameter.py` | integer static parameter by enumeration | p = 2, J = 0.09  | closed form p = 2, J = 0.09 |
 | `rv2oe_casadi.py`  | CasADi orbital-element dynamics helper     | (used by launch)  | —                 |

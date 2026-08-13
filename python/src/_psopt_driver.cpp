@@ -54,6 +54,8 @@ static void apply_algorithm(Alg& a, py::dict o) {
     D("ir_regularization", a.ir_regularization); S("ir_objective", a.ir_objective);
     D("ir_residual_bound", a.ir_residual_bound); B("ir_dair", a.ir_dair);
     D("ir_dair_delta_factor", a.ir_dair_delta_factor); I("ir_local_order", a.ir_local_order);
+    S("ir_include_path", a.ir_include_path); D("ir_path_weight", a.ir_path_weight);
+    S("ir_residual_scaling", a.ir_residual_scaling);
 }
 
 

@@ -1,14 +1,13 @@
 """bryson_denham with integrated-residual (IR) transcription via the Python API (B-4).
 
-NOTE: IR/NK are work-in-progress engine features with no committed C++ example. This
-test validates that the Python binding drives the IR machinery *identically* to a native
+This validates that the Python binding drives the IR machinery *identically* to a native
 driver with the same options (pass-through fidelity), not a published value. With the
-default ir_objective="residual" the reported objective is the integrated residual
-(a feasibility measure), not the control cost.
+default ir_objective="residual" the reported objective is the integrated residual -- a
+feasibility measure whose magnitude depends on the residual-scaling convention -- and not
+the control cost.
 
-Native reference (Hermite-Simpson + integrated-residual): 5.049038e-06."""
-import sys, numpy as np, casadi as ca
-sys.path.insert(0, "/tmp/psopt_py")
+Native reference (a C++ driver with the same options): 3.498289481767e-04."""
+import numpy as np, casadi as ca
 import psopt
 
 prob = psopt.Problem(name="bryson_ir")
@@ -41,4 +40,4 @@ sol = prob.solve(alg)
 
 print("\n================ RESULT ================")
 print("objective (integrated residual) :", repr(sol.objective))
-print("native reference                : 5.049038e-06")
+print("native reference                : 3.498289481767e-04")
