@@ -30,6 +30,7 @@ e-mail:    v.m.becerra@ieee.org
 
 
 #include "psopt.h"
+#include <vector>
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -192,10 +193,26 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 
 	offset = offset + nevents;
 
+	// Path constraints that have been folded into the integrated residual are removed from
+	// the pointwise set, following Neuenhofen and Kerrigan, in whose formulation the
+	// algebraic equations are enforced through the residual and not additionally as
+	// pointwise constraints. The rows are left in place with free bounds rather than
+	// physically deleted, so that the constraint layout, the Jacobian structure and the
+	// path-multiplier arrays returned to the user keep their declared shapes; the
+	// multipliers of the freed rows are zero, which is the correct report for a constraint
+	// that is no longer imposed here.
+	std::vector<int>    ir_alg_idx;
+	std::vector<double> ir_alg_tgt;
+	if ( ir_algebraic_rows(*problem, *algorithm, i) > 0 )
+	    ir_algebraic_index(*problem, i, ir_alg_idx, ir_alg_tgt);
+	std::vector<bool> folded( npath > 0 ? npath : 1, false );
+	for (size_t a = 0; a < ir_alg_idx.size(); a++) folded[ ir_alg_idx[a] ] = true;
+
 	for (k=0; k<npath; k++) // EIGEN_UPDATE: index k shifted by -1
 	{
 		for (l=0;l<(norder + 1);l++) {   // EIGEN_UPDATE: index l shifted by -1.
 		    j = offset + (l)*npath + k;
+		    if ( folded[k] ) { g_l[j] = -PSOPT::inf; g_u[j] = PSOPT::inf; continue; }
 		    if( algorithm->scaling=="user" )
 		       path_sc = path_scaling(k);
 		    else
@@ -214,6 +231,7 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 		{
 			for (l=0;l<norder;l++) { // EIGEN_UPDATE: index l shifted by -1.
 		    		j = offset + (l)*npath + k;
+		    		if ( folded[k] ) { g_l[j] = -PSOPT::inf; g_u[j] = PSOPT::inf; continue; }
 		    		if( algorithm->scaling=="user" )
 		       			path_sc = path_scaling(k);
 		    		else
