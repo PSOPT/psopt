@@ -778,9 +778,24 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
     int nparam = get_total_number_of_parameters(problem);
 
-    MatrixXd Cp(nparam,nparam), plow(nparam,1), phigh(nparam,1), p(nparam,1), r;
+    // The calculation itself was done by store_parameter_statistics, called from
+    // psopt() whatever the print level; this block only formats its results.
 
-    bool peout = compute_parameter_statistics(Cp, p, plow, phigh,r, workspace);
+    const MatrixXd& Cp    = solution.parameter_covariance;
+    const MatrixXd& plow  = solution.parameter_confidence_low;
+    const MatrixXd& phigh = solution.parameter_confidence_high;
+    const MatrixXd& r     = solution.observation_residuals;
+
+    MatrixXd p(nparam>0 ? nparam : 1, 1);
+    {
+        int c = 0;
+        for (int iph = 1; iph <= problem.nphases; iph++) {
+            MatrixXd pp = solution.get_parameters_in_phase(iph);
+            for (int q = 0; q < problem.phases(iph).nparameters; q++) p(c++) = pp(q);
+        }
+    }
+
+    bool peout = solution.parameter_statistics_ok;
 
     int pcount = 0;
 
@@ -800,6 +815,43 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
      FullPivLU<MatrixXd> lu_decomp(Cp);  
         
      fprintf(outfile,"\n\n>>>>> Rank of parameter covariance matrix: %li ", lu_decomp.rank() );
+
+     // The correlation matrix is what tells the reader whether two parameters are
+     // separately identifiable from the data; a diagonal read in isolation does not.
+
+     fprintf(outfile,"\n\n>>>>> Parameter correlation matrix (all phases) ");
+
+     for(i=0; i<Cp.rows();i++) {
+        fprintf(outfile,"\n");
+        for(j=0; j<Cp.cols();j++) {
+             double dii = Cp(i,i), djj = Cp(j,j);
+             if ( dii > 0.0 && djj > 0.0 )
+                  fprintf(outfile,"%e\t\t", Cp(i,j)/sqrt(dii*djj) );
+             else fprintf(outfile,"%s\t\t", "-");
+        }
+     }
+
+     // Quantities behind the intervals below, so that they can be checked by hand.
+
+     fprintf(outfile,"\n\n>>>>> Estimated residual standard deviation (sigma_hat): %e", workspace->pe_sigma_hat);
+     fprintf(outfile,"\n>>>>> Scalar observations (N_s): %li, degrees of freedom of the NLP (n_f): %li",
+             workspace->pe_nobs, workspace->pe_dof);
+     fprintf(outfile,"\n>>>>> Sum of squared weighted residuals at the solution: %e", workspace->pe_objective);
+
+     // A tangent space smaller than the number of estimated parameters means the
+     // discretized constraint set imposes more independent conditions than the continuous
+     // problem does. A global pseudospectral discretization that collocates at every node,
+     // combined with boundary conditions on the same node values, is the usual cause.
+
+     if ( workspace->pe_dof < nparam ) {
+        fprintf(outfile,"\n\n *** Warning: the degrees of freedom of the discretized problem (%li) are fewer than",
+                workspace->pe_dof);
+        fprintf(outfile,"\n     the %d estimated parameters, so the covariance below is rank deficient. This",
+                nparam);
+        fprintf(outfile,"\n     indicates that the discretization imposes more independent conditions than the");
+        fprintf(outfile,"\n     continuous problem does; re-solving with a local collocation method");
+        fprintf(outfile,"\n     (\"trapezoidal\" or \"Hermite-Simpson\") is the usual remedy.");
+     }
 
      fprintf(outfile,"\n\n>>> 95 percent statistical confidence limits on estimated parameters ");
      fprintf(outfile,"\nPhase\tParameter\t(Low Confidence Limit) \t(Value) \t\t(High Confidence Limit)");

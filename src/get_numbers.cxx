@@ -129,7 +129,8 @@ int get_number_nlp_constraints(Prob& problem,Workspace* workspace)
        for (i=0; i<problem.nphases; i++)
           nlp_ncons += ir_box_rows( problem.phase[i].current_number_of_intervals,
                                     problem.phase[i].nstates, m,
-                                    workspace->algorithm->ir_local_order );
+                                    workspace->algorithm->ir_local_order,
+                                    ir_algebraic_rows(problem, *workspace->algorithm, i) );
    }
 
    return nlp_ncons;
@@ -196,7 +197,8 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
        int m = algorithm.ir_residual_nodes;
        for (i=0; i<problem.nphases; i++)
           nlp_ncons += ir_box_rows( get_max_nodes(problem, i+1, &algorithm),
-                                    problem.phase[i].nstates, m, algorithm.ir_local_order );
+                                    problem.phase[i].nstates, m, algorithm.ir_local_order,
+                                    ir_algebraic_rows(problem, algorithm, i) );
    }
 
    return nlp_ncons;

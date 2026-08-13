@@ -82,6 +82,54 @@ class Phase:
         self.observations = None       # nobserved x nsamples measured data
         self.bounds = _Bounds()
         self.guess = _Guess()
+        # Discrete-valued declarations. Each entry is (index, [admissible values]).
+        # Integer controls are relaxed by outer convexification over the Cartesian
+        # product of their admissible sets and recovered by sum-up rounding; integer
+        # parameters cannot chatter and are solved exactly by enumeration, which
+        # switches the driver to psopt_solve_integer. See declare_integer_control and
+        # declare_integer_parameter below.
+        self.integer_controls = []
+        self.integer_parameters = []
+
+    def declare_integer_control(self, control_index, values):
+        """Restrict a control to a finite set of values.
+
+        The control is written in the dynamics as an ordinary control; PSOPT performs
+        the outer convexification internally. Declaring several integer controls in a
+        phase convexifies over the product of their admissible sets, so the cost grows
+        as that product: two binary controls cost four weights per node.
+        """
+        vals = [float(v) for v in values]
+        if not vals:
+            raise ValueError("declare_integer_control: the admissible set is empty")
+        if not 0 <= control_index < self.ncontrols:
+            raise ValueError("declare_integer_control: control_index %d is outside "
+                             "the phase's %d controls" % (control_index, self.ncontrols))
+        for k, (idx, _v) in enumerate(self.integer_controls):
+            if idx == control_index:
+                self.integer_controls[k] = (control_index, vals)
+                return
+        self.integer_controls.append((control_index, vals))
+
+    def declare_integer_parameter(self, parameter_index, values):
+        """Restrict a static parameter to a finite set of values.
+
+        Unlike a control, a static parameter cannot chatter, so no relaxation is
+        tight for it. The problem is solved exactly by enumerating the admissible
+        combinations across all phases, solving each with the parameters pinned, and
+        keeping the best. The number of solves is the product of the set sizes.
+        """
+        vals = [float(v) for v in values]
+        if not vals:
+            raise ValueError("declare_integer_parameter: the admissible set is empty")
+        if not 0 <= parameter_index < self.nparameters:
+            raise ValueError("declare_integer_parameter: parameter_index %d is outside "
+                             "the phase's %d parameters" % (parameter_index, self.nparameters))
+        for k, (idx, _v) in enumerate(self.integer_parameters):
+            if idx == parameter_index:
+                self.integer_parameters[k] = (parameter_index, vals)
+                return
+        self.integer_parameters.append((parameter_index, vals))
 
     def _build_functions(self):
         x  = ca.SX.sym("x",  self.nstates)
@@ -123,7 +171,8 @@ class Algorithm:
                  # integrated-residual transcription / Nie-Kerrigan flexible-order
                  transcription_method=None, ir_residual_nodes=None, ir_regularization=None,
                  ir_objective=None, ir_residual_bound=None, ir_dair=None,
-                 ir_dair_delta_factor=None, ir_local_order=None):
+                 ir_dair_delta_factor=None, ir_local_order=None,
+                 ir_include_path=None, ir_path_weight=None, ir_residual_scaling=None):
         self.collocation_method = collocation_method
         self.nlp_method = nlp_method
         self.derivatives = derivatives
@@ -150,6 +199,9 @@ class Algorithm:
         self.ir_dair = ir_dair
         self.ir_dair_delta_factor = ir_dair_delta_factor
         self.ir_local_order = ir_local_order
+        self.ir_include_path = ir_include_path
+        self.ir_path_weight = ir_path_weight
+        self.ir_residual_scaling = ir_residual_scaling
 
 
 def _col(a):
@@ -179,6 +231,8 @@ def _phase_dict(ph):
         "guess_parameters": _col(ph.guess.parameters) if ph.guess.parameters is not None else _col([[]]),
         "observation_nodes": _col(ph.observation_nodes) if ph.observation_nodes is not None else _col([[]]),
         "observations": _col(ph.observations) if ph.observations is not None else _col([[]]),
+        "integer_controls": [{"index": i, "values": v} for (i, v) in ph.integer_controls],
+        "integer_parameters": [{"index": i, "values": v} for (i, v) in ph.integer_parameters],
     }
 
 
@@ -192,12 +246,30 @@ def _alg_dict(a):
                 "mr_max_growth_factor", "mr_min_order", "mr_max_order",
                 "transcription_method", "ir_residual_nodes", "ir_regularization",
                 "ir_objective", "ir_residual_bound", "ir_dair",
-                "ir_dair_delta_factor", "ir_local_order"]
+                "ir_dair_delta_factor", "ir_local_order",
+                "ir_include_path", "ir_path_weight", "ir_residual_scaling"]
     for k in optional:
         v = getattr(a, k, None)
         if v is not None:
             d[k] = v
     return d
+
+
+class IntegerControlResult:
+    """Rounded integer control recovered from the relaxed weights by sum-up rounding.
+
+    control        rounded value on each mesh interval
+    mode_index     index into the admissible set on each interval
+    interval_widths
+    integral_gap   accumulated sum-up-rounding gap
+    n_switches     instants at which any declared integer control changes
+    """
+    def __init__(self, d):
+        self.control = np.asarray(d["control"]).ravel()
+        self.mode_index = np.asarray(d["mode_index"]).ravel().astype(int)
+        self.interval_widths = np.asarray(d["interval_widths"]).ravel()
+        self.integral_gap = float(d["integral_gap"])
+        self.n_switches = int(d["n_switches"])
 
 
 class Solution:
@@ -207,6 +279,17 @@ class Solution:
         self.controls = np.asarray(d["controls"]) if "controls" in d else None
         self.time = np.asarray(d["time"]).ravel()
         self.parameters = np.asarray(d["parameters"]).ravel() if "parameters" in d else None
+        # One entry per declared integer control, in declaration order. Note that
+        # self.controls is in the weights layout when integer controls are declared:
+        # the trailing rows are the product-mode weights, and the rounded controls are
+        # here rather than there.
+        self.integer_controls = [IntegerControlResult(r)
+                                 for r in d.get("integer_controls", [])]
+        # Selected value of each declared integer parameter, in declaration order.
+        self.integer_parameters = [dict(index=int(r["index"]),
+                                        value=float(r["value"]),
+                                        mode_index=int(r["mode_index"]))
+                                   for r in d.get("integer_parameters", [])]
 
 
 class MultiSolution:
@@ -215,6 +298,12 @@ class MultiSolution:
         self.states = [np.asarray(s) for s in d["states"]]
         self.controls = [np.asarray(c) for c in d["controls"]]
         self.time = [np.asarray(t).ravel() for t in d["time"]]
+        # Per phase, one entry per declared integer control / parameter.
+        self.integer_controls = [[IntegerControlResult(r) for r in ph]
+                                 for ph in d.get("integer_controls", [])]
+        self.integer_parameters = [[dict(index=int(r["index"]), value=float(r["value"]),
+                                         mode_index=int(r["mode_index"])) for r in ph]
+                                   for ph in d.get("integer_parameters", [])]
 
 
 class Problem:

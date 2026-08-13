@@ -60,8 +60,8 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    adouble x2 = states[1];
    adouble x3 = states[2];
 
-   get_delayed_state( &x1delayed, 1, iphase, time, tau, xad, workspace);
-   get_delayed_state( &x2delayed, 2, iphase, time, tau, xad, workspace);
+   get_delayed_state( &x1delayed, 0, iphase, time, tau, xad, workspace);
+   get_delayed_state( &x2delayed, 1, iphase, time, tau, xad, workspace);
 
    adouble u = controls[0];
 
@@ -144,7 +144,11 @@ int main(void)
     problem.phases(1).nevents   = 3;
     problem.phases(1).npath     = 0;
 
-    problem.phases(1).nodes     << 30;
+    // A delay equation carries kinks at t0 + k*tau, so Hermite-Simpson achieves order
+    // two here rather than four: at 30 nodes the maximum relative local error is 1.8e-2
+    // and the objective is wrong in its third significant figure. The example therefore
+    // starts from a finer mesh and lets mesh refinement finish the job.
+    problem.phases(1).nodes     << 60;
 
     psopt_level2_setup(problem, algorithm);
 
@@ -226,7 +230,7 @@ int main(void)
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
     algorithm.collocation_method          = "Hermite-Simpson";
-//    algorithm.mesh_refinement             = "automatic";
+    algorithm.mesh_refinement             = "automatic";
 
 
 ////////////////////////////////////////////////////////////////////////////

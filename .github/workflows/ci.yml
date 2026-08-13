@@ -32,14 +32,38 @@ jobs:
         build_type: [Release]    # add Debug if desired
 
     env:
-      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch,manutec"
-      # One reference cost per example, in the same order. "none" marks a
-      # run-only example: it must still build and converge, but its cost is not
-      # checked. notorious is a parameter-estimation problem with randomly
-      # generated noisy measurements, so its least-squares residual is not a
-      # portable invariant (it varies with the platform RNG) even though the
-      # estimated parameter correctly recovers pi.
-      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01"
+      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch,manutec,cracking,delay1,geodesic,climb"
+      # One reference cost per example, in the same order, compared with a relative
+      # tolerance of 1e-3 by .github/scripts/run_examples.py. "none" marks a run-only
+      # example: it must still build and converge, but its cost is not checked.
+      # notorious is a parameter-estimation problem with randomly generated noisy
+      # measurements, so its least-squares residual is not a portable invariant (it
+      # varies with the platform RNG) even though the estimated parameter correctly
+      # recovers pi.
+      #
+      # The last three cover ground the first six do not, and each has a value verified
+      # outside PSOPT:
+      #   cracking       parameter estimation, with the initial conditions of the
+      #                  published problem; COPS reference 5.23659e-03
+      #   delay1         delayed states; the discretized problem is a QP, solved
+      #                  exactly outside PSOPT to give 2.52572
+      #   geodesic       an equality path constraint; the exact geodesic on this
+      #                  spheroid is 5549.6819 km by Karney's algorithm
+      #   climb          1D and 2D interpolation from look-up tables inside the
+      #                  dynamics, with automatic differentiation. The interval
+      #                  selection in both the atmosphere model and the library's
+      #                  spline routines has to be recorded on the tape rather
+      #                  than resolved while it is written; when it is not, this
+      #                  example does not merely lose accuracy, it fails to
+      #                  converge to the right problem (tf = 499.6 s against
+      #                  321.1089 s, local error 0.95 against 1.7e-3). It is the
+      #                  only example in this list that exercises that path.
+      #
+      # examples/delay_history is deliberately not in this list: it runs with
+      # print_level 0, so it writes no solver summary for this script to parse, and
+      # the same problem is covered exactly by the DelayedVariables tests that ctest
+      # runs a few steps above, against the same closed-form answers.
+      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,5.228971e-03,2.525738e+00,5.549682e+03,3.211089e+02"
 
     steps:
       - uses: actions/checkout@v5

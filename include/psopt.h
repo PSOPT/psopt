@@ -227,6 +227,21 @@ struct alg_str {
                                     // residual component by scale.states(k)/scale.time, so a scalar
                                     // box tolerance and the K schedule are model-independent; "none"
                                     // bounds the raw residual (pre-scaling behaviour).
+  string    ir_include_path;        // integrated-residual transcription: which path constraints
+                                    // are folded into the residual alongside xdot-f. "auto"
+                                    // (default) includes every path constraint declared as an
+                                    // equality (bounds.lower.path(j)==bounds.upper.path(j)),
+                                    // which is what allows a DAE to be solved without index
+                                    // reduction; "none" reproduces the pre-1.x behaviour in which
+                                    // the dae path output is discarded by the residual and the
+                                    // algebraic equations are imposed pointwise only. Inequality
+                                    // path constraints are never folded in -- they have no
+                                    // residual to drive to zero -- and remain ordinary pointwise
+                                    // path constraints under either setting.
+  double    ir_path_weight;         // multiplies each algebraic residual component before it
+                                    // enters the integrated residual and the residual box,
+                                    // for problems where the algebraic equations are badly
+                                    // scaled relative to the differential ones (default 1)
   int       ir_local_order;          // Nie-Kerrigan flexible-order local representation: if >=2,
                                      // each mesh element carries a degree-ir_local_order Lagrange
                                      // state (and control) through ir_local_order+1 local LGL nodes
@@ -442,9 +457,13 @@ struct phases_str {
 
    Units units;
 
-   // Optional single integer (discrete-valued) control for this phase (v1).
-   // Dormant unless integer_control.values is non-empty. See integer_controls.h.
-   IntegerControl integer_control;
+   // Optional integer (discrete-valued) controls for this phase. Empty (the default)
+   // means none are declared and the phase behaves exactly as before. Populated by
+   // declare_integer_control, which may be called once per integer control; the
+   // convexification is over the Cartesian product of the declared value sets, so a
+   // phase with two binary controls carries four weight-controls. See
+   // include/integer_controls.h.
+   std::vector<IntegerControl> integer_controls;
 
    // Optional discrete-valued (integer) static parameters for this phase (v1).
    // Empty (the default) means none are declared and the phase behaves exactly as
@@ -553,6 +572,21 @@ public:
 
    void (*observation_function)(adouble* observed_variable, adouble* states, adouble* controls, adouble* parameters, adouble& time, int k, adouble* xad, int iphase, Workspace* workspace);
 
+   // Initial history of a problem with delayed states or controls. A delay differential
+   // equation is not well posed without one: for t in [t0-d, t0) the right hand side asks
+   // for states and controls at times before the phase begins, where no trajectory has
+   // been defined. If this pointer is null, PSOPT uses the constant history
+   //
+   //     phi(t) = x(t0),   psi(t) = u(t0),      t < t0,
+   //
+   // which keeps the state continuous at t0 and is the behaviour of every earlier
+   // release. Setting it lets the user state the history that the problem actually has --
+   // a steady state different from the initial condition, or a recorded input. The
+   // function is called with a time strictly before t0 and must fill states[0..nstates-1]
+   // and controls[0..ncontrols-1]; it is evaluated on the AD tape, so it must be built
+   // from adouble arithmetic like any other user function.
+   void (*initial_history)(adouble* states, adouble* controls, adouble* parameters, adouble& time, adouble* xad, int iphase, Workspace* workspace);
+
    // Integer-control support: while the outer-convexification wrappers are installed
    // as dae/integrand_cost during psopt(), the user's originals are stashed here and
    // restored on exit. Null when no integer control is active. See integer_controls.h.
@@ -649,6 +683,24 @@ public:
    MatrixXd *relative_errors;
    MatrixXd *integrand_cost;
    Dual     dual;
+
+   // Statistics of the estimated parameters, filled when the problem carries an
+   // observation function and algorithm.parameter_statistics is "yes". They were
+   // previously written to the summary file and nowhere else, so a caller could not
+   // reach them without parsing it. parameter_covariance is n_p x n_p in physical
+   // units; parameter_confidence_low and _high are the 95 per cent limits;
+   // sigma_hat is the estimated residual standard deviation; parameter_dof is the
+   // number of degrees of freedom n_f of the discretized problem, and n_observations
+   // the number N_s of scalar observations. parameter_statistics_ok records whether
+   // the calculation succeeded; when it did not, the matrices are empty.
+   MatrixXd parameter_covariance;
+   MatrixXd observation_residuals;   // one entry per scalar observation, in phase order
+   MatrixXd parameter_confidence_low;
+   MatrixXd parameter_confidence_high;
+   double   sigma_hat            = 0.0;
+   long     parameter_dof        = 0;
+   long     n_observations       = 0;
+   bool     parameter_statistics_ok = false;
 
    double  *endpoint_cost;
    double  *integrated_cost;
@@ -849,6 +901,8 @@ public:
    unique_ptr<unique_ptr<adouble[]>[]>  final_controls;
    unique_ptr<unique_ptr<adouble[]>[]>  events;
    unique_ptr<unique_ptr<adouble[]>[]>  path;
+   unique_ptr<unique_ptr<adouble[]>[]>  history_states;    // scratch for problem.initial_history
+   unique_ptr<unique_ptr<adouble[]>[]>  history_controls;
    unique_ptr<unique_ptr<adouble[]>[]>  states_traj;
    unique_ptr<unique_ptr<adouble[]>[]>  derivs_traj;
    adouble**  second_derivs_traj;
@@ -900,6 +954,24 @@ public:
                                        // in the box bounds (empty during the feasibility sub-solve
                                        // and in direct-box mode, where the scalar is used)
    clock_t    start_ticks;
+
+// Diagnostics of the last parameter-statistics calculation (see
+// compute_parameter_statistics in src/parameter_estimation.cxx), kept here so that the
+// report writer can quote them without recomputing anything.
+   double     pe_sigma_hat;        // estimated residual standard deviation, eq. sigma_hat
+   long       pe_dof;              // degrees of freedom of the NLP, n_f = n_z - rank(Jc)
+   long       pe_nobs;             // number of scalar observations, N_s
+   bool       delay_free_time_warned;  // the free-t0 warning of get_delayed_state is printed once
+   double     pe_objective;        // sum of squared weighted residuals at the solution, J*
+
+// Multipliers of the simple variable bounds at the solution, as reported by the NLP
+// solver: the two one-sided multipliers, and their absolute sum. The sum tells a bound
+// that is genuinely active from one the solution merely touches (used by the parameter
+// covariance); the two vectors are the dual starting point of a hot start. All three are
+// empty when no solve has yet reported them.
+   MatrixXd   bound_multipliers;
+   MatrixXd   zL_previous;
+   MatrixXd   zU_previous;
 
 // tape tags to be used by ADOL_C
 
@@ -1126,11 +1198,23 @@ int get_number_nlp_vars(Prob& problem, Workspace* workspace);
 // for the Nie-Kerrigan flexible-order representation (ir_local_order>=2) it is integrated per
 // element, giving M = norder/ir_local_order groups. Single source of truth for the box-block
 // size, used by get_number(s)_nlp_constraints, gg_ad/gg_num and the box bounds.
-inline int ir_box_rows(int norder, int nstates, int m, int ir_local_order)
+inline int ir_box_rows(int norder, int nstates, int m, int ir_local_order, int nalg = 0)
 {
     int groups = (ir_local_order >= 2) ? (norder / ir_local_order) : norder;
-    return groups * m * nstates;
+    return groups * m * (nstates + nalg);
 }
+
+// Number of path constraints of a phase that are declared as equalities, and which are
+// therefore folded into the integrated residual when algorithm.ir_include_path == "auto".
+// Returns 0 for any other transcription method or setting, so that call sites can add it
+// unconditionally. Declared here and defined in NLP_objective.cxx; the phase index i is
+// zero-based, matching problem.phase[i].
+int ir_algebraic_rows(Prob& problem, Alg& algorithm, int i);
+
+// The corresponding index list (declaration order) and the common bound value of each such
+// equality path constraint. Used by the residual itself and by the residual-box scaling.
+void ir_algebraic_index(Prob& problem, int i, std::vector<int>& idx,
+                        std::vector<double>& target);
 
 int get_number_nlp_constraints(Prob& problem, Workspace* workspace);
 
@@ -1362,6 +1446,12 @@ void resample_trajectory(MatrixXd& Y, MatrixXd& X, MatrixXd& Ydata, MatrixXd& Xd
 void load_parameter_estimation_data(Prob& problem, int iphase, const char* filename);
 
 bool compute_parameter_statistics(MatrixXd& Qp, MatrixXd& p, MatrixXd& plow, MatrixXd& phigh, MatrixXd& r, Workspace* workspace);
+
+// Runs the calculation above and records its results on the solution object. Called by
+// psopt() whenever the problem carries an observation function and
+// algorithm.parameter_statistics is "yes", independently of print_level: the statistics
+// are a result, not a side effect of printing.
+void store_parameter_statistics(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
 double inverse_twotailed_t_cdf(double A, int ndf);
 

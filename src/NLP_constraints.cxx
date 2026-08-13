@@ -30,6 +30,7 @@ e-mail:    v.m.becerra@ieee.org
 
 
 #include "psopt.h"
+#include <vector>
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -564,9 +565,10 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
           adouble* params = workspace->parameters[iphpar-1].get();
           get_parameters(params, xad, iphr, workspace);
           get_times(&t0r, &tfr, xad, iphr, workspace);
+          int nalg = ir_algebraic_rows(*problem, *(workspace->algorithm), ip);
           int cnt = ir_box_rows( problem->phase[ip].current_number_of_intervals,
                                  problem->phase[ip].nstates, m,
-                                 workspace->algorithm->ir_local_order );
+                                 workspace->algorithm->ir_local_order, nalg );
           integrated_residual_phase(ip, iphr, xad, t0r, tfr, params, workspace, &gad[rb]);
           // Non-dimensionalise each residual component so a scalar box tolerance (and the DAIR K
           // schedule) are model-independent: r_k has units [x_k]/[t], so scale it by
@@ -574,11 +576,31 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
           // hence state index = t % nstates. "none" preserves the raw-residual box.
           if ( algorithm->ir_residual_scaling == "state" ) {
               MatrixXd& sscale = problem->phase[ip].scale.states;
+              MatrixXd& pscale = problem->phase[ip].scale.path;
               double    tscale = problem->phase[ip].scale.time;
               if ( tscale <= 0.0 ) tscale = 1.0;
               int       ns     = problem->phase[ip].nstates;
+              int       stride = ns + nalg;   // (state block, then algebraic block) per GL point
+              std::vector<int> aidx; std::vector<double> atgt;
+              if ( nalg > 0 ) ir_algebraic_index(*problem, ip, aidx, atgt);
               for (int t=0; t<cnt; t++) {
-                  double factor = sscale(t % ns) / tscale;
+                  int  slot   = t % stride;
+                  double factor;
+                  if ( slot < ns ) {
+                      factor = sscale(slot) / tscale;         // [x_k]/[t]
+                  } else {
+                      // Algebraic rows carry the units of the path constraint, not of a rate,
+                      // so state/time is the wrong non-dimensionalisation for them. Under user
+                      // scaling the declared path scale is the user's statement of the
+                      // characteristic magnitude and is used; otherwise the algebraic residual
+                      // is bounded raw, and algorithm.ir_path_weight is the knob for a badly
+                      // scaled algebraic block.
+                      int a = slot - ns;
+                      factor = 1.0;
+                      if ( algorithm->scaling == "user" && pscale.size() > aidx[a]
+                           && pscale( aidx[a] ) > 0.0 )
+                          factor = pscale( aidx[a] );
+                  }
                   gad[rb+t]               *= factor;
                   constraint_scaling(rb+t) = factor;
               }

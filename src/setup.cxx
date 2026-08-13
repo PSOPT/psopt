@@ -48,7 +48,7 @@ void psopt_level1_setup(Prob& problem)
        problem.phase[i].nsamples    = 0;
        problem.phase[i].zero_cost_integrand = false;
        problem.phase[i].regularization_factor = 0.0;
-       problem.phase[i].integer_control.control_index = -1;
+       problem.phase[i].integer_controls.clear();
        problem.phase[i].nodes.resize(1);
    }
 
@@ -77,12 +77,21 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
    problem.phase[i].observation_nodes.resize(nobserved,nnodes);
    problem.phase[i].observations.resize(nobserved,nsamples);
 
-	problem.phase[i].scale.controls.resize(ncontrols,1);
-	problem.phase[i].scale.states.resize(nstates,1);
-	problem.phase[i].scale.defects.resize(nstates,1);
-	problem.phase[i].scale.events.resize(nevents,1);
-	problem.phase[i].scale.path.resize(npath,1);
-   problem.phase[i].scale.parameters.resize(nparam,1);
+	// Scale factors are initialised to unity rather than merely resized. Eigen's resize()
+	// leaves the storage uninitialised, and these arrays are consulted directly when
+	// algorithm.scaling == "user"; a user who sets some of them and not others would
+	// otherwise multiply the omitted rows by whatever happened to be in memory. For
+	// scale.path the consequence was silent and severe: the row and both of its bounds are
+	// multiplied by the same factor, so a zero turns every path constraint into 0 <= 0 <= 0
+	// and the constraint disappears. Automatic scaling overwrites states, controls,
+	// parameters and defects, and uses constraint_scaling rather than these arrays for the
+	// path and event rows, so unity is also the correct default there.
+	problem.phase[i].scale.controls   = ones(ncontrols,1);
+	problem.phase[i].scale.states     = ones(nstates,1);
+	problem.phase[i].scale.defects    = ones(nstates,1);
+	problem.phase[i].scale.events     = ones(nevents,1);
+	problem.phase[i].scale.path       = ones(npath,1);
+	problem.phase[i].scale.parameters = ones(nparam,1);
 
 	problem.phase[i].bounds.upper.states.resize(nstates,1);
 	problem.phase[i].bounds.lower.states.resize(nstates,1);
@@ -97,7 +106,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
 
 
 
-   problem.scale.linkages.resize(nlinkages,1);
+   problem.scale.linkages = ones(nlinkages,1);
 
    problem.phase[i].guess.controls.resize(0,0);
    problem.phase[i].guess.states.resize(0,0);
@@ -131,6 +140,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   problem.events                      = NULL;
   problem.linkages                    = NULL;
   problem.observation_function        = NULL;
+  problem.initial_history             = NULL;
 
 
   // Set default values for some parameters
@@ -159,6 +169,8 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.ir_dair_delta_factor        = 1.0;
   algorithm.ir_local_order              = 0;
   algorithm.ir_residual_scaling         = "state";
+  algorithm.ir_include_path             = "auto";
+  algorithm.ir_path_weight              = 1.0;
   algorithm.diff_matrix                 = "standard";
   algorithm.ipopt_linear_solver         = "mumps";
   algorithm.print_level                 = 1;

@@ -264,7 +264,8 @@ int main(void)
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-    algorithm.collocation_method          = "Legendre";
+    algorithm.collocation_method          = "Hermite-Simpson";
+    algorithm.parameter_statistics        = "yes";
 //    algorithm.mesh_refinement             = "automatic";
 //    algorithm.defect_scaling              = "jacobian-based";
 //    algorithm.nlp_iter_max                = 1000;

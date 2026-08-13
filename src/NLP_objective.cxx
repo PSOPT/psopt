@@ -30,6 +30,7 @@ e-mail:    v.m.becerra@ieee.org
 
 
 #include "psopt.h"
+#include <vector>
 
 // Bring std names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -43,6 +44,41 @@ using namespace std;
 //   * the integrated-residual transcription  (increment 1: this IS the phase objective);
 //   * integrated-residual regularisation      (increment 2: added to the user objective
 //     with weight algorithm.ir_regularization, defects retained so the costates survive).
+// Number of path constraints of phase i that are declared as equalities and are therefore
+// folded into the integrated residual. Only equalities can enter: an inequality has no
+// residual that must be driven to zero, and folding one in would penalise a feasible point.
+// The test is exact equality of the declared bounds, so a constraint given a deliberate
+// tolerance band stays an ordinary pointwise path constraint.
+int ir_algebraic_rows(Prob& problem, Alg& algorithm, int i)
+{
+    if ( algorithm.transcription_method != "integrated-residual" ) return 0;
+    if ( algorithm.ir_include_path != "auto" )                     return 0;
+    int npath = problem.phase[i].npath;
+    if ( npath <= 0 ) return 0;
+    MatrixXd& pl = problem.phase[i].bounds.lower.path;
+    MatrixXd& pu = problem.phase[i].bounds.upper.path;
+    if ( pl.size() < npath || pu.size() < npath ) return 0;
+    int n = 0;
+    for (int j = 0; j < npath; j++)
+        if ( pl(j) == pu(j) ) n++;
+    return n;
+}
+
+// Index list of those equality path constraints, in declaration order, together with their
+// common bound value. Kept as a small helper so the two residual representations below agree.
+void ir_algebraic_index(Prob& problem, int i, std::vector<int>& idx,
+                        std::vector<double>& target)
+{
+    idx.clear(); target.clear();
+    int npath = problem.phase[i].npath;
+    if ( npath <= 0 ) return;
+    MatrixXd& pl = problem.phase[i].bounds.lower.path;
+    MatrixXd& pu = problem.phase[i].bounds.upper.path;
+    if ( pl.size() < npath || pu.size() < npath ) return;
+    for (int j = 0; j < npath; j++)
+        if ( pl(j) == pu(j) ) { idx.push_back(j); target.push_back( pl(j) ); }
+}
+
 adouble integrated_residual_phase(int i, int iphase, adouble* xad,
         adouble t0, adouble tf, adouble* parameters, Workspace* workspace, adouble* rout)
 {
@@ -73,6 +109,15 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
         adouble* uptr = (ncontrols>0) ? uq.data() : ubuf;
         adouble R = 0.0;
         int ridx = 0;
+        // Algebraic block: the equality path constraints join the residual, so that a DAE is
+        // solved as [xdot - f; g - g_target] rather than by index reduction. See
+        // ir_algebraic_rows and algorithm.ir_include_path.
+        std::vector<int>    aidx;
+        std::vector<double> atarget;
+        if ( ir_algebraic_rows(problem, *workspace->algorithm, i) > 0 )
+            ir_algebraic_index(problem, i, aidx, atarget);
+        const int nalg  = (int) aidx.size();
+        const double pw = workspace->algorithm->ir_path_weight;
         for (int e=0; e<M; e++) {
             int base = e*d;                  // global index of the element's first node
             adouble tk  = convert_to_original_time_ad( (workspace->snodes[i])(base),   t0, tf );
@@ -107,6 +152,11 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
                     if (rout) rout[ridx++] = rj;
                     rsq += rj*rj;
                 }
+                for (int a=0; a<nalg; a++) {
+                    adouble rj = pw * ( pscr[ aidx[a] ] - atarget[a] );
+                    if (rout) rout[ridx++] = rj;
+                    rsq += rj*rj;
+                }
                 R += he * wq(q) * rsq;
             }
         }
@@ -133,7 +183,13 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
     int m = workspace->ir_m;
     int j, k;
     adouble R = 0.0;
-    int ridx = 0;   // running index into rout (interval, GL point, state)
+    int ridx = 0;   // running index into rout (interval, GL point, state then algebraic)
+    std::vector<int>    aidx;
+    std::vector<double> atarget;
+    if ( ir_algebraic_rows(problem, *workspace->algorithm, i) > 0 )
+        ir_algebraic_index(problem, i, aidx, atarget);
+    const int nalg  = (int) aidx.size();
+    const double pw = workspace->algorithm->ir_path_weight;
 
     for (k=0; k<norder; k++) {
         adouble tk  = convert_to_original_time_ad( (workspace->snodes[i])(k),   t0, tf );
@@ -176,6 +232,11 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
                 adouble xdot = (g00*xk[j] + g01*xk1[j])/hk + g10*fk[j] + g11*fk1[j];
                 adouble rj   = xdot - fq[j];
                 if (rout) rout[ridx++] = rj;   // raw residual component for the box constraint
+                rsq += rj*rj;
+            }
+            for (int a=0; a<nalg; a++) {       // algebraic residual of the equality path constraints
+                adouble rj = pw * ( pscr[ aidx[a] ] - atarget[a] );
+                if (rout) rout[ridx++] = rj;
                 rsq += rj*rj;
             }
             R += hk * wq(q) * rsq;

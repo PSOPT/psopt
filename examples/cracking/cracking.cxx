@@ -67,8 +67,10 @@ void events(adouble* e, adouble* initial_states, adouble* final_states,
             adouble* parameters,adouble& t0, adouble& tf, adouble* xad,
             int iphase, Workspace* workspace)
 {
-   // No events
-
+   // The published problem (COPS gas-oil cracking) fixes y(0) = (1,0);
+   // estimating the initial conditions as well makes this a different problem.
+   e[0] = initial_states[0];
+   e[1] = initial_states[1];
 }
 
 
@@ -135,7 +137,7 @@ int main(void)
 
     problem.phases(1).nstates   		= 2;
     problem.phases(1).ncontrols 		= 0;
-    problem.phases(1).nevents   		= 0;
+    problem.phases(1).nevents   		= 2;
     problem.phases(1).npath     		= 0;
     problem.phases(1).nparameters        	= 3;
     problem.phases(1).nodes    		    	<< 80;
@@ -184,6 +186,11 @@ int main(void)
     problem.phases(1).bounds.upper.parameters(2) = 20.0;
 
 
+    problem.phases(1).bounds.lower.events(0) = 1.0;
+    problem.phases(1).bounds.upper.events(0) = 1.0;
+    problem.phases(1).bounds.lower.events(1) = 0.0;
+    problem.phases(1).bounds.upper.events(1) = 0.0;
+
     problem.phases(1).bounds.lower.StartTime    = 0.0;
     problem.phases(1).bounds.upper.StartTime    = 0.0;
 
@@ -222,6 +229,7 @@ int main(void)
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "Hermite-Simpson";
+    algorithm.parameter_statistics        = "yes";
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
 //    algorithm.jac_sparsity_ratio          = 0.52;

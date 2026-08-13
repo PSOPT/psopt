@@ -10,10 +10,21 @@
 // residual are used by the outer-convexification set-up, and the guess helper
 // expands a mode-index sequence into one-hot weight guesses.
 //
-// In v1 a phase may declare at most one integer control. Declaring it records
-// the control index and its admissible value set on the phase; the expansion
-// itself (extra weight-controls, the SOS1 equality path constraint, and the
-// convex-combination dynamics) is performed by psopt_level2_setup.
+// A phase may declare any number of integer controls. Each declaration records a
+// control index and its admissible value set on the phase; the expansion itself
+// (the weight-controls, the SOS1 equality path constraint, and the convex-
+// combination dynamics) is performed by the IntegerControlExpansionGuard at the
+// top of psopt().
+//
+// With K integer controls of sizes M_1..M_K the convexification is over the
+// CARTESIAN PRODUCT of the admissible sets, so the phase carries P = M_1*...*M_K
+// weight-controls and one SOS1 constraint over them. The product is what makes the
+// relaxation tight: a separate weight vector per control would enter the dynamics
+// multiplicatively, the relaxation would no longer be convex in the weights, and
+// the equality between the relaxed optimum and the integer infimum would be lost.
+// Two binary controls therefore cost four weights per node, three cost eight, and
+// the cost grows as the product -- which is the price of an exact relaxation and
+// the reason to keep the admissible sets small.
 //
 // See also include/sum_up_rounding.h for reconstruction of the integer control
 // from the relaxed weights.
@@ -22,15 +33,46 @@
 #include "psopt.h"
 #include "sum_up_rounding.h"
 
-// Declare the single integer control of a phase (v1). control_index is the
-// index of the control in the user's control layout; values holds the M
-// admissible discrete values. Recorded on the phase and consumed by
-// psopt_level2_setup.
+// Declare an integer control of a phase. control_index is the index of the control
+// in the user's control layout; values holds its M admissible discrete values. Call
+// once per integer control; declarations accumulate, and re-declaring the same
+// control index replaces the earlier entry rather than adding a second one. The
+// order of declaration fixes the order in which the controls are reported by
+// reconstruct_integer_controls.
 inline void declare_integer_control(Prob& problem, int iphase,
                                     int control_index, const RowVectorXd& values)
 {
-    problem.phases(iphase).integer_control.control_index = control_index;
-    problem.phases(iphase).integer_control.values        = values;
+    std::vector<IntegerControl>& v = problem.phases(iphase).integer_controls;
+    for (size_t k = 0; k < v.size(); ++k) {
+        if (v[k].control_index == control_index) { v[k].values = values; return; }
+    }
+    IntegerControl ic;
+    ic.control_index = control_index;
+    ic.values        = values;
+    v.push_back(ic);
+}
+
+// Number of product modes P = M_1 * ... * M_K for a phase, and the decoding of a
+// product index into the per-control mode indices. The first declared control is
+// the most slowly varying digit, so mode 0 is "every control at its first
+// admissible value".
+inline int integer_control_product_size(const std::vector<IntegerControl>& v)
+{
+    int P = 1;
+    for (size_t k = 0; k < v.size(); ++k) P *= (int) v[k].values.size();
+    return (v.empty() ? 0 : P);
+}
+
+inline void integer_control_decode(const std::vector<IntegerControl>& v, int p,
+                                   std::vector<int>& mode_of_control)
+{
+    const int K = (int) v.size();
+    mode_of_control.assign(K, 0);
+    for (int k = K - 1; k >= 0; --k) {
+        const int Mk = (int) v[k].values.size();
+        mode_of_control[k] = p % Mk;
+        p /= Mk;
+    }
 }
 
 // Convex combination of per-mode derivative arrays:
@@ -84,36 +126,80 @@ struct IntegerControlReconstruction {
     int         n_switches;       // number of mode switches
 };
 
-// One-call reconstruction of a phase's integer control from a solved problem.
-// After psopt(), the solution controls are in the weights layout; this extracts
-// the M trailing weight rows, forms the interval widths from the phase time, and
-// applies sum-up rounding using the admissible values recorded by
-// declare_integer_control. Returns the rounded control together with the mode
-// sequence, the interval widths, the integral gap, and the switch count. If the
-// phase declares no integer control, the returned structure is empty.
-inline IntegerControlReconstruction
-reconstruct_integer_control(Sol& solution, Prob& problem, int iphase)
+// One-call reconstruction of a phase's integer controls from a solved problem.
+// After psopt(), the solution controls are in the weights layout; this extracts the
+// P trailing weight rows (P the product of the admissible set sizes), forms the
+// interval widths from the phase time, applies sum-up rounding over the product
+// modes, and then decodes each chosen product mode into a value for each declared
+// control. Returns one reconstruction per declared integer control, in declaration
+// order. The integral gap and the switch count are properties of the product mode
+// sequence and are therefore the same in every entry; n_switches counts the
+// instants at which any control changes.
+inline std::vector<IntegerControlReconstruction>
+reconstruct_integer_controls(Sol& solution, Prob& problem, int iphase)
 {
-    const RowVectorXd values = problem.phases(iphase).integer_control.values;
-    const int M = static_cast<int>(values.size());
+    const std::vector<IntegerControl>& v = problem.phases(iphase).integer_controls;
+    const int K = (int) v.size();
+    std::vector<IntegerControlReconstruction> out;
+    if (K <= 0) return out;                 // no integer control declared on this phase
 
-    IntegerControlReconstruction r;
-    r.integral_gap = 0.0;
-    r.n_switches   = 0;
-    if (M <= 0) return r;   // no integer control declared on this phase
+    const int P = integer_control_product_size(v);
 
     MatrixXd u = solution.get_controls_in_phase(iphase);   // weights layout
     MatrixXd t = solution.get_time_in_phase(iphase);
-    const int N = static_cast<int>(t.cols());
-    const int P = N - 1;
+    const int N  = static_cast<int>(t.cols());
+    const int Ni = N - 1;
 
-    MatrixXd    W = u.bottomRows(M).leftCols(P);   // M x P: weights at interval left nodes
-    RowVectorXd h(P);
-    for (int i = 0; i < P; ++i) h(i) = t(0, i + 1) - t(0, i);
+    MatrixXd    W = u.bottomRows(P).leftCols(Ni);   // P x Ni: weights at interval left nodes
+    RowVectorXd h(Ni);
+    for (int i = 0; i < Ni; ++i) h(i) = t(0, i + 1) - t(0, i);
 
-    r.interval_widths = h;
-    sum_up_rounding(W, h, values, r.mode_index, r.control, r.integral_gap, r.n_switches);
-    return r;
+    // Round over the product modes: the "values" are the product indices themselves,
+    // which are then decoded into one value per declared control.
+    RowVectorXd product_ids(P);
+    for (int p = 0; p < P; ++p) product_ids(p) = (double) p;
+
+    RowVectorXi product_mode;
+    RowVectorXd product_value;
+    double gap = 0.0;
+    int    nsw = 0;
+    sum_up_rounding(W, h, product_ids, product_mode, product_value, gap, nsw);
+
+    out.resize(K);
+    std::vector<int> modes;
+    for (int k = 0; k < K; ++k) {
+        out[k].control.resize(Ni);
+        out[k].mode_index.resize(Ni);
+        out[k].interval_widths = h;
+        out[k].integral_gap    = gap;
+        out[k].n_switches      = nsw;
+    }
+    for (int i = 0; i < Ni; ++i) {
+        integer_control_decode(v, product_mode(i), modes);
+        for (int k = 0; k < K; ++k) {
+            out[k].mode_index(i) = modes[k];
+            out[k].control(i)    = v[k].values(modes[k]);
+        }
+    }
+    return out;
+}
+
+// Convenience overload for the common case of a single integer control, and for
+// picking one control out of several. `which` is the declaration ordinal. Returns
+// an empty structure if the phase declares no integer control, or if `which` is out
+// of range.
+inline IntegerControlReconstruction
+reconstruct_integer_control(Sol& solution, Prob& problem, int iphase, int which = 0)
+{
+    std::vector<IntegerControlReconstruction> all =
+        reconstruct_integer_controls(solution, problem, iphase);
+    if (which < 0 || which >= (int) all.size()) {
+        IntegerControlReconstruction empty;
+        empty.integral_gap = 0.0;
+        empty.n_switches   = 0;
+        return empty;
+    }
+    return all[which];
 }
 
 #endif // PSOPT_INTEGER_CONTROLS_H

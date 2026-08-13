@@ -129,6 +129,9 @@ static void recover_costates_adjoint(Prob& problem, Alg& algorithm, Sol& solutio
             for(int j=0;j<nstates;j++) fout[j]=dv[j].value();
         };
         auto eval_L = [&](const double* x,const double* u,double t)->double{
+            // A Mayer-only performance index leaves integrand_cost null (see the
+            // zero_cost_integrand flag set in psopt_main); the running cost is then zero.
+            if ( problem.integrand_cost == NULL ) return 0.0;
             for(int l=0;l<nstates;l++)   st[l]=x[l];
             for(int l=0;l<ncontrols;l++) ct[l]=u[l];
             adouble tt=t;
@@ -1342,6 +1345,12 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
   }
 
 
+
+  // The parameter statistics are a result of the solve, not a side effect of printing:
+  // they are computed here so that a caller reaches them through the solution object
+  // whatever print_level is set to. The report below then formats what is already there.
+
+  store_parameter_statistics(problem, algorithm, solution, workspace);
 
   if (algorithm.print_level>0) {
 
