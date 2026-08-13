@@ -129,6 +129,9 @@ static void recover_costates_adjoint(Prob& problem, Alg& algorithm, Sol& solutio
             for(int j=0;j<nstates;j++) fout[j]=dv[j].value();
         };
         auto eval_L = [&](const double* x,const double* u,double t)->double{
+            // A Mayer-only performance index leaves integrand_cost null (see the
+            // zero_cost_integrand flag set in psopt_main); the running cost is then zero.
+            if ( problem.integrand_cost == NULL ) return 0.0;
             for(int l=0;l<nstates;l++)   st[l]=x[l];
             for(int l=0;l<ncontrols;l++) ct[l]=u[l];
             adouble tt=t;

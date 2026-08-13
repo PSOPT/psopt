@@ -227,6 +227,21 @@ struct alg_str {
                                     // residual component by scale.states(k)/scale.time, so a scalar
                                     // box tolerance and the K schedule are model-independent; "none"
                                     // bounds the raw residual (pre-scaling behaviour).
+  string    ir_include_path;        // integrated-residual transcription: which path constraints
+                                    // are folded into the residual alongside xdot-f. "auto"
+                                    // (default) includes every path constraint declared as an
+                                    // equality (bounds.lower.path(j)==bounds.upper.path(j)),
+                                    // which is what allows a DAE to be solved without index
+                                    // reduction; "none" reproduces the pre-1.x behaviour in which
+                                    // the dae path output is discarded by the residual and the
+                                    // algebraic equations are imposed pointwise only. Inequality
+                                    // path constraints are never folded in -- they have no
+                                    // residual to drive to zero -- and remain ordinary pointwise
+                                    // path constraints under either setting.
+  double    ir_path_weight;         // multiplies each algebraic residual component before it
+                                    // enters the integrated residual and the residual box,
+                                    // for problems where the algebraic equations are badly
+                                    // scaled relative to the differential ones (default 1)
   int       ir_local_order;          // Nie-Kerrigan flexible-order local representation: if >=2,
                                      // each mesh element carries a degree-ir_local_order Lagrange
                                      // state (and control) through ir_local_order+1 local LGL nodes
@@ -1126,11 +1141,23 @@ int get_number_nlp_vars(Prob& problem, Workspace* workspace);
 // for the Nie-Kerrigan flexible-order representation (ir_local_order>=2) it is integrated per
 // element, giving M = norder/ir_local_order groups. Single source of truth for the box-block
 // size, used by get_number(s)_nlp_constraints, gg_ad/gg_num and the box bounds.
-inline int ir_box_rows(int norder, int nstates, int m, int ir_local_order)
+inline int ir_box_rows(int norder, int nstates, int m, int ir_local_order, int nalg = 0)
 {
     int groups = (ir_local_order >= 2) ? (norder / ir_local_order) : norder;
-    return groups * m * nstates;
+    return groups * m * (nstates + nalg);
 }
+
+// Number of path constraints of a phase that are declared as equalities, and which are
+// therefore folded into the integrated residual when algorithm.ir_include_path == "auto".
+// Returns 0 for any other transcription method or setting, so that call sites can add it
+// unconditionally. Declared here and defined in NLP_objective.cxx; the phase index i is
+// zero-based, matching problem.phase[i].
+int ir_algebraic_rows(Prob& problem, Alg& algorithm, int i);
+
+// The corresponding index list (declaration order) and the common bound value of each such
+// equality path constraint. Used by the residual itself and by the residual-box scaling.
+void ir_algebraic_index(Prob& problem, int i, std::vector<int>& idx,
+                        std::vector<double>& target);
 
 int get_number_nlp_constraints(Prob& problem, Workspace* workspace);
 

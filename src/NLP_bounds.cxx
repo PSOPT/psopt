@@ -284,7 +284,8 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
       for (i=0; i<problem->nphases; i++) {
           double delta = use_phase ? workspace->ir_delta_phase[i] : algorithm->ir_residual_bound;
           int cnt = ir_box_rows( problem->phase[i].current_number_of_intervals,
-                                 problem->phase[i].nstates, m, algorithm->ir_local_order );
+                                 problem->phase[i].nstates, m, algorithm->ir_local_order,
+                                 ir_algebraic_rows(*problem, *algorithm, i) );
           for (int t=0; t<cnt; t++) { g_l[rb+t] = -delta; g_u[rb+t] = delta; }
           rb += cnt;
       }
