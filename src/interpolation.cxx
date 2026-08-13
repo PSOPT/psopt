@@ -113,36 +113,33 @@ void lagrange_interpolation_ad(adouble* y, adouble& x, adouble* pointx, adouble*
 void linear_interpolation(adouble* y, adouble& x, adouble* pointx, adouble* pointy, int npoints)
 {
 //    Linear interpolation from point values (version for automatic differentiation)
+//
+//    The interval is selected with psopt_cond_lt() rather than by branching on x.
+//    x is an active variable, so a C++ branch on it is resolved once, while the
+//    derivative tape is recorded, and the same interval is then replayed at every
+//    later argument -- the tape holds one piece of the interpolant extended over the
+//    whole line, and both the value and the derivative are wrong as soon as the
+//    optimizer moves x elsewhere. Every piece is evaluated and folded from the last
+//    down to the first, which reproduces the previous extrapolation behaviour: an x
+//    below the first abscissa uses the first piece, an x above the last uses the
+//    last.
 
-   int i,j;
-   bool jdone = false;
+   int i;
+   adouble slope, lpiece, yval;
 
-   if( x < pointx[0] )
-   {
-      j = 0;
-      jdone = true;
+   if (npoints < 2) error_message("At least two points are needed in routine linear_interpolation()");
+
+   for (i = npoints-2; i >= 0; i--) {
+      if ( pointx[i+1] == pointx[i] )
+          error_message("Vector pointx must be strictly increasing in routine linear_interpolation()");
+      slope  = (pointy[i+1]-pointy[i])/(pointx[i+1]-pointx[i]);
+      lpiece = pointy[i] + (x-pointx[i])*slope;
+
+      if ( i == npoints-2 ) yval = lpiece;
+      else                  yval = psopt_cond_lt( x, pointx[i+1], lpiece, yval );
    }
 
-
-
-  if ( x > pointx[npoints-1] )
-   {
-      j=npoints-2;
-      jdone = true;
-   }
-
-  if (!jdone) {
-     for(i=0;i<npoints-1;i++) {
-       if( x >= pointx[i] && x <=pointx[i+1] )
-       {
-         j=i;
-         break;
-       }
-     }
-  }
-
-   *y = pointy[j] + (x-pointx[j])*(pointy[j+1]-pointy[j])/(pointx[j+1]-pointx[j]);
-
+   *y = yval;
 }
 
 void linear_interpolation(MatrixXd& y, double x, MatrixXd& pointx, MatrixXd& pointy, int npoints)
@@ -182,37 +179,35 @@ void linear_interpolation(MatrixXd& y, double x, MatrixXd& pointx, MatrixXd& poi
 
 void linear_interpolation(adouble* y, adouble x, MatrixXd& pointx, MatrixXd& pointy, int npoints)
 {
-//    Linear interpolation from point values
+//    Linear interpolation from point values (version for automatic differentiation)
+//
+//    The interval is selected with psopt_cond_lt() rather than by branching on x.
+//    x is an active variable, so a C++ branch on it is resolved once, while the
+//    derivative tape is recorded, and the same interval is then replayed at every
+//    later argument -- the tape holds one piece of the interpolant extended over the
+//    whole line, and both the value and the derivative are wrong as soon as the
+//    optimizer moves x elsewhere. Every piece is evaluated and folded from the last
+//    down to the first, which reproduces the previous extrapolation behaviour: an x
+//    below the first abscissa uses the first piece, an x above the last uses the
+//    last.
 
-   int i,j;
-   bool jdone = false;
+   int i;
+   double slope;
+   adouble lpiece, yval;
 
-   if( x.value() < pointx(0) ) // EIGEN_UPDATE
-   {
-      j = 0;
-      jdone = true;
+   if (npoints < 2) error_message("At least two points are needed in routine linear_interpolation()");
+
+   for (i = npoints-2; i >= 0; i--) {
+      if ( pointx(i+1) == pointx(i) )
+          error_message("Vector pointx must be strictly increasing in routine linear_interpolation()");
+      slope  = (pointy(i+1)-pointy(i))/(pointx(i+1)-pointx(i));
+      lpiece = pointy(i) + (x-pointx(i))*slope;
+
+      if ( i == npoints-2 ) yval = lpiece;
+      else                  yval = psopt_cond_lt( x, (adouble) pointx(i+1), lpiece, yval );
    }
 
-
-
-  if ( x.value() > pointx(npoints-1 ) )  // EIGEN_UPDATE
-   {
-      j=npoints-2;
-      jdone = true;
-   }
-
-  if (!jdone) {
-     for(i=0;i<npoints-1;i++) {   // EIGEN_UPDATE
-       if( x.value() >= pointx(i) && x <=pointx(i+1) )
-       {
-         j=i;
-         break;
-       }
-     }
-  }
-
-  *y = pointy(j) + (x-pointx(j))*(pointy(j+1)-pointy(j))/(pointx(j+1)-pointx(j));
-
+   *y = yval;
 }
 
 
@@ -360,36 +355,32 @@ void smooth_linear_interpolation(adouble* y, adouble& x, adouble* Xdata, adouble
 void zoh_interpolation(adouble* y, adouble x, MatrixXd& pointx, MatrixXd& pointy, int npoints)
 {
 //    Zero Order Hold interpolation from point values
+//
+//    The interval is selected with psopt_cond_lt() rather than by branching on x.
+//    x is an active variable, so a C++ branch on it is resolved once, while the
+//    derivative tape is recorded, and the same interval is then replayed at every
+//    later argument -- the tape holds one piece of the interpolant extended over the
+//    whole line, and both the value and the derivative are wrong as soon as the
+//    optimizer moves x elsewhere. Every piece is evaluated and folded from the last
+//    down to the first, which reproduces the previous extrapolation behaviour: an x
+//    below the first abscissa uses the first piece, an x above the last uses the
+//    last.
+//
+//    The interpolant is piecewise constant, so its derivative is zero within every
+//    interval; what the selection restores is the value, which the frozen branch got
+//    wrong away from the point at which the tape was recorded.
 
-   int i,j;
-   bool jdone = false;
+   int i;
+   adouble yval;
 
-   if( x.value() < pointx(0) ) // EIGEN_UPDATE
-   {
-      j = 0;
-      jdone = true;
+   if (npoints < 2) error_message("At least two points are needed in routine zoh_interpolation()");
+
+   for (i = npoints-2; i >= 0; i--) {
+      if ( i == npoints-2 ) yval = (adouble) pointy(i);
+      else                  yval = psopt_cond_lt( x, (adouble) pointx(i+1), (adouble) pointy(i), yval );
    }
 
-
-
-  if ( x.value() > pointx(npoints-1) )  // EIGEN_UPDATE
-   {
-      j=npoints-2;
-      jdone = true;
-   }
-
-  if (!jdone) {
-     for(i=0;i<npoints-1;i++) { // EIGEN_UPDATE: index i shifted by -1
-       if( x.value() >= pointx(i) && x <=pointx(i+1) )
-       {
-         j=i;
-         break;
-       }
-     }
-  }
-
-  *y = pointy(j);
-
+   *y = yval;
 }
 
 
@@ -513,19 +504,30 @@ void bilinear_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, Mat
 //    Z is a matrix of dimensions nxpoints x nypoints
 //    Each element Z(i,j) corresponds to the pair ( X(i), Y(j) )
 //    Method: Classical bilinear interpolation.
-//    The function does not allow extrapolation. An error message is printed if the input pair x,y is out of range.
+//    Values outside the range of the tables are extrapolated with the nearest cell.
 //    The function does not deal with sparse data.
+//
+//    The interval is selected with psopt_cond_lt() rather than by branching on x.
+//    x is an active variable, so a C++ branch on it is resolved once, while the
+//    derivative tape is recorded, and the same interval is then replayed at every
+//    later argument -- the tape holds one piece of the interpolant extended over the
+//    whole line, and both the value and the derivative are wrong as soon as the
+//    optimizer moves x elsewhere. Every piece is evaluated and folded from the last
+//    down to the first, which reproduces the previous extrapolation behaviour: an x
+//    below the first abscissa uses the first piece, an x above the last uses the
+//    last.
+//
+//    The previous version also tested x, rather than y, against the last entry of Y
+//    when deciding whether the second index was out of range.
 
-
-   long i,jx, jy;
-   bool jxdone = false;
-   bool jydone = false;
+   long jx, jy;
    long nxpoints = length(X);
    long nypoints = length(Y);
    long nrowsZ   = Z.rows();
    long ncolsZ   = Z.cols();
    double x1,x2,y1,y2;
    double z11,z12,z21,z22;
+   adouble zcell, zrow, zval;
 
    if ( nrowsZ != nxpoints ) {
        error_message("Number of rows of matrix Z must be equal to the length of vector X in call to bilinear_interpolation()");
@@ -533,71 +535,37 @@ void bilinear_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, Mat
    if ( ncolsZ != nypoints )  {
          error_message("Number of columns of matrix Z must be equal to the length of vector Y in call to bilinear_interpolation()");
    }
-
-   if( x.value() < X(0) )  // EIGEN_UPDATE
-   {
-      jx = 0;
-      jxdone = true;
-
-//      error_message("Extrapolation not allowed in function bilinear_interpolation()");
+   if ( nxpoints < 2 || nypoints < 2 ) {
+         error_message("At least two points are needed in each direction in call to bilinear_interpolation()");
    }
 
+   for (jx = nxpoints-2; jx >= 0; jx--) {
 
-  if ( x.value() > X(nxpoints-1) ) // EIGEN_UPDATE
-   {
-      jx=nxpoints-2;
-      jxdone = true;
+      x1 = X(jx);   x2 = X(jx+1);
+      if ( x2 == x1 ) error_message("Vector X must be strictly increasing in call to bilinear_interpolation()");
 
-//      error_message("Extrapolation not allowed in function bilinear_interpolation()");
+      for (jy = nypoints-2; jy >= 0; jy--) {
 
+          y1 = Y(jy);   y2 = Y(jy+1);
+          if ( y2 == y1 ) error_message("Vector Y must be strictly increasing in call to bilinear_interpolation()");
+
+          z11 = Z(jx,jy);    z12 = Z(jx,jy+1);
+          z21 = Z(jx+1,jy);  z22 = Z(jx+1,jy+1);
+
+          zcell  = z11*(x2-x)*(y2-y)/((x2-x1)*(y2-y1));
+          zcell += z21*(x-x1)*(y2-y)/((x2-x1)*(y2-y1));
+          zcell += z12*(x2-x)*(y-y1)/((x2-x1)*(y2-y1));
+          zcell += z22*(x-x1)*(y-y1)/((x2-x1)*(y2-y1));
+
+          if ( jy == nypoints-2 ) zrow = zcell;
+          else                    zrow = psopt_cond_lt( y, (adouble) Y(jy+1), zcell, zrow );
+      }
+
+      if ( jx == nxpoints-2 ) zval = zrow;
+      else                    zval = psopt_cond_lt( x, (adouble) X(jx+1), zrow, zval );
    }
 
-  if (!jxdone) {
-     for(i=0;i<nxpoints-1;i++) {  // EIGEN_UPDATE: index i shifted by -1
-       if( x.value() >= X(i) && x <=X(i+1) )
-       {
-         jx=i;
-         break;
-       }
-     }
-  }
-
-  if( y.value() < Y(0) ) // EIGEN_UPDATE
-   {
-      jy = 0;
-      jydone = true;
-//      error_message("Extrapolation not allowed in function bilinear_interpolation()");
-   }
-
-
-
-  if ( x.value() > Y(nypoints-1) )
-   {
-      jy=nypoints-2;
-      jydone = true;
-//      error_message("Extrapolation not allowed in function bilinear_interpolation()");
-   }
-
-  if (!jydone) {
-     for(i=0;i<nypoints-1;i++) {
-       if( y.value() >= Y(i) && y <=Y(i+1) )
-       {
-         jy=i;
-         break;
-       }
-     }
-  }
-
-  x1  = X(jx);        x2 = X(jx+1);
-  y1  = Y(jy);        y2 = Y(jy+1);
-  z11 = Z(jx,jy);    z12 = Z(jx,jy+1);
-  z21 = Z(jx+1,jy);  z22 = Z(jx+1,jy+1);
-
-  *z = z11*(x2-x)*(y2-y)/((x2-x1)*(y2-y1));
-  *z+= z21*(x-x1)*(y2-y)/((x2-x1)*(y2-y1));
-  *z+= z12*(x2-x)*(y-y1)/((x2-x1)*(y2-y1));
-  *z+= z22*(x-x1)*(y-y1)/((x2-x1)*(y2-y1));
-
+   *z = zval;
 }
 
 
@@ -702,70 +670,109 @@ void spline_second_derivative(MatrixXd& xdata, MatrixXd& ydata, int n,  MatrixXd
 
 void spline_interpolation(adouble* y, adouble& x, adouble* xdata, adouble* ydata, int n, Workspace* workspace)
 //   Given the arrays xdata[i] and ydata[i], i = 0,...n-1, which tabulate a function, with xdata[i] < xdata[i+1],
-//   and given the array d2y[i], which is the output from function spline_second_derivative(),
 //   and given a value of x, this function returns the interpolated value y using (natural) cubic-spline interpolation
 //
 //   Reference: Burden and Faires (2005) "Numerical Analysis". Thompson.
+//
+//   Interval selection and automatic differentiation
+//   ------------------------------------------------
+//   The bracketing interval is chosen with psopt_cond_lt() rather than with a
+//   search that branches on x. x is an active variable, so a C++ branch on it is
+//   resolved once, while the tape is being recorded, and the outcome is then
+//   replayed unchanged at every later argument: the tape then represents a single
+//   piece of the interpolant, extended over the whole real line, instead of the
+//   interpolant itself. Both the value and the derivative are wrong as soon as the
+//   optimizer moves x out of the interval that happened to be current when the tape
+//   was laid down, and nothing in the run reports it. psopt_cond_lt() records the
+//   comparison on the tape instead, so the correct piece is selected at every
+//   evaluation; with a forward-mode backend it compiles down to the same branch.
+//
+//   The fold runs from the last interval down to the first, so an x below the first
+//   abscissa is evaluated with the first piece and an x above the last with the
+//   last piece: the same extrapolation the previous search gave, which clamped its
+//   left index to the range [1,n-1]. Every piece is evaluated, so every piece must
+//   be finite; the polynomial forms below use products rather than pow(), whose
+//   taped version is exp(y log x) and would put a NaN on the tape for the pieces
+//   where the local coordinate is negative.
 {
-
-   int kleft,kright,k;
-   adouble h,A,B,C,D;
+   int i;
+   adouble h, A, B, ypiece, yval;
    adouble *d2y = workspace->y2a_spline.get();
-   kleft=1;
+
+   if (n < 2) error_message("At least two data points are needed in routine spline_interpolation()");
 
    spline_second_derivative(xdata, ydata, n, d2y, workspace );
 
-   kright=n;
-   while (kright-kleft > 1) {
-      k=(int) ( (kright+kleft)/2 );
-      if (xdata[k-1] > x) kright=k;
-      else kleft=k;
+   for (i = n-2; i >= 0; i--) {
+      h = xdata[i+1]-xdata[i];
+      if (h == 0.0) error_message("Bad xdata input to routine spline_interpolation()");
+      A = (xdata[i+1]-x)/h;
+      B = (x-xdata[i])/h;
+      ypiece =  A*ydata[i] + B*ydata[i+1]
+              + (A*A*A-A)*(h*h)/6.0*d2y[i] + (B*B*B-B)*(h*h)/6.0*d2y[i+1];
+
+      if (i == n-2) yval = ypiece;
+      else          yval = psopt_cond_lt( x, xdata[i+1], ypiece, yval );
    }
-   h=xdata[kright-1]-xdata[kleft-1];
-   if (h == 0.0) error_message("Bad xdata input to routine spline_interpolation()");
-   A=(xdata[kright-1]-x)/h;
-   B=(x-xdata[kleft-1])/h;
-   C=(pow(A,3)-A)*(h*h)/6.0;
-   D=(pow(B,3)-B)*(h*h)/6.0;
-   // Evaluate the cubic spline polynomial
-   *y=A*ydata[kleft-1]+B*ydata[kright-1]+C*d2y[kleft-1]+D*d2y[kright-1];
+
+   *y = yval;
 }
 
 void spline_interpolation(adouble* y, adouble& x, MatrixXd& Xdata, MatrixXd& Ydata, int n)
-//   Given the arrays xdata[i] and ydata[i], i = 0,...n-1, which tabulate a function, with xdata[i] < xdata[i+1],
-//   and given the array d2y[i], which is the output from function spline_second_derivative(),
+//   Given the arrays Xdata(i) and Ydata(i), i = 0,...n-1, which tabulate a function, with Xdata(i) < Xdata(i+1),
 //   and given a value of x, this function returns the interpolated value y using (natural) cubic-spline interpolation
 //
 //   Reference: Burden and Faires (2005) "Numerical Analysis". Thompson.
+//
+//   Interval selection and automatic differentiation
+//   ------------------------------------------------
+//   The bracketing interval is chosen with psopt_cond_lt() rather than with a
+//   search that branches on x. x is an active variable, so a C++ branch on it is
+//   resolved once, while the tape is being recorded, and the outcome is then
+//   replayed unchanged at every later argument: the tape then represents a single
+//   piece of the interpolant, extended over the whole real line, instead of the
+//   interpolant itself. Both the value and the derivative are wrong as soon as the
+//   optimizer moves x out of the interval that happened to be current when the tape
+//   was laid down, and nothing in the run reports it. psopt_cond_lt() records the
+//   comparison on the tape instead, so the correct piece is selected at every
+//   evaluation; with a forward-mode backend it compiles down to the same branch.
+//
+//   The fold runs from the last interval down to the first, so an x below the first
+//   abscissa is evaluated with the first piece and an x above the last with the
+//   last piece: the same extrapolation the previous search gave, which clamped its
+//   left index to the range [1,n-1]. Every piece is evaluated, so every piece must
+//   be finite; the polynomial forms below use products rather than pow(), whose
+//   taped version is exp(y log x) and would put a NaN on the tape for the pieces
+//   where the local coordinate is negative.
 {
-
-   int kleft,kright,k;
-   adouble h,A,B,C,D;
+   int i;
+   double h;
+   adouble A, B, ypiece, yval;
    MatrixXd D2Y(1,n);
 
-   double* d2y = &D2Y(0);
+   double* d2y   = &D2Y(0);
+   double* xdata = &Xdata(0);
+   double* ydata = &Ydata(0);
 
-   double *xdata = &Xdata(0);
-
-   double *ydata = &Ydata(0);
-   kleft=1;
+   if (n < 2) error_message("At least two data points are needed in routine spline_interpolation()");
 
    spline_second_derivative(Xdata, Ydata, n, D2Y );
 
-   kright=n;
-   while (kright-kleft > 1) {
-      k=(int) ( (kright+kleft)/2 );
-      if (xdata[k-1] > x) kright=k;
-      else kleft=k;
+   // The table is made of constants here, so only the local coordinates A and B and
+   // the selection carry derivatives.
+   for (i = n-2; i >= 0; i--) {
+      h = xdata[i+1]-xdata[i];
+      if (h == 0.0) error_message("Bad xdata input to routine spline_interpolation()");
+      A = (xdata[i+1]-x)/h;
+      B = (x-xdata[i])/h;
+      ypiece =  A*ydata[i] + B*ydata[i+1]
+              + (A*A*A-A)*(h*h)/6.0*d2y[i] + (B*B*B-B)*(h*h)/6.0*d2y[i+1];
+
+      if (i == n-2) yval = ypiece;
+      else          yval = psopt_cond_lt( x, (adouble) xdata[i+1], ypiece, yval );
    }
-   h=xdata[kright-1]-xdata[kleft-1];
-   if (h == 0.0) error_message("Bad xdata input to routine spline_interpolation()");
-   A=(xdata[kright-1]-x)/h;
-   B=(x-xdata[kleft-1])/h;
-   C=(pow(A,3)-A)*(h*h)/6.0;
-   D=(pow(B,3)-B)*(h*h)/6.0;
-   // Evaluate the cubic spline polynomial
-   *y=A*ydata[kleft-1]+B*ydata[kright-1]+C*d2y[kleft-1]+D*d2y[kright-1];
+
+   *y = yval;
 }
 
 
@@ -824,33 +831,55 @@ void spline_interpolation(MatrixXd& Y, MatrixXd& X, MatrixXd& Xdata, MatrixXd& Y
 
 void spline_interpolation_with_second_derivative(adouble* y, adouble& x, adouble* xdata, adouble* ydata, adouble* y2d, int n, Workspace* workspace)
 //   Given the arrays xdata[i] and ydata[i], i = 0,...n-1, which tabulate a function, with xdata[i] < xdata[i+1],
-//   and given the array d2y[i], which is the output from function spline_second_derivative(),
-//   and given a value of x, this function returns the interpolated value y using (natural) cubic-spline interpolation
+//   and given a value of x, this function returns the interpolated value y using (natural) cubic-spline interpolation.
+//   The second derivatives of the interpolating polynomial are returned in y2d.
 //
 //   Reference: Burden and Faires (2005) "Numerical Analysis". Thompson.
+//
+//   Interval selection and automatic differentiation
+//   ------------------------------------------------
+//   The bracketing interval is chosen with psopt_cond_lt() rather than with a
+//   search that branches on x. x is an active variable, so a C++ branch on it is
+//   resolved once, while the tape is being recorded, and the outcome is then
+//   replayed unchanged at every later argument: the tape then represents a single
+//   piece of the interpolant, extended over the whole real line, instead of the
+//   interpolant itself. Both the value and the derivative are wrong as soon as the
+//   optimizer moves x out of the interval that happened to be current when the tape
+//   was laid down, and nothing in the run reports it. psopt_cond_lt() records the
+//   comparison on the tape instead, so the correct piece is selected at every
+//   evaluation; with a forward-mode backend it compiles down to the same branch.
+//
+//   The fold runs from the last interval down to the first, so an x below the first
+//   abscissa is evaluated with the first piece and an x above the last with the
+//   last piece: the same extrapolation the previous search gave, which clamped its
+//   left index to the range [1,n-1]. Every piece is evaluated, so every piece must
+//   be finite; the polynomial forms below use products rather than pow(), whose
+//   taped version is exp(y log x) and would put a NaN on the tape for the pieces
+//   where the local coordinate is negative.
 {
+   int i;
+   adouble h, A, B, ypiece, yval;
 
-   int kleft,kright,k;
-   adouble h,A,B,C,D;
-   adouble *d2y = workspace->y2a_spline.get();
-   kleft=1;
+   if (n < 2) error_message("At least two data points are needed in routine spline_interpolation_with_second_derivative()");
 
-   spline_second_derivative(xdata, ydata, n, d2y, workspace );
+   // The second derivatives are computed here and returned to the caller, which is
+   // what distinguishes this routine from spline_interpolation(). The argument was
+   // previously ignored, the second derivatives being written to workspace scratch.
+   spline_second_derivative(xdata, ydata, n, y2d, workspace );
 
-   kright=n;
-   while (kright-kleft > 1) {
-      k=(int) ( (kright+kleft)/2 );
-      if (xdata[k-1] > x) kright=k;
-      else kleft=k;
+   for (i = n-2; i >= 0; i--) {
+      h = xdata[i+1]-xdata[i];
+      if (h == 0.0) error_message("Bad xdata input to routine spline_interpolation_with_second_derivative()");
+      A = (xdata[i+1]-x)/h;
+      B = (x-xdata[i])/h;
+      ypiece =  A*ydata[i] + B*ydata[i+1]
+              + (A*A*A-A)*(h*h)/6.0*y2d[i] + (B*B*B-B)*(h*h)/6.0*y2d[i+1];
+
+      if (i == n-2) yval = ypiece;
+      else          yval = psopt_cond_lt( x, xdata[i+1], ypiece, yval );
    }
-   h=xdata[kright-1]-xdata[kleft-1];
-   if (h == 0.0) error_message("Bad xdata input to routine spline_interpolation()");
-   A=(xdata[kright-1]-x)/h;
-   B=(x-xdata[kleft-1])/h;
-   C=(pow(A,3)-A)*(h*h)/6.0;
-   D=(pow(B,3)-B)*(h*h)/6.0;
-   // Evaluate the cubic spline polynomial
-   *y=A*ydata[kleft-1]+B*ydata[kright-1]+C*d2y[kleft-1]+D*d2y[kright-1];
+
+   *y = yval;
 }
 
 

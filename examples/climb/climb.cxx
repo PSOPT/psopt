@@ -455,13 +455,13 @@ int main(void)
 
     algorithm.nlp_method                  	= "IPOPT";
     algorithm.scaling                     	= "automatic";
-    // Numerical derivatives are required here, not merely preferred: the
-    // atmosphere model takes the value of the altitude (h.value()) and selects
-    // its layer by a comparison on a taped quantity, so under automatic
-    // differentiation the air density and speed of sound would carry no
-    // sensitivity to altitude at all, and the layer would be frozen at the
-    // altitude at which the tape was recorded. See doc/PSOPT_ISSUES.md.
-    algorithm.derivatives                 	= "numerical";
+    // This example ran with numerical derivatives until the atmosphere model and
+    // the library's spline interpolation were made tape-safe: both selected a
+    // table interval by branching on a taped quantity, so under automatic
+    // differentiation the interval was frozen at the value the tape was recorded
+    // with, and the altitude entered the atmosphere through h.value(), which put
+    // no sensitivity to altitude on the tape at all.
+    algorithm.derivatives                 	= "automatic";
     algorithm.collocation_method            = "trapezoidal";
     algorithm.nlp_iter_max                	= 1000;
     algorithm.nlp_tolerance               	= 1.e-6;
@@ -581,30 +581,58 @@ void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta, Const
 //!----------------------------------------------------------------------------
   h=(*alt)*REARTH/((*alt)+REARTH);      //convert geometric to geopotential altitude
 
-  i=1;
-  j=NTAB;                                       // setting up for binary search
-  while (j>i+1) {                    // binary search: PDAS atmos.f90 has DO WHILE(j > i+1)
-    k=(i+j)/2;                                              // integer division
-    if (h < htab(k-1)) {
-      j=k;
-    } else {
-       i=k;
-    }
+  // Layer selection without branching on a taped quantity.
+  //
+  // The original code found the layer by binary search, comparing the geopotential
+  // altitude -- an adouble -- against the table. Under automatic differentiation such a
+  // comparison is resolved once, when the derivative tape is recorded, so the layer stays
+  // fixed at whatever it was then and the model becomes wrong as soon as the trajectory
+  // leaves that layer. Here every layer's formula is evaluated, which is harmless because
+  // each is analytic everywhere, and psopt_cond_lt picks the one that applies with the
+  // comparison itself recorded on the tape. Folding from the top down gives
+  //
+  //     h < htab(1) ? layer 0 : ( h < htab(2) ? layer 1 : ... : top layer )
+  //
+  // The local temperature is floored at 50 K inside each layer's expression. Within its own
+  // layer that floor is never active -- the coldest point of the 1976 atmosphere is 186.9 K
+  // -- but the extrapolated temperature of a layer evaluated far outside its range goes
+  // negative (the troposphere lapse rate reaches 0 K at about 44 km), and a negative base
+  // in the pressure power law would put a NaN on the tape even in the arm that is not
+  // selected.
+
+  const double TFLOOR = 50.0;
+
+  adouble theta_v, delta_v;
+
+  for (k = NTAB-1; k >= 0; k--) {
+
+      double tgrad_k = gtab(k);
+      double tbase_k = ttab(k);
+      double hbase_k = htab(k);
+      double pbase_k = ptab(k);
+
+      adouble deltah_k = h - hbase_k;
+      adouble tlocal_k = psopt_max( tbase_k + tgrad_k*deltah_k, (adouble) TFLOOR );
+
+      adouble theta_k  = tlocal_k/ttab(0);
+      adouble delta_k  = ( tgrad_k == 0.0 )
+                         ? (adouble)( pbase_k*exp(-GMR*deltah_k/tbase_k) )
+                         : (adouble)( pbase_k*pow(tbase_k/tlocal_k, GMR/tgrad_k) );
+
+      if ( k == NTAB-1 ) {
+          theta_v = theta_k;                       // above the last base altitude
+          delta_v = delta_k;
+      }
+      else {
+          adouble htop = htab(k+1);
+          theta_v = psopt_cond_lt(h, htop, theta_k, theta_v);
+          delta_v = psopt_cond_lt(h, htop, delta_k, delta_v);
+      }
   }
 
-  tgrad=gtab(i-1);                                     // i will be in 1...NTAB-1
-  tbase=ttab(i-1);
-  deltah=h-htab(i-1);
-  tlocal=tbase+tgrad*deltah;
-  *theta=tlocal/ttab(0);                                    // temperature ratio
-
-  if (tgrad == 0.0) {                                  //  pressure ratio
-    *delta=ptab(i-1)*exp(-GMR*deltah/tbase);
-  } else {
-    *delta=ptab(i-1)*pow(tbase/tlocal, GMR/tgrad);
-  }
-
-  *sigma=(*delta)/(*theta);                                           // density ratio
+  *theta = theta_v;                                         // temperature ratio
+  *delta = delta_v;                                         // pressure ratio
+  *sigma = (*delta)/(*theta);                               // density ratio
   return;
 
 }
@@ -615,7 +643,11 @@ void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h, Constants_
    double feet2meter = 0.3048;
    double kgperm3_to_slug_per_feet3 = 0.062427960841/32.174049;
    adouble alt, sigma, delta, theta;
-   alt = h.value()*feet2meter/1000.0;
+   // h, not h.value(): taking the value here would make the altitude a constant on the
+   // derivative tape, and the air density and speed of sound would carry no sensitivity to
+   // altitude at all -- in a minimum-time-to-climb problem, where the whole point is that
+   // climbing reduces drag.
+   alt = h*feet2meter/1000.0;
 
    // Call the standard atmosphere model 1976
 

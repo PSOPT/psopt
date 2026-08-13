@@ -104,6 +104,54 @@ inline adouble pow(const adouble& x, int    y){ return CppAD::pow(static_cast<co
 inline adouble fabs(const adouble& x){ using std::abs; return abs(x); }   // ADL finds autodiff::detail::abs
 #endif
 
+// ---- Tape-safe conditional ------------------------------------------------------------------
+// psopt_cond_lt(x, y, a, b) is (x < y) ? a : b, with the comparison itself part of the
+// derivative record rather than resolved once, when the record is made.
+//
+// An ordinary if-statement on an adouble is a trap on a taped backend. The comparison is
+// evaluated when the tape is taken, at whatever point the tape was taken at, and the branch it
+// selected is then baked into the tape: the derivative -- and, on later iterates, the value --
+// belong to a branch that may no longer be the right one. The symptom is a model that looks
+// correct and converges to the wrong answer, which is what a table-driven atmosphere, engine
+// deck or gain schedule will produce if its lookup branches on the taped independent variable.
+//
+// Both arms are evaluated, so both must be finite for every argument the solver can reach:
+// guard any formula that can overflow or take a root of a negative number outside its own
+// range of validity. A NaN in the arm that is *not* selected still poisons the tape.
+//
+// On the forward-mode backends there is no tape, the function is re-evaluated at every point,
+// and the ordinary comparison is already correct; the helper is provided there too so that user
+// code is portable across backends.
+#if   PSOPT_AD_BACKEND == PSOPT_AD_CPPAD
+inline adouble psopt_cond_lt(const adouble& x, const adouble& y,
+                             const adouble& a, const adouble& b)
+{
+    return adouble( ::CppAD::CondExpLt(
+        static_cast<const ::CppAD::AD<double>&>(x), static_cast<const ::CppAD::AD<double>&>(y),
+        static_cast<const ::CppAD::AD<double>&>(a), static_cast<const ::CppAD::AD<double>&>(b) ) );
+}
+#else
+inline adouble psopt_cond_lt(const adouble& x, const adouble& y,
+                             const adouble& a, const adouble& b)
+{
+    return ( x < y ) ? a : b;
+}
+#endif
+
+// (x <= y) ? a : b, and the two complementary forms, all built from the one primitive.
+inline adouble psopt_cond_gt(const adouble& x, const adouble& y,
+                             const adouble& a, const adouble& b)
+{ return psopt_cond_lt(y, x, a, b); }
+
+// A differentiable floor and ceiling, useful for keeping the unselected arm of a conditional
+// finite: psopt_max(x, lo) never returns less than lo, and its derivative is that of whichever
+// argument is active.
+inline adouble psopt_max(const adouble& x, const adouble& y)
+{ return psopt_cond_lt(x, y, y, x); }
+
+inline adouble psopt_min(const adouble& x, const adouble& y)
+{ return psopt_cond_lt(x, y, x, y); }
+
 // ---- Guarded sqrt --------------------------------------------------------------------------
 // ADOL-C defined d/dx sqrt(x)|_0 = 0 (a finite subgradient). CppAD / XAD / autodiff instead
 // evaluate u'/(2*sqrt(u)) literally, so at u=0 they produce 0/0 = NaN. This bites whenever an
