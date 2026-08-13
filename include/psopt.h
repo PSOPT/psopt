@@ -457,9 +457,13 @@ struct phases_str {
 
    Units units;
 
-   // Optional single integer (discrete-valued) control for this phase (v1).
-   // Dormant unless integer_control.values is non-empty. See integer_controls.h.
-   IntegerControl integer_control;
+   // Optional integer (discrete-valued) controls for this phase. Empty (the default)
+   // means none are declared and the phase behaves exactly as before. Populated by
+   // declare_integer_control, which may be called once per integer control; the
+   // convexification is over the Cartesian product of the declared value sets, so a
+   // phase with two binary controls carries four weight-controls. See
+   // include/integer_controls.h.
+   std::vector<IntegerControl> integer_controls;
 
    // Optional discrete-valued (integer) static parameters for this phase (v1).
    // Empty (the default) means none are declared and the phase behaves exactly as

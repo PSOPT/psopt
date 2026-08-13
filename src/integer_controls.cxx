@@ -20,10 +20,15 @@
 // user callback once per mode, and assemble the convex combination using the
 // convex_combine / sos1_residual helpers.
 //
-// v1 scope: one integer control per phase; user path constraints and running
-// cost are assumed independent of the integer control (path taken from a
-// representative mode; the integrand is convex-combined so an integer-dependent
-// running cost is also handled correctly). See include/integer_controls.h.
+// Scope: any number of integer controls per phase. With K of them, of sizes
+// M_1..M_K, the convexification is over the Cartesian product of the admissible
+// sets: the K integer slots are dropped from the control vector and P = prod(M_k)
+// weight-controls are appended, with a single SOS1 equality over the P weights.
+// The product, rather than a weight vector per control, is what keeps the
+// relaxation convex in the weights and therefore tight. User path constraints are
+// assumed independent of the integer controls (the path is taken from a
+// representative mode); the integrand is convex-combined, so an integer-dependent
+// running cost is handled correctly. See include/integer_controls.h.
 // ---------------------------------------------------------------------------
 
 #include "integer_controls.h"
@@ -43,45 +48,53 @@ void ic_dae_wrapper(adouble* derivatives, adouble* path, adouble* states,
 {
     Prob&   problem = *workspace->problem;
     Phases& ph      = problem.phases(iphase);
-    const int M = (int) ph.integer_control.values.size();
+    const std::vector<IntegerControl>& ic = ph.integer_controls;
+    const int K = (int) ic.size();
 
-    if (M <= 0) {   // this phase has no integer control: pass straight through
+    if (K <= 0) {   // this phase has no integer control: pass straight through
         problem.user_dae(derivatives, path, states, controls, parameters, time,
                          xad, iphase, workspace);
         return;
     }
 
-    const int c          = ph.integer_control.control_index;
+    const int P          = integer_control_product_size(ic);
     const int nstates    = ph.nstates;
-    const int ncont_int  = ph.ncontrols;          // expanded
-    const int nu         = ncont_int - M + 1;      // user control count
+    const int ncont_int  = ph.ncontrols;           // expanded
+    const int nu         = ncont_int - P + K;      // user control count
     const int npath_user = ph.npath - 1;           // user path count (SOS1 appended)
 
-    const adouble* w = controls + (ncont_int - M); // weights = trailing M controls
+    const adouble* w = controls + (ncont_int - P); // weights = trailing P controls
 
-    // Reconstruct the user control vector; continuous controls pass through.
+    // Reconstruct the user control vector; the continuous controls pass through in
+    // order, and the K integer slots are filled per product mode below.
+    vector<bool> is_int(nu, false);
+    for (int k = 0; k < K; ++k) is_int[ ic[k].control_index ] = true;
     vector<adouble> u_user(nu);
-    for (int k = 0; k < nu; ++k) {
-        if (k == c) continue;
-        u_user[k] = controls[k < c ? k : k - 1];
+    {
+        int src = 0;
+        for (int j = 0; j < nu; ++j)
+            if (!is_int[j]) u_user[j] = controls[src++];
     }
 
-    // Evaluate the user dae at each admissible value and convex-combine.
-    vector<vector<adouble> > md(M, vector<adouble>(nstates));
-    vector<const adouble*>   mdptr(M);
+    // Evaluate the user dae at each product mode and convex-combine.
+    vector<vector<adouble> > md(P, vector<adouble>(nstates));
+    vector<const adouble*>   mdptr(P);
     vector<adouble>          path_i(npath_user > 0 ? npath_user : 1);
+    vector<int>              modes;
 
-    for (int i = 0; i < M; ++i) {
-        u_user[c] = ph.integer_control.values(i);
-        problem.user_dae(md[i].data(), path_i.data(), states, u_user.data(),
+    for (int p = 0; p < P; ++p) {
+        integer_control_decode(ic, p, modes);
+        for (int k = 0; k < K; ++k)
+            u_user[ ic[k].control_index ] = ic[k].values( modes[k] );
+        problem.user_dae(md[p].data(), path_i.data(), states, u_user.data(),
                          parameters, time, xad, iphase, workspace);
-        mdptr[i] = md[i].data();
-        if (i == 0)
-            for (int p = 0; p < npath_user; ++p) path[p] = path_i[p];
+        mdptr[p] = md[p].data();
+        if (p == 0)
+            for (int q = 0; q < npath_user; ++q) path[q] = path_i[q];
     }
 
-    convex_combine<adouble>(derivatives, nstates, M, w, mdptr.data());
-    path[npath_user] = sos1_residual<adouble>(w, M);   // SOS1 equality (= 1)
+    convex_combine<adouble>(derivatives, nstates, P, w, mdptr.data());
+    path[npath_user] = sos1_residual<adouble>(w, P);   // SOS1 equality (= 1)
 }
 
 // The integrand_cost wrapper installed as problem.integrand_cost while active.
@@ -90,27 +103,34 @@ adouble ic_integrand_wrapper(adouble* states, adouble* controls, adouble* parame
 {
     Prob&   problem = *workspace->problem;
     Phases& ph      = problem.phases(iphase);
-    const int M = (int) ph.integer_control.values.size();
+    const std::vector<IntegerControl>& ic = ph.integer_controls;
+    const int K = (int) ic.size();
 
-    if (M <= 0)
+    if (K <= 0)
         return problem.user_integrand_cost(states, controls, parameters, time,
                                            xad, iphase, workspace);
 
-    const int c         = ph.integer_control.control_index;
+    const int P         = integer_control_product_size(ic);
     const int ncont_int = ph.ncontrols;
-    const int nu        = ncont_int - M + 1;
-    const adouble* w    = controls + (ncont_int - M);
+    const int nu        = ncont_int - P + K;
+    const adouble* w    = controls + (ncont_int - P);
 
+    vector<bool> is_int(nu, false);
+    for (int k = 0; k < K; ++k) is_int[ ic[k].control_index ] = true;
     vector<adouble> u_user(nu);
-    for (int k = 0; k < nu; ++k) {
-        if (k == c) continue;
-        u_user[k] = controls[k < c ? k : k - 1];
+    {
+        int src = 0;
+        for (int j = 0; j < nu; ++j)
+            if (!is_int[j]) u_user[j] = controls[src++];
     }
 
     adouble total = 0.0;
-    for (int i = 0; i < M; ++i) {
-        u_user[c] = ph.integer_control.values(i);
-        total += w[i] * problem.user_integrand_cost(states, u_user.data(),
+    vector<int> modes;
+    for (int p = 0; p < P; ++p) {
+        integer_control_decode(ic, p, modes);
+        for (int k = 0; k < K; ++k)
+            u_user[ ic[k].control_index ] = ic[k].values( modes[k] );
+        total += w[p] * problem.user_integrand_cost(states, u_user.data(),
                                                     parameters, time, xad, iphase, workspace);
     }
     return total;
@@ -130,7 +150,7 @@ IntegerControlExpansionGuard::IntegerControlExpansionGuard(Prob& problem)
 
     bool any = false;
     for (int i = 1; i <= nphases; ++i)
-        if (problem.phases(i).integer_control.values.size() > 0) any = true;
+        if (!problem.phases(i).integer_controls.empty()) any = true;
     if (!any) return;                       // complete no-op
 
     active_ = true;
@@ -152,17 +172,27 @@ IntegerControlExpansionGuard::IntegerControlExpansionGuard(Prob& problem)
 
     for (int i = 1; i <= nphases; ++i) {
         Phases& ph = problem.phases(i);
-        const int M = (int) ph.integer_control.values.size();
-        if (M <= 0) { phase_active_[i - 1] = false; continue; }
+        const std::vector<IntegerControl>& ic = ph.integer_controls;
+        const int K = (int) ic.size();
+        if (K <= 0) { phase_active_[i - 1] = false; continue; }
         phase_active_[i - 1] = true;
 
-        const int c          = ph.integer_control.control_index;
         const int nu         = ph.ncontrols;      // user count before expansion
         const int npath_user = ph.npath;
 
-        if (c < 0 || c >= nu) {
-            error_message("declare_integer_control: control_index out of range");
+        for (int k = 0; k < K; ++k) {
+            if (ic[k].control_index < 0 || ic[k].control_index >= nu)
+                error_message("declare_integer_control: control_index out of range");
+            if (ic[k].values.size() < 1)
+                error_message("declare_integer_control: an empty admissible set was declared");
+            for (int j = 0; j < k; ++j)
+                if (ic[j].control_index == ic[k].control_index)
+                    error_message("declare_integer_control: the same control index was declared twice");
         }
+        if (K > nu)
+            error_message("declare_integer_control: more integer controls declared than the phase has controls");
+
+        const int P = integer_control_product_size(ic);
 
         // Save the user layout for restoration.
         saved_ncontrols_[i]      = nu;
@@ -175,25 +205,35 @@ IntegerControlExpansionGuard::IntegerControlExpansionGuard(Prob& problem)
         saved_scale_path_[i]     = ph.scale.path;
         saved_guess_controls_[i] = ph.guess.controls;
 
-        const int ncont_int = (nu - 1) + M;
+        const int ncont_int = (nu - K) + P;
         const int npath_int = npath_user + 1;
 
-        printf("PSOPT: phase %d has an integer control (index %d, %d values). Its "
-               "control bounds are ignored; admissible values come from "
-               "declare_integer_control and %d weights are bounded to [0,1].\n",
-               i, c, M, M);
+        std::vector<bool> is_int(nu, false);
+        for (int k = 0; k < K; ++k) is_int[ ic[k].control_index ] = true;
 
-        // Control bounds/scale: drop slot c, append M weight entries [0,1] (scale 1).
+        if (K == 1) {
+            printf("PSOPT: phase %d has an integer control (index %d, %d values). Its "
+                   "control bounds are ignored; admissible values come from "
+                   "declare_integer_control and %d weights are bounded to [0,1].\n",
+                   i, ic[0].control_index, (int) ic[0].values.size(), P);
+        } else {
+            printf("PSOPT: phase %d has %d integer controls; the convexification is over "
+                   "the product of their admissible sets, giving %d weights bounded to "
+                   "[0,1] and one SOS1 constraint. Their control bounds are ignored.\n",
+                   i, K, P);
+        }
+
+        // Control bounds/scale: drop the K integer slots, append P weight entries [0,1].
         MatrixXd lc(ncont_int, 1), uc(ncont_int, 1), sc(ncont_int, 1);
         int idx = 0;
         for (int k = 0; k < nu; ++k) {
-            if (k == c) continue;
+            if (is_int[k]) continue;
             lc(idx, 0) = ph.bounds.lower.controls(k, 0);
             uc(idx, 0) = ph.bounds.upper.controls(k, 0);
             sc(idx, 0) = ph.scale.controls(k, 0);
             ++idx;
         }
-        for (int j = 0; j < M; ++j) {
+        for (int j = 0; j < P; ++j) {
             lc(idx, 0) = 0.0; uc(idx, 0) = 1.0; sc(idx, 0) = 1.0; ++idx;
         }
         ph.bounds.lower.controls = lc;
@@ -212,31 +252,37 @@ IntegerControlExpansionGuard::IntegerControlExpansionGuard(Prob& problem)
         ph.bounds.upper.path = up;
         ph.scale.path        = sp;
 
-        // Guess: map the integer row to modes (nearest value) and one-hot expand.
+        // Guess: map each integer row to its nearest admissible mode, combine the K mode
+        // indices into a product index, and one-hot expand over the P product modes.
         if (ph.guess.controls.size() > 0) {
             const int N = (int) ph.guess.controls.cols();
             RowVectorXi modeseq(N);
             for (int n = 0; n < N; ++n) {
-                double v  = ph.guess.controls(c, n);
-                int    b  = 0;
-                double bd = std::fabs(v - ph.integer_control.values(0));
-                for (int j = 1; j < M; ++j) {
-                    double d = std::fabs(v - ph.integer_control.values(j));
-                    if (d < bd) { bd = d; b = j; }
+                int prod = 0;
+                for (int k = 0; k < K; ++k) {
+                    const int Mk = (int) ic[k].values.size();
+                    const double v = ph.guess.controls(ic[k].control_index, n);
+                    int    b  = 0;
+                    double bd = std::fabs(v - ic[k].values(0));
+                    for (int j = 1; j < Mk; ++j) {
+                        double d = std::fabs(v - ic[k].values(j));
+                        if (d < bd) { bd = d; b = j; }
+                    }
+                    prod = prod * Mk + b;      // first declared control is the leading digit
                 }
-                modeseq(n) = b;
+                modeseq(n) = prod;
             }
             MatrixXd Wg;
-            integer_guess_to_weights(M, modeseq, Wg);   // M x N one-hot
+            integer_guess_to_weights(P, modeseq, Wg);   // P x N one-hot
 
             MatrixXd g(ncont_int, N);
             int r = 0;
             for (int k = 0; k < nu; ++k) {
-                if (k == c) continue;
+                if (is_int[k]) continue;
                 g.row(r) = ph.guess.controls.row(k);
                 ++r;
             }
-            for (int j = 0; j < M; ++j) { g.row(r) = Wg.row(j); ++r; }
+            for (int j = 0; j < P; ++j) { g.row(r) = Wg.row(j); ++r; }
             ph.guess.controls = g;
         }
 

@@ -48,7 +48,7 @@ void psopt_level1_setup(Prob& problem)
        problem.phase[i].nsamples    = 0;
        problem.phase[i].zero_cost_integrand = false;
        problem.phase[i].regularization_factor = 0.0;
-       problem.phase[i].integer_control.control_index = -1;
+       problem.phase[i].integer_controls.clear();
        problem.phase[i].nodes.resize(1);
    }
 
