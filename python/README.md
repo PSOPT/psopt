@@ -52,6 +52,36 @@ standalone install pass the PSOPT location via
 `--config-settings=cmake.define.PSOPT_ROOT=...` /
 `--config-settings=cmake.define.PSOPT_LIB=...`.
 
+## Discrete-valued controls and parameters
+
+A control or a static parameter may be restricted to a finite admissible set. The
+dynamics are written once, with the quantity treated as an ordinary control or
+parameter; one declaration per quantity then makes it discrete:
+
+```python
+ph.declare_integer_control(0, [0.0, 1.0])        # control index, admissible values
+ph.declare_integer_parameter(0, [0.0, 1.0, 2.0, 3.0])
+```
+
+Several integer controls may be declared in the same phase; PSOPT convexifies over
+the Cartesian product of their admissible sets, so the weight controls carry an
+SOS1 constraint over all admissible combinations, and each declared control is
+recovered separately by sum-up rounding. Integer parameters take a different route
+— a static parameter cannot chatter, so the relaxed optimum is generally not
+realisable — and are solved exactly by enumeration; declaring one switches the
+driver to `psopt_solve_integer` automatically.
+
+When any integer control is declared, `sol.controls` holds the convexified weight
+controls. The rounded trajectories come back separately:
+
+```python
+ic = sol.integer_controls[k]     # k-th declared integer control
+ic.control, ic.time, ic.interval_widths, ic.n_switches
+sol.integer_parameters[j]        # {'index': ..., 'value': ...}
+```
+
+Multiphase problems expose the same fields per phase on `MultiSolution`.
+
 ## Examples and validation
 
 Each example reproduces its native C++ baseline:
@@ -63,6 +93,8 @@ Each example reproduces its native C++ baseline:
 | `cracking.py`      | parameters + observation (estimation)     | 4.319519e-03      | 4.319519e-03 (bit-identical) |
 | `bryson_ir.py`     | integrated-residual transcription         | 5.049038e-06      | 5.049038e-06      |
 | `bryson_mesh.py`   | hp mesh refinement (10→25 nodes)          | 3.9999969178      | 3.999997e+00      |
+| `lotka_integer.py` | binary integer control, sum-up rounding   | 1.348104 / 1.351850, 4 switches (40 nodes) | 1.348103 / 1.351850, 4 switches |
+| `integer_parameter.py` | integer static parameter by enumeration | p = 2, J = 0.09  | closed form p = 2, J = 0.09 |
 | `rv2oe_casadi.py`  | CasADi orbital-element dynamics helper     | (used by launch)  | —                 |
 
 ## Provenance

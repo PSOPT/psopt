@@ -54,6 +54,7 @@ option(WITH_SNOPT_INTERFACE "Build interface for the SNOPT optimizer." OFF)
 option(BUILD_TESTS "Build tests for PSOPT." OFF)
 option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but generates PDFs)" OFF)
 option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror (for CI). Default OFF so normal builds are unaffected." OFF)
+option(PSOPT_PYTHON "Build the Python binding (python/). Builds libPSOPT position-independent, which the extension requires." OFF)
 
 # Automatic-differentiation backend. CPPAD (in-memory tapes) is the production backend; it
 # replaced ADOL-C, whose multi-GB on-disk tapes corrupt/exhaust disk at high node counts.
@@ -169,6 +170,15 @@ endif()
 if(${BUILD_TESTS})
     enable_testing()
     add_subdirectory(tests/)
+endif()
+
+# The Python extension is a shared module that whole-archives libPSOPT, so the
+# library must be position-independent; a default static build is not, and the
+# link fails with a relocation error against the thread-local print_level. This
+# is the in-tree route documented in python/README.md.
+if(${PSOPT_PYTHON})
+    set_property(TARGET PSOPT PROPERTY POSITION_INDEPENDENT_CODE ON)
+    add_subdirectory(python/)
 endif()
 
 # ────────────────────────────────────────────────────────────────

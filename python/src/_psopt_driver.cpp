@@ -10,6 +10,9 @@
 #include <stdexcept>
 #include <string>
 #include "psopt.h"
+#include "integer_controls.h"
+#include "integer_parameters.h"
+#include <vector>
 
 namespace py = pybind11;
 using namespace PSOPT;
@@ -53,6 +56,77 @@ static void apply_algorithm(Alg& a, py::dict o) {
     D("ir_dair_delta_factor", a.ir_dair_delta_factor); I("ir_local_order", a.ir_local_order);
 }
 
+
+// ---- discrete-valued declarations -----------------------------------------
+// Reads the integer_controls / integer_parameters entries of a phase spec and
+// records them on the phase. Must run after psopt_level2_setup, since both
+// declarations modify problem state that level 2 has already sized, and before
+// psopt()/psopt_solve_integer, which consume them.
+static void declare_discrete(Prob& problem, int iphase, py::dict p)
+{
+    if (p.contains("integer_controls")) {
+        for (auto item : p["integer_controls"].cast<py::list>()) {
+            py::dict d = item.cast<py::dict>();
+            std::vector<double> v = py::cast<std::vector<double>>(d["values"]);
+            RowVectorXd vals((int) v.size());
+            for (size_t j = 0; j < v.size(); ++j) vals((int) j) = v[j];
+            declare_integer_control(problem, iphase, py::cast<int>(d["index"]), vals);
+        }
+    }
+    if (p.contains("integer_parameters")) {
+        for (auto item : p["integer_parameters"].cast<py::list>()) {
+            py::dict d = item.cast<py::dict>();
+            std::vector<double> v = py::cast<std::vector<double>>(d["values"]);
+            RowVectorXd vals((int) v.size());
+            for (size_t j = 0; j < v.size(); ++j) vals((int) j) = v[j];
+            declare_integer_parameter(problem, iphase, py::cast<int>(d["index"]), vals);
+        }
+    }
+}
+
+static bool any_integer_parameters(Prob& problem)
+{
+    for (int i = 1; i <= problem.nphases; ++i)
+        if (!problem.phases(i).integer_parameters.empty()) return true;
+    return false;
+}
+
+// Reconstructions, packed for Python. Integer controls are rounded from the relaxed
+// weights; integer parameters are read back from the solution that psopt_solve_integer
+// selected.
+static py::list pack_integer_controls(Sol& solution, Prob& problem, int iphase)
+{
+    py::list out;
+    std::vector<IntegerControlReconstruction> rec =
+        reconstruct_integer_controls(solution, problem, iphase);
+    for (size_t k = 0; k < rec.size(); ++k) {
+        py::dict d;
+        d["control"]         = Eigen::MatrixXd(rec[k].control);
+        d["mode_index"]      = Eigen::MatrixXi(rec[k].mode_index);
+        d["interval_widths"] = Eigen::MatrixXd(rec[k].interval_widths);
+        d["integral_gap"]    = rec[k].integral_gap;
+        d["n_switches"]      = rec[k].n_switches;
+        out.append(d);
+    }
+    return out;
+}
+
+static py::list pack_integer_parameters(Sol& solution, Prob& problem, int iphase)
+{
+    py::list out;
+    const std::vector<IntegerParameter>& ip = problem.phases(iphase).integer_parameters;
+    for (size_t k = 0; k < ip.size(); ++k) {
+        IntegerParameterReconstruction r =
+            reconstruct_integer_parameter(solution, problem, iphase, ip[k].parameter_index);
+        py::dict d;
+        d["index"]      = ip[k].parameter_index;
+        d["value"]      = r.value;
+        d["mode_index"] = r.index;
+        out.append(d);
+    }
+    return out;
+}
+
 static py::dict solve_single_phase(py::dict spec) {
     Alg algorithm; Sol solution; Prob problem;
 
@@ -76,6 +150,9 @@ static py::dict solve_single_phase(py::dict spec) {
     }
 
     psopt_level2_setup(problem, algorithm);
+
+    // ---- discrete-valued declarations (after level 2, before the solve) ----
+    declare_discrete(problem, 1, spec);
 
     // ---- bounds ----
     auto set_vec = [](MatrixXd& dst, const std::vector<double>& v) {
@@ -128,10 +205,18 @@ static py::dict solve_single_phase(py::dict spec) {
     // ---- algorithm ----
     apply_algorithm(algorithm, spec["algorithm"].cast<py::dict>());
 
-    psopt(solution, problem, algorithm);
+    // A declared integer parameter cannot be relaxed, so the problem is solved by
+    // enumeration over the admissible combinations; otherwise the ordinary driver runs
+    // and any integer controls are handled by the outer convexification inside it.
+    if (any_integer_parameters(problem))
+        (void) psopt_solve_integer(solution, problem, algorithm);
+    else
+        psopt(solution, problem, algorithm);
 
     py::dict out;
     out["objective"] = solution.get_cost();
+    out["integer_controls"]   = pack_integer_controls(solution, problem, 1);
+    out["integer_parameters"] = pack_integer_parameters(solution, problem, 1);
     out["states"]    = Eigen::MatrixXd(solution.get_states_in_phase(1));
     if (ph.ncontrols > 0)
         out["controls"] = Eigen::MatrixXd(solution.get_controls_in_phase(1));
@@ -189,6 +274,9 @@ static py::dict solve_multiphase(py::dict spec) {
 
     psopt_level2_setup(problem, algorithm);
 
+    for (int k = 1; k <= N; ++k)
+        declare_discrete(problem, k, phases[k - 1].cast<py::dict>());
+
     for (int k = 1; k <= N; ++k) {
         py::dict p = phases[k - 1].cast<py::dict>();
         auto& ph = problem.phases(k);
@@ -209,17 +297,23 @@ static py::dict solve_multiphase(py::dict spec) {
 
     apply_algorithm(algorithm, spec["algorithm"].cast<py::dict>());
 
-    psopt(solution, problem, algorithm);
+    if (any_integer_parameters(problem))
+        (void) psopt_solve_integer(solution, problem, algorithm);
+    else
+        psopt(solution, problem, algorithm);
 
     py::dict out;
     out["objective"] = solution.get_cost();
-    py::list st, ct, tm;
+    py::list st, ct, tm, ic, ip;
     for (int k = 1; k <= N; ++k) {
         st.append(Eigen::MatrixXd(solution.get_states_in_phase(k)));
         ct.append(Eigen::MatrixXd(solution.get_controls_in_phase(k)));
         tm.append(Eigen::MatrixXd(solution.get_time_in_phase(k)));
+        ic.append(pack_integer_controls(solution, problem, k));
+        ip.append(pack_integer_parameters(solution, problem, k));
     }
     out["states"] = st; out["controls"] = ct; out["time"] = tm;
+    out["integer_controls"] = ic; out["integer_parameters"] = ip;
     return out;
 }
 
