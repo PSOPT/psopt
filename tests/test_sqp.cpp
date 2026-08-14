@@ -32,6 +32,10 @@
 #include <qpOASES.hpp>
 #endif
 
+#ifdef USE_PROXQP
+#include <proxsuite/proxqp/sparse/sparse.hpp>
+#endif
+
 namespace sqp_test {
 
 adouble endpoint_cost(adouble* i0, adouble* xf, adouble* p, adouble& t0, adouble& tf,
@@ -58,7 +62,8 @@ static int last_nlp_iterations = 0;
 
 // Solve with the requested NLP method and control bound; return the objective.
 static double solve_lq(const std::string& nlp_method, double u_bound, int& error_flag,
-                       const std::string& hessian = "limited-memory")
+                       const std::string& hessian   = "limited-memory",
+                       const std::string& qp_solver = "qpOASES")
 {
     Alg algorithm; Sol solution; Prob problem;
     const int nodes = 20;
@@ -99,6 +104,7 @@ static double solve_lq(const std::string& nlp_method, double u_bound, int& error
 
     algorithm.nlp_method         = nlp_method;
     algorithm.hessian            = hessian;
+    algorithm.qp_solver          = qp_solver;
     algorithm.scaling            = "automatic";
     algorithm.derivatives        = "automatic";
     algorithm.nlp_iter_max       = 500;
@@ -246,6 +252,62 @@ TEST(SQPSolver, ExactHessianCostsFewerIterationsThanBfgs)
     EXPECT_GT(it_exact, 0);
     EXPECT_LT(it_exact, it_bfgs) << "exact " << it_exact << " vs BFGS " << it_bfgs;
 }
+
+#ifdef USE_PROXQP
+
+// ProxQP's dual sign convention, pinned the same way qpOASES's is above and against the
+// same QP: minimising 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1) and, in the
+// convention grad f + A' lambda = 0, a multiplier of -1. ProxQP states its own
+// stationarity as H x + g + A' y + C' z = 0, so its y is already PSOPT's lambda and,
+// unlike qpOASES's, must not be negated. Getting this backwards costs nothing in the
+// primal solution and everything in the costates.
+TEST(SQPSolver, ProxQpDualSignConvention)
+{
+    typedef long long Idx;
+    typedef Eigen::SparseMatrix<double, Eigen::ColMajor, Idx> SpMat;
+
+    SpMat H(2,2); H.insert(0,0) = 1.0; H.insert(1,1) = 1.0; H.makeCompressed();
+    SpMat A(1,2); A.insert(0,0) = 1.0; A.insert(0,1) = 1.0; A.makeCompressed();
+    SpMat C(0,2);
+
+    Eigen::VectorXd g = Eigen::VectorXd::Zero(2), b(1), l(0), u(0);
+    b << 2.0;
+
+    proxsuite::proxqp::sparse::QP<double, Idx> qp(2, 1, 0);
+    qp.settings.verbose = false;
+    qp.settings.eps_abs = 1.0e-12;
+    qp.init(H, g, A, b, C, l, u);
+    qp.solve();
+
+    EXPECT_NEAR(qp.results.x(0), 1.0, 1.0e-9);
+    EXPECT_NEAR(qp.results.x(1), 1.0, 1.0e-9);
+
+    const double lambda_psopt = qp.results.y(0);          // no negation
+    EXPECT_NEAR(lambda_psopt, -1.0, 1.0e-8);
+    EXPECT_NEAR(qp.results.x(0) + 1.0*lambda_psopt, 0.0, 1.0e-8);
+}
+
+// The two QP backends are different algorithms -- an active-set method and a proximal
+// augmented-Lagrangian one -- reached through the same SQP. They must agree, with the
+// quasi-Newton model and with the exact Hessian, and with a bound active so that the
+// working set is not trivial.
+TEST(SQPSolver, ProxQpAgreesWithQpOases)
+{
+    int f1 = -1, f2 = -1, f3 = -1, f4 = -1;
+
+    const double a = sqp_test::solve_lq("SQP", 10.0, f1, "limited-memory", "qpOASES");
+    const double b = sqp_test::solve_lq("SQP", 10.0, f2, "limited-memory", "ProxQP");
+    const double c = sqp_test::solve_lq("SQP",  0.4, f3, "exact",          "qpOASES");
+    const double d = sqp_test::solve_lq("SQP",  0.4, f4, "exact",          "ProxQP");
+
+    ASSERT_EQ(f1, 0); ASSERT_EQ(f2, 0); ASSERT_EQ(f3, 0); ASSERT_EQ(f4, 0);
+
+    EXPECT_NEAR(a, 0.775240441234, 1.0e-9);
+    EXPECT_NEAR(b, 0.775240441234, 1.0e-9);
+    EXPECT_NEAR(d, c, 1.0e-7*std::fabs(c));
+}
+
+#endif // USE_PROXQP
 
 #else
 

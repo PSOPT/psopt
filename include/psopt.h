@@ -194,6 +194,13 @@ struct alg_str {
   int       nlp_iter_max;
   double    nlp_tolerance;
   string    nlp_method;
+  // Which quadratic programming solver the SQP uses for its subproblems: "qpOASES"
+  // (default) or "ProxQP". They differ in kind, not only in implementation: qpOASES
+  // is an active-set method whose factorisations are dense in the number of variables
+  // whatever sparsity it is handed, and ProxQP is a proximal augmented-Lagrangian
+  // method that factorises the KKT system sparsely and tolerates an indefinite
+  // Hessian. Ignored unless nlp_method is "SQP".
+  string    qp_solver;
   string    scaling;
   string    derivatives;
   string    constraint_scaling;

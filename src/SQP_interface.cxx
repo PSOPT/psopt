@@ -38,6 +38,10 @@ e-mail:    v.m.becerra@ieee.org
 #include <cmath>
 #include <algorithm>
 
+#ifdef USE_PROXQP
+#include <proxsuite/proxqp/sparse/sparse.hpp>
+#endif
+
 using namespace std;
 
 // The two qpOASES types that appear in the storage below. The rest of the qpOASES
@@ -169,6 +173,11 @@ public:
             if (perm_[k] >= 0) val_[(size_t) perm_[k]] += tval[k];
     }
 
+    void scale(double s)
+    {
+        for (size_t k = 0; k < val_.size(); k++) val_[k] *= s;
+    }
+
     void shift_diagonal(double tau)
     {
         for (int j = 0; j < nc_; j++) if (diag_[(size_t) j] >= 0)
@@ -213,6 +222,18 @@ public:
     bool   empty() const { return val_.empty() && nc_ == 0; }
     double value(int slot) const { return val_[(size_t) slot]; }
 
+    // The stored entries, as triplets, for callers that want the matrix in another
+    // library's format.
+    template <class Trip, class Idx>
+    void emit_triplets(vector<Trip>& out, Idx /*index type tag*/) const
+    {
+        out.clear();
+        out.reserve(val_.size());
+        for (int j = 0; j < nc_; j++)
+            for (sparse_int_t k = jc_[(size_t) j]; k < jc_[(size_t) j + 1]; k++)
+                out.push_back(Trip((Idx) ir_[(size_t) k], (Idx) j, val_[(size_t) k]));
+    }
+
     sparse_int_t* ir()  { return ir_.empty() ? NULL : &ir_[0]; }
     sparse_int_t* jc()  { return &jc_[0]; }
     double*       val() { return val_.empty() ? NULL : &val_[0]; }
@@ -225,6 +246,172 @@ private:
     vector<int>          perm_;      // triplet index -> slot
     vector<int>          diag_;      // column -> slot of its diagonal, or -1
 };
+
+// ---------------------------------------------------------------------------------
+// The quadratic programming subproblem, in the one form all three of the solver's
+// subproblems take:
+//
+//   min  1/2 d' H d + g' d      s.t.  lbA <= A d <= ubA,   lbd <= d <= ubd
+//
+// and the two backends that solve it. Everything above this point is shared; the
+// backends differ in what they can be given and what they do with it.
+// ---------------------------------------------------------------------------------
+struct QpProblem {
+    int              nv = 0, mc = 0;
+    const SparseCsc* H  = NULL;      // sparse Hessian, or
+    const MatrixXd*  Bd = NULL;      // dense Hessian; exactly one of the two
+    const double*    g  = NULL;
+    const SparseCsc* A  = NULL;      // mc by nv, absent when mc == 0
+    const double    *lbA = NULL, *ubA = NULL, *lbd = NULL, *ubd = NULL;
+};
+
+// The result, in PSOPT's conventions: grad f + A' lambda - z = 0.
+struct QpSolution {
+    vector<double> d, lambda, z;
+    int            iterations = 0;
+    bool           ok = false;
+    bool           relaxed = false;   // the constraints could not be met and were relaxed
+};
+
+
+#ifdef USE_PROXQP
+
+// ProxQP states the problem as
+//
+//   min 1/2 x'Hx + g'x   s.t.  A_eq x = b,   l <= C x <= u
+//
+// with no separate provision for simple bounds in its sparse interface, so the bounds
+// go into C as identity rows. Its stationarity condition is H x + g + A_eq' y + C' z = 0,
+// which is already PSOPT's sign convention -- unlike qpOASES, whose duals have to be
+// negated. The reference test for this is SQPSolver.ProxQpDualSignConvention.
+//
+// Equality rows are separated out rather than passed as an inequality with coincident
+// bounds: a proximal method treats the two blocks differently and there is no reason to
+// hide from it that most of a collocated problem's constraints are equalities.
+static void solve_qp_proxqp(const QpProblem& p, double tol, int iter_max,
+                            bool allow_relaxation, QpSolution& out)
+{
+    typedef long long Idx;
+    typedef Eigen::SparseMatrix<double, Eigen::ColMajor, Idx> SpMat;
+    typedef Eigen::Triplet<double, Idx>                       Trip;
+
+    const int nv = p.nv, mc = p.mc;
+
+    // Which constraint rows are equalities. The partition follows the bounds and so is
+    // fixed for the life of the mesh, but it is cheap to recompute and keeps this
+    // function free of state.
+    vector<int> eq_of_row((size_t) max(mc,1), -1), in_of_row((size_t) max(mc,1), -1);
+    int n_eq = 0, n_in = 0;
+    for (int i = 0; i < mc; i++) {
+        if (p.ubA[i] - p.lbA[i] <= 0.0) eq_of_row[(size_t) i] = n_eq++;
+        else                            in_of_row[(size_t) i] = n_in++;
+    }
+    const int n_in_total = n_in + nv;          // the bounds occupy the last nv rows
+
+    vector<Trip> th, ta, tc;
+    if (p.H != NULL) p.H->emit_triplets(th, Idx(0));
+    else {
+        th.reserve((size_t) nv*nv);
+        for (int j = 0; j < nv; j++)
+            for (int i = 0; i < nv; i++)
+                if ((*p.Bd)(i,j) != 0.0) th.push_back(Trip(i, j, (*p.Bd)(i,j)));
+    }
+
+    if (mc > 0) {
+        vector<Trip> tj;
+        p.A->emit_triplets(tj, Idx(0));
+        ta.reserve(tj.size()); tc.reserve(tj.size() + (size_t) nv);
+        for (size_t k = 0; k < tj.size(); k++) {
+            const int i = (int) tj[k].row();
+            if (eq_of_row[(size_t) i] >= 0)
+                ta.push_back(Trip(eq_of_row[(size_t) i], tj[k].col(), tj[k].value()));
+            else
+                tc.push_back(Trip(in_of_row[(size_t) i], tj[k].col(), tj[k].value()));
+        }
+    }
+    for (int j = 0; j < nv; j++) tc.push_back(Trip(n_in + j, j, 1.0));
+
+    SpMat H(nv, nv), A(max(n_eq,0), nv), C(n_in_total, nv);
+    H.setFromTriplets(th.begin(), th.end());
+    if (!ta.empty()) A.setFromTriplets(ta.begin(), ta.end());
+    C.setFromTriplets(tc.begin(), tc.end());
+
+    Eigen::VectorXd g(nv), b(max(n_eq,0)), l(n_in_total), u(n_in_total);
+    for (int j = 0; j < nv; j++) g(j) = p.g[j];
+    for (int i = 0; i < mc; i++) {
+        if (eq_of_row[(size_t) i] >= 0) b(eq_of_row[(size_t) i]) = p.lbA[i];
+        else {
+            l(in_of_row[(size_t) i]) = p.lbA[i];
+            u(in_of_row[(size_t) i]) = p.ubA[i];
+        }
+    }
+    for (int j = 0; j < nv; j++) { l(n_in + j) = p.lbd[j]; u(n_in + j) = p.ubd[j]; }
+
+    proxsuite::proxqp::sparse::QP<double, Idx> qp(nv, n_eq, n_in_total);
+    qp.settings.verbose  = false;
+    qp.settings.eps_abs  = max(1.0e-12, 1.0e-2*tol);
+    qp.settings.eps_rel  = 1.0e-10;
+    qp.settings.max_iter = 200;
+    qp.init(H, g, A, b, C, l, u);
+    qp.solve();
+
+    out.iterations = (int) qp.results.info.iter;
+
+    // An exhausted iteration limit is not a failure here, any more than qpOASES's
+    // exhausted working-set limit is: what comes back is an approximate step, and the
+    // line search is the judge of whether a step is any good. Refusing it would send
+    // the solver to a restoration it does not need.
+    out.ok = (qp.results.info.status ==
+                  proxsuite::proxqp::QPSolverOutput::PROXQP_SOLVED)
+          || (qp.results.info.status ==
+                  proxsuite::proxqp::QPSolverOutput::PROXQP_MAX_ITER_REACHED);
+
+    // A linearisation that cannot be satisfied is the ordinary state of affairs early
+    // on, and ProxQP answers it directly: asked to, it returns the solution of the
+    // closest primal feasible problem instead of reporting failure. That is the same
+    // service the elastic relaxation performs for qpOASES, obtained without building
+    // the relaxed subproblem by hand -- which matters, because that subproblem prices
+    // its slacks linearly against a tiny quadratic term and a proximal method finds
+    // the resulting conditioning very hard going: on examples/brac1 it took twenty-
+    // three thousand iterations and five minutes before giving up.
+    if (!out.ok && allow_relaxation &&
+        qp.results.info.status ==
+            proxsuite::proxqp::QPSolverOutput::PROXQP_PRIMAL_INFEASIBLE) {
+        qp.settings.primal_infeasibility_solving = true;
+        qp.solve();
+        out.iterations += (int) qp.results.info.iter;
+        out.ok = (qp.results.info.status ==
+                      proxsuite::proxqp::QPSolverOutput::PROXQP_SOLVED)
+              || (qp.results.info.status ==
+                      proxsuite::proxqp::QPSolverOutput::PROXQP_SOLVED_CLOSEST_PRIMAL_FEASIBLE);
+        out.relaxed = out.ok;
+    }
+
+    out.d.assign((size_t) nv, 0.0);
+    out.lambda.assign((size_t) max(mc,1), 0.0);
+    out.z.assign((size_t) nv, 0.0);
+
+    for (int j = 0; j < nv; j++) out.d[(size_t) j] = qp.results.x(j);
+    for (int i = 0; i < mc; i++)
+        out.lambda[(size_t) i] = (eq_of_row[(size_t) i] >= 0)
+                               ? qp.results.y(eq_of_row[(size_t) i])
+                               : qp.results.z(in_of_row[(size_t) i]);
+    // The bound rows sit in C, so their multipliers arrive with the sign of a general
+    // constraint and have to be turned back into bound multipliers.
+    for (int j = 0; j < nv; j++) out.z[(size_t) j] = -qp.results.z(n_in + j);
+}
+
+#else
+
+static void solve_qp_proxqp(const QpProblem&, double, int, bool, QpSolution& out)
+{
+    out.ok = false;
+    error_message("algorithm.qp_solver = \"ProxQP\" requires PSOPT to be built with "
+                  "-DWITH_PROXQP=ON and proxsuite available");
+}
+
+#endif // USE_PROXQP
+
 
 // d' H d, with H either the sparse exact Hessian or the dense quasi-Newton model.
 double quadratic_form(bool exact, const SparseCsc& Hm, const MatrixXd& B, const MatrixXd& d)
@@ -418,6 +605,12 @@ int SQP_interface(Alg&         algorithm,
     const bool exact_hessian = (algorithm.hessian == "exact")
                                && useAutomaticDifferentiation(algorithm);
 
+    // Which QP solver handles the subproblems. qpOASES is an active-set method whose
+    // factorisations are dense in the number of variables however sparse the matrices
+    // it is handed, so its memory is quadratic and its work per subproblem cubic in n;
+    // ProxQP factorises the KKT system sparsely and tolerates an indefinite Hessian.
+    const bool use_proxqp = (algorithm.qp_solver == "ProxQP");
+
     MatrixXd B;                                       // the quasi-Newton model, if used
     if (!exact_hessian) B = MatrixXd::Identity(n,n);
 
@@ -511,8 +704,9 @@ int SQP_interface(Alg&         algorithm,
 
     if (iprint) {
         snprintf(workspace->text, sizeof(workspace->text),
-                 "\n\nSQP (%s + qpOASES): %d variables, %d constraints",
-                 exact_hessian ? "exact sparse Hessian" : "dense BFGS", n, m);
+                 "\n\nSQP (%s + %s): %d variables, %d constraints",
+                 exact_hessian ? "exact sparse Hessian" : "dense BFGS",
+                 use_proxqp ? "ProxQP" : "qpOASES", n, m);
         psopt_print(workspace, workspace->text);
         snprintf(workspace->text, sizeof(workspace->text),
                  "\n%d Jacobian nonzeros (%.3f%% dense)%s\n",
@@ -632,7 +826,30 @@ int SQP_interface(Alg&         algorithm,
                 if (tau > 0.0) Hm.shift_diagonal(tau);
             }
 
-            if (m > 0) {
+            if (use_proxqp) {
+                QpProblem qpp;
+                qpp.nv  = n;              qpp.mc  = m;
+                qpp.H   = exact_hessian ? &Hm : NULL;
+                qpp.Bd  = exact_hessian ? NULL : &B;
+                qpp.g   = &gf(0);
+                qpp.A   = (m > 0) ? &Jm : NULL;
+                qpp.lbA = (m > 0) ? &lbA[0] : NULL;
+                qpp.ubA = (m > 0) ? &ubA[0] : NULL;
+                qpp.lbd = &lbd[0];        qpp.ubd = &ubd[0];
+
+                QpSolution qs;
+                solve_qp_proxqp(qpp, tol, iter_max, /*allow_relaxation=*/false, qs);
+
+                rv   = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
+                nWSR = qs.iterations;
+                if (qs.ok) {
+                    // Reported in qpOASES's convention, which everything below expects.
+                    for (int j = 0; j < n; j++) dsol[j]   = qs.d[(size_t) j];
+                    for (int j = 0; j < n; j++) ysol[j]   = qs.z[(size_t) j];
+                    for (int i = 0; i < m; i++) ysol[n+i] = -qs.lambda[(size_t) i];
+                }
+            }
+            else if (m > 0) {
                 QProblem qp(n, m);
                 qp.setOptions(qpopts);
                 nWSR = 5*(n + m) + 100;
@@ -743,22 +960,65 @@ int SQP_interface(Alg&         algorithm,
             // raised along with the rest, which does them no harm.
             if (exact_hessian && tau > 0.0) He.shift_diagonal(tau);
 
-            for (int j = 0; j < n; j++) { ge[j] = gf(j); lbe[j] = lbd[j]; ube[j] = ubd[j]; }
-            for (int k = n; k < ne; k++) { ge[k] = rho;  lbe[k] = 0.0;    ube[k] = qpOASES::INFTY; }
+            // The subproblem is stated with its objective divided by rho, so that the
+            // slacks cost one apiece instead of rho and the quadratic block is scaled to
+            // match. The minimiser is unchanged -- scaling an objective does not move
+            // it -- but the conditioning is transformed: priced directly, a slack with a
+            // linear cost of 10^7 against a regularising quadratic term of 10^-8 spans
+            // fifteen orders of magnitude, and a proximal method spent twenty-three
+            // thousand iterations on examples/brac1 failing to get through it. The
+            // multipliers come back scaled by 1/rho and are restored below.
+            // ...and it is applied only for ProxQP. qpOASES's active-set method is not
+            // troubled by the unscaled pricing and is measurably worse with it:
+            // examples/bryson_denham goes from twenty iterations to failing after two
+            // hundred and forty-six.
+            const double oscale = use_proxqp ? 1.0/rho : 1.0;
+            for (int j = 0; j < n; j++) { ge[j] = oscale*gf(j);   lbe[j] = lbd[j]; ube[j] = ubd[j]; }
+            for (int k = n; k < ne; k++) { ge[k] = oscale*rho;    lbe[k] = 0.0;    ube[k] = qpOASES::INFTY; }
+            He.scale(oscale);
+
+            returnValue rve;
+            int_t        nWSRe = 5*(ne + m) + 100;
 
             SymSparseMat Heqp(ne, ne, He.ir(), He.jc(), He.val());
-            Heqp.createDiagInfo();
             SparseMatrix Aeqp(m, ne, Ae.ir(), Ae.jc(), Ae.val());
 
-            QProblem qpe(ne, m);
-            qpe.setOptions(qpopts);
-            int_t nWSRe = 5*(ne + m) + 100;
-            returnValue rve = qpe.init(&Heqp, &ge[0], &Aeqp, &lbe[0], &ube[0],
-                                       &lbA[0], &ubA[0], nWSRe);
+            if (use_proxqp) {
+                QpProblem qpp;
+                qpp.nv  = ne;      qpp.mc  = m;
+                qpp.H   = &He;     qpp.g   = &ge[0];
+                qpp.A   = &Ae;
+                qpp.lbA = &lbA[0]; qpp.ubA = &ubA[0];
+                qpp.lbd = &lbe[0]; qpp.ubd = &ube[0];
+
+                QpSolution qs;
+                solve_qp_proxqp(qpp, tol, iter_max, /*allow_relaxation=*/true, qs);
+
+                rve   = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
+                nWSRe = qs.iterations;
+                if (qs.ok) {
+                    for (int k = 0; k < ne; k++) ze[k]    = qs.d[(size_t) k];
+                    for (int k = 0; k < ne; k++) ye[k]    = qs.z[(size_t) k];
+                    for (int i = 0; i < m;  i++) ye[ne+i] = -qs.lambda[(size_t) i];
+                }
+            }
+            else {
+                Heqp.createDiagInfo();
+                QProblem qpe(ne, m);
+                qpe.setOptions(qpopts);
+                rve = qpe.init(&Heqp, &ge[0], &Aeqp, &lbe[0], &ube[0],
+                               &lbA[0], &ubA[0], nWSRe);
+                if (rve == SUCCESSFUL_RETURN || rve == RET_MAX_NWSR_REACHED) {
+                    qpe.getPrimalSolution(&ze[0]);
+                    qpe.getDualSolution(&ye[0]);
+                }
+            }
+
+            // Undo the 1/rho scaling of the objective on the multipliers it scaled.
+            if (oscale != 1.0 && (rve == SUCCESSFUL_RETURN || rve == RET_MAX_NWSR_REACHED))
+                for (size_t k = 0; k < ye.size(); k++) ye[k] /= oscale;
 
             if (rve == SUCCESSFUL_RETURN || rve == RET_MAX_NWSR_REACHED) {
-                qpe.getPrimalSolution(&ze[0]);
-                qpe.getDualSolution(&ye[0]);
                 for (int j = 0; j < n; j++) dsol[j]   = ze[j];
                 for (int i = 0; i < m; i++) ysol[n+i] = ye[ne+i];
                 for (int j = 0; j < n; j++) ysol[j]   = ye[j];
@@ -890,16 +1150,40 @@ int SQP_interface(Alg&         algorithm,
                 ubS[i] = (gu[i] >=  psopt_inf) ?  qpOASES::INFTY : gu[i] - shift;
             }
 
-            QProblem qps(n, m);
-            qps.setOptions(qpopts);
             int_t nWSRs = 5*(n + m) + 100;
             vector<double> dsoc(n), ysoc(n + m);
-            returnValue rvs = qps.init(Hqp, &gf(0), Aqp.get(), &lbd[0], &ubd[0],
-                                       &lbS[0], &ubS[0], nWSRs);
+            returnValue rvs;
+
+            if (use_proxqp) {
+                QpProblem qpp;
+                qpp.nv  = n;              qpp.mc  = m;
+                qpp.H   = exact_hessian ? &Hm : NULL;
+                qpp.Bd  = exact_hessian ? NULL : &B;
+                qpp.g   = &gf(0);         qpp.A   = &Jm;
+                qpp.lbA = &lbS[0];        qpp.ubA = &ubS[0];
+                qpp.lbd = &lbd[0];        qpp.ubd = &ubd[0];
+
+                QpSolution qs;
+                solve_qp_proxqp(qpp, tol, iter_max, /*allow_relaxation=*/false, qs);
+                rvs = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
+                if (qs.ok) {
+                    for (int j = 0; j < n; j++) dsoc[j]   = qs.d[(size_t) j];
+                    for (int j = 0; j < n; j++) ysoc[j]   = qs.z[(size_t) j];
+                    for (int i = 0; i < m; i++) ysoc[n+i] = -qs.lambda[(size_t) i];
+                }
+            }
+            else {
+                QProblem qps(n, m);
+                qps.setOptions(qpopts);
+                rvs = qps.init(Hqp, &gf(0), Aqp.get(), &lbd[0], &ubd[0],
+                               &lbS[0], &ubS[0], nWSRs);
+                if (rvs == SUCCESSFUL_RETURN || rvs == RET_MAX_NWSR_REACHED) {
+                    qps.getPrimalSolution(&dsoc[0]);
+                    qps.getDualSolution(&ysoc[0]);
+                }
+            }
 
             if (rvs == SUCCESSFUL_RETURN || rvs == RET_MAX_NWSR_REACHED) {
-                qps.getPrimalSolution(&dsoc[0]);
-                qps.getDualSolution(&ysoc[0]);
 
                 MatrixXd dc(n,1);
                 for (int j = 0; j < n; j++) dc(j) = dsoc[j];

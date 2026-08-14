@@ -70,8 +70,6 @@ int NLP_interface(
 
     Sol*  solution= workspace->solution;
     [[maybe_unused]] int use_sparse_jac_function = 1; // referenced only in the USE_SNOPT path
-
-
     if ( algorithm.nlp_method=="SNOPT" )
     {
 

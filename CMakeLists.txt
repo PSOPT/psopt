@@ -56,6 +56,7 @@ option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but
 option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror (for CI). Default OFF so normal builds are unaffected." OFF)
 option(PSOPT_PYTHON "Build the Python binding (python/). Builds libPSOPT position-independent, which the extension requires." OFF)
 option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). Requires qpOASES." OFF)
+option(WITH_PROXQP "Add ProxQP as a QP backend for the SQP solver (algorithm.qp_solver = \"ProxQP\"). Requires proxsuite; implies WITH_SQP." OFF)
 
 # Automatic-differentiation backend. CPPAD (in-memory tapes) is the production backend; it
 # replaced ADOL-C, whose multi-GB on-disk tapes corrupt/exhaust disk at high node counts.
@@ -181,6 +182,23 @@ if(WITH_SQP)
   target_compile_definitions(${PROJECT_NAME} PUBLIC USE_SQP)
   target_include_directories(${PROJECT_NAME} PUBLIC ${QPOASES_INCLUDE_DIR})
   target_link_libraries(${PROJECT_NAME} PUBLIC ${QPOASES_LIBRARY} ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+
+  # ProxQP, from INRIA's ProxSuite: a proximal augmented-Lagrangian QP that factorises
+  # the KKT system sparsely, where qpOASES's null-space method holds a dense n-by-n
+  # factor whatever it is given. It is header-only C++ over Eigen, which PSOPT already
+  # requires, so it adds an include path and nothing else to link. BSD-2-Clause.
+  if(WITH_PROXQP)
+    find_path(PROXSUITE_INCLUDE_DIR proxsuite/proxqp/sparse/sparse.hpp
+              HINTS ${PROXSUITE_DIR}/include /usr/local/include /usr/include)
+    if(NOT PROXSUITE_INCLUDE_DIR)
+      message(FATAL_ERROR "WITH_PROXQP=ON but proxsuite was not found. Set PROXSUITE_DIR to its install prefix.")
+    endif()
+    message(STATUS "PSOPT SQP: ProxQP backend enabled; proxsuite headers at ${PROXSUITE_INCLUDE_DIR}")
+    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_PROXQP)
+    target_include_directories(${PROJECT_NAME} PUBLIC ${PROXSUITE_INCLUDE_DIR})
+  endif()
+elseif(WITH_PROXQP)
+  message(FATAL_ERROR "WITH_PROXQP=ON requires WITH_SQP=ON: ProxQP is a backend of PSOPT's SQP solver.")
 endif()
 
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_RELEASE_STRING}" -DHAVE_CSTDDEF)

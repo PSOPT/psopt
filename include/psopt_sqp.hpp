@@ -53,13 +53,14 @@ e-mail:    v.m.becerra@ieee.org
 //  Two things are still dense, and are what a further stage would change:
 //
 //    * the quasi-Newton model, as above, when it is the one in use;
-//    * qpOASES's own factorisations. The subproblem's matrices are handed over in
-//      sparse form, but the null-space method inside qpOASES holds a dense n-by-n
-//      orthogonal factor whatever it is given, so the memory and the work per
-//      subproblem remain quadratic and cubic in n. Lifting that means a QP solver
-//      that factorises the KKT system sparsely -- qpOASES's own Schur-complement
-//      variant, which needs a sparse symmetric-indefinite solver underneath it, or
-//      an interior-point QP written against a sparse factorisation directly.
+//    * qpOASES's own factorisations, when it is the QP solver in use. The
+//      subproblem's matrices are handed over in sparse form, but the null-space
+//      method inside qpOASES holds a dense n-by-n orthogonal factor whatever it is
+//      given, so its memory is quadratic and its work per subproblem cubic in n.
+//      algorithm.qp_solver = "ProxQP" replaces it with ProxQP, from INRIA's
+//      ProxSuite: a proximal augmented-Lagrangian method that factorises the KKT
+//      system sparsely and tolerates an indefinite Hessian. It is header-only C++
+//      over Eigen, under BSD-2-Clause, and is built in with -DWITH_PROXQP=ON.
 //
 //  Simple bounds are passed to the QP as bounds. The 2008 code expanded them into
 //  2n general inequality rows with an identity block, which is harmless on a
