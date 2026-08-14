@@ -304,7 +304,10 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
         }
     }
 
-    if ( algorithm.nlp_method == "SNOPT") {
+    // The SQP shares SNOPT's convention that a zero return code means solved, so the
+    // two are reported the same way. Without this the summary keeps whatever auxstr
+    // held from an earlier line and prints nonsense next to "NLP solver reports".
+    if ( algorithm.nlp_method == "SNOPT" || algorithm.nlp_method == "SQP") {
         if (solution.nlp_return_code  == 0) {
             fprintf(outfile,"\nOptimal (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {
@@ -683,7 +686,10 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
         }
     }
 
-    if ( algorithm.nlp_method == "SNOPT") {
+    // The SQP shares SNOPT's convention that a zero return code means solved, so the
+    // two are reported the same way. Without this the summary keeps whatever auxstr
+    // held from an earlier line and prints nonsense next to "NLP solver reports".
+    if ( algorithm.nlp_method == "SNOPT" || algorithm.nlp_method == "SQP") {
         if (solution.nlp_return_code  == 0) {
             fprintf(outfile,"\nOptimal (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {

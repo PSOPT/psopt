@@ -1018,7 +1018,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		// quadrature constraint for Gauss.)
 		offset = lam_phase_offset+nstates*(norder+1);
 	
-		if (   algorithm.nlp_method == "IPOPT"   ) {
+		if (   algorithm.nlp_method == "IPOPT" || algorithm.nlp_method == "SQP"   ) {
 	                solution.dual.costates[i] = -solution.dual.costates[i];
 	    }
 	
@@ -1058,7 +1058,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 		            if ( algorithm.scaling=="user" )      v *= deriv_scaling(j);
 		            v /= problem.scale.objective;
 		            if ( algorithm.scaling=="automatic" ) v *= (*workspace->constraint_scaling)(quad + jint*nstates + j);
-		            if ( algorithm.nlp_method=="IPOPT" )  v = -v;
+		            if ( algorithm.nlp_method=="IPOPT" || algorithm.nlp_method=="SQP" )  v = -v;
 		            lamfj(j) = v;
 		        }
 		        // (1) undo the per-interval constant shift on this interval's interior costates
@@ -1104,7 +1104,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	    }
 		solution.dual.events[i] /= problem.scale.objective;
 	
-		if (   algorithm.nlp_method == "IPOPT"   ) {
+		if (   algorithm.nlp_method == "IPOPT" || algorithm.nlp_method == "SQP"   ) {
 	                solution.dual.events[i] = -solution.dual.events[i];
 	    }
 
@@ -1284,7 +1284,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
          }
          *solution.dual.linkages /= problem.scale.objective;
 
-         if (algorithm.nlp_method == "IPOPT") {
+         if (algorithm.nlp_method == "IPOPT" || algorithm.nlp_method == "SQP") {
              *solution.dual.linkages = -(*solution.dual.linkages);
          }
     }
