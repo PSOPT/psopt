@@ -205,6 +205,8 @@ int SQP_interface(Alg&         algorithm,
     sqp_gradient(x, gf, workspace);
     if (m > 0) sqp_jacobian(x, J, workspace, tape_done);
 
+    int    n_restorations = 0;
+    int    n_corrections  = 0;
     int    status  = 1;                                // 1 = iteration limit
     string message = "Maximum number of SQP iterations reached";
     int    iter    = 0;
@@ -215,7 +217,7 @@ int SQP_interface(Alg&         algorithm,
         psopt_print(workspace, workspace->text);
         snprintf(workspace->text, sizeof(workspace->text),
                  "\n%5s %16s %12s %12s %10s %8s\n",
-                 "iter", "objective", "max viol", "dual err", "step", "QP its");
+                 "iter", "objective(sc)", "max viol", "dual err", "step", "QP its");
         psopt_print(workspace, workspace->text);
     }
 
@@ -229,10 +231,18 @@ int SQP_interface(Alg&         algorithm,
         dL -= zbnd;
         double dual_err = 0.0;
         for (int j = 0; j < n; j++) dual_err = max(dual_err, fabs(dL(j)));
-        double lam_inf = 1.0;
-        for (int i = 0; i < m; i++)  lam_inf = max(lam_inf, fabs(lam(i)));
-        for (int j = 0; j < n; j++)  lam_inf = max(lam_inf, fabs(zbnd(j)));
-        dual_err /= lam_inf;
+
+        // Scaled as IPOPT scales it. An earlier version divided by the largest
+        // multiplier, which on a problem with large multipliers divides the residual
+        // down until any point passes: examples/hypersensitive was declared optimal
+        // at an objective of 2.4e-3 where the answer is 1.33. Averaging the
+        // multipliers and capping the divisor at s_max removes that failure.
+        const double s_max = 100.0;
+        double lam_1 = 0.0;
+        for (int i = 0; i < m; i++) lam_1 += fabs(lam(i));
+        for (int j = 0; j < n; j++) lam_1 += fabs(zbnd(j));
+        const double s_d = max(s_max, lam_1/(double)(m + n))/s_max;
+        dual_err /= s_d;
 
         const double viol = (m > 0) ? max_violation(gval, gl, gu) : 0.0;
 
@@ -265,6 +275,8 @@ int SQP_interface(Alg&         algorithm,
 
         int_t nWSR = 5*(n + m) + 100;
         returnValue rv;
+        bool   elastic = false;
+        double rho_elastic = 0.0;
 
         if (m > 0) {
             QProblem qp(n, m);
@@ -285,9 +297,67 @@ int SQP_interface(Alg&         algorithm,
             }
         }
 
+        // ---- restoration ---------------------------------------------------
+        // The linearised constraints can be inconsistent even when the problem is
+        // perfectly well posed -- it is the normal situation when the starting guess
+        // violates an equality, which is how most people supply one. The subproblem
+        // then has no solution and the iteration would simply stop. Elastic mode
+        // relaxes every constraint by a pair of non-negative slacks and charges them
+        // in the objective,
+        //
+        //   min 1/2 d'Bd + grad_f'd + rho*sum(v + w)
+        //   s.t. lbA <= J d + v - w <= ubA,  lb <= d <= ub,  v, w >= 0,
+        //
+        // which is always feasible, so a step always exists. With rho above the
+        // current penalty weights the step reduces infeasibility; the slacks are
+        // given a small quadratic term as well, to keep the QP's Hessian positive
+        // definite rather than merely semidefinite. This is SNOPT's device (Gill,
+        // Murray and Saunders 2005), in the simplest form that does the job.
+        if (m > 0 && rv != SUCCESSFUL_RETURN && rv != RET_MAX_NWSR_REACHED) {
+
+            double rho = 10.0;
+            for (int i = 0; i < m; i++) rho = max(rho, 10.0*r[i]);
+            rho_elastic = rho;
+
+            const int ne = n + 2*m;
+            RowMajorXd Ae = RowMajorXd::Zero(m, ne);
+            MatrixXd   He = MatrixXd::Zero(ne, ne);
+            vector<double> ge(ne), lbe(ne), ube(ne), ze(ne), ye(ne + m);
+
+            const double eps_slack = 1.0e-8;
+            He.topLeftCorner(n,n) = B;
+            for (int k = n; k < ne; k++) He(k,k) = eps_slack;
+
+            for (int i = 0; i < m; i++) {
+                for (int j = 0; j < n; j++) Ae(i,j) = J(i,j);
+                Ae(i, n + i)     =  1.0;      // v
+                Ae(i, n + m + i) = -1.0;      // w
+            }
+            for (int j = 0; j < n; j++) { ge[j] = gf(j); lbe[j] = lbd[j]; ube[j] = ubd[j]; }
+            for (int k = n; k < ne; k++) { ge[k] = rho;  lbe[k] = 0.0;    ube[k] = qpOASES::INFTY; }
+
+            QProblem qpe(ne, m);
+            qpe.setOptions(qpopts);
+            int_t nWSRe = 5*(ne + m) + 100;
+            returnValue rve = qpe.init(&He(0,0), &ge[0], &Ae(0,0), &lbe[0], &ube[0],
+                                       &lbA[0], &ubA[0], nWSRe);
+
+            if (rve == SUCCESSFUL_RETURN || rve == RET_MAX_NWSR_REACHED) {
+                qpe.getPrimalSolution(&ze[0]);
+                qpe.getDualSolution(&ye[0]);
+                for (int j = 0; j < n; j++) dsol[j]   = ze[j];
+                for (int i = 0; i < m; i++) ysol[n+i] = ye[ne+i];
+                for (int j = 0; j < n; j++) ysol[j]   = ye[j];
+                rv       = SUCCESSFUL_RETURN;
+                elastic  = true;
+                n_restorations++;
+            }
+        }
+
         if (rv != SUCCESSFUL_RETURN && rv != RET_MAX_NWSR_REACHED) {
             status  = 2;
-            message = "The quadratic programming subproblem could not be solved";
+            message = "The quadratic programming subproblem could not be solved, "
+                      "and neither could its elastic relaxation";
             break;
         }
 
@@ -310,6 +380,15 @@ int SQP_interface(Alg&         algorithm,
             const double li = fabs(lam_new(i));
             r[i] = (iter == 0) ? li : max(li, 0.5*(r[i] + li));
         }
+
+        // In elastic mode the step minimises f + rho*(violation), so that, and not the
+        // merit function built from the multipliers, is what the step was computed to
+        // reduce. Testing it against any smaller weight asks the step to deliver a
+        // decrease it was never aiming at, and the line search then rejects a perfectly
+        // good restoration step -- which is what stopped examples/hypersensitive on its
+        // second mesh. The weights relax again through the averaging rule above once
+        // ordinary steps resume.
+        if (elastic) for (int i = 0; i < m; i++) r[i] = max(r[i], rho_elastic);
 
         // ---- line search ---------------------------------------------------------
         const double phi0  = merit(fval, gval, gl, gu, r);
@@ -334,6 +413,71 @@ int SQP_interface(Alg&         algorithm,
             phit = merit(ftrial, gtrial, gl, gu, r);
             if (std::isfinite(phit) && phit <= phi0 + eta*alpha*dphi) { accepted = true; break; }
             alpha *= 0.5;
+        }
+
+        // ---- second-order correction --------------------------------------------
+        // The step can fail to reduce the merit function even when it is a good step,
+        // because a linear model of a curved constraint over-estimates the violation
+        // that a unit step incurs -- the Maratos effect. It bites hardest near a
+        // solution, which is exactly where a warm start from the previous mesh begins,
+        // and it is what stopped examples/hypersensitive on its second mesh. The
+        // remedy is to re-solve the subproblem with the constraint right-hand side
+        // evaluated at the trial point rather than linearised from the current one,
+        // and to try the corrected step before giving up (Nocedal and Wright,
+        // algorithm 18.4).
+        if (!accepted && m > 0 && !elastic) {
+
+            MatrixXd gtrial_soc(m,1);
+            MatrixXd xfull = x + d;
+            for (int j = 0; j < n; j++)
+                xfull(j) = min(max(xfull(j), (*xlb)(j)), (*xub)(j));
+            gg_num(xfull, &gtrial_soc, workspace);
+
+            MatrixXd Jd = J*d;
+            vector<double> lbS(m), ubS(m);
+            for (int i = 0; i < m; i++) {
+                const double shift = gtrial_soc(i) - Jd(i);
+                lbS[i] = (gl[i] <= -psopt_inf) ? -qpOASES::INFTY : gl[i] - shift;
+                ubS[i] = (gu[i] >=  psopt_inf) ?  qpOASES::INFTY : gu[i] - shift;
+            }
+
+            QProblem qps(n, m);
+            qps.setOptions(qpopts);
+            int_t nWSRs = 5*(n + m) + 100;
+            vector<double> dsoc(n), ysoc(n + m);
+            returnValue rvs = qps.init(&B(0,0), &gf(0), &Arow(0,0), &lbd[0], &ubd[0],
+                                       &lbS[0], &ubS[0], nWSRs);
+
+            if (rvs == SUCCESSFUL_RETURN || rvs == RET_MAX_NWSR_REACHED) {
+                qps.getPrimalSolution(&dsoc[0]);
+                qps.getDualSolution(&ysoc[0]);
+
+                MatrixXd dc(n,1);
+                for (int j = 0; j < n; j++) dc(j) = dsoc[j];
+
+                double gTdc = 0.0;
+                for (int j = 0; j < n; j++) gTdc += gf(j)*dc(j);
+                const double dphi_c = gTdc - pen;
+
+                alpha = 1.0;
+                for (int ls = 0; ls < 25; ls++) {
+                    xtrial = x + alpha*dc;
+                    for (int j = 0; j < n; j++)
+                        xtrial(j) = min(max(xtrial(j), (*xlb)(j)), (*xub)(j));
+                    ftrial = ff_num(xtrial, workspace);
+                    gg_num(xtrial, &gtrial, workspace);
+                    phit = merit(ftrial, gtrial, gl, gu, r);
+                    if (std::isfinite(phit) && phit <= phi0 + eta*alpha*dphi_c) {
+                        accepted = true;
+                        d = dc;
+                        for (int i = 0; i < m; i++) lam_new(i) = -ysoc[n+i];
+                        for (int j = 0; j < n; j++) zbnd(j)    =  ysoc[j];
+                        n_corrections++;
+                        break;
+                    }
+                    alpha *= 0.5;
+                }
+            }
         }
 
         if (!accepted) {
@@ -391,9 +535,9 @@ int SQP_interface(Alg&         algorithm,
 
         if (iprint) {
             snprintf(workspace->text, sizeof(workspace->text),
-                     "%5d %16.8e %12.3e %12.3e %10.2e %8d\n",
+                     "%5d %16.8e %12.3e %12.3e %10.2e %8d %s\n",
                      iter+1, fval, (m > 0) ? max_violation(gval, gl, gu) : 0.0,
-                     dual_err, alpha, (int) nWSR);
+                     dual_err, alpha, (int) nWSR, elastic ? "restoration" : "");
             psopt_print(workspace, workspace->text);
         }
     }
@@ -407,10 +551,12 @@ int SQP_interface(Alg&         algorithm,
     if (iprint) {
         snprintf(workspace->text, sizeof(workspace->text),
                  "\nSQP finished after %d iterations: %s\n"
-                 "   objective            %.10e\n"
-                 "   maximum violation    %.3e\n",
+                 "   objective (scaled)   %.10e\n"
+                 "   maximum violation    %.3e\n"
+                 "   restoration steps    %d\n"
+                 "   second-order corr.   %d\n",
                  iter, message.c_str(), fval,
-                 (m > 0) ? max_violation(gval, gl, gu) : 0.0);
+                 (m > 0) ? max_violation(gval, gl, gu) : 0.0, n_restorations, n_corrections);
         psopt_print(workspace, workspace->text);
     }
 
