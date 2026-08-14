@@ -52,8 +52,13 @@ void events(adouble* e, adouble* i0, adouble* xf, adouble* p, adouble& t0,
 
 void linkages(adouble* linkages, adouble* xad, Workspace* w) { }
 
+// The Jacobian evaluations of the last solve, which the SQP performs once per accepted
+// step and so counts its iterations.
+static int last_nlp_iterations = 0;
+
 // Solve with the requested NLP method and control bound; return the objective.
-static double solve_lq(const std::string& nlp_method, double u_bound, int& error_flag)
+static double solve_lq(const std::string& nlp_method, double u_bound, int& error_flag,
+                       const std::string& hessian = "limited-memory")
 {
     Alg algorithm; Sol solution; Prob problem;
     const int nodes = 20;
@@ -93,6 +98,7 @@ static double solve_lq(const std::string& nlp_method, double u_bound, int& error
     problem.phases(1).guess.time     = linspace(0.0, 1.0, nodes);
 
     algorithm.nlp_method         = nlp_method;
+    algorithm.hessian            = hessian;
     algorithm.scaling            = "automatic";
     algorithm.derivatives        = "automatic";
     algorithm.nlp_iter_max       = 500;
@@ -103,6 +109,7 @@ static double solve_lq(const std::string& nlp_method, double u_bound, int& error
     psopt(solution, problem, algorithm);
 
     error_flag = solution.error_flag;
+    last_nlp_iterations = solution.mesh_stats ? solution.mesh_stats[0].n_jacobian_evals : 0;
     return solution.cost;
 }
 
@@ -188,6 +195,56 @@ TEST(SQPSolver, AgreesWithIpoptWithAnActiveControlBound)
     EXPECT_GT(J_ipopt, 0.775240441234 + 1.0e-4);
 
     EXPECT_NEAR(J_sqp, J_ipopt, 1.0e-7*std::fabs(J_ipopt));
+}
+
+// The same problem with the exact Hessian of the Lagrangian in place of the
+// quasi-Newton model. The closed form does not care which model was used to reach it,
+// so this is a direct check that the sparse second derivatives, the convexification
+// and the trust region that goes with them all agree on the same answer.
+TEST(SQPSolver, ExactHessianReachesTheClosedForm)
+{
+    int flag = -1;
+    const double J = sqp_test::solve_lq("SQP", 10.0, flag, "exact");
+
+    ASSERT_EQ(flag, 0) << "the SQP solver failed with an exact Hessian";
+    EXPECT_NEAR(J, 0.775240441234, 1.0e-9);
+}
+
+// With the control bound active the subproblem has a non-trivial working set, and the
+// exact Hessian has to agree with IPOPT there too.
+TEST(SQPSolver, ExactHessianAgreesWithIpoptWithAnActiveControlBound)
+{
+    int flag_ipopt = -1, flag_sqp = -1;
+
+    const double J_ipopt = sqp_test::solve_lq("IPOPT", 0.4, flag_ipopt);
+    const double J_sqp   = sqp_test::solve_lq("SQP",   0.4, flag_sqp, "exact");
+
+    ASSERT_EQ(flag_ipopt, 0) << "IPOPT failed on the reference problem";
+    ASSERT_EQ(flag_sqp,   0) << "the SQP solver failed with an exact Hessian";
+
+    EXPECT_GT(J_ipopt, 0.775240441234 + 1.0e-4);      // the bound must actually bite
+    EXPECT_NEAR(J_sqp, J_ipopt, 1.0e-7*std::fabs(J_ipopt));
+}
+
+// The exact Hessian is second-order information and should show it: on a problem whose
+// Lagrangian has real curvature, it must reach the same answer in materially fewer
+// iterations than the quasi-Newton model, which learns that curvature one step at a
+// time. The margin is deliberately loose -- what is under test is that the second
+// derivatives are being used at all, not the precise rate.
+TEST(SQPSolver, ExactHessianCostsFewerIterationsThanBfgs)
+{
+    int flag = -1;
+    (void) sqp_test::solve_lq("SQP", 0.4, flag, "limited-memory");
+    ASSERT_EQ(flag, 0);
+    const int it_bfgs = sqp_test::last_nlp_iterations;
+
+    (void) sqp_test::solve_lq("SQP", 0.4, flag, "exact");
+    ASSERT_EQ(flag, 0);
+    const int it_exact = sqp_test::last_nlp_iterations;
+
+    EXPECT_GT(it_bfgs, 0);
+    EXPECT_GT(it_exact, 0);
+    EXPECT_LT(it_exact, it_bfgs) << "exact " << it_exact << " vs BFGS " << it_bfgs;
 }
 
 #else

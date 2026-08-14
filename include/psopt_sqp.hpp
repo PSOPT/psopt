@@ -40,21 +40,37 @@ e-mail:    v.m.becerra@ieee.org
 //  the author in 2008 and is restated here against PSOPT's own function, gradient and
 //  Jacobian machinery rather than the ADOL-C layer of the original.
 //
-//  What is deliberately dense, and what the sparse stage will change:
+//  The model of the problem is sparse throughout. The constraint Jacobian is kept in
+//  compressed columns, on a pattern taken once from the recorded tape, and with
+//  algorithm.hessian = "exact" the curvature is the exact Hessian of the Lagrangian,
+//  also sparse, evaluated at every iterate through the same automatic differentiation
+//  the IPOPT interface uses. With algorithm.hessian = "limited-memory", which remains
+//  the default, the curvature is a dense n-by-n quasi-Newton model built by damped
+//  BFGS updates: that model is what is dense, at O(n^2) storage, and it is the reason
+//  the exact Hessian is worth having on a large mesh quite apart from its faster
+//  convergence.
 //
-//    * the approximate Hessian B is a full n-by-n matrix, so storage and the BFGS
-//      update are O(n^2). At n = 10^4 that is already 0.8 GB, which bounds this
-//      solver to small problems. The sparse stage replaces the quasi-Newton model
-//      with the exact sparse Hessian PSOPT already computes for IPOPT;
-//    * the constraint Jacobian is assembled dense, although it is obtained from a
-//      sparse evaluation and immediately scattered, so only the storage is dense;
-//    * the QP subproblem goes to qpOASES's dense solver. The same call site accepts
-//      qpOASES's Schur-complement (sparse) variant, or another sparse QP, without the
-//      surrounding algorithm changing.
+//  Two things are still dense, and are what a further stage would change:
+//
+//    * the quasi-Newton model, as above, when it is the one in use;
+//    * qpOASES's own factorisations. The subproblem's matrices are handed over in
+//      sparse form, but the null-space method inside qpOASES holds a dense n-by-n
+//      orthogonal factor whatever it is given, so the memory and the work per
+//      subproblem remain quadratic and cubic in n. Lifting that means a QP solver
+//      that factorises the KKT system sparsely -- qpOASES's own Schur-complement
+//      variant, which needs a sparse symmetric-indefinite solver underneath it, or
+//      an interior-point QP written against a sparse factorisation directly.
 //
 //  Simple bounds are passed to the QP as bounds. The 2008 code expanded them into
 //  2n general inequality rows with an identity block, which is harmless on a
 //  three-variable problem and ruinous on a collocation mesh.
+//
+//  The globalisation depends on which model is in use, and has to. A line search on
+//  the l1 merit function is enough for the quasi-Newton model, which is built to be
+//  positive definite; the exact Hessian is indefinite wherever the problem is, and on
+//  a minimum-time problem at a first iterate, where the multipliers are still zero, it
+//  is exactly zero. It is therefore paired with a trust region and with a shift of the
+//  diagonal that starts at one and halves at every iteration that does not need it.
 //
 //  Reference for the algorithm: Nocedal and Wright, Numerical Optimization, 2nd ed.,
 //  chapter 18; the damped BFGS update is Powell (1978).

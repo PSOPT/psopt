@@ -98,8 +98,12 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("Incorrect algorithm.hessian option specified. Valid options are \"limited-memory\", \"exact\" and \"numerical\" ");
     if (algorithm.on_error != "fail-fast" && algorithm.on_error != "fail-soft")
        error_message("Incorrect algorithm.on_error option specified. Valid options are \"fail-fast\" and \"fail-soft\" ");
-    if ((algorithm.hessian == "exact" || algorithm.hessian == "numerical") && algorithm.nlp_method !="IPOPT") {
-       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the '%s' algorithm.hessian option is only available with the IPOPT solver", algorithm.hessian.c_str());
+    if (algorithm.hessian == "numerical" && algorithm.nlp_method !="IPOPT") {
+       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the 'numerical' algorithm.hessian option is only available with the IPOPT solver");
+       psopt_print(workspace,workspace->text);
+    }
+    if (algorithm.hessian == "exact" && algorithm.nlp_method !="IPOPT" && algorithm.nlp_method !="SQP") {
+       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the 'exact' algorithm.hessian option is only available with the IPOPT and SQP solvers");
        psopt_print(workspace,workspace->text);
     }
     if (algorithm.diff_matrix != "standard" && algorithm.diff_matrix != "reduced-roundoff" )

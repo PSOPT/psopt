@@ -40,6 +40,11 @@ e-mail:    v.m.becerra@ieee.org
 
 using namespace std;
 
+// The two qpOASES types that appear in the storage below. The rest of the qpOASES
+// names are brought in inside the driver, where they belong.
+using qpOASES::sparse_int_t;
+using qpOASES::real_t;
+
 namespace {
 
 // ---------------------------------------------------------------------------------
@@ -86,24 +91,229 @@ double max_violation(const MatrixXd& gval, const vector<double>& gl,
     return s;
 }
 
+
+// ---------------------------------------------------------------------------------
+// Compressed sparse column storage, in qpOASES's index type.
+//
+// The subproblem's matrices keep their pattern for as long as the mesh does: the
+// Jacobian's comes from the recorded tape, the Hessian's from the same tape's
+// second-order sparsity, and neither depends on the point. So the pattern is built
+// once and only the values are refreshed, which is also the form qpOASES wants --
+// it holds pointers into these arrays and reads them again at every solve.
+//
+// The class also carries the few matrix operations the algorithm needs, so that no
+// dense copy of the Jacobian is made anywhere: J*d for the second-order correction
+// and J'*lambda for the gradient of the Lagrangian.
+// ---------------------------------------------------------------------------------
+class SparseCsc {
+public:
+    // Build the pattern from a triplet list. Repeated entries are summed on scatter,
+    // which is what makes it safe to hand this the lower triangle of a symmetric
+    // matrix twice over. force_diagonal adds every diagonal position whether the
+    // triplets reach it or not, so that a multiple of the identity can be added later
+    // without disturbing the pattern.
+    void build(int nr, int nc,
+               const vector<unsigned int>& row, const vector<unsigned int>& col,
+               bool force_diagonal)
+    {
+        nr_ = nr; nc_ = nc;
+        const size_t nt = row.size();
+
+        // (column, row, triplet index), ordered by column and then by row, which is
+        // both the compressed column order and the order qpOASES expects within a
+        // column.
+        vector<size_t> order(nt + (force_diagonal ? (size_t) min(nr,nc) : 0));
+        vector<unsigned int> er(order.size()), ec(order.size());
+        vector<int>          ek(order.size());
+
+        for (size_t k = 0; k < nt; k++) { er[k] = row[k]; ec[k] = col[k]; ek[k] = (int) k; }
+        if (force_diagonal)
+            for (int j = 0; j < min(nr,nc); j++) {
+                const size_t k = nt + (size_t) j;
+                er[k] = (unsigned int) j; ec[k] = (unsigned int) j; ek[k] = -1;
+            }
+
+        for (size_t k = 0; k < order.size(); k++) order[k] = k;
+        sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            if (ec[a] != ec[b]) return ec[a] < ec[b];
+            if (er[a] != er[b]) return er[a] < er[b];
+            return a < b;
+        });
+
+        ir_.clear(); jc_.assign((size_t) nc_ + 1, 0); val_.clear();
+        perm_.assign(nt, -1);
+        diag_.assign((size_t) nc_, -1);
+
+        int slot = -1;
+        unsigned int lastr = 0, lastc = 0;
+        for (size_t q = 0; q < order.size(); q++) {
+            const size_t k = order[q];
+            if (slot < 0 || er[k] != lastr || ec[k] != lastc) {
+                ir_.push_back((sparse_int_t) er[k]);
+                val_.push_back(0.0);
+                slot  = (int) ir_.size() - 1;
+                lastr = er[k]; lastc = ec[k];
+                jc_[(size_t) ec[k] + 1]++;
+                if (er[k] == ec[k]) diag_[(size_t) ec[k]] = slot;
+            }
+            if (ek[k] >= 0) perm_[(size_t) ek[k]] = slot;
+        }
+        for (int j = 0; j < nc_; j++) jc_[(size_t) j + 1] += jc_[(size_t) j];
+    }
+
+    // Values in the triplet order the pattern was built from.
+    void scatter(const vector<double>& tval)
+    {
+        fill(val_.begin(), val_.end(), 0.0);
+        for (size_t k = 0; k < perm_.size() && k < tval.size(); k++)
+            if (perm_[k] >= 0) val_[(size_t) perm_[k]] += tval[k];
+    }
+
+    void shift_diagonal(double tau)
+    {
+        for (int j = 0; j < nc_; j++) if (diag_[(size_t) j] >= 0)
+            val_[(size_t) diag_[(size_t) j]] += tau;
+    }
+
+    void times(const double* v, double* y) const              // y = M v, length nr
+    {
+        for (int i = 0; i < nr_; i++) y[i] = 0.0;
+        for (int j = 0; j < nc_; j++)
+            for (sparse_int_t k = jc_[(size_t) j]; k < jc_[(size_t) j + 1]; k++)
+                y[ir_[(size_t) k]] += val_[(size_t) k]*v[j];
+    }
+
+    void transpose_times(const double* v, double* y) const     // y = M' v, length nc
+    {
+        for (int j = 0; j < nc_; j++) {
+            double s = 0.0;
+            for (sparse_int_t k = jc_[(size_t) j]; k < jc_[(size_t) j + 1]; k++)
+                s += val_[(size_t) k]*v[ir_[(size_t) k]];
+            y[j] = s;
+        }
+    }
+
+    // The largest absolute column sum, which for a symmetric matrix is its 1-norm and
+    // bounds its spectral radius. Used only to scale the convexification shift.
+    double norm1() const
+    {
+        double best = 0.0;
+        for (int j = 0; j < nc_; j++) {
+            double s = 0.0;
+            for (sparse_int_t k = jc_[(size_t) j]; k < jc_[(size_t) j + 1]; k++)
+                s += fabs(val_[(size_t) k]);
+            best = max(best, s);
+        }
+        return best;
+    }
+
+    int    rows() const { return nr_; }
+    int    cols() const { return nc_; }
+    int    nnz()  const { return (int) val_.size(); }
+    bool   empty() const { return val_.empty() && nc_ == 0; }
+    double value(int slot) const { return val_[(size_t) slot]; }
+
+    sparse_int_t* ir()  { return ir_.empty() ? NULL : &ir_[0]; }
+    sparse_int_t* jc()  { return &jc_[0]; }
+    double*       val() { return val_.empty() ? NULL : &val_[0]; }
+    const vector<double>& values() const { return val_; }
+
+private:
+    int nr_ = 0, nc_ = 0;
+    vector<sparse_int_t> ir_, jc_;
+    vector<double>       val_;
+    vector<int>          perm_;      // triplet index -> slot
+    vector<int>          diag_;      // column -> slot of its diagonal, or -1
+};
+
+// d' H d, with H either the sparse exact Hessian or the dense quasi-Newton model.
+double quadratic_form(bool exact, const SparseCsc& Hm, const MatrixXd& B, const MatrixXd& d)
+{
+    if (!exact) return (d.transpose()*B*d)(0,0);
+    vector<double> Hd((size_t) d.rows(), 0.0);
+    Hm.times(&d(0), &Hd[0]);
+    double s = 0.0;
+    for (int j = 0; j < d.rows(); j++) s += d(j)*Hd[(size_t) j];
+    return s;
+}
+
 } // anonymous namespace
 
 
+static void sqp_gradient(MatrixXd& x, MatrixXd& gf, Workspace* workspace)
+{
+    if (useAutomaticDifferentiation(*workspace->algorithm))
+        ScalarGradientAD(ff_ad, x, &gf, &workspace->trace_f_done, workspace->ad_f, workspace);
+    else
+        ScalarGradient(ff_num, x, &gf, workspace->grw.get(), workspace);
+}
+
+
 // ---------------------------------------------------------------------------------
-// The constraint Jacobian, dense.
+// The Lagrangian and its Hessian.
 //
-// The values come from PSOPT's own machinery, so the SQP sees exactly the derivatives
-// the rest of the library sees: a sparse automatic-differentiation evaluation when
-// algorithm.derivatives is "automatic", and one-sided finite differences otherwise.
-// Only the storage is dense -- the sparse stage keeps the evaluation and drops the
-// scatter.
+// L = f + lambda' g, in PSOPT's sign convention for the multipliers, so that the
+// stationarity the solver tests, grad f + J' lambda - z = 0, is the gradient of this
+// function. The Hessian is taken from the same AD machinery the IPOPT interface uses
+// for its exact-Hessian option, and comes back as the lower triangle of a sparse
+// symmetric matrix.
+//
+// The multipliers enter the tape as constants, so the tape has to be recorded again
+// whenever they change -- once per iteration. That is the cost of an exact Hessian
+// and it is the same cost IPOPT pays. The pattern is detected once, from a tape
+// recorded with every multiplier set to one: a multiplier that happened to be zero
+// would otherwise remove its constraint from the tape and, with it, that constraint's
+// entries from a pattern that is then kept for the rest of the mesh.
 // ---------------------------------------------------------------------------------
-static void sqp_jacobian(MatrixXd& x, MatrixXd& J, Workspace* workspace, bool& tape_done)
+static adouble sqp_lagrangian(adouble* xad, const double* lam, int m, Workspace* workspace)
+{
+    adouble L = ff_ad(xad, workspace);
+    if (m > 0) {
+        adouble* g = workspace->gad.get();
+        gg_ad(xad, g, workspace);
+        for (int i = 0; i < m; i++) L += lam[i]*g[i];
+    }
+    return L;
+}
+
+static psopt_ad::SparseTriplet
+sqp_hessian_triplet(MatrixXd& x, const MatrixXd& lam, int m, bool pattern_pass,
+                    Workspace* workspace)
 {
     const int n = (int) x.rows();
-    const int m = (int) J.rows();
 
-    J.setZero();
+    vector<double> lam_d((size_t) max(m,1), 1.0);
+    if (!pattern_pass) for (int i = 0; i < m; i++) lam_d[(size_t) i] = lam(i);
+
+    psopt_ad::ad_record(workspace->ad_hess, n, 1, &x(0),
+        [&](const adouble* xin, adouble* yout)
+        { yout[0] = sqp_lagrangian(const_cast<adouble*>(xin), &lam_d[0], m, workspace); });
+
+    if (workspace->enable_nlp_counters)
+        workspace->solution->mesh_stats[workspace->current_mesh_refinement_iteration-1]
+            .n_hessian_evals++;
+
+    return psopt_ad::ad_sparse_hessian(workspace->ad_hess, &x(0), /*reuse=*/false);
+}
+
+
+// ---------------------------------------------------------------------------------
+// The constraint Jacobian, sparse.
+//
+// The pattern is obtained once, from the recorded tape, and the values are refreshed
+// into it at every point. Under numerical derivatives there is no pattern to detect
+// and the Jacobian is taken to be full, which costs what it always cost: n constraint
+// evaluations per iteration and m*n stored numbers.
+// ---------------------------------------------------------------------------------
+static void sqp_jacobian_triplet(MatrixXd& x, int m, bool& tape_done,
+                                 vector<unsigned int>& row, vector<unsigned int>& col,
+                                 vector<double>& val, Workspace* workspace)
+{
+    const int n = (int) x.rows();
+
+    if (workspace->enable_nlp_counters)
+        workspace->solution->mesh_stats[workspace->current_mesh_refinement_iteration-1]
+            .n_jacobian_evals++;
 
     if (useAutomaticDifferentiation(*workspace->algorithm)) {
 
@@ -122,34 +332,31 @@ static void sqp_jacobian(MatrixXd& x, MatrixXd& J, Workspace* workspace, bool& t
         }
         psopt_ad::SparseTriplet T =
             psopt_ad::ad_sparse_jacobian(workspace->ad_g, &x(0), /*reuse=*/!fresh_tape);
-        for (int k = 0; k < T.nnz(); k++)
-            J((int) T.row[k], (int) T.col[k]) = T.val[k];
+
+        row.assign(T.row.begin(), T.row.end());
+        col.assign(T.col.begin(), T.col.end());
+        val.assign(T.val.begin(), T.val.end());
     }
     else {
-        // One-sided differences, one column per variable. This is the expensive path
-        // and it is why the dense stage is a stage: it costs n constraint evaluations
-        // per SQP iteration.
         MatrixXd g0(m,1), g1(m,1);
         gg_num(x, &g0, workspace);
         const double sqreps = sqrt(PSOPT_extras::GetEPS());
+
+        row.resize((size_t) m*n); col.resize((size_t) m*n); val.resize((size_t) m*n);
         for (int j = 0; j < n; j++) {
             const double xj   = x(j);
             const double delj = sqreps*(1.0 + fabs(xj));
             x(j) = xj + delj;
             gg_num(x, &g1, workspace);
             x(j) = xj;
-            for (int i = 0; i < m; i++) J(i,j) = (g1(i) - g0(i))/delj;
+            for (int i = 0; i < m; i++) {
+                const size_t k = (size_t) j*m + i;
+                row[k] = (unsigned int) i;
+                col[k] = (unsigned int) j;
+                val[k] = (g1(i) - g0(i))/delj;
+            }
         }
     }
-}
-
-
-static void sqp_gradient(MatrixXd& x, MatrixXd& gf, Workspace* workspace)
-{
-    if (useAutomaticDifferentiation(*workspace->algorithm))
-        ScalarGradientAD(ff_ad, x, &gf, &workspace->trace_f_done, workspace->ad_f, workspace);
-    else
-        ScalarGradient(ff_num, x, &gf, workspace->grw.get(), workspace);
 }
 
 
@@ -187,11 +394,10 @@ int SQP_interface(Alg&         algorithm,
     for (int j = 0; j < n; j++)                       // start inside the box
         x(j) = min(max(x(j), (*xlb)(j)), (*xub)(j));
 
-    MatrixXd gf(n,1), gval(max(m,1),1), J(max(m,1), n);
-    MatrixXd gf_old(n,1), J_old(max(m,1), n);
+    MatrixXd gf(n,1), gval(max(m,1),1);
+    MatrixXd gf_old(n,1);
     MatrixXd lam  = MatrixXd::Zero(max(m,1),1);       // constraint multipliers
     MatrixXd zbnd = MatrixXd::Zero(n,1);              // bound multipliers
-    MatrixXd B    = MatrixXd::Identity(n,n);          // the quasi-Newton model
     vector<double> r(max(m,1), 0.0);                  // l1 penalty weights
 
     bool tape_done = false;
@@ -199,28 +405,119 @@ int SQP_interface(Alg&         algorithm,
     const double tol      = algorithm.nlp_tolerance;
     const int    iter_max = algorithm.nlp_iter_max;
 
-    // qpOASES wants row-major storage; B is symmetric so its layout is immaterial,
-    // but the Jacobian's is not.
-    typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> RowMajorXd;
-    RowMajorXd Arow(max(m,1), n);
+    // ---- the model of the Lagrangian's curvature --------------------------------
+    // Either the exact Hessian, sparse, re-evaluated at every iterate, or a dense
+    // quasi-Newton approximation built by damped BFGS updates. The exact Hessian
+    // needs the taped derivatives to exist, so the option follows the same rule as
+    // IPOPT's: algorithm.hessian == "exact" together with automatic derivatives.
+    //
+    // The difference between the two is not only the rate of convergence. The BFGS
+    // model is a full n-by-n matrix whatever the problem's structure, and at
+    // n = 10^4 that is 0.8 GB before the solver has done anything at all; the exact
+    // Hessian of a collocated optimal control problem has a few entries per row.
+    const bool exact_hessian = (algorithm.hessian == "exact")
+                               && useAutomaticDifferentiation(algorithm);
+
+    MatrixXd B;                                       // the quasi-Newton model, if used
+    if (!exact_hessian) B = MatrixXd::Identity(n,n);
+
+    // ---- the trust region, for the exact Hessian only ---------------------------
+    // A line search needs the model to be positive definite to give it a direction
+    // worth searching along, and the quasi-Newton model is built to be. The exact
+    // Hessian is not: it is indefinite wherever the problem is, and on a minimum-time
+    // problem, at a first iterate where the multipliers are still zero, it is exactly
+    // zero -- the Hessian of a linear objective. The subproblem is then a linear
+    // programme whose solution sits wherever the user's variable bounds happen to be,
+    // and on examples/brac1 the first step drove the objective to 10^-14 and the
+    // constraint violation to 0.93. Restricting the step to a region around the
+    // current point is what makes an exact-Hessian model usable, and the region grows
+    // as the model proves itself.
+    const double Delta_0   = 1.0;                     // in the scaled variables, O(1)
+    const double Delta_min = 1.0e-10;
+    const double Delta_max = 1.0e4;
+    double       Delta     = exact_hessian ? Delta_0 : qpOASES::INFTY;
+
+    // ---- the subproblem's matrices ----------------------------------------------
+    SparseCsc Jm, Hm, Ae, He;                         // A and H, plain and elastic
+    vector<unsigned int> jrow, jcol;
+    vector<double>       jval, jval_old;
+    vector<double>       hval, aeval, heval;
 
     vector<double> lbA(max(m,1)), ubA(max(m,1)), lbd(n), ubd(n);
+    vector<double> lo_true(n), hi_true(n);
     vector<double> dsol(n), ysol(n + max(m,1));
 
     double fval = ff_num(x, workspace);
     if (m > 0) gg_num(x, &gval, workspace);
     sqp_gradient(x, gf, workspace);
-    if (m > 0) sqp_jacobian(x, J, workspace, tape_done);
+
+    if (m > 0) {
+        sqp_jacobian_triplet(x, m, tape_done, jrow, jcol, jval, workspace);
+        Jm.build(m, n, jrow, jcol, /*force_diagonal=*/false);
+        Jm.scatter(jval);
+    }
+
+    // The Hessian's pattern, detected once with every multiplier set to one so that it
+    // is the pattern of the problem rather than of the multipliers this iterate happens
+    // to carry. The diagonal is forced into it so that the convexification below has
+    // somewhere to write.
+    psopt_ad::SparseTriplet Ht;
+    if (exact_hessian) {   // NOLINT: the pattern pass, described above
+        Ht = sqp_hessian_triplet(x, lam, m, /*pattern_pass=*/true, workspace);
+        vector<unsigned int> hrow, hcol;
+        hrow.reserve(2*Ht.row.size()); hcol.reserve(2*Ht.col.size());
+        for (int k = 0; k < Ht.nnz(); k++) {          // the lower triangle, and its mirror
+            hrow.push_back(Ht.row[k]); hcol.push_back(Ht.col[k]);
+            if (Ht.row[k] != Ht.col[k]) { hrow.push_back(Ht.col[k]); hcol.push_back(Ht.row[k]); }
+        }
+        Hm.build(n, n, hrow, hcol, /*force_diagonal=*/true);
+    }
+
+    // The subproblem's matrices, as qpOASES sees them. qpOASES keeps the pointers it
+    // is given and reads through them at every solve, so these objects are built once,
+    // over storage whose pattern does not change, and only the values are refreshed.
+    // SymSparseMat additionally wants to know where each column's diagonal entry sits,
+    // which is a property of the pattern and so is also computed once.
+    unique_ptr<SparseMatrix>  Aqp;
+    unique_ptr<SymSparseMat>  Hsparse;
+    unique_ptr<SymDenseMat>   Hdense;
+
+    if (m > 0) Aqp.reset(new SparseMatrix(m, n, Jm.ir(), Jm.jc(), Jm.val()));
+    if (exact_hessian) {
+        Hsparse.reset(new SymSparseMat(n, n, Hm.ir(), Hm.jc(), Hm.val()));
+        Hsparse->createDiagInfo();
+    }
+    else {
+        Hdense.reset(new SymDenseMat(n, n, n, &B(0,0)));
+    }
+    SymmetricMatrix* Hqp = exact_hessian ? (SymmetricMatrix*) Hsparse.get()
+                                         : (SymmetricMatrix*) Hdense.get();
 
     int    n_restorations = 0;
     int    n_corrections  = 0;
+    int    n_shifts       = 0;        // convexifications of the exact Hessian
+    int    n_shrinks      = 0;        // reductions of the trust region
+    // The first subproblem is solved with the multipliers still at zero, so the
+    // Hessian of the Lagrangian it is built from carries no information about the
+    // constraints at all -- on a minimum-time problem, whose objective is linear, it
+    // is identically zero and the subproblem is a linear programme. Starting the shift
+    // at one makes that first model the same one a quasi-Newton method would start
+    // from, and halving it at every iteration that does not need it hands the model
+    // back to the exact curvature within a few steps.
+    double tau_last       = 1.0;      // the last shift that worked
     int    status  = 1;                                // 1 = iteration limit
     string message = "Maximum number of SQP iterations reached";
     int    iter    = 0;
 
     if (iprint) {
         snprintf(workspace->text, sizeof(workspace->text),
-                 "\n\nSQP (dense, BFGS + qpOASES): %d variables, %d constraints\n", n, m);
+                 "\n\nSQP (%s + qpOASES): %d variables, %d constraints",
+                 exact_hessian ? "exact sparse Hessian" : "dense BFGS", n, m);
+        psopt_print(workspace, workspace->text);
+        snprintf(workspace->text, sizeof(workspace->text),
+                 "\n%d Jacobian nonzeros (%.3f%% dense)%s\n",
+                 Jm.nnz(), 100.0*Jm.nnz()/max(1.0,(double) m*n),
+                 exact_hessian ? "" : "");
         psopt_print(workspace, workspace->text);
         snprintf(workspace->text, sizeof(workspace->text),
                  "\n%5s %16s %12s %12s %10s %8s\n",
@@ -234,7 +531,11 @@ int SQP_interface(Alg&         algorithm,
         // Stationarity of the Lagrangian L = f + lambda' g - z' x, measured relative
         // to the size of the multipliers so that the test is scale aware.
         MatrixXd dL = gf;
-        if (m > 0) dL += J.transpose()*lam;
+        if (m > 0) {
+            MatrixXd Jtl(n,1);
+            Jm.transpose_times(&lam(0), &Jtl(0));
+            dL += Jtl;
+        }
         dL -= zbnd;
         double dual_err = 0.0;
         for (int j = 0; j < n; j++) dual_err = max(dual_err, fabs(dL(j)));
@@ -259,6 +560,27 @@ int SQP_interface(Alg&         algorithm,
             break;
         }
 
+        // The exact Hessian is a function of the multipliers as well as the point, so
+        // it is re-evaluated here, after the optimality test has read the multipliers
+        // the previous subproblem returned.
+        if (exact_hessian) {
+            psopt_ad::SparseTriplet Hk =
+                sqp_hessian_triplet(x, lam, m, /*pattern_pass=*/false, workspace);
+            hval.assign(Hk.val.begin(), Hk.val.end());
+            hval.reserve(2*Hk.val.size());
+            for (int k = 0; k < Hk.nnz(); k++)
+                if (Hk.row[k] != Hk.col[k]) hval.push_back(Hk.val[k]);
+
+            // The mirrored entries must follow the same order the pattern was built
+            // in, which interleaves each off-diagonal with its transpose. Rebuild the
+            // value list in that order rather than appending.
+            hval.clear();
+            for (int k = 0; k < Hk.nnz(); k++) {
+                hval.push_back(Hk.val[k]);
+                if (Hk.row[k] != Hk.col[k]) hval.push_back(Hk.val[k]);
+            }
+        }
+
         // ---- the quadratic programming subproblem -------------------------------
         //   min  1/2 d' B d + grad_f' d
         //   s.t. g_l - g <= J d <= g_u - g,      xlb - x <= d <= xub - x
@@ -268,16 +590,18 @@ int SQP_interface(Alg&         algorithm,
         for (int i = 0; i < m; i++) {
             lbA[i] = (gl[i] <= -psopt_inf) ? -qpOASES::INFTY : gl[i] - gval(i);
             ubA[i] = (gu[i] >=  psopt_inf) ?  qpOASES::INFTY : gu[i] - gval(i);
-            for (int j = 0; j < n; j++) Arow(i,j) = J(i,j);
         }
         for (int j = 0; j < n; j++) {
-            lbd[j] = ((*xlb)(j) <= -psopt_inf) ? -qpOASES::INFTY : (*xlb)(j) - x(j);
-            ubd[j] = ((*xub)(j) >=  psopt_inf) ?  qpOASES::INFTY : (*xub)(j) - x(j);
+            lo_true[j] = ((*xlb)(j) <= -psopt_inf) ? -qpOASES::INFTY : (*xlb)(j) - x(j);
+            hi_true[j] = ((*xub)(j) >=  psopt_inf) ?  qpOASES::INFTY : (*xub)(j) - x(j);
+            lbd[j]     = max(lo_true[j], -Delta);   // Delta is infinite unless the Hessian
+            ubd[j]     = min(hi_true[j],  Delta);   // is exact; both regions contain d = 0
         }
 
         Options qpopts;
         qpopts.printLevel = PL_NONE;
         qpopts.setToReliable();
+        if (exact_hessian) qpopts.enableRegularisation = BT_TRUE;
         qpopts.printLevel = PL_NONE;
 
         int_t nWSR = 5*(n + m) + 100;
@@ -285,24 +609,67 @@ int SQP_interface(Alg&         algorithm,
         bool   elastic = false;
         double rho_elastic = 0.0;
 
-        if (m > 0) {
-            QProblem qp(n, m);
-            qp.setOptions(qpopts);
-            rv = qp.init(&B(0,0), &gf(0), &Arow(0,0), &lbd[0], &ubd[0], &lbA[0], &ubA[0], nWSR);
-            if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) {
-                qp.getPrimalSolution(&dsol[0]);
-                qp.getDualSolution(&ysol[0]);
+        // ---- convexification ----------------------------------------------------
+        // An exact Hessian of the Lagrangian is indefinite wherever the problem is not
+        // convex, which is almost everywhere on an optimal control problem, and the
+        // subproblem then has no minimum: qpOASES declines it. Adding tau*I makes the
+        // model convex without changing where the Lagrangian is stationary, and the
+        // smallest tau that works is the one that leaves the most of the true
+        // curvature in place, so tau starts small and is raised only until the
+        // subproblem is accepted. The starting value is carried between iterations,
+        // because a problem that needed a shift once usually needs one again, and
+        // decays when it is not needed, so that the model returns to the exact one as
+        // the iterates settle. This is the same device IPOPT uses in its own inertia
+        // correction.
+        double tau = 0.0;
+        for (int attempt = 0; ; attempt++) {
+
+            if (exact_hessian) {
+                Hm.scatter(hval);
+                if (attempt == 0) tau = tau_last*0.5;
+                else              tau = (tau > 0.0) ? 10.0*tau
+                                                    : 1.0e-6*max(1.0, Hm.norm1());
+                if (tau > 0.0) Hm.shift_diagonal(tau);
             }
-        }
-        else {
-            QProblemB qp(n);
-            qp.setOptions(qpopts);
-            rv = qp.init(&B(0,0), &gf(0), &lbd[0], &ubd[0], nWSR);
-            if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) {
-                qp.getPrimalSolution(&dsol[0]);
-                qp.getDualSolution(&ysol[0]);
+
+            if (m > 0) {
+                QProblem qp(n, m);
+                qp.setOptions(qpopts);
+                nWSR = 5*(n + m) + 100;
+                rv = qp.init(Hqp, &gf(0), Aqp.get(), &lbd[0], &ubd[0], &lbA[0], &ubA[0], nWSR);
+                if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) {
+                    qp.getPrimalSolution(&dsol[0]);
+                    qp.getDualSolution(&ysol[0]);
+                }
             }
+            else {
+                QProblemB qp(n);
+                qp.setOptions(qpopts);
+                nWSR = 5*n + 100;
+                rv = qp.init(Hqp, &gf(0), &lbd[0], &ubd[0], nWSR);
+                if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) {
+                    qp.getPrimalSolution(&dsol[0]);
+                    qp.getDualSolution(&ysol[0]);
+                }
+            }
+
+            if (!exact_hessian) break;
+            if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) break;
+
+            // Only a failure of the Cholesky factorisation says anything about the
+            // curvature; an infeasible linearisation or an exhausted working set says
+            // nothing, and shifting the diagonal in answer to it would be nine wasted
+            // factorisations before the restoration step that was needed all along.
+            const bool curvature_failure =
+                   (rv == RET_INIT_FAILED_CHOLESKY)
+                || (rv == RET_INIT_FAILED_REGULARISATION)
+                || (rv == RET_HESSIAN_NOT_SPD)
+                || (rv == RET_HESSIAN_INDEFINITE);
+
+            if (!curvature_failure || attempt >= 8) break;
+            n_shifts++;
         }
+        if (exact_hessian) tau_last = max(1.0e-12, tau);
 
         // ---- restoration ---------------------------------------------------
         // The linearised constraints can be inconsistent even when the problem is
@@ -327,26 +694,66 @@ int SQP_interface(Alg&         algorithm,
             rho_elastic = rho;
 
             const int ne = n + 2*m;
-            RowMajorXd Ae = RowMajorXd::Zero(m, ne);
-            MatrixXd   He = MatrixXd::Zero(ne, ne);
             vector<double> ge(ne), lbe(ne), ube(ne), ze(ne), ye(ne + m);
 
             const double eps_slack = 1.0e-8;
-            He.topLeftCorner(n,n) = B;
-            for (int k = n; k < ne; k++) He(k,k) = eps_slack;
 
-            for (int i = 0; i < m; i++) {
-                for (int j = 0; j < n; j++) Ae(i,j) = J(i,j);
-                Ae(i, n + i)     =  1.0;      // v
-                Ae(i, n + m + i) = -1.0;      // w
+            // [ J | I | -I ] and blkdiag(H, eps I), both built on the pattern of the
+            // matrices they extend, so the elastic subproblem costs the slacks and
+            // nothing else. The patterns are built the first time restoration is
+            // needed and kept thereafter.
+            if (Ae.empty()) {
+                vector<unsigned int> ar, ac;
+                ar.reserve(jrow.size() + 2*(size_t)m); ac.reserve(jcol.size() + 2*(size_t)m);
+                for (size_t k = 0; k < jrow.size(); k++) { ar.push_back(jrow[k]); ac.push_back(jcol[k]); }
+                for (int i = 0; i < m; i++) { ar.push_back((unsigned int) i); ac.push_back((unsigned int)(n+i)); }
+                for (int i = 0; i < m; i++) { ar.push_back((unsigned int) i); ac.push_back((unsigned int)(n+m+i)); }
+                Ae.build(m, ne, ar, ac, /*force_diagonal=*/false);
+
+                vector<unsigned int> hr, hc;
+                if (exact_hessian) {
+                    for (int k = 0; k < Ht.nnz(); k++) {
+                        hr.push_back(Ht.row[k]); hc.push_back(Ht.col[k]);
+                        if (Ht.row[k] != Ht.col[k]) { hr.push_back(Ht.col[k]); hc.push_back(Ht.row[k]); }
+                    }
+                }
+                else {
+                    for (int i = 0; i < n; i++)
+                        for (int j = 0; j < n; j++) { hr.push_back((unsigned int) i); hc.push_back((unsigned int) j); }
+                }
+                for (int k = n; k < ne; k++) { hr.push_back((unsigned int) k); hc.push_back((unsigned int) k); }
+                He.build(ne, ne, hr, hc, /*force_diagonal=*/true);
             }
+
+            aeval.clear();
+            aeval.insert(aeval.end(), jval.begin(), jval.end());
+            for (int i = 0; i < m; i++) aeval.push_back( 1.0);
+            for (int i = 0; i < m; i++) aeval.push_back(-1.0);
+            Ae.scatter(aeval);
+
+            heval.clear();
+            if (exact_hessian) heval.insert(heval.end(), hval.begin(), hval.end());
+            else for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) heval.push_back(B(i,j));
+            for (int k = n; k < ne; k++) heval.push_back(eps_slack);
+            He.scatter(heval);
+
+            // The relaxed subproblem carries the same model, and so needs the same
+            // convexification: it is the shift that made the model usable, not the
+            // relaxation. The slacks' own small diagonal is already in place and is
+            // raised along with the rest, which does them no harm.
+            if (exact_hessian && tau > 0.0) He.shift_diagonal(tau);
+
             for (int j = 0; j < n; j++) { ge[j] = gf(j); lbe[j] = lbd[j]; ube[j] = ubd[j]; }
             for (int k = n; k < ne; k++) { ge[k] = rho;  lbe[k] = 0.0;    ube[k] = qpOASES::INFTY; }
+
+            SymSparseMat Heqp(ne, ne, He.ir(), He.jc(), He.val());
+            Heqp.createDiagInfo();
+            SparseMatrix Aeqp(m, ne, Ae.ir(), Ae.jc(), Ae.val());
 
             QProblem qpe(ne, m);
             qpe.setOptions(qpopts);
             int_t nWSRe = 5*(ne + m) + 100;
-            returnValue rve = qpe.init(&He(0,0), &ge[0], &Ae(0,0), &lbe[0], &ube[0],
+            returnValue rve = qpe.init(&Heqp, &ge[0], &Aeqp, &lbe[0], &ube[0],
                                        &lbA[0], &ubA[0], nWSRe);
 
             if (rve == SUCCESSFUL_RETURN || rve == RET_MAX_NWSR_REACHED) {
@@ -377,7 +784,18 @@ int SQP_interface(Alg&         algorithm,
         // SQPSolver.QpOasesDualSignConvention in tests/test_sqp.cpp.
         MatrixXd lam_new = MatrixXd::Zero(max(m,1),1);
         for (int i = 0; i < m; i++) lam_new(i) = -ysol[n+i];
-        for (int j = 0; j < n; j++) zbnd(j)    =  ysol[j];
+        // The bounds the subproblem was given are the variable bounds intersected with
+        // the trust region, so a multiplier returned for one of them belongs to
+        // whichever of the two is binding. Only the variable bound is a bound of the
+        // problem: a multiplier earned against the trust region is an artefact of the
+        // current radius, and counting it in the KKT residual cancels part of the
+        // gradient and reports a convergence that has not happened. On examples/brac1
+        // that produced a feasible point, declared optimal, whose objective was 2.8 per
+        // cent above the answer.
+        for (int j = 0; j < n; j++) {
+            const bool tr_binds = (lbd[j] > lo_true[j]) || (ubd[j] < hi_true[j]);
+            zbnd(j) = (tr_binds && fabs(d(j)) >= 0.999*Delta) ? 0.0 : ysol[j];
+        }
 
         // ---- the l1 penalty weights ---------------------------------------------
         // Powell's rule: keep each weight at least as large as the magnitude of the
@@ -386,6 +804,29 @@ int SQP_interface(Alg&         algorithm,
         for (int i = 0; i < m; i++) {
             const double li = fabs(lam_new(i));
             r[i] = (iter == 0) ? li : max(li, 0.5*(r[i] + li));
+        }
+
+        // Powell's rule alone leaves the weights at the mercy of the multipliers, and
+        // the multipliers of a first subproblem solved from a poor point can be
+        // anything at all, including nothing. Weights near zero make the merit function
+        // the objective again, and the line search then cheerfully accepts a step that
+        // improves the objective by destroying feasibility -- on examples/brac1, where
+        // the objective is the final time and can always be improved by shortening it,
+        // the very first exact-Hessian step drove the objective to 10^-14 and the
+        // violation to 0.93. Han's condition removes the possibility: the weights are
+        // raised until the model's own predicted change in the objective is dominated
+        // by the reduction in infeasibility the step is credited with, which makes the
+        // step a descent direction for the merit function whatever the multipliers say.
+        {
+            double gTd0 = 0.0;
+            for (int j = 0; j < n; j++) gTd0 += gf(j)*d(j);
+            const double dBd0 = quadratic_form(exact_hessian, Hm, B, d);
+            const double viol_tot = (m > 0) ? total_violation(gval, gl, gu) : 0.0;
+
+            if (viol_tot > 0.0) {
+                const double need = (gTd0 + max(0.0, 0.5*dBd0))/(0.9*viol_tot);
+                if (need > 0.0) for (int i = 0; i < m; i++) r[i] = max(r[i], need);
+            }
         }
 
         // In elastic mode the step minimises f + rho*(violation), so that, and not the
@@ -440,7 +881,8 @@ int SQP_interface(Alg&         algorithm,
                 xfull(j) = min(max(xfull(j), (*xlb)(j)), (*xub)(j));
             gg_num(xfull, &gtrial_soc, workspace);
 
-            MatrixXd Jd = J*d;
+            MatrixXd Jd(m,1);
+            Jm.times(&d(0), &Jd(0));
             vector<double> lbS(m), ubS(m);
             for (int i = 0; i < m; i++) {
                 const double shift = gtrial_soc(i) - Jd(i);
@@ -452,7 +894,7 @@ int SQP_interface(Alg&         algorithm,
             qps.setOptions(qpopts);
             int_t nWSRs = 5*(n + m) + 100;
             vector<double> dsoc(n), ysoc(n + m);
-            returnValue rvs = qps.init(&B(0,0), &gf(0), &Arow(0,0), &lbd[0], &ubd[0],
+            returnValue rvs = qps.init(Hqp, &gf(0), Aqp.get(), &lbd[0], &ubd[0],
                                        &lbS[0], &ubS[0], nWSRs);
 
             if (rvs == SUCCESSFUL_RETURN || rvs == RET_MAX_NWSR_REACHED) {
@@ -488,10 +930,23 @@ int SQP_interface(Alg&         algorithm,
         }
 
         if (!accepted) {
+            // With an exact Hessian there is nothing wrong with the model that a
+            // smaller region will not cure: shrink it, which changes the direction and
+            // not merely the length of the step, and try the same point again.
+            if (exact_hessian && Delta > Delta_min) {
+                Delta = max(Delta_min, 0.25*Delta);
+                if (iprint) {
+                    snprintf(workspace->text, sizeof(workspace->text),
+                             "   line search failed; trust region reduced to %.2e\n", Delta);
+                    psopt_print(workspace, workspace->text);
+                }
+                n_shrinks++;
+                continue;
+            }
             // A merit function that cannot be decreased along the QP direction means
-            // the quadratic model is not usable here. Reset it and try once more from
-            // the same point before giving up.
-            if (B.isApprox(MatrixXd::Identity(n,n))) {
+            // the quadratic model is not usable here. With a quasi-Newton model that
+            // can be a model gone stale, so it is reset and the point tried once more.
+            if (exact_hessian || B.isApprox(MatrixXd::Identity(n,n))) {
                 status  = 3;
                 message = "The line search failed to decrease the merit function";
                 break;
@@ -505,12 +960,20 @@ int SQP_interface(Alg&         algorithm,
             continue;
         }
 
-        // ---- BFGS update, damped ------------------------------------------------
-        // s is the accepted step and y the change in the gradient of the Lagrangian
-        // at fixed multipliers. Powell's damping keeps s'y positive, and with it the
-        // positive definiteness that the QP solver requires of B.
+        // The region is enlarged only when the step both reached its boundary and was
+        // taken whole: a step the line search had to shorten has already shown that the
+        // model is trusted too far, and one that stopped short of the boundary was not
+        // constrained by it in the first place.
+        if (exact_hessian) {
+            double dinf = 0.0;
+            for (int j = 0; j < n; j++) dinf = max(dinf, fabs(d(j)));
+            if (alpha >= 1.0 && dinf >= 0.9*Delta) Delta = min(2.0*Delta, Delta_max);
+            else if (alpha < 0.25)                 Delta = max(Delta_min, 0.5*Delta);
+        }
+
+        // ---- move to the new point ----------------------------------------------
         gf_old = gf;
-        if (m > 0) J_old = J;
+        if (m > 0 && !exact_hessian) jval_old = jval;
 
         MatrixXd s = xtrial - x;
 
@@ -520,31 +983,51 @@ int SQP_interface(Alg&         algorithm,
         lam  = lam_new;
 
         sqp_gradient(x, gf, workspace);
-        if (m > 0) sqp_jacobian(x, J, workspace, tape_done);
+        if (m > 0) {
+            sqp_jacobian_triplet(x, m, tape_done, jrow, jcol, jval, workspace);
+            Jm.scatter(jval);
+        }
 
-        MatrixXd y = gf - gf_old;
-        if (m > 0) y += (J - J_old).transpose()*lam;
-
-        const double sBs = (s.transpose()*B*s)(0,0);
-        double sy = (s.transpose()*y)(0,0);
-
-        if (sBs > 0.0) {
-            if (sy < 0.2*sBs) {                       // Powell (1978)
-                const double theta = 0.8*sBs/(sBs - sy);
-                y  = theta*y + (1.0 - theta)*(B*s);
-                sy = (s.transpose()*y)(0,0);
+        if (!exact_hessian) {
+            // ---- BFGS update, damped --------------------------------------------
+            // s is the accepted step and y the change in the gradient of the
+            // Lagrangian at fixed multipliers. Powell's damping keeps s'y positive,
+            // and with it the positive definiteness that the QP solver requires of B.
+            MatrixXd y = gf - gf_old;
+            if (m > 0) {
+                // (J - J_old)' lambda, on the shared pattern.
+                MatrixXd dJtl(n,1);
+                vector<double> dj(jval.size());
+                for (size_t k = 0; k < jval.size(); k++) dj[k] = jval[k] - jval_old[k];
+                SparseCsc& Jd = Jm;                     // same pattern, different values
+                Jd.scatter(dj);
+                Jd.transpose_times(&lam(0), &dJtl(0));
+                Jd.scatter(jval);                       // put the Jacobian back
+                y += dJtl;
             }
-            if (sy > 1.0e-12*max(1.0, sBs)) {
-                MatrixXd Bs = B*s;
-                B += (y*y.transpose())/sy - (Bs*Bs.transpose())/sBs;
+
+            const double sBs = (s.transpose()*B*s)(0,0);
+            double sy = (s.transpose()*y)(0,0);
+
+            if (sBs > 0.0) {
+                if (sy < 0.2*sBs) {                       // Powell (1978)
+                    const double theta = 0.8*sBs/(sBs - sy);
+                    y  = theta*y + (1.0 - theta)*(B*s);
+                    sy = (s.transpose()*y)(0,0);
+                }
+                if (sy > 1.0e-12*max(1.0, sBs)) {
+                    MatrixXd Bs = B*s;
+                    B += (y*y.transpose())/sy - (Bs*Bs.transpose())/sBs;
+                }
             }
         }
 
         if (iprint) {
             snprintf(workspace->text, sizeof(workspace->text),
-                     "%5d %16.8e %12.3e %12.3e %10.2e %8d %s\n",
+                     "%5d %16.8e %12.3e %12.3e %10.2e %8d %s%s\n",
                      iter+1, fval, (m > 0) ? max_violation(gval, gl, gu) : 0.0,
-                     dual_err, alpha, (int) nWSR, elastic ? "restoration" : "");
+                     dual_err, alpha, (int) nWSR, elastic ? "restoration " : "",
+                     (exact_hessian && tau_last > 1.0e-12) ? "shifted" : "");
             psopt_print(workspace, workspace->text);
         }
     }
@@ -561,9 +1044,12 @@ int SQP_interface(Alg&         algorithm,
                  "   objective (scaled)   %.10e\n"
                  "   maximum violation    %.3e\n"
                  "   restoration steps    %d\n"
-                 "   second-order corr.   %d\n",
+                 "   second-order corr.   %d\n"
+                 "   Hessian shifts       %d\n"
+                 "   trust region cuts    %d\n",
                  iter, message.c_str(), fval,
-                 (m > 0) ? max_violation(gval, gl, gu) : 0.0, n_restorations, n_corrections);
+                 (m > 0) ? max_violation(gval, gl, gu) : 0.0, n_restorations, n_corrections,
+                 n_shifts, n_shrinks);
         psopt_print(workspace, workspace->text);
     }
 
