@@ -1,0 +1,200 @@
+//////////////////////////////////////////////////////////////////////////////
+// test_sqp.cpp
+//
+// PSOPT's own sequential quadratic programming solver, checked against a closed-form
+// optimum and against IPOPT on the same transcription.
+//
+// The solver is dense at this stage, so the problems here are small on purpose. What
+// is under test is the algorithm and its wiring into PSOPT rather than its speed:
+// that the constraint bounds are handed over correctly, that the multiplier sign
+// convention is right, and that the merit function and the quasi-Newton update
+// converge to the same point PSOPT already reaches by an entirely different method.
+//
+// The problem is the linear-quadratic regulator
+//
+//     minimise  int_0^1 ( x^2 + u^2 ) dt      subject to  x' = u,  x(0) = 1,  x(1) = 0.75.
+//
+// Its Euler-Lagrange equation is x'' = x, so on a segment of length T joining x = a to
+// x = b the optimal cost is [(a^2+b^2) cosh T - 2ab]/sinh T, here 0.775240441234. It is
+// solved twice: once with the control bound inactive, where the closed form applies,
+// and once with |u| <= 0.4, which the unconstrained solution violates near t = 0, so
+// that the active-set machinery of the QP subproblem is exercised as well.
+//
+// The tests are skipped when PSOPT is built without WITH_SQP.
+//////////////////////////////////////////////////////////////////////////////
+
+#include "gtest/gtest.h"
+#include <psopt.h>
+#include <cmath>
+#include <string>
+
+#ifdef USE_SQP
+#include <qpOASES.hpp>
+#endif
+
+namespace sqp_test {
+
+adouble endpoint_cost(adouble* i0, adouble* xf, adouble* p, adouble& t0, adouble& tf,
+                      adouble* xad, int iphase, Workspace* w)
+{ return 0.0; }
+
+adouble integrand_cost(adouble* s, adouble* u, adouble* p, adouble& t,
+                       adouble* xad, int iphase, Workspace* w)
+{ return s[0]*s[0] + u[0]*u[0]; }
+
+void dae(adouble* d, adouble* path, adouble* states, adouble* controls, adouble* p,
+         adouble& time, adouble* xad, int iphase, Workspace* w)
+{ d[0] = controls[0]; }
+
+void events(adouble* e, adouble* i0, adouble* xf, adouble* p, adouble& t0,
+            adouble& tf, adouble* xad, int iphase, Workspace* w)
+{ e[0] = i0[0]; e[1] = xf[0]; }
+
+void linkages(adouble* linkages, adouble* xad, Workspace* w) { }
+
+// Solve with the requested NLP method and control bound; return the objective.
+static double solve_lq(const std::string& nlp_method, double u_bound, int& error_flag)
+{
+    Alg algorithm; Sol solution; Prob problem;
+    const int nodes = 20;
+
+    problem.name        = "Linear-quadratic regulator (SQP test)";
+    problem.outfilename = "test_sqp.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = 1;
+    problem.phases(1).ncontrols = 1;
+    problem.phases(1).nevents   = 2;
+    problem.phases(1).npath     = 0;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    problem.phases(1).bounds.lower.states   << -10.0;
+    problem.phases(1).bounds.upper.states   <<  10.0;
+    problem.phases(1).bounds.lower.controls << -u_bound;
+    problem.phases(1).bounds.upper.controls <<  u_bound;
+    problem.phases(1).bounds.lower.events   << 1.0, 0.75;
+    problem.phases(1).bounds.upper.events   << 1.0, 0.75;
+    problem.phases(1).bounds.lower.StartTime = 0.0;
+    problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0;
+    problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &integrand_cost;
+    problem.endpoint_cost  = &endpoint_cost;
+    problem.dae            = &dae;
+    problem.events         = &events;
+    problem.linkages       = &linkages;
+
+    problem.phases(1).guess.states   = ones(1, nodes);
+    problem.phases(1).guess.controls = zeros(1, nodes);
+    problem.phases(1).guess.time     = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method         = nlp_method;
+    algorithm.scaling            = "automatic";
+    algorithm.derivatives        = "automatic";
+    algorithm.nlp_iter_max       = 500;
+    algorithm.nlp_tolerance      = 1.e-8;
+    algorithm.collocation_method = "Legendre";
+    algorithm.print_level        = 0;
+
+    psopt(solution, problem, algorithm);
+
+    error_flag = solution.error_flag;
+    return solution.cost;
+}
+
+} // namespace sqp_test
+
+
+#ifdef USE_SQP
+
+// The sign convention of qpOASES's multipliers, which SQP_interface converts to
+// PSOPT's. It is the one thing in the interface that the documentation does not settle
+// unambiguously, so it is pinned here against a QP whose answer is known: minimising
+// 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1), and in the convention
+// grad f + A' lambda = 0 the multiplier is -1. qpOASES returns +1, which is why
+// SQP_interface negates it.
+TEST(SQPSolver, QpOasesDualSignConvention)
+{
+    USING_NAMESPACE_QPOASES
+
+    real_t H[4]   = {1,0, 0,1};
+    real_t gv[2]  = {0,0};
+    real_t A[2]   = {1,1};
+    real_t lbA[1] = {2}, ubA[1] = {2};
+    real_t lb[2]  = {-1e20,-1e20}, ub[2] = {1e20,1e20};
+
+    QProblem qp(2,1);
+    Options o; o.printLevel = PL_NONE; qp.setOptions(o);
+    int_t nWSR = 100;
+    ASSERT_EQ(qp.init(H, gv, A, lb, ub, lbA, ubA, nWSR), SUCCESSFUL_RETURN);
+
+    real_t x[2], y[3];
+    qp.getPrimalSolution(x);
+    qp.getDualSolution(y);
+
+    EXPECT_NEAR(x[0], 1.0, 1e-10);
+    EXPECT_NEAR(x[1], 1.0, 1e-10);
+    EXPECT_NEAR(y[2], 1.0, 1e-8);
+
+    const double lambda_psopt = -y[2];
+    EXPECT_NEAR(x[0] + 1.0*lambda_psopt, 0.0, 1e-8);   // stationarity in PSOPT's sign
+}
+
+// qpOASES's own BLAS and LAPACK replacements must not be linked in. They are stand-ins
+// for use when no BLAS is available, and if they are present they capture dgemm_ and
+// dpotrf_ for the whole program, including for MUMPS inside IPOPT, which then fails
+// inside its linear solver on problems it otherwise solves without difficulty. The
+// build guards against this in CMakeLists.txt; this checks the guard held, because the
+// symptom appears nowhere near the SQP code.
+TEST(SQPSolver, RealBlasIsNotOverriddenByQpOases)
+{
+    int flag = -1;
+    const double J = sqp_test::solve_lq("IPOPT", 10.0, flag);
+    ASSERT_EQ(flag, 0) << "IPOPT failed; qpOASES's BLAS replacements are the first suspect";
+    EXPECT_NEAR(J, 0.775240441234, 1.0e-9);
+}
+
+// The solver against the closed-form optimum, with no bound active.
+TEST(SQPSolver, LinearQuadraticAgainstClosedForm)
+{
+    int flag = -1;
+    const double J = sqp_test::solve_lq("SQP", 10.0, flag);
+
+    ASSERT_EQ(flag, 0) << "the SQP solver failed";
+    EXPECT_NEAR(J, 0.775240441234, 1.0e-9);
+}
+
+// The same problem with |u| <= 0.4, which the unconstrained optimal control violates
+// near t = 0 (it starts at -0.675), so the bound is active over part of the horizon and
+// the QP subproblem has a non-trivial active set. There is no closed form once the
+// bound bites, so the comparison is against IPOPT: the two share nothing but the
+// problem functions, one being a primal-dual interior-point method and the other an
+// active-set SQP with a BFGS model.
+TEST(SQPSolver, AgreesWithIpoptWithAnActiveControlBound)
+{
+    int flag_ipopt = -1, flag_sqp = -1;
+
+    const double J_ipopt = sqp_test::solve_lq("IPOPT", 0.4, flag_ipopt);
+    const double J_sqp   = sqp_test::solve_lq("SQP",   0.4, flag_sqp);
+
+    ASSERT_EQ(flag_ipopt, 0) << "IPOPT failed on the reference problem";
+    ASSERT_EQ(flag_sqp,   0) << "the SQP solver failed";
+
+    // The bound must actually bite, or the test would prove nothing about the active set.
+    EXPECT_GT(J_ipopt, 0.775240441234 + 1.0e-4);
+
+    EXPECT_NEAR(J_sqp, J_ipopt, 1.0e-7*std::fabs(J_ipopt));
+}
+
+#else
+
+TEST(SQPSolver, DISABLED_NotBuilt)
+{
+    GTEST_SKIP() << "PSOPT was built without WITH_SQP";
+}
+
+#endif // USE_SQP

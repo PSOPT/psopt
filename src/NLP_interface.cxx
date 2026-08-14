@@ -31,6 +31,7 @@ e-mail:    v.m.becerra@ieee.org
 
 
 #include "psopt.h"
+#include "psopt_sqp.hpp"
 
 // Bring std/Ipopt names into this translation unit (formerly leaked via psopt.h).
 using namespace std;
@@ -367,6 +368,15 @@ int NLP_interface(
         error_message(workspace->text);
 #endif
 
+    }
+
+    else if ( algorithm.nlp_method=="SQP" )
+    {
+        // PSOPT's own sequential quadratic programming solver. Dense at this stage:
+        // see include/psopt_sqp.hpp for what that costs and what the sparse stage
+        // will change.
+        return SQP_interface(algorithm, x0, f, g, nlp_ncons, nlp_neq,
+                             xlb, xub, lambda, hotflag, iprint, workspace, user_data);
     }
 
     else if ( algorithm.nlp_method=="IPOPT" )

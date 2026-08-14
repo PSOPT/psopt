@@ -39,8 +39,9 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 {
     int i;
 
-    if (algorithm.nlp_method != "IPOPT" && algorithm.nlp_method != "SNOPT" )
-       error_message("Incorrect NLP method specified. The only valid values are \"IPOPT\" or \"SNOPT\" ");
+    if (algorithm.nlp_method != "IPOPT" && algorithm.nlp_method != "SNOPT"
+                                       && algorithm.nlp_method != "SQP" )
+       error_message("Incorrect NLP method specified. The valid values are \"IPOPT\", \"SQP\" or \"SNOPT\" ");
     if (algorithm.collocation_method != "Legendre" && algorithm.collocation_method!="Chebyshev" && algorithm.collocation_method!="trapezoidal" && algorithm.collocation_method!="Hermite-Simpson" && algorithm.collocation_method!="Radau" && algorithm.collocation_method!="Gauss")
        error_message("Incorrect collocation method specified. Valid options are \"Legendre\" , \"Chebyshev\", \"trapezoidal\", \"Hermite-Simpson\", \"Radau\", and \"Gauss\" ");
     if (algorithm.scaling != "automatic" && algorithm.scaling!="user")
