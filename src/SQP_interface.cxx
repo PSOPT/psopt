@@ -107,14 +107,21 @@ static void sqp_jacobian(MatrixXd& x, MatrixXd& J, Workspace* workspace, bool& t
 
     if (useAutomaticDifferentiation(*workspace->algorithm)) {
 
+        // One recording per call, reused for every evaluation after it. The sparsity
+        // pattern has to be computed from that recording before it can be reused, so the
+        // first evaluation after a recording asks for the structure pass; asking to
+        // reuse a pattern that belongs to the previous mesh returns a Jacobian that is
+        // wrong in every entry and says nothing about it.
+        bool fresh_tape = false;
         if (!tape_done) {
             psopt_ad::ad_record(workspace->ad_g, n, m, &x(0),
                 [&](const adouble* xin, adouble* yout)
                 { gg_ad(const_cast<adouble*>(xin), yout, workspace); });
-            tape_done = true;
+            tape_done  = true;
+            fresh_tape = true;
         }
         psopt_ad::SparseTriplet T =
-            psopt_ad::ad_sparse_jacobian(workspace->ad_g, &x(0), /*reuse=*/true);
+            psopt_ad::ad_sparse_jacobian(workspace->ad_g, &x(0), /*reuse=*/!fresh_tape);
         for (int k = 0; k < T.nnz(); k++)
             J((int) T.row[k], (int) T.col[k]) = T.val[k];
     }

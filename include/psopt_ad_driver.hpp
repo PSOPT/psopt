@@ -71,6 +71,17 @@ struct ADHandle {
 };
 
 inline void ad_record(ADHandle& h, int n, int m, const double* x0, ADVecFunc f){
+    // A cached sparsity pattern belongs to the tape it was computed from. Keeping it
+    // across a re-record of the same shape is intentional and is what the note below
+    // describes; keeping it across a change of shape is not, and cannot be right. Every
+    // mesh refinement iteration gives the NLP a new number of variables and constraints,
+    // and a pattern computed for the previous mesh is then not a stale pattern for the
+    // same matrix but the pattern of a different one. CppAD is asked for the values at
+    // the positions that pattern names, takes them from the new tape, and returns them
+    // without complaint: a Jacobian wrong in every entry and indistinguishable from a
+    // right one. Dropping the cache when the shape changes costs one sparsity pass per
+    // mesh and removes the trap for every caller.
+    if (h.n != n || h.m != m) { h.jac_struct = false; h.hess_struct = false; }
     h.n=n; h.m=m; h.f=f;
 #if PSOPT_AD_BACKEND == PSOPT_AD_CPPAD
     // Tape with native AD<double> vectors (CppAD requires the exact element type), then
