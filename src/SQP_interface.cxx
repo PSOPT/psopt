@@ -785,9 +785,6 @@ int SQP_interface(Alg&         algorithm,
     // Hessian -- because the inertia of the KKT matrix says at once when that is not
     // usable, which is the signal the previous two attempts at this lacked.
     double tau          = 0.0;
-    double rho1         = 0.0;
-    double rho2         = 0.0;
-    double dL_norm_prev = 0.0;
     int    n_inertia    = 0;          // KKT factorisations spent on the inertia test
 
     // The first subproblem is solved with H = I for its multipliers alone: with the
@@ -829,7 +826,7 @@ int SQP_interface(Alg&         algorithm,
         dL -= zbnd;
         double dual_err = 0.0;
         for (int j = 0; j < n; j++) dual_err = max(dual_err, fabs(dL(j)));
-        const double dual_raw = dual_err;
+
 
         // Scaled as IPOPT scales it. An earlier version divided by the largest
         // multiplier, which on a problem with large multipliers divides the residual
@@ -851,13 +848,15 @@ int SQP_interface(Alg&         algorithm,
             break;
         }
 
-        if (exact_hessian && !multiplier_pass && iter > 0 && rho2 > 0.0) {
-            const double rho3 = (dL_norm_prev > 0.0) ? dual_raw/dL_norm_prev : 1.0;
-            if      (rho1 <= 0.25*rho2) tau = min(max(2.0*tau, 1.0e-4), 1.0);
-            else if (rho1 >= 0.75*rho2) tau = tau*min(0.5, rho3);
-            if (tau < 1.0e-14) tau = 0.0;
-        }
-        dL_norm_prev = dual_raw;
+        // Betts drives the Levenberg parameter from the agreement between the predicted
+        // and the actual reduction, in the manner of a trust region, and an earlier
+        // version of this file did the same. It was dead code: the parameter it wrote
+        // was shadowed by a declaration of the same name inside the subproblem loop
+        // below, so the value computed here was never read and the shift began at
+        // nothing at every iteration. Removing the shadow rather than the rule turned
+        // out to matter more than the rule -- see the inertia loop below -- and the rule
+        // itself is not reinstated: the inertia of the KKT matrix answers the same
+        // question directly, and answers it before a step has to be taken and judged.
 
         // The exact Hessian is a function of the multipliers as well as the point, so
         // it is re-evaluated here, after the optimality test has read the multipliers
@@ -920,7 +919,6 @@ int SQP_interface(Alg&         algorithm,
         // decays when it is not needed, so that the model returns to the exact one as
         // the iterates settle. This is the same device IPOPT uses in its own inertia
         // correction.
-        double tau = 0.0;
         for (int attempt = 0; ; attempt++) {
 
             if (exact_hessian && multiplier_pass) {
@@ -931,20 +929,62 @@ int SQP_interface(Alg&         algorithm,
                 // Raise the Levenberg parameter until the KKT matrix has the inertia
                 // that says the reduced Hessian is positive definite. This is Betts's
                 // inertia control, with the inertia obtained from MUMPS.
+                //
+                // The size of the shift matters as much as the fact of it, and how it is
+                // arrived at matters more than either. Betts's parameter multiplies
+                // |sigma| + 1, where sigma is the Gerschgorin bound on the most negative
+                // eigenvalue of the Hessian, so a shift is always a fraction of a
+                // worst-case bound rather than of anything the model actually needs; and
+                // sigma moves with the multipliers, which on examples/bryson_denham took
+                // it from -8.8e+02 to -5.4e+08 within three iterations. Started afresh
+                // from a fixed fraction of that at every iteration, the shift is either
+                // far too large or far too small, and neither is recoverable within the
+                // iteration: too large flattens the curvature the model does have along
+                // with the direction that has none, and the Newton step becomes a scaled
+                // gradient step -- 150 iterations on bryson_denham, converging linearly,
+                // against 19 or fewer on every other example; too small leaves the model
+                // near-singular, and on brac1 the first full step took the scaled
+                // objective of a minimum-time problem to zero.
+                //
+                // What removes the choice is not the starting value but the memory. The
+                // shift that worked at the last iteration is a far better guess than any
+                // fraction of a bound, so it is carried forward and tried at a third of
+                // a fifth of its size: if the model has improved the shift decays
+                // towards zero and the exact Hessian returns, and if it has not the
+                // escalation begins from somewhere useful instead of from nothing. This
+                // is IPOPT's inertia correction, with Betts's bound setting the scale of
+                // the first attempt and the ceiling.
+                //
+                // Sweeping the starting fraction over 1.0e-10 to 1.0e-4 and the
+                // escalation over 10 and 100, with and without the carry-over, the
+                // carry-over decides every case: with it all eight combinations solve
+                // all five small examples, without it six of the eight fail or stall on
+                // one or another. The decay factor itself has to be chosen with more
+                // care than it looks: at 0.1 the shift decays faster than the model
+                // improves and bryson_denham fails, and between 1/3 and 0.3333 -- a
+                // relative change of one part in ten thousand -- the same problem takes
+                // 53 iterations or 27. Once the shift is small the iterates are on a
+                // knife edge and the count is not a meaningful quantity to a factor of
+                // two; the failure at 0.1 is, and 0.2 is chosen for the distance from it
+                // rather than for any count.
                 Hm.scatter(hval);
-                const double sigma = Hm.gerschgorin_lower_bound();
+                const double sigma     = Hm.gerschgorin_lower_bound();
+                const double delta_max = fabs(sigma) + 1.0;
+                double delta = (tau > 0.0) ? 0.2*tau : 0.0;
                 for (;;) {
                     Hm.scatter(hval);
-                    if (tau > 0.0) Hm.shift_diagonal(tau*(fabs(sigma) + 1.0));
+                    if (delta > 0.0) Hm.shift_diagonal(delta);
 
                     int npos = 0, nneg = 0, nzero = 0;
                     const bool got = kkt_inertia(Hm, Jm, n, m, npos, nneg, nzero);
                     n_inertia++;
                     if (!got || (nneg == m && nzero == 0)) break;
-                    if (tau >= 1.0) break;
-                    tau = (tau == 0.0) ? 1.0e-4 : min(10.0*tau, 1.0);
+                    if (delta >= delta_max) break;
+                    delta = (delta == 0.0) ? 1.0e-10*delta_max
+                                           : min(100.0*delta, delta_max);
                     n_shifts++;
                 }
+                tau = delta;                     // carried into the next iteration
             }
 
             if (use_extern) {
@@ -1419,9 +1459,6 @@ int SQP_interface(Alg&         algorithm,
             if (alpha >= 1.0 && dinf >= 0.9*Delta) Delta = min(2.0*Delta, Delta_max);
             else if (alpha < 0.25)                 Delta = max(Delta_min, 0.5*Delta);
         }
-
-        rho1 = phi0 - phit;
-        rho2 = -alpha*dphi - 0.5*quadratic_form(exact_hessian, Hm, B, d);
 
         // ---- move to the new point ----------------------------------------------
         gf_old = gf;
