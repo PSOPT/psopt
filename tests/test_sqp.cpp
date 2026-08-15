@@ -27,6 +27,8 @@
 #include <psopt.h>
 #include <cmath>
 #include <string>
+#include <vector>
+#include <cstdlib>
 
 #include "psopt_qp_plugin.h"
 
@@ -287,24 +289,42 @@ const Backend backends[] = {
 #ifdef USE_OSQP
     { "OSQP",    true },
 #endif
-    // GALAHAD is deliberately absent from this list. Its QPA reaches its iteration
-    // limit on PSOPT's subproblems -- the same objective at 201 iterations and at 1001,
-    // so it is stalling rather than converging slowly -- and the SQP cannot be driven
-    // by it as it stands. What is verified below is that the plugin is correctly wired,
-    // on a subproblem QPA does solve; making QPA solve PSOPT's is unfinished work, and
-    // is recorded here rather than hidden by leaving the backend out of the tests.
+};
+
+// GALAHAD's default linear solver requires OMP_CANCELLATION and OMP_PROC_BIND to be
+// TRUE in the environment, and cannot be made to work without them from inside the
+// process: the OpenMP runtime reads them when it first initialises, long before a
+// plugin is loaded. So whether GALAHAD can be exercised at all is a property of how
+// this binary was started, and is asked at run time rather than assumed. CTest runs the
+// suite a second time with those variables set, so the backend is covered.
+bool galahad_environment_ok()
+{
+    const char* c = getenv("OMP_CANCELLATION");
+    const char* b = getenv("OMP_PROC_BIND");
+    return c != NULL && b != NULL && (c[0] == 'T' || c[0] == 't')
+                                  && (b[0] != 'F' && b[0] != 'f');
+}
+
+std::vector<Backend> enabled_backends()
+{
+    std::vector<Backend> out(backends, backends + sizeof(backends)/sizeof(backends[0]));
+#ifdef USE_GALAHAD
+    if (galahad_environment_ok()) { Backend g = { "GALAHAD", true }; out.push_back(g); }
+#endif
+    return out;
 };
 
 } // namespace
 
 TEST(SQPSolver, EveryBackendReachesTheClosedFormInOneProcess)
 {
-    for (size_t k = 0; k < sizeof(backends)/sizeof(backends[0]); k++) {
+    const std::vector<Backend> use = enabled_backends();
+    for (size_t k = 0; k < use.size(); k++) {
         int flag = -1;
         const double J = sqp_test::solve_lq("SQP", 10.0, flag, "limited-memory",
-                                            backends[k].name);
-        EXPECT_EQ(flag, 0)          << "backend " << backends[k].name;
-        EXPECT_NEAR(J, 0.775240441234, 1.0e-9) << "backend " << backends[k].name;
+                                            use[k].name);
+        EXPECT_EQ(flag, 0)          << "backend " << use[k].name;
+        EXPECT_NEAR(J, 0.775240441234, 1.0e-9) << "backend " << use[k].name;
     }
 }
 
@@ -320,11 +340,12 @@ TEST(SQPSolver, EveryBackendAgreesWithAnActiveBoundInOneProcess)
     ASSERT_EQ(flag_ref, 0);
     ASSERT_GT(J_ref, 0.775240441234 + 1.0e-4);      // the bound must actually bite
 
-    for (size_t k = 0; k < sizeof(backends)/sizeof(backends[0]); k++) {
+    const std::vector<Backend> use = enabled_backends();
+    for (size_t k = 0; k < use.size(); k++) {
         int flag = -1;
-        const double J = sqp_test::solve_lq("SQP", 0.4, flag, "exact", backends[k].name);
-        EXPECT_EQ(flag, 0) << "backend " << backends[k].name;
-        EXPECT_NEAR(J, J_ref, 1.0e-6*std::fabs(J_ref)) << "backend " << backends[k].name;
+        const double J = sqp_test::solve_lq("SQP", 0.4, flag, "exact", use[k].name);
+        EXPECT_EQ(flag, 0) << "backend " << use[k].name;
+        EXPECT_NEAR(J, J_ref, 1.0e-6*std::fabs(J_ref)) << "backend " << use[k].name;
     }
 }
 
@@ -338,21 +359,19 @@ TEST(SQPSolver, EveryBackendAgreesWithAnActiveBoundInOneProcess)
 //
 // This also exercises the whole plugin path end to end: the loader, the ABI, the
 // coordinate-format conversion and the bound handling.
-// DISABLED: this does not pass, and the reason is worth writing down rather than
-// deleting. The same problem, the same control settings and the same GALAHAD build,
-// driven from a small C programme, solves in four iterations and returns x = (1,1) with
-// y = 1. Driven through this plugin it returns QPA's iteration-limit code and numbers
-// that are not a solution of anything. Every difference between the two has been
-// eliminated one at a time -- the linear-solver name, control.infinity and the bound
-// convention that goes with it, control.maxit -- and none of them accounts for it. What
-// is left is the C++ side: qpa_control_type is filled by a Fortran routine and then
-// written to from C++, and if its layout as the compiler sees it differs from the one
-// the library was built with, the assignments land in the wrong fields and quietly
-// corrupt the control block, which is exactly what the symptoms look like. The next
-// step is to check that by having the plugin set nothing at all beyond f_indexing, or
-// by comparing offsetof() against the Fortran side, rather than by trying more values.
-TEST(SQPSolver, DISABLED_GalahadPluginSolvesAndUsesTheRightDualSign)
+// GALAHAD's QPA through the plugin, on the QP every backend's dual convention is
+// pinned against: minimising 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1) and, in the
+// convention grad f + A' lambda = 0, a multiplier of -1. QPA states its own
+// stationarity as H x + g - A' y - z = 0, so its y carries the opposite sign to
+// PSOPT's and the plugin negates it -- qpOASES's convention rather than ProxQP's and
+// QPALM's. This also exercises the whole plugin path: the loader, the ABI, the
+// coordinate-format conversion and the bound handling.
+TEST(SQPSolver, GalahadPluginSolvesAndUsesTheRightDualSign)
 {
+    if (!galahad_environment_ok())
+        GTEST_SKIP() << "GALAHAD needs OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE "
+                        "in the environment; CTest runs a second pass with them set";
+
     const long long H_p[3] = {0, 1, 2};
     const long long H_i[2] = {0, 1};
     const double    H_x[2] = {1.0, 1.0};

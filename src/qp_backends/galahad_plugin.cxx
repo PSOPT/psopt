@@ -31,9 +31,31 @@ extern "C" {
 
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
 
+namespace {
+
+// Whether the environment GALAHAD's default linear solver insists on is in place.
+bool psopt_galahad_openmp_environment_ok()
+{
+    const char* cancellation = getenv("OMP_CANCELLATION");
+    const char* proc_bind    = getenv("OMP_PROC_BIND");
+    return cancellation != NULL && proc_bind != NULL
+        && (cancellation[0] == 'T' || cancellation[0] == 't')
+        && (proc_bind[0]    != 'F' && proc_bind[0]    != 'f');
+}
+
+} // anonymous namespace
+
 extern "C" {
+
+// Exposed so that the loader can explain the requirement before a solve is attempted.
+__attribute__((visibility("default")))
+int psopt_qp_environment_ok(void)
+{
+    return psopt_galahad_openmp_environment_ok() ? 1 : 0;
+}
 
 __attribute__((visibility("default")))
 int psopt_qp_abi_version(void) { return PSOPT_QP_ABI_VERSION; }
@@ -56,6 +78,18 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
     // constrained QP, which is not what QPA is for and is not what the SQP produces
     // for any problem with dynamics.
     if (n <= 0 || m <= 0) return s->status;
+
+    // GALAHAD's default symmetric solver is threaded and requires OMP_CANCELLATION and
+    // OMP_PROC_BIND to be TRUE in the environment. It warns when they are not, and the
+    // warning is not cosmetic: without them it does not solve, and what comes back is
+    // its iteration-limit code and a vector that is not a solution of anything -- on a
+    // two-variable problem. The variables cannot be set from here, because the OpenMP
+    // runtime reads them when it first initialises, which in a PSOPT process has
+    // already happened by the time this plugin is loaded. So the condition is checked
+    // and refused, and the loader turns the refusal into a sentence the user can act
+    // on. Diagnosing this from the symptom took a day; it should never need diagnosing
+    // again.
+    if (!psopt_galahad_openmp_environment_ok()) return s->status;
 
     // ---- H, lower triangle, coordinate form ------------------------------------
     std::vector<ipc_> H_row, H_col, A_row, A_col;
@@ -129,12 +163,6 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
     control.out         = 0;
     control.error       = 0;
 
-    // The default symmetric solver prints a warning per factorisation unless
-    // OMP_CANCELLATION and OMP_PROC_BIND are set in the environment, which a library
-    // cannot arrange for its caller. Naming a different one is tempting and wrong:
-    // asking for a solver GALAHAD was not built with makes it refuse the problem, and
-    // the refusal arrives as an ordinary solve failure with nothing to distinguish it
-    // from a hard subproblem. The default is left alone.
 
     qpa_import(&control, &data, &status, (ipc_) n, (ipc_) m,
                "coordinate", (ipc_) H_val.size(), &H_row[0], &H_col[0], NULL,

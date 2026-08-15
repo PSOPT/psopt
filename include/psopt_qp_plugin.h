@@ -133,7 +133,9 @@ typedef struct {
     int     status;
 } psopt_qp_solution;
 
-/*  The three functions a plugin exports, and the only symbols it may export. */
+/*  The functions a plugin exports, and the only symbols it may export. The first three
+ *  are required; the fourth is optional and is provided only by a backend that has a
+ *  requirement it cannot satisfy for itself. */
 
 /*  The ABI the plugin was built against. */
 int         psopt_qp_abi_version(void);
@@ -145,6 +147,16 @@ const char* psopt_qp_name(void);
  *  abort, and must not call exit(): a subproblem a backend cannot take is an ordinary
  *  event and is reported, not escalated. */
 int         psopt_qp_solve(const psopt_qp_problem* problem, psopt_qp_solution* solution);
+
+/*  Optional. Non-zero if the backend can run in this process at all. GALAHAD's default
+ *  linear solver, for instance, requires OMP_CANCELLATION and OMP_PROC_BIND to be set
+ *  in the environment, and the OpenMP runtime reads them once, when it initialises,
+ *  which in a PSOPT process has happened long before a plugin is loaded: nothing the
+ *  plugin can do puts it right. Unmet, the requirement does not announce itself -- the
+ *  solver returns its iteration-limit code and a vector that is not a solution, on a
+ *  problem of two variables. A backend that answers this question lets the loader say
+ *  so in a sentence instead. A plugin that does not export it is assumed to be ready. */
+int         psopt_qp_environment_ok(void);
 
 #ifdef __cplusplus
 }

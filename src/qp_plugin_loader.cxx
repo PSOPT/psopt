@@ -75,6 +75,7 @@ struct LoadedPlugin {
     const char* (*name)(void) = NULL;
     int         (*abi)(void)  = NULL;
     int         (*solve)(const psopt_qp_problem*, psopt_qp_solution*) = NULL;
+    int         (*environment_ok)(void) = NULL;   // optional
     std::string path;
     std::string error;
 };
@@ -155,6 +156,15 @@ LoadedPlugin& open_plugin(const std::string& backend)
         p.solve = (int (*)(const psopt_qp_problem*, psopt_qp_solution*))
                       dlsym(p.handle, "psopt_qp_solve");
 
+        // Optional, and provided only by a backend with a requirement it cannot satisfy
+        // for itself. GALAHAD's default linear solver needs OMP_CANCELLATION and
+        // OMP_PROC_BIND set in the environment, which the OpenMP runtime reads when it
+        // first initialises -- long before a plugin is loaded, so nothing the plugin
+        // does can put it right. Unmet, it does not announce itself: the solver returns
+        // an iteration-limit code and a vector that is not a solution, on problems of
+        // two variables. Asking here turns a day's diagnosis into a sentence.
+        p.environment_ok = (int (*)(void)) dlsym(p.handle, "psopt_qp_environment_ok");
+
         if (p.abi == NULL || p.name == NULL || p.solve == NULL)
             p.error = "the QP backend plugin " + p.path
                     + " does not provide the expected entry points";
@@ -162,6 +172,12 @@ LoadedPlugin& open_plugin(const std::string& backend)
             p.error = "the QP backend plugin " + p.path + " was built against plugin ABI "
                     + std::to_string(p.abi()) + ", and this PSOPT expects "
                     + std::to_string(PSOPT_QP_ABI_VERSION);
+        else if (p.environment_ok != NULL && p.environment_ok() == 0)
+            p.error = std::string("the ") + p.name() + " backend cannot run in this "
+                      "environment. Its linear solver requires OMP_CANCELLATION=TRUE and "
+                      "OMP_PROC_BIND=TRUE, and they must be set before the program starts, "
+                      "because the OpenMP runtime reads them once when it initialises. "
+                      "Set both in the environment and run again.";
     }
 
     cache[backend] = p;

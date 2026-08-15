@@ -14,7 +14,8 @@ if(NOT plugins)
     message(FATAL_ERROR "no QP backend plugins found in ${PLUGIN_DIR}")
 endif()
 
-set(allowed "psopt_qp_solve" "psopt_qp_name" "psopt_qp_abi_version")
+set(allowed "psopt_qp_solve" "psopt_qp_name" "psopt_qp_abi_version"
+                "psopt_qp_environment_ok")
 
 foreach(plugin ${plugins})
     execute_process(COMMAND ${NM} --dynamic --defined-only --format=posix ${plugin}
