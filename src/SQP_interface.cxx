@@ -33,7 +33,12 @@ e-mail:    v.m.becerra@ieee.org
 
 #ifdef USE_SQP
 
+#include <Eigen/SparseCore>
 #include <qpOASES.hpp>
+
+extern "C" {
+#include <dmumps_c.h>
+}
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -210,6 +215,24 @@ public:
         }
     }
 
+    // Gerschgorin's bound on the most negative eigenvalue: every eigenvalue lies in a
+    // disc centred on a diagonal entry with radius that row's off-diagonal absolute sum.
+    // It normalises the convexification shift, turning it from a quantity in the units of
+    // the problem into a number between zero and one. Betts, 3rd ed., eq. (2.40).
+    double gerschgorin_lower_bound() const
+    {
+        vector<double> dg(max(nc_,1), 0.0), rad(max(nc_,1), 0.0);
+        for (int j = 0; j < nc_; j++)
+            for (sparse_int_t k = jc_[(size_t) j]; k < jc_[(size_t) j+1]; k++) {
+                const int i = (int) ir_[(size_t) k];
+                if (i == j) dg[(size_t) j]  = val_[(size_t) k];
+                else        rad[(size_t) j] += fabs(val_[(size_t) k]);
+            }
+        double sigma = 0.0;
+        for (int j = 0; j < nc_; j++) sigma = min(sigma, dg[(size_t) j] - rad[(size_t) j]);
+        return sigma;
+    }
+
     // The largest absolute column sum, which for a symmetric matrix is its 1-norm and
     // bounds its spectral radius. Used only to scale the convexification shift.
     double norm1() const
@@ -346,6 +369,83 @@ static bool solve_qp_plugin(const string& backend, const QpProblem& p,
     return true;
 }
 
+
+// The inertia of the KKT matrix
+//
+//     K = [ H   J' ]
+//         [ J   0  ]
+//
+// which is what Betts's Hessian modification is actually steered by, and what none of
+// the QP backends will tell us. The reduced Hessian of the Lagrangian is positive
+// definite on the null space of the constraints exactly when K has n positive and m
+// negative eigenvalues and none zero (Gould 1985; Betts, 3rd ed., eq. (2.41)). That is a
+// sharp test, unlike a Cholesky of H alone: the full Hessian of a collocated optimal
+// control problem is essentially never positive definite, so requiring it to be drives
+// the Levenberg parameter up until the model is a scaled identity and the second-order
+// information is gone -- measured, on examples/lts, as a run that reached the iteration
+// limit still creeping in the eighth decimal place.
+//
+// MUMPS provides it, and PSOPT already links MUMPS: IPOPT's default linear solver is the
+// same libdmumps_seq, so this adds no library, no symbol and none of the collision risk
+// that the QP backends had to be separated to avoid. INFOG(12) counts the negative
+// pivots and INFOG(28), with ICNTL(24) on, the null ones.
+//
+// GALAHAD's SLS also advertises this, through inform.negative_eigenvalues and
+// inform.rank. On the same matrices, with inertia known by hand, MUMPS was right three
+// times out of three and SLS returned values like (-23, 26, 0) -- which is either a
+// misuse of its interface or a defect in it, and either way not something to build on
+// without understanding it first. MUMPS is used here for that reason.
+bool kkt_inertia(const SparseCsc& H, const SparseCsc& J, int n, int m,
+                 int& npos, int& nneg, int& nzero)
+{
+    vector<MUMPS_INT> irn, jcn;
+    vector<double>    val;
+    irn.reserve((size_t) H.nnz()/2 + J.nnz());
+    jcn.reserve(irn.capacity());
+    val.reserve(irn.capacity());
+
+    // The lower triangle of K, in coordinate form, one-based as MUMPS wants it. H is
+    // stored with both triangles, so half of it is dropped here.
+    vector<Eigen::Triplet<double, int> > th, tj;
+    H.emit_triplets(th, int(0));
+    for (size_t k = 0; k < th.size(); k++)
+        if (th[k].row() >= th[k].col()) {
+            irn.push_back(th[k].row() + 1); jcn.push_back(th[k].col() + 1);
+            val.push_back(th[k].value());
+        }
+    if (m > 0) {
+        J.emit_triplets(tj, int(0));
+        for (size_t k = 0; k < tj.size(); k++) {          // J sits below the diagonal
+            irn.push_back(n + tj[k].row() + 1); jcn.push_back(tj[k].col() + 1);
+            val.push_back(tj[k].value());
+        }
+    }
+    if (irn.empty()) return false;
+
+    DMUMPS_STRUC_C id;
+    id.comm_fortran = -987654;              // MPI_COMM_WORLD, in the sequential build
+    id.par = 1;
+    id.sym = 2;                             // general symmetric
+    id.job = -1;
+    dmumps_c(&id);
+
+    id.icntl[0] = -1; id.icntl[1] = -1; id.icntl[2] = -1; id.icntl[3] = 0;  // silent
+    id.icntl[23] = 1;                       // ICNTL(24): detect null pivots
+    id.n   = (MUMPS_INT) (n + m);
+    id.nnz = (MUMPS_INT8) irn.size();
+    id.irn = &irn[0]; id.jcn = &jcn[0]; id.a = &val[0];
+    id.job = 4;                             // analyse and factorize
+    dmumps_c(&id);
+
+    const bool ok = (id.infog[0] >= 0);
+    nneg  = (int) id.infog[11];
+    nzero = (int) id.infog[27];
+    npos  = (n + m) - nneg - nzero;
+
+    id.job = -2;
+    dmumps_c(&id);
+    return ok;
+}
 
 // d' H d, with H either the sparse exact Hessian or the dense quasi-Newton model.
 double quadratic_form(bool exact, const SparseCsc& Hm, const MatrixXd& B, const MatrixXd& d)
@@ -631,7 +731,20 @@ int SQP_interface(Alg&         algorithm,
     // at one makes that first model the same one a quasi-Newton method would start
     // from, and halving it at every iteration that does not need it hands the model
     // back to the exact curvature within a few steps.
-    double tau_last       = 1.0;      // the last shift that worked
+    // Betts's Levenberg parameter: H = H_L + tau*(|sigma| + 1) I, tau in [0,1], sigma the
+    // Gerschgorin bound on the most negative eigenvalue. It starts at zero -- the exact
+    // Hessian -- because the inertia of the KKT matrix says at once when that is not
+    // usable, which is the signal the previous two attempts at this lacked.
+    double tau          = 0.0;
+    double rho1         = 0.0;
+    double rho2         = 0.0;
+    double dL_norm_prev = 0.0;
+    int    n_inertia    = 0;          // KKT factorisations spent on the inertia test
+
+    // The first subproblem is solved with H = I for its multipliers alone: with the
+    // multipliers at zero the constraints contribute nothing to the Hessian of the
+    // Lagrangian, and on a minimum-time problem the model is then identically zero.
+    bool multiplier_pass = exact_hessian;
     int    status  = 1;                                // 1 = iteration limit
     string message = "Maximum number of SQP iterations reached";
     int    iter    = 0;
@@ -667,6 +780,7 @@ int SQP_interface(Alg&         algorithm,
         dL -= zbnd;
         double dual_err = 0.0;
         for (int j = 0; j < n; j++) dual_err = max(dual_err, fabs(dL(j)));
+        const double dual_raw = dual_err;
 
         // Scaled as IPOPT scales it. An earlier version divided by the largest
         // multiplier, which on a problem with large multipliers divides the residual
@@ -687,6 +801,14 @@ int SQP_interface(Alg&         algorithm,
             message = "Optimal solution found";
             break;
         }
+
+        if (exact_hessian && !multiplier_pass && iter > 0 && rho2 > 0.0) {
+            const double rho3 = (dL_norm_prev > 0.0) ? dual_raw/dL_norm_prev : 1.0;
+            if      (rho1 <= 0.25*rho2) tau = min(max(2.0*tau, 1.0e-4), 1.0);
+            else if (rho1 >= 0.75*rho2) tau = tau*min(0.5, rho3);
+            if (tau < 1.0e-14) tau = 0.0;
+        }
+        dL_norm_prev = dual_raw;
 
         // The exact Hessian is a function of the multipliers as well as the point, so
         // it is re-evaluated here, after the optimality test has read the multipliers
@@ -752,12 +874,28 @@ int SQP_interface(Alg&         algorithm,
         double tau = 0.0;
         for (int attempt = 0; ; attempt++) {
 
-            if (exact_hessian) {
+            if (exact_hessian && multiplier_pass) {
+                Hm.scatter(vector<double>(hval.size(), 0.0));
+                Hm.shift_diagonal(1.0);                   // H = I, for multipliers only
+            }
+            else if (exact_hessian) {
+                // Raise the Levenberg parameter until the KKT matrix has the inertia
+                // that says the reduced Hessian is positive definite. This is Betts's
+                // inertia control, with the inertia obtained from MUMPS.
                 Hm.scatter(hval);
-                if (attempt == 0) tau = tau_last*0.5;
-                else              tau = (tau > 0.0) ? 10.0*tau
-                                                    : 1.0e-6*max(1.0, Hm.norm1());
-                if (tau > 0.0) Hm.shift_diagonal(tau);
+                const double sigma = Hm.gerschgorin_lower_bound();
+                for (;;) {
+                    Hm.scatter(hval);
+                    if (tau > 0.0) Hm.shift_diagonal(tau*(fabs(sigma) + 1.0));
+
+                    int npos = 0, nneg = 0, nzero = 0;
+                    const bool got = kkt_inertia(Hm, Jm, n, m, npos, nneg, nzero);
+                    n_inertia++;
+                    if (!got || (nneg == m && nzero == 0)) break;
+                    if (tau >= 1.0) break;
+                    tau = (tau == 0.0) ? 1.0e-4 : min(10.0*tau, 1.0);
+                    n_shifts++;
+                }
             }
 
             if (use_extern) {
@@ -823,10 +961,11 @@ int SQP_interface(Alg&         algorithm,
                 || (rv == RET_HESSIAN_NOT_SPD)
                 || (rv == RET_HESSIAN_INDEFINITE);
 
-            if (!curvature_failure || attempt >= 8) break;
-            n_shifts++;
+            // The inertia was corrected before the subproblem saw the model, so a
+            // refusal now is about the constraints, and restoration is the answer.
+            (void) curvature_failure;
+            break;
         }
-        if (exact_hessian) tau_last = max(1.0e-12, tau);
 
         // ---- restoration ---------------------------------------------------
         // The linearised constraints can be inconsistent even when the problem is
@@ -997,6 +1136,13 @@ int SQP_interface(Alg&         algorithm,
         for (int j = 0; j < n; j++) {
             const bool tr_binds = (lbd[j] > lo_true[j]) || (ubd[j] < hi_true[j]);
             zbnd(j) = (tr_binds && fabs(d(j)) >= 0.999*Delta) ? 0.0 : ysol[j];
+        }
+
+        if (multiplier_pass) {
+            lam             = lam_new;
+            multiplier_pass = false;
+            iter--;
+            continue;
         }
 
         // ---- the l1 penalty weights ---------------------------------------------
@@ -1199,6 +1345,9 @@ int SQP_interface(Alg&         algorithm,
             else if (alpha < 0.25)                 Delta = max(Delta_min, 0.5*Delta);
         }
 
+        rho1 = phi0 - phit;
+        rho2 = -alpha*dphi - 0.5*quadratic_form(exact_hessian, Hm, B, d);
+
         // ---- move to the new point ----------------------------------------------
         gf_old = gf;
         if (m > 0 && !exact_hessian) jval_old = jval;
@@ -1255,7 +1404,7 @@ int SQP_interface(Alg&         algorithm,
                      "%5d %16.8e %12.3e %12.3e %10.2e %8d %s%s\n",
                      iter+1, fval, (m > 0) ? max_violation(gval, gl, gu) : 0.0,
                      dual_err, alpha, (int) nWSR, elastic ? "restoration " : "",
-                     (exact_hessian && tau_last > 1.0e-12) ? "shifted" : "");
+                     (exact_hessian && tau > 0.0) ? "shifted" : "");
             psopt_print(workspace, workspace->text);
         }
     }
