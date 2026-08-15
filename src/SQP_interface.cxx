@@ -92,6 +92,54 @@ double merit(double fval, const MatrixXd& gval, const vector<double>& gl,
     return fval + s;
 }
 
+// Betts's merit function (3rd ed., section 2.4), after Gill, Murray, Saunders and
+// Wright: an augmented Lagrangian in the constraints,
+//
+//     M(x, lambda, s) = f + lambda'(c - s) + 1/2 (c - s)' Theta (c - s),
+//
+// in which the slacks s are the values the constraints would take if the step were
+// exact, so that (c - s) measures the deviation from linearity rather than the
+// violation. Two properties matter and neither belongs to the l1 function it replaces.
+// It is smooth, so a line search has a derivative to work with and the Maratos effect
+// does not arise. And it carries the multipliers explicitly, so the penalty weights do
+// not have to dominate them: they can be chosen as small as the descent condition
+// allows and recomputed from nothing at each iteration, where the l1 weights had to
+// exceed the largest multiplier and so could only ratchet upwards -- on
+// examples/hypersensitive they reached 10^10 and stayed there.
+//
+// The bound terms of Betts's formulation are omitted. He carries them because his
+// iterates may sit outside their bounds; ours never do, since the subproblem is given
+// the bounds directly and the trial point is clipped into the box, so (x - t) is
+// identically zero and the terms contribute nothing.
+//
+// The sign convention is PSOPT's throughout: grad f + J'lambda - z = 0, where Betts
+// writes g - G'lambda - nu = 0, so his lambda is the negative of the one used here and
+// the signs below differ from his in print.
+double merit_al(double fval, const MatrixXd& gval, const MatrixXd& lamv,
+                const MatrixXd& sv, const vector<double>& theta)
+{
+    double M = fval;
+    for (int i = 0; i < gval.rows(); i++) {
+        const double r = gval(i) - sv(i);
+        M += lamv(i)*r + 0.5*theta[(size_t) i]*r*r;
+    }
+    return M;
+}
+
+// The slacks at the start of a step, from Betts's (2.28): the constraint value shifted
+// by the multiplier and clipped to its own bounds, which is the choice that minimises
+// the merit function over s for the current x and lambda. With a weight still at zero
+// the shift is unbounded and the limit is the projection of c itself.
+void merit_slacks(const MatrixXd& gval, const MatrixXd& lamv, const vector<double>& theta,
+                  const vector<double>& gl, const vector<double>& gu, MatrixXd& sv)
+{
+    for (int i = 0; i < gval.rows(); i++) {
+        double c = gval(i);
+        if (theta[(size_t) i] > 1.0e-300) c += lamv(i)/theta[(size_t) i];
+        sv(i) = min(max(c, gl[(size_t) i]), gu[(size_t) i]);
+    }
+}
+
 double total_violation(const MatrixXd& gval, const vector<double>& gl,
                        const vector<double>& gu)
 {
@@ -619,7 +667,8 @@ int SQP_interface(Alg&         algorithm,
     MatrixXd gf_old(n,1);
     MatrixXd lam  = MatrixXd::Zero(max(m,1),1);       // constraint multipliers
     MatrixXd zbnd = MatrixXd::Zero(n,1);              // bound multipliers
-    vector<double> r(max(m,1), 0.0);                  // l1 penalty weights
+    vector<double> r(max(m,1), 0.0);                  // penalty weights, Betts's Theta
+    MatrixXd smerit = MatrixXd::Zero(max(m,1),1);     // the merit function's slacks
 
     bool tape_done = false;
 
@@ -1145,68 +1194,85 @@ int SQP_interface(Alg&         algorithm,
             continue;
         }
 
-        // ---- the l1 penalty weights ---------------------------------------------
-        // Powell's rule: keep each weight at least as large as the magnitude of the
-        // multiplier it accompanies, which is what makes d a descent direction for
-        // the merit function, and let it decay towards that value when it may.
-        for (int i = 0; i < m; i++) {
-            const double li = fabs(lam_new(i));
-            r[i] = (iter == 0) ? li : max(li, 0.5*(r[i] + li));
-        }
+        // ---- the penalty weights -------------------------------------------------
+        // The slacks first, from the weights the previous iteration settled on, then the
+        // weights themselves. Betts's condition is that the directional derivative of
+        // the merit function be at least as negative as -1/2 p'Hp, which is what makes
+        // the step a descent direction; one condition does not determine m weights, so
+        // the smallest set that satisfies it is taken, in the sense of least norm.
+        merit_slacks(gval, lam, r, gl, gu, smerit);
 
-        // Powell's rule alone leaves the weights at the mercy of the multipliers, and
-        // the multipliers of a first subproblem solved from a poor point can be
-        // anything at all, including nothing. Weights near zero make the merit function
-        // the objective again, and the line search then cheerfully accepts a step that
-        // improves the objective by destroying feasibility -- on examples/brac1, where
-        // the objective is the final time and can always be improved by shortening it,
-        // the very first exact-Hessian step drove the objective to 10^-14 and the
-        // violation to 0.93. Han's condition removes the possibility: the weights are
-        // raised until the model's own predicted change in the objective is dominated
-        // by the reduction in infeasibility the step is credited with, which makes the
-        // step a descent direction for the merit function whatever the multipliers say.
-        {
-            double gTd0 = 0.0;
-            for (int j = 0; j < n; j++) gTd0 += gf(j)*d(j);
-            const double dBd0 = quadratic_form(exact_hessian, Hm, B, d);
-            const double viol_tot = (m > 0) ? total_violation(gval, gl, gu) : 0.0;
-
-            if (viol_tot > 0.0) {
-                const double need = (gTd0 + max(0.0, 0.5*dBd0))/(0.9*viol_tot);
-                if (need > 0.0) for (int i = 0; i < m; i++) r[i] = max(r[i], need);
+        MatrixXd dlam(max(m,1),1), Jd(max(m,1),1), ds(max(m,1),1), rdev(max(m,1),1);
+        if (m > 0) {
+            Jm.times(&d(0), &Jd(0));
+            for (int i = 0; i < m; i++) {
+                dlam(i) = lam_new(i) - lam(i);
+                rdev(i) = gval(i) - smerit(i);
+                ds(i)   = Jd(i) + rdev(i);          // the predicted slack step
             }
         }
 
-        // In elastic mode the step minimises f + rho*(violation), so that, and not the
-        // merit function built from the multipliers, is what the step was computed to
-        // reduce. Testing it against any smaller weight asks the step to deliver a
-        // decrease it was never aiming at, and the line search then rejects a perfectly
-        // good restoration step -- which is what stopped examples/hypersensitive on its
-        // second mesh. The weights relax again through the averaging rule above once
-        // ordinary steps resume.
-        if (elastic) for (int i = 0; i < m; i++) r[i] = max(r[i], rho_elastic);
+        {
+            double gTd0 = 0.0;
+            for (int j = 0; j < n; j++) gTd0 += gf(j)*d(j);
+            const double dHd = quadratic_form(exact_hessian, Hm, B, d);
+
+            // M'(0) = g'p + sum[ (dlam_i - lam_i) rdev_i - theta_i rdev_i^2 ], so the
+            // condition M'(0) <= -1/2 p'Hp reads sum theta_i rdev_i^2 >= varsigma.
+            double varsigma = gTd0 + 0.5*max(0.0, dHd);
+            for (int i = 0; i < m; i++) varsigma += (dlam(i) - lam(i))*rdev(i);
+
+            double aTa = 0.0;
+            for (int i = 0; i < m; i++) aTa += rdev(i)*rdev(i)*rdev(i)*rdev(i);
+
+            const double psi0 = PSOPT_extras::GetEPS();
+            for (int i = 0; i < m; i++) r[i] = psi0;
+            if (varsigma > 0.0 && aTa > 0.0)
+                for (int i = 0; i < m; i++)
+                    r[i] = psi0 + rdev(i)*rdev(i)*varsigma/aTa;
+
+            if (elastic) for (int i = 0; i < m; i++) r[i] = max(r[i], rho_elastic);
+
+            // The slacks were computed against the previous weights; recompute them
+            // against these, so that the function the line search sees is the one the
+            // weights were chosen for.
+            merit_slacks(gval, lam, r, gl, gu, smerit);
+            for (int i = 0; i < m; i++) {
+                rdev(i) = gval(i) - smerit(i);
+                ds(i)   = Jd(i) + rdev(i);
+            }
+        }
 
         // ---- line search ---------------------------------------------------------
-        const double phi0  = merit(fval, gval, gl, gu, r);
+        // The step moves the multipliers and the slacks alongside x, which is what makes
+        // the merit function's value at alpha = 1 the value at the point the subproblem
+        // actually proposed. Betts, (2.30).
+        const double phi0 = merit_al(fval, gval, lam, smerit, r);
+
         double gTd = 0.0;
         for (int j = 0; j < n; j++) gTd += gf(j)*d(j);
-        double pen = 0.0;
-        for (int i = 0; i < m; i++) pen += r[i]*violation(gval(i), gl[i], gu[i]);
-        const double dphi = gTd - pen;      // directional derivative of the merit function
+        double dphi = gTd;
+        for (int i = 0; i < m; i++)
+            dphi += (dlam(i) - lam(i))*rdev(i) - r[i]*rdev(i)*rdev(i);
 
         double alpha = 1.0;
         const double eta = 1.0e-4;
         MatrixXd xtrial(n,1), gtrial(max(m,1),1);
+        MatrixXd lam_a(max(m,1),1), s_a(max(m,1),1);
         double ftrial = fval, phit = phi0;
         bool   accepted = false;
 
         for (int ls = 0; ls < 25; ls++) {
             xtrial = x + alpha*d;
-            for (int j = 0; j < n; j++)                 // the QP respects the box, so
-                xtrial(j) = min(max(xtrial(j), (*xlb)(j)), (*xub)(j));   // this only cleans rounding
+            for (int j = 0; j < n; j++)
+                xtrial(j) = min(max(xtrial(j), (*xlb)(j)), (*xub)(j));
             ftrial = ff_num(xtrial, workspace);
             if (m > 0) gg_num(xtrial, &gtrial, workspace);
-            phit = merit(ftrial, gtrial, gl, gu, r);
+            for (int i = 0; i < m; i++) {
+                lam_a(i) = lam(i) + alpha*dlam(i);
+                s_a(i)   = smerit(i) + alpha*ds(i);
+            }
+            phit = merit_al(ftrial, gtrial, lam_a, s_a, r);
             if (std::isfinite(phit) && phit <= phi0 + eta*alpha*dphi) { accepted = true; break; }
             alpha *= 0.5;
         }
@@ -1278,9 +1344,14 @@ int SQP_interface(Alg&         algorithm,
                 MatrixXd dc(n,1);
                 for (int j = 0; j < n; j++) dc(j) = dsoc[j];
 
+                // The corrected step's slope, in the same merit function. The slack
+                // step follows the corrected direction, so the deviation term is the
+                // same as before; only the objective part changes.
                 double gTdc = 0.0;
                 for (int j = 0; j < n; j++) gTdc += gf(j)*dc(j);
-                const double dphi_c = gTdc - pen;
+                double dphi_c = gTdc;
+                for (int i = 0; i < m; i++)
+                    dphi_c += (dlam(i) - lam(i))*rdev(i) - r[i]*rdev(i)*rdev(i);
 
                 alpha = 1.0;
                 for (int ls = 0; ls < 25; ls++) {
@@ -1289,7 +1360,11 @@ int SQP_interface(Alg&         algorithm,
                         xtrial(j) = min(max(xtrial(j), (*xlb)(j)), (*xub)(j));
                     ftrial = ff_num(xtrial, workspace);
                     gg_num(xtrial, &gtrial, workspace);
-                    phit = merit(ftrial, gtrial, gl, gu, r);
+                    for (int i = 0; i < m; i++) {
+                        lam_a(i) = lam(i) + alpha*dlam(i);
+                        s_a(i)   = smerit(i) + alpha*ds(i);
+                    }
+                    phit = merit_al(ftrial, gtrial, lam_a, s_a, r);
                     if (std::isfinite(phit) && phit <= phi0 + eta*alpha*dphi_c) {
                         accepted = true;
                         d = dc;
