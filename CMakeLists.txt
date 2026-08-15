@@ -55,6 +55,7 @@ option(BUILD_TESTS "Build tests for PSOPT." OFF)
 option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but generates PDFs)" OFF)
 option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror (for CI). Default OFF so normal builds are unaffected." OFF)
 option(PSOPT_PYTHON "Build the Python binding (python/). Builds libPSOPT position-independent, which the extension requires." OFF)
+include(GNUInstallDirs)
 option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). Requires qpOASES." OFF)
 option(WITH_PROXQP "Add ProxQP as a QP backend for the SQP solver (algorithm.qp_solver = \"ProxQP\"). Requires proxsuite; implies WITH_SQP." OFF)
 option(WITH_QPALM "Add QPALM as a QP backend for the SQP solver (algorithm.qp_solver = \"QPALM\"). Requires QPALM; implies WITH_SQP." OFF)
@@ -184,34 +185,46 @@ if(WITH_SQP)
   target_include_directories(${PROJECT_NAME} PUBLIC ${QPOASES_INCLUDE_DIR})
   target_link_libraries(${PROJECT_NAME} PUBLIC ${QPOASES_LIBRARY} ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
 
-  # ProxQP, from INRIA's ProxSuite: a proximal augmented-Lagrangian QP that factorises
-  # the KKT system sparsely, where qpOASES's null-space method holds a dense n-by-n
-  # factor whatever it is given. It is header-only C++ over Eigen, which PSOPT already
-  # requires, so it adds an include path and nothing else to link. BSD-2-Clause.
+  # ---- QP backend plugins ----------------------------------------------------
+  # Each backend is a shared object that links its own QP library and its own linear
+  # algebra, exports the three entry points of psopt_qp_plugin.h and nothing else, and
+  # is loaded at run time with RTLD_LOCAL. The reason is in that header: every one of
+  # these libraries carries an ordering, the orderings share C symbol names, and linked
+  # together they corrupt each other. Kept in separate plugins they coexist, which is
+  # what lets a build offer more than one.
+  #
+  # -fvisibility=hidden hides this project's own symbols; --exclude-libs,ALL hides the
+  # ones that arrive from the static libraries the plugin links. Both are needed, and
+  # the CTest check below verifies the result rather than trusting it.
+  set(PSOPT_QP_PLUGIN_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/psopt")
+  target_compile_definitions(${PROJECT_NAME}
+      PRIVATE PSOPT_QP_PLUGIN_INSTALL_DIR="${PSOPT_QP_PLUGIN_DIR}"
+              PSOPT_QP_PLUGIN_BUILD_DIR="${CMAKE_BINARY_DIR}/qp_plugins")
+  target_link_libraries(${PROJECT_NAME} PUBLIC ${CMAKE_DL_LIBS})
+
+  function(psopt_add_qp_plugin name source)
+    add_library(psopt_qp_${name} MODULE ${source})
+    set_target_properties(psopt_qp_${name} PROPERTIES
+        PREFIX "lib"
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qp_plugins)
+    target_include_directories(psopt_qp_${name} PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_link_libraries(psopt_qp_${name} PRIVATE Eigen3::Eigen ${ARGN})
+    target_link_options(psopt_qp_${name} PRIVATE
+        "LINKER:--exclude-libs,ALL" "LINKER:-z,defs")
+    install(TARGETS psopt_qp_${name} LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/psopt)
+  endfunction()
+
   if(WITH_PROXQP)
     find_path(PROXSUITE_INCLUDE_DIR proxsuite/proxqp/sparse/sparse.hpp
               HINTS ${PROXSUITE_DIR}/include /usr/local/include /usr/include)
     if(NOT PROXSUITE_INCLUDE_DIR)
       message(FATAL_ERROR "WITH_PROXQP=ON but proxsuite was not found. Set PROXSUITE_DIR to its install prefix.")
     endif()
-    message(STATUS "PSOPT SQP: ProxQP backend enabled; proxsuite headers at ${PROXSUITE_INCLUDE_DIR}")
-    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_PROXQP)
-    target_include_directories(${PROJECT_NAME} PUBLIC ${PROXSUITE_INCLUDE_DIR})
-  endif()
-  # QPALM, from KU Leuven: a proximal augmented-Lagrangian QP with a sparse LDL
-  # factorisation underneath (LADEL), which handles a nonconvex Hessian directly rather
-  # than needing one convexified for it. Note the licence: QPALM is LGPL-3, so a PSOPT
-  # built with it is distributable under LGPL-3 and not under LGPL-2.1. It is off by
-  # default for that reason as much as for the dependency.
-  if(WITH_QPALM AND WITH_PROXQP)
-    message(FATAL_ERROR
-      "WITH_QPALM and WITH_PROXQP cannot both be ON. QPALM factorises through LADEL, "
-      "which links SuiteSparse's AMD ordering and defines amd_order and amd_l_order as "
-      "global symbols, built for 64-bit indices. Linking that alongside another copy of "
-      "AMD -- ProxQP's, or the one already present through IPOPT -- leaves one caller "
-      "using the other's index width, and the result is a segmentation fault a long way "
-      "from either: with both backends built, PSOPT's own ProxQP test crashes inside "
-      "ProxQP. Choose one QP backend beyond qpOASES per build.")
+    message(STATUS "PSOPT SQP: ProxQP backend plugin enabled (proxsuite at ${PROXSUITE_INCLUDE_DIR})")
+    psopt_add_qp_plugin(proxqp ${CMAKE_SOURCE_DIR}/src/qp_backends/proxqp_plugin.cxx)
+    target_include_directories(psopt_qp_proxqp PRIVATE ${PROXSUITE_INCLUDE_DIR})
   endif()
 
   if(WITH_QPALM)
@@ -219,22 +232,31 @@ if(WITH_SQP)
     if(NOT QPALM_FOUND)
       message(FATAL_ERROR "WITH_QPALM=ON but QPALM was not found. Set QPALM_DIR to the directory containing QPALMConfig.cmake.")
     endif()
-    message(STATUS "PSOPT SQP: QPALM backend enabled")
-
-    # QPALM's headers choose their index type from LADEL_64BIT_INDICES, which must
-    # agree with how the library itself was built or the C++ interface's symbols will
-    # not resolve: the mismatch shows up as an undefined reference to
-    # eigen_to_ladel_copy taking a SparseMatrix of the other index width.
+    # QPALM's headers choose their index width from LADEL_64BIT_INDICES and it must
+    # match the library's own build, or the C++ interface fails to link with an
+    # undefined reference to eigen_to_ladel_copy taking a matrix of the other width.
     find_library(LADEL_LIBRARY NAMES ladel HINTS ${QPALM_DIR}/../.. /usr/local/lib /usr/lib)
     find_library(LADEL_AMD_LIBRARY NAMES ladel_amd HINTS ${QPALM_DIR}/../.. /usr/local/lib /usr/lib)
     if(NOT LADEL_LIBRARY)
       message(FATAL_ERROR "WITH_QPALM=ON but LADEL, which QPALM factorises with, was not found.")
     endif()
+    message(STATUS "PSOPT SQP: QPALM backend plugin enabled")
+    psopt_add_qp_plugin(qpalm ${CMAKE_SOURCE_DIR}/src/qp_backends/qpalm_plugin.cxx
+                        qpalm_cxx qpalm ${LADEL_LIBRARY} ${LADEL_AMD_LIBRARY})
+    target_compile_definitions(psopt_qp_qpalm PRIVATE LADEL_64BIT_INDICES)
+  endif()
 
-    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_QPALM LADEL_64BIT_INDICES)
-    target_link_libraries(${PROJECT_NAME} PUBLIC qpalm_cxx qpalm ${LADEL_LIBRARY})
-    if(LADEL_AMD_LIBRARY)
-      target_link_libraries(${PROJECT_NAME} PUBLIC ${LADEL_AMD_LIBRARY})
+  # The check that the isolation actually holds. A plugin that exports anything beyond
+  # its three entry points has failed at the one job it was given, and the failure would
+  # otherwise show up as a crash somewhere else entirely.
+  if(WITH_PROXQP OR WITH_QPALM)
+    find_program(PSOPT_NM_EXECUTABLE nm)
+    if(PSOPT_NM_EXECUTABLE)
+      add_test(NAME qp_plugins_export_nothing_else
+               COMMAND ${CMAKE_COMMAND}
+                       -DPLUGIN_DIR=${CMAKE_BINARY_DIR}/qp_plugins
+                       -DNM=${PSOPT_NM_EXECUTABLE}
+                       -P ${CMAKE_SOURCE_DIR}/cmake/CheckPluginSymbols.cmake)
     endif()
   endif()
 elseif(WITH_PROXQP OR WITH_QPALM)

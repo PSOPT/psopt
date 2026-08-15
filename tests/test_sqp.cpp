@@ -28,18 +28,13 @@
 #include <cmath>
 #include <string>
 
+bool psopt_qp_plugin_available(const std::string& backend, std::string& message);
+
 #ifdef USE_SQP
 #include <qpOASES.hpp>
 #endif
 
-#ifdef USE_PROXQP
-#include <proxsuite/proxqp/sparse/sparse.hpp>
-#endif
 
-#ifdef USE_QPALM
-#include <qpalm.hpp>
-#include <qpalm/constants.h>
-#endif
 
 namespace sqp_test {
 
@@ -258,118 +253,74 @@ TEST(SQPSolver, ExactHessianCostsFewerIterationsThanBfgs)
     EXPECT_LT(it_exact, it_bfgs) << "exact " << it_exact << " vs BFGS " << it_bfgs;
 }
 
+// The backends, reached through the SQP, all in one process.
+//
+// This is the test the plugin architecture exists for. Every one of these QP libraries
+// carries a sparse factorisation, every factorisation carries an ordering, and the
+// orderings share C symbol names: linked into one program, QPALM's LADEL exports
+// amd_order built for 64-bit indices, another backend's copy is built for 32, the
+// linker picks one, and the loser writes past the end of something. Before the backends
+// were separated into plugins this test file crashed -- inside ProxQP, which had not
+// changed, because QPALM had been linked beside it. Now each backend is a shared object
+// loaded with RTLD_LOCAL, and what is inside one is invisible to the next.
+//
+// So the value of solving the same problem through each in turn is not that the answers
+// agree, though they must; it is that the process survives doing so.
+namespace {
+
+struct Backend { const char* name; bool enabled; };
+
+const Backend backends[] = {
+    { "qpOASES", true },
 #ifdef USE_PROXQP
-
-// ProxQP's dual sign convention, pinned the same way qpOASES's is above and against the
-// same QP: minimising 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1) and, in the
-// convention grad f + A' lambda = 0, a multiplier of -1. ProxQP states its own
-// stationarity as H x + g + A' y + C' z = 0, so its y is already PSOPT's lambda and,
-// unlike qpOASES's, must not be negated. Getting this backwards costs nothing in the
-// primal solution and everything in the costates.
-TEST(SQPSolver, ProxQpDualSignConvention)
-{
-    typedef long long Idx;
-    typedef Eigen::SparseMatrix<double, Eigen::ColMajor, Idx> SpMat;
-
-    SpMat H(2,2); H.insert(0,0) = 1.0; H.insert(1,1) = 1.0; H.makeCompressed();
-    SpMat A(1,2); A.insert(0,0) = 1.0; A.insert(0,1) = 1.0; A.makeCompressed();
-    SpMat C(0,2);
-
-    Eigen::VectorXd g = Eigen::VectorXd::Zero(2), b(1), l(0), u(0);
-    b << 2.0;
-
-    proxsuite::proxqp::sparse::QP<double, Idx> qp(2, 1, 0);
-    qp.settings.verbose = false;
-    qp.settings.eps_abs = 1.0e-12;
-    qp.init(H, g, A, b, C, l, u);
-    qp.solve();
-
-    EXPECT_NEAR(qp.results.x(0), 1.0, 1.0e-9);
-    EXPECT_NEAR(qp.results.x(1), 1.0, 1.0e-9);
-
-    const double lambda_psopt = qp.results.y(0);          // no negation
-    EXPECT_NEAR(lambda_psopt, -1.0, 1.0e-8);
-    EXPECT_NEAR(qp.results.x(0) + 1.0*lambda_psopt, 0.0, 1.0e-8);
-}
-
-// The two QP backends are different algorithms -- an active-set method and a proximal
-// augmented-Lagrangian one -- reached through the same SQP. They must agree, with the
-// quasi-Newton model and with the exact Hessian, and with a bound active so that the
-// working set is not trivial.
-TEST(SQPSolver, ProxQpAgreesWithQpOases)
-{
-    int f1 = -1, f2 = -1, f3 = -1, f4 = -1;
-
-    const double a = sqp_test::solve_lq("SQP", 10.0, f1, "limited-memory", "qpOASES");
-    const double b = sqp_test::solve_lq("SQP", 10.0, f2, "limited-memory", "ProxQP");
-    const double c = sqp_test::solve_lq("SQP",  0.4, f3, "exact",          "qpOASES");
-    const double d = sqp_test::solve_lq("SQP",  0.4, f4, "exact",          "ProxQP");
-
-    ASSERT_EQ(f1, 0); ASSERT_EQ(f2, 0); ASSERT_EQ(f3, 0); ASSERT_EQ(f4, 0);
-
-    EXPECT_NEAR(a, 0.775240441234, 1.0e-9);
-    EXPECT_NEAR(b, 0.775240441234, 1.0e-9);
-    EXPECT_NEAR(d, c, 1.0e-7*std::fabs(c));
-}
-
-#endif // USE_PROXQP
-
+    { "ProxQP",  true },
+#endif
 #ifdef USE_QPALM
+    { "QPALM",   true },
+#endif
+};
 
-// QPALM's dual sign convention, pinned against the same QP as the other two backends:
-// minimising 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1) and, in the convention
-// grad f + A' lambda = 0, a multiplier of -1. QPALM states stationarity as
-// Q x + q + A' y = 0, so its y is PSOPT's lambda unnegated, as ProxQP's is and as
-// qpOASES's is not.
-TEST(SQPSolver, QpalmDualSignConvention)
+} // namespace
+
+TEST(SQPSolver, EveryBackendReachesTheClosedFormInOneProcess)
 {
-    using namespace qpalm;
-
-    Data data(2, 1);
-    sparse_mat_t Q(2,2); Q.insert(0,0) = 1.0; Q.insert(1,1) = 1.0; Q.makeCompressed();
-    sparse_mat_t A(1,2); A.insert(0,0) = 1.0; A.insert(0,1) = 1.0; A.makeCompressed();
-    data.set_Q(Q);
-    data.set_A(A);
-    data.q    = vec_t::Zero(2);
-    data.c    = 0.0;
-    data.bmin = vec_t::Constant(1, 2.0);
-    data.bmax = vec_t::Constant(1, 2.0);
-
-    Settings settings;
-    settings.verbose = 0;
-    settings.eps_abs = 1.0e-12;
-    settings.eps_rel = 0.0;
-
-    Solver solver(data, settings);
-    solver.solve();
-
-    ASSERT_EQ(solver.get_info().status_val, QPALM_SOLVED);
-    EXPECT_NEAR(solver.get_solution().x(0), 1.0, 1.0e-8);
-    EXPECT_NEAR(solver.get_solution().x(1), 1.0, 1.0e-8);
-
-    const double lambda_psopt = solver.get_solution().y(0);      // no negation
-    EXPECT_NEAR(lambda_psopt, -1.0, 1.0e-7);
-    EXPECT_NEAR(solver.get_solution().x(0) + 1.0*lambda_psopt, 0.0, 1.0e-7);
+    for (size_t k = 0; k < sizeof(backends)/sizeof(backends[0]); k++) {
+        int flag = -1;
+        const double J = sqp_test::solve_lq("SQP", 10.0, flag, "limited-memory",
+                                            backends[k].name);
+        EXPECT_EQ(flag, 0)          << "backend " << backends[k].name;
+        EXPECT_NEAR(J, 0.775240441234, 1.0e-9) << "backend " << backends[k].name;
+    }
 }
 
-// QPALM reached through the SQP, against the closed form and against qpOASES with a
-// bound active. A third algorithm again -- proximal augmented Lagrangian with a sparse
-// LDL underneath -- so agreement here is agreement between three different methods.
-TEST(SQPSolver, QpalmAgreesWithQpOases)
+// The same, with the exact sparse Hessian and a bound active, so that the subproblem
+// has a non-trivial working set and an indefinite model to cope with. The backends
+// differ in kind -- an active-set method and two proximal augmented-Lagrangian methods
+// over different factorisations -- so agreement here is agreement between three
+// algorithms sharing nothing but the problem.
+TEST(SQPSolver, EveryBackendAgreesWithAnActiveBoundInOneProcess)
 {
-    int f1 = -1, f2 = -1, f3 = -1;
+    int flag_ref = -1;
+    const double J_ref = sqp_test::solve_lq("IPOPT", 0.4, flag_ref);
+    ASSERT_EQ(flag_ref, 0);
+    ASSERT_GT(J_ref, 0.775240441234 + 1.0e-4);      // the bound must actually bite
 
-    const double a = sqp_test::solve_lq("SQP", 10.0, f1, "limited-memory", "QPALM");
-    const double b = sqp_test::solve_lq("SQP",  0.4, f2, "exact",          "QPALM");
-    const double c = sqp_test::solve_lq("SQP",  0.4, f3, "exact",          "qpOASES");
-
-    ASSERT_EQ(f1, 0); ASSERT_EQ(f2, 0); ASSERT_EQ(f3, 0);
-
-    EXPECT_NEAR(a, 0.775240441234, 1.0e-9);
-    EXPECT_NEAR(b, c, 1.0e-7*std::fabs(c));
+    for (size_t k = 0; k < sizeof(backends)/sizeof(backends[0]); k++) {
+        int flag = -1;
+        const double J = sqp_test::solve_lq("SQP", 0.4, flag, "exact", backends[k].name);
+        EXPECT_EQ(flag, 0) << "backend " << backends[k].name;
+        EXPECT_NEAR(J, J_ref, 1.0e-6*std::fabs(J_ref)) << "backend " << backends[k].name;
+    }
 }
 
-#endif // USE_QPALM
+// A plugin that cannot be found must be reported as such, at once and in words, rather
+// than surfacing as a failed subproblem partway through a solve.
+TEST(SQPSolver, AMissingPluginIsReportedClearly)
+{
+    std::string message;
+    EXPECT_FALSE(psopt_qp_plugin_available("NoSuchBackend", message));
+    EXPECT_NE(message.find("could not load"), std::string::npos) << message;
+}
 
 #else
 

@@ -38,14 +38,17 @@ e-mail:    v.m.becerra@ieee.org
 #include <cmath>
 #include <algorithm>
 
-#ifdef USE_PROXQP
-#include <proxsuite/proxqp/sparse/sparse.hpp>
-#endif
+#include "psopt_qp_plugin.h"
+#include <string>
 
-#ifdef USE_QPALM
-#include <qpalm.hpp>
-#include <qpalm/constants.h>
-#endif
+// Implemented in qp_plugin_loader.cxx. A QP backend other than qpOASES lives in a
+// plugin, loaded on demand, so that the linear algebra it carries cannot collide with
+// another backend's; psopt_qp_plugin.h explains why that is not optional.
+bool psopt_qp_plugin_solve(const std::string& backend,
+                           const psopt_qp_problem* problem,
+                           psopt_qp_solution*      solution,
+                           std::string&            message);
+bool psopt_qp_plugin_available(const std::string& backend, std::string& message);
 
 using namespace std;
 
@@ -239,6 +242,24 @@ public:
                 out.push_back(Trip((Idx) ir_[(size_t) k], (Idx) j, val_[(size_t) k]));
     }
 
+    // The same pattern in the plugin interface's index type. Built once, on request:
+    // qpOASES wants its own sparse_int_t and the plugins want a fixed 64-bit type, and
+    // on a platform where those are distinct types a cast of the array is not a
+    // conversion of it.
+    const long long* ir64() const
+    {
+        if (ir64_.size() != ir_.size())
+            ir64_.assign(ir_.begin(), ir_.end());
+        return ir64_.empty() ? NULL : &ir64_[0];
+    }
+    const long long* jc64() const
+    {
+        if (jc64_.size() != jc_.size())
+            jc64_.assign(jc_.begin(), jc_.end());
+        return &jc64_[0];
+    }
+    const double* val_const() const { return val_.empty() ? NULL : &val_[0]; }
+
     sparse_int_t* ir()  { return ir_.empty() ? NULL : &ir_[0]; }
     sparse_int_t* jc()  { return &jc_[0]; }
     double*       val() { return val_.empty() ? NULL : &val_[0]; }
@@ -248,6 +269,7 @@ private:
     int nr_ = 0, nc_ = 0;
     vector<sparse_int_t> ir_, jc_;
     vector<double>       val_;
+    mutable vector<long long> ir64_, jc64_;
     vector<int>          perm_;      // triplet index -> slot
     vector<int>          diag_;      // column -> slot of its diagonal, or -1
 };
@@ -279,243 +301,50 @@ struct QpSolution {
 };
 
 
-#ifdef USE_PROXQP
-
-// ProxQP states the problem as
-//
-//   min 1/2 x'Hx + g'x   s.t.  A_eq x = b,   l <= C x <= u
-//
-// with no separate provision for simple bounds in its sparse interface, so the bounds
-// go into C as identity rows. Its stationarity condition is H x + g + A_eq' y + C' z = 0,
-// which is already PSOPT's sign convention -- unlike qpOASES, whose duals have to be
-// negated. The reference test for this is SQPSolver.ProxQpDualSignConvention.
-//
-// Equality rows are separated out rather than passed as an inequality with coincident
-// bounds: a proximal method treats the two blocks differently and there is no reason to
-// hide from it that most of a collocated problem's constraints are equalities.
-static void solve_qp_proxqp(const QpProblem& p, double tol, int iter_max,
-                            bool allow_relaxation, QpSolution& out)
+// Solve a subproblem through a plugin backend. The conversion is only a matter of
+// pointers: the storage the SQP already keeps is exactly what the interface asks for.
+static bool solve_qp_plugin(const string& backend, const QpProblem& p,
+                            double tol, int max_iter, bool nonconvex,
+                            QpSolution& out, string& message)
 {
-    typedef long long Idx;
-    typedef Eigen::SparseMatrix<double, Eigen::ColMajor, Idx> SpMat;
-    typedef Eigen::Triplet<double, Idx>                       Trip;
-
-    const int nv = p.nv, mc = p.mc;
-
-    // Which constraint rows are equalities. The partition follows the bounds and so is
-    // fixed for the life of the mesh, but it is cheap to recompute and keeps this
-    // function free of state.
-    vector<int> eq_of_row((size_t) max(mc,1), -1), in_of_row((size_t) max(mc,1), -1);
-    int n_eq = 0, n_in = 0;
-    for (int i = 0; i < mc; i++) {
-        if (p.ubA[i] - p.lbA[i] <= 0.0) eq_of_row[(size_t) i] = n_eq++;
-        else                            in_of_row[(size_t) i] = n_in++;
-    }
-    const int n_in_total = n_in + nv;          // the bounds occupy the last nv rows
-
-    vector<Trip> th, ta, tc;
-    if (p.H != NULL) p.H->emit_triplets(th, Idx(0));
-    else {
-        th.reserve((size_t) nv*nv);
-        for (int j = 0; j < nv; j++)
-            for (int i = 0; i < nv; i++)
-                if ((*p.Bd)(i,j) != 0.0) th.push_back(Trip(i, j, (*p.Bd)(i,j)));
-    }
-
-    if (mc > 0) {
-        vector<Trip> tj;
-        p.A->emit_triplets(tj, Idx(0));
-        ta.reserve(tj.size()); tc.reserve(tj.size() + (size_t) nv);
-        for (size_t k = 0; k < tj.size(); k++) {
-            const int i = (int) tj[k].row();
-            if (eq_of_row[(size_t) i] >= 0)
-                ta.push_back(Trip(eq_of_row[(size_t) i], tj[k].col(), tj[k].value()));
-            else
-                tc.push_back(Trip(in_of_row[(size_t) i], tj[k].col(), tj[k].value()));
-        }
-    }
-    for (int j = 0; j < nv; j++) tc.push_back(Trip(n_in + j, j, 1.0));
-
-    SpMat H(nv, nv), A(max(n_eq,0), nv), C(n_in_total, nv);
-    H.setFromTriplets(th.begin(), th.end());
-    if (!ta.empty()) A.setFromTriplets(ta.begin(), ta.end());
-    C.setFromTriplets(tc.begin(), tc.end());
-
-    Eigen::VectorXd g(nv), b(max(n_eq,0)), l(n_in_total), u(n_in_total);
-    for (int j = 0; j < nv; j++) g(j) = p.g[j];
-    for (int i = 0; i < mc; i++) {
-        if (eq_of_row[(size_t) i] >= 0) b(eq_of_row[(size_t) i]) = p.lbA[i];
-        else {
-            l(in_of_row[(size_t) i]) = p.lbA[i];
-            u(in_of_row[(size_t) i]) = p.ubA[i];
-        }
-    }
-    for (int j = 0; j < nv; j++) { l(n_in + j) = p.lbd[j]; u(n_in + j) = p.ubd[j]; }
-
-    proxsuite::proxqp::sparse::QP<double, Idx> qp(nv, n_eq, n_in_total);
-    qp.settings.verbose  = false;
-    qp.settings.eps_abs  = max(1.0e-12, 1.0e-2*tol);
-    qp.settings.eps_rel  = 1.0e-10;
-    qp.settings.max_iter = 200;
-    qp.init(H, g, A, b, C, l, u);
-    qp.solve();
-
-    out.iterations = (int) qp.results.info.iter;
-
-    // An exhausted iteration limit is not a failure here, any more than qpOASES's
-    // exhausted working-set limit is: what comes back is an approximate step, and the
-    // line search is the judge of whether a step is any good. Refusing it would send
-    // the solver to a restoration it does not need.
-    out.ok = (qp.results.info.status ==
-                  proxsuite::proxqp::QPSolverOutput::PROXQP_SOLVED)
-          || (qp.results.info.status ==
-                  proxsuite::proxqp::QPSolverOutput::PROXQP_MAX_ITER_REACHED);
-
-    // A linearisation that cannot be satisfied is the ordinary state of affairs early
-    // on, and ProxQP answers it directly: asked to, it returns the solution of the
-    // closest primal feasible problem instead of reporting failure. That is the same
-    // service the elastic relaxation performs for qpOASES, obtained without building
-    // the relaxed subproblem by hand -- which matters, because that subproblem prices
-    // its slacks linearly against a tiny quadratic term and a proximal method finds
-    // the resulting conditioning very hard going: on examples/brac1 it took twenty-
-    // three thousand iterations and five minutes before giving up.
-    if (!out.ok && allow_relaxation &&
-        qp.results.info.status ==
-            proxsuite::proxqp::QPSolverOutput::PROXQP_PRIMAL_INFEASIBLE) {
-        qp.settings.primal_infeasibility_solving = true;
-        qp.solve();
-        out.iterations += (int) qp.results.info.iter;
-        out.ok = (qp.results.info.status ==
-                      proxsuite::proxqp::QPSolverOutput::PROXQP_SOLVED)
-              || (qp.results.info.status ==
-                      proxsuite::proxqp::QPSolverOutput::PROXQP_SOLVED_CLOSEST_PRIMAL_FEASIBLE);
-        out.relaxed = out.ok;
-    }
-
-
-    for (int j = 0; j < nv; j++) out.d[(size_t) j] = qp.results.x(j);
-    for (int i = 0; i < mc; i++)
-        out.lambda[(size_t) i] = (eq_of_row[(size_t) i] >= 0)
-                               ? qp.results.y(eq_of_row[(size_t) i])
-                               : qp.results.z(in_of_row[(size_t) i]);
-    // The bound rows sit in C, so their multipliers arrive with the sign of a general
-    // constraint and have to be turned back into bound multipliers.
-    for (int j = 0; j < nv; j++) out.z[(size_t) j] = -qp.results.z(n_in + j);
-}
-
-#else
-
-static void solve_qp_proxqp(const QpProblem&, double, int, bool, QpSolution& out)
-{
+    out.d.assign((size_t) p.nv, 0.0);
+    out.lambda.assign((size_t) max(p.mc,1), 0.0);
+    out.z.assign((size_t) p.nv, 0.0);
+    out.iterations = 0;
     out.ok = false;
-    error_message("algorithm.qp_solver = \"ProxQP\" requires PSOPT to be built with "
-                  "-DWITH_PROXQP=ON and proxsuite available");
-}
 
-#endif // USE_PROXQP
+    psopt_qp_problem q;
+    q.abi_version = PSOPT_QP_ABI_VERSION;
+    q.n = p.nv; q.m = p.mc;
 
-
-#ifdef USE_QPALM
-
-// QPALM states the problem as
-//
-//   min 1/2 x'Qx + q'x   s.t.  bmin <= A x <= bmax
-//
-// with one two-sided constraint block and no separate provision for simple bounds, so
-// the bounds go in as identity rows appended to A. Its stationarity condition is
-// Q x + q + A' y = 0, which is PSOPT's sign convention -- like ProxQP's and unlike
-// qpOASES's. The reference test is SQPSolver.QpalmDualSignConvention.
-//
-// A proximal augmented-Lagrangian method, so an indefinite Hessian is admissible: the
-// nonconvex setting tells it to expect one, and it estimates the smallest eigenvalue
-// itself rather than being handed a convexified model.
-static void solve_qp_qpalm(const QpProblem& p, double tol, int iter_max, QpSolution& out)
-{
-    const int nv = p.nv, mc = p.mc;
-    const qpalm::index_t nrows = (qpalm::index_t)(mc + nv);
-
-    vector<qpalm::triplet_t> tq, ta;
-    if (p.H != NULL) p.H->emit_triplets(tq, qpalm::sp_index_t(0));
+    q.H_p = q.H_i = NULL; q.H_x = NULL; q.H_dense = NULL;
+    if (p.H != NULL) {
+        q.H_p = p.H->jc64(); q.H_i = p.H->ir64(); q.H_x = p.H->val_const();
+    }
     else {
-        tq.reserve((size_t) nv*nv);
-        for (int j = 0; j < nv; j++)
-            for (int i = 0; i < nv; i++)
-                if ((*p.Bd)(i,j) != 0.0) tq.push_back(qpalm::triplet_t(i, j, (*p.Bd)(i,j)));
-    }
-    if (mc > 0) p.A->emit_triplets(ta, qpalm::sp_index_t(0));
-    ta.reserve(ta.size() + (size_t) nv);
-    for (int j = 0; j < nv; j++) ta.push_back(qpalm::triplet_t(mc + j, j, 1.0));
-
-    qpalm::sparse_mat_t Q(nv, nv), A(nrows, nv);
-    Q.setFromTriplets(tq.begin(), tq.end());
-    A.setFromTriplets(ta.begin(), ta.end());
-
-    qpalm::Data data((qpalm::index_t) nv, nrows);
-    data.set_Q(Q);
-    data.set_A(A);
-    data.q = qpalm::vec_t::Zero(nv);
-    for (int j = 0; j < nv; j++) data.q(j) = p.g[j];
-    data.c = 0.0;
-
-    data.bmin = qpalm::vec_t::Zero(nrows);
-    data.bmax = qpalm::vec_t::Zero(nrows);
-    for (int i = 0; i < mc; i++) {
-        data.bmin(i) = max(p.lbA[i], -QPALM_INFTY);
-        data.bmax(i) = min(p.ubA[i],  QPALM_INFTY);
-    }
-    for (int j = 0; j < nv; j++) {
-        data.bmin(mc + j) = max(p.lbd[j], -QPALM_INFTY);
-        data.bmax(mc + j) = min(p.ubd[j],  QPALM_INFTY);
+        q.H_dense = &(*p.Bd)(0,0);      // Eigen is column-major, as the interface says
     }
 
-    out.d.assign((size_t) nv, 0.0);
-    out.lambda.assign((size_t) max(mc,1), 0.0);
-    out.z.assign((size_t) nv, 0.0);
-
-    qpalm::Settings settings;
-    settings.verbose   = 0;
-    settings.eps_abs   = max(1.0e-12, 1.0e-2*tol);
-    settings.eps_rel   = 1.0e-10;
-    settings.max_iter  = 200;
-    settings.nonconvex = (p.H != NULL) ? 1 : 0;
-
-    // QPALM's C++ interface reports a refused problem by throwing, and its setup
-    // refuses a good many that the other two backends accept: on examples/launch, whose
-    // constraint magnitudes span several orders, it declines the third subproblem with
-    // "please check problem bounds and solver settings". A QP solver that cannot take a
-    // subproblem is an ordinary event -- it is what the restoration step exists for --
-    // and it must not take the process with it.
-    try {
-        qpalm::Solver solver(data, settings);
-        solver.solve();
-
-        const qpalm::SolutionView sol = solver.get_solution();
-        out.iterations = (int) solver.get_info().iter;
-        // As with the other backends, an exhausted iteration limit yields an
-        // approximate step, which the line search is competent to judge.
-        out.ok = (solver.get_info().status_val == QPALM_SOLVED)
-              || (solver.get_info().status_val == QPALM_MAX_ITER_REACHED);
-
-
-        for (int j = 0; j < nv; j++) out.d[(size_t) j] = sol.x(j);
-        for (int i = 0; i < mc; i++) out.lambda[(size_t) i] = sol.y(i);
-        for (int j = 0; j < nv; j++) out.z[(size_t) j] = -sol.y(mc + j);
+    q.g = p.g;
+    q.A_p = q.A_i = NULL; q.A_x = NULL;
+    if (p.mc > 0) {
+        q.A_p = p.A->jc64(); q.A_i = p.A->ir64(); q.A_x = p.A->val_const();
     }
-    catch (const std::exception&) {
-        out.ok = false;
-    }
+    q.lbA = p.lbA; q.ubA = p.ubA; q.lb = p.lbd; q.ub = p.ubd;
+    q.tolerance = tol;
+    q.max_iter  = max_iter;
+    q.nonconvex = nonconvex ? 1 : 0;
+
+    psopt_qp_solution r;
+    r.d = &out.d[0]; r.lambda = &out.lambda[0]; r.z = &out.z[0];
+    r.iterations = 0; r.status = PSOPT_QP_FAILED;
+
+    if (!psopt_qp_plugin_solve(backend, &q, &r, message)) return false;
+
+    out.iterations = r.iterations;
+    out.ok = (r.status == PSOPT_QP_SOLVED) || (r.status == PSOPT_QP_APPROXIMATE);
+    return true;
 }
-
-#else
-
-static void solve_qp_qpalm(const QpProblem&, double, int, QpSolution& out)
-{
-    out.ok = false;
-    error_message("algorithm.qp_solver = \"QPALM\" requires PSOPT to be built with "
-                  "-DWITH_QPALM=ON and QPALM available");
-}
-
-#endif // USE_QPALM
 
 
 // d' H d, with H either the sparse exact Hessian or the dense quasi-Newton model.
@@ -714,9 +543,7 @@ int SQP_interface(Alg&         algorithm,
     // factorisations are dense in the number of variables however sparse the matrices
     // it is handed, so its memory is quadratic and its work per subproblem cubic in n;
     // ProxQP factorises the KKT system sparsely and tolerates an indefinite Hessian.
-    const bool use_proxqp = (algorithm.qp_solver == "ProxQP");
-    const bool use_qpalm  = (algorithm.qp_solver == "QPALM");
-    const bool use_extern = use_proxqp || use_qpalm;
+    const bool use_extern = (algorithm.qp_solver != "qpOASES");
 
     MatrixXd B;                                       // the quasi-Newton model, if used
     if (!exact_hessian) B = MatrixXd::Identity(n,n);
@@ -813,7 +640,7 @@ int SQP_interface(Alg&         algorithm,
         snprintf(workspace->text, sizeof(workspace->text),
                  "\n\nSQP (%s + %s): %d variables, %d constraints",
                  exact_hessian ? "exact sparse Hessian" : "dense BFGS",
-                 use_proxqp ? "ProxQP" : (use_qpalm ? "QPALM" : "qpOASES"), n, m);
+                 algorithm.qp_solver.c_str(), n, m);
         psopt_print(workspace, workspace->text);
         snprintf(workspace->text, sizeof(workspace->text),
                  "\n%d Jacobian nonzeros (%.3f%% dense)%s\n",
@@ -945,8 +772,13 @@ int SQP_interface(Alg&         algorithm,
                 qpp.lbd = &lbd[0];        qpp.ubd = &ubd[0];
 
                 QpSolution qs;
-                if (use_qpalm) solve_qp_qpalm(qpp, tol, iter_max, qs);
-                else           solve_qp_proxqp(qpp, tol, iter_max, false, qs);
+                string why;
+                if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, 200,
+                                     exact_hessian, qs, why)) {
+                    status  = 2;
+                    message = why;
+                    break;
+                }
 
                 rv   = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
                 nWSR = qs.iterations;
@@ -1100,8 +932,9 @@ int SQP_interface(Alg&         algorithm,
                 qpp.lbd = &lbe[0]; qpp.ubd = &ube[0];
 
                 QpSolution qs;
-                if (use_qpalm) solve_qp_qpalm(qpp, tol, iter_max, qs);
-                else           solve_qp_proxqp(qpp, tol, iter_max, true, qs);
+                string why;
+                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, 200,
+                                       exact_hessian, qs, why);
 
                 rve   = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
                 nWSRe = qs.iterations;
@@ -1273,8 +1106,9 @@ int SQP_interface(Alg&         algorithm,
                 qpp.lbd = &lbd[0];        qpp.ubd = &ubd[0];
 
                 QpSolution qs;
-                if (use_qpalm) solve_qp_qpalm(qpp, tol, iter_max, qs);
-                else           solve_qp_proxqp(qpp, tol, iter_max, false, qs);
+                string why;
+                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, 200,
+                                       exact_hessian, qs, why);
                 rvs = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
                 if (qs.ok) {
                     for (int j = 0; j < n; j++) dsoc[j]   = qs.d[(size_t) j];
