@@ -60,6 +60,7 @@ option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). 
 option(WITH_PROXQP "Add ProxQP as a QP backend for the SQP solver (algorithm.qp_solver = \"ProxQP\"). Requires proxsuite; implies WITH_SQP." OFF)
 option(WITH_QPALM "Add QPALM as a QP backend for the SQP solver (algorithm.qp_solver = \"QPALM\"). Requires QPALM; implies WITH_SQP." OFF)
 option(WITH_OSQP "Add OSQP as a QP backend for the SQP solver (algorithm.qp_solver = \"OSQP\"). Requires OSQP; implies WITH_SQP." OFF)
+option(WITH_GALAHAD "Add GALAHAD's QPA as a QP backend for the SQP solver (algorithm.qp_solver = \"GALAHAD\"). Requires GALAHAD; implies WITH_SQP." OFF)
 
 # Automatic-differentiation backend. CPPAD (in-memory tapes) is the production backend; it
 # replaced ADOL-C, whose multi-GB on-disk tapes corrupt/exhaust disk at high node counts.
@@ -259,10 +260,26 @@ if(WITH_SQP)
     target_compile_definitions(${PROJECT_NAME} PUBLIC USE_OSQP)
   endif()
 
+  if(WITH_GALAHAD)
+    find_path(GALAHAD_INCLUDE_DIR galahad_qpa.h
+              HINTS ${GALAHAD_DIR}/include /usr/local/include /usr/include)
+    find_library(GALAHAD_LIBRARY NAMES galahad_double galahad
+              HINTS ${GALAHAD_DIR}/lib /usr/local/lib /usr/lib)
+    if(NOT GALAHAD_INCLUDE_DIR OR NOT GALAHAD_LIBRARY)
+      message(FATAL_ERROR "WITH_GALAHAD=ON but GALAHAD was not found. Set GALAHAD_DIR to its install prefix.")
+    endif()
+    message(STATUS "PSOPT SQP: GALAHAD backend plugin enabled (${GALAHAD_LIBRARY})")
+    enable_language(Fortran)
+    psopt_add_qp_plugin(galahad ${CMAKE_SOURCE_DIR}/src/qp_backends/galahad_plugin.cxx
+                        ${GALAHAD_LIBRARY} gfortran ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_GALAHAD)
+    target_include_directories(psopt_qp_galahad PRIVATE ${GALAHAD_INCLUDE_DIR})
+  endif()
+
   # The check that the isolation actually holds. A plugin that exports anything beyond
   # its three entry points has failed at the one job it was given, and the failure would
   # otherwise show up as a crash somewhere else entirely.
-  if(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP)
+  if(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_GALAHAD)
     find_program(PSOPT_NM_EXECUTABLE nm)
     if(PSOPT_NM_EXECUTABLE)
       add_test(NAME qp_plugins_export_nothing_else
@@ -272,8 +289,8 @@ if(WITH_SQP)
                        -P ${CMAKE_SOURCE_DIR}/cmake/CheckPluginSymbols.cmake)
     endif()
   endif()
-elseif(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP)
-  message(FATAL_ERROR "WITH_PROXQP, WITH_QPALM and WITH_OSQP require WITH_SQP=ON: they are backends of PSOPT's SQP solver.")
+elseif(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_GALAHAD)
+  message(FATAL_ERROR "The QP backend options require WITH_SQP=ON: they are backends of PSOPT's SQP solver.")
 endif()
 
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_RELEASE_STRING}" -DHAVE_CSTDDEF)

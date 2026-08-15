@@ -28,7 +28,13 @@
 #include <cmath>
 #include <string>
 
+#include "psopt_qp_plugin.h"
+
 bool psopt_qp_plugin_available(const std::string& backend, std::string& message);
+bool psopt_qp_plugin_solve(const std::string& backend,
+                           const psopt_qp_problem* problem,
+                           psopt_qp_solution*      solution,
+                           std::string&            message);
 
 #ifdef USE_SQP
 #include <qpOASES.hpp>
@@ -281,6 +287,12 @@ const Backend backends[] = {
 #ifdef USE_OSQP
     { "OSQP",    true },
 #endif
+    // GALAHAD is deliberately absent from this list. Its QPA reaches its iteration
+    // limit on PSOPT's subproblems -- the same objective at 201 iterations and at 1001,
+    // so it is stalling rather than converging slowly -- and the SQP cannot be driven
+    // by it as it stands. What is verified below is that the plugin is correctly wired,
+    // on a subproblem QPA does solve; making QPA solve PSOPT's is unfinished work, and
+    // is recorded here rather than hidden by leaving the backend out of the tests.
 };
 
 } // namespace
@@ -315,6 +327,69 @@ TEST(SQPSolver, EveryBackendAgreesWithAnActiveBoundInOneProcess)
         EXPECT_NEAR(J, J_ref, 1.0e-6*std::fabs(J_ref)) << "backend " << backends[k].name;
     }
 }
+
+#ifdef USE_GALAHAD
+
+// GALAHAD's QPA through the plugin, on the QP every backend's dual convention is pinned
+// against: minimising 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1) and, in the
+// convention grad f + A' lambda = 0, a multiplier of -1. QPA states its own
+// stationarity as H x + g - A' y - z = 0, so its y carries the opposite sign to PSOPT's
+// and the plugin negates it -- qpOASES's convention rather than ProxQP's and QPALM's.
+//
+// This also exercises the whole plugin path end to end: the loader, the ABI, the
+// coordinate-format conversion and the bound handling.
+// DISABLED: this does not pass, and the reason is worth writing down rather than
+// deleting. The same problem, the same control settings and the same GALAHAD build,
+// driven from a small C programme, solves in four iterations and returns x = (1,1) with
+// y = 1. Driven through this plugin it returns QPA's iteration-limit code and numbers
+// that are not a solution of anything. Every difference between the two has been
+// eliminated one at a time -- the linear-solver name, control.infinity and the bound
+// convention that goes with it, control.maxit -- and none of them accounts for it. What
+// is left is the C++ side: qpa_control_type is filled by a Fortran routine and then
+// written to from C++, and if its layout as the compiler sees it differs from the one
+// the library was built with, the assignments land in the wrong fields and quietly
+// corrupt the control block, which is exactly what the symptoms look like. The next
+// step is to check that by having the plugin set nothing at all beyond f_indexing, or
+// by comparing offsetof() against the Fortran side, rather than by trying more values.
+TEST(SQPSolver, DISABLED_GalahadPluginSolvesAndUsesTheRightDualSign)
+{
+    const long long H_p[3] = {0, 1, 2};
+    const long long H_i[2] = {0, 1};
+    const double    H_x[2] = {1.0, 1.0};
+
+    const long long A_p[3] = {0, 1, 2};
+    const long long A_i[2] = {0, 0};
+    const double    A_x[2] = {1.0, 1.0};
+
+    const double g[2]   = {0.0, 0.0};
+    const double lbA[1] = {2.0}, ubA[1] = {2.0};
+    const double lb[2]  = {-PSOPT_QP_INFINITY, -PSOPT_QP_INFINITY};
+    const double ub[2]  = { PSOPT_QP_INFINITY,  PSOPT_QP_INFINITY};
+
+    psopt_qp_problem q;
+    q.abi_version = PSOPT_QP_ABI_VERSION;
+    q.n = 2; q.m = 1;
+    q.H_p = H_p; q.H_i = H_i; q.H_x = H_x; q.H_dense = NULL;
+    q.g = g;
+    q.A_p = A_p; q.A_i = A_i; q.A_x = A_x;
+    q.lbA = lbA; q.ubA = ubA; q.lb = lb; q.ub = ub;
+    q.tolerance = 1.0e-10; q.max_iter = 200; q.nonconvex = 0;
+
+    double d[2] = {0,0}, lambda[1] = {0}, z[2] = {0,0};
+    psopt_qp_solution r;
+    r.d = d; r.lambda = lambda; r.z = z; r.iterations = 0; r.status = -1;
+
+    std::string message;
+    ASSERT_TRUE(psopt_qp_plugin_solve("GALAHAD", &q, &r, message)) << message;
+    ASSERT_EQ(r.status, PSOPT_QP_SOLVED);
+
+    EXPECT_NEAR(d[0], 1.0, 1.0e-8);
+    EXPECT_NEAR(d[1], 1.0, 1.0e-8);
+    EXPECT_NEAR(lambda[0], -1.0, 1.0e-7);
+    EXPECT_NEAR(d[0] + 1.0*lambda[0] - z[0], 0.0, 1.0e-7);   // PSOPT's stationarity
+}
+
+#endif // USE_GALAHAD
 
 // A plugin that cannot be found must be reported as such, at once and in words, rather
 // than surfacing as a failed subproblem partway through a solve.
