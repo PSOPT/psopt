@@ -195,11 +195,14 @@ struct alg_str {
   double    nlp_tolerance;
   string    nlp_method;
   // Which quadratic programming solver the SQP uses for its subproblems: "qpOASES"
-  // (default) or "ProxQP". They differ in kind, not only in implementation: qpOASES
+  // (default), "ProxQP" or "QPALM". They differ in kind, not only in implementation: qpOASES
   // is an active-set method whose factorisations are dense in the number of variables
   // whatever sparsity it is handed, and ProxQP is a proximal augmented-Lagrangian
   // method that factorises the KKT system sparsely and tolerates an indefinite
-  // Hessian. Ignored unless nlp_method is "SQP".
+  // Hessian, as is QPALM, which differs from it in the factorisation underneath and in
+  // estimating the Hessian's smallest eigenvalue itself. Ignored unless nlp_method is
+  // "SQP". Note that QPALM is LGPL-3: a PSOPT built with it is distributable under
+  // LGPL-3 rather than LGPL-2.1.
   string    qp_solver;
   string    scaling;
   string    derivatives;

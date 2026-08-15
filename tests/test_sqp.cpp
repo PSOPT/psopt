@@ -36,6 +36,11 @@
 #include <proxsuite/proxqp/sparse/sparse.hpp>
 #endif
 
+#ifdef USE_QPALM
+#include <qpalm.hpp>
+#include <qpalm/constants.h>
+#endif
+
 namespace sqp_test {
 
 adouble endpoint_cost(adouble* i0, adouble* xf, adouble* p, adouble& t0, adouble& tf,
@@ -308,6 +313,63 @@ TEST(SQPSolver, ProxQpAgreesWithQpOases)
 }
 
 #endif // USE_PROXQP
+
+#ifdef USE_QPALM
+
+// QPALM's dual sign convention, pinned against the same QP as the other two backends:
+// minimising 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1) and, in the convention
+// grad f + A' lambda = 0, a multiplier of -1. QPALM states stationarity as
+// Q x + q + A' y = 0, so its y is PSOPT's lambda unnegated, as ProxQP's is and as
+// qpOASES's is not.
+TEST(SQPSolver, QpalmDualSignConvention)
+{
+    using namespace qpalm;
+
+    Data data(2, 1);
+    sparse_mat_t Q(2,2); Q.insert(0,0) = 1.0; Q.insert(1,1) = 1.0; Q.makeCompressed();
+    sparse_mat_t A(1,2); A.insert(0,0) = 1.0; A.insert(0,1) = 1.0; A.makeCompressed();
+    data.set_Q(Q);
+    data.set_A(A);
+    data.q    = vec_t::Zero(2);
+    data.c    = 0.0;
+    data.bmin = vec_t::Constant(1, 2.0);
+    data.bmax = vec_t::Constant(1, 2.0);
+
+    Settings settings;
+    settings.verbose = 0;
+    settings.eps_abs = 1.0e-12;
+    settings.eps_rel = 0.0;
+
+    Solver solver(data, settings);
+    solver.solve();
+
+    ASSERT_EQ(solver.get_info().status_val, QPALM_SOLVED);
+    EXPECT_NEAR(solver.get_solution().x(0), 1.0, 1.0e-8);
+    EXPECT_NEAR(solver.get_solution().x(1), 1.0, 1.0e-8);
+
+    const double lambda_psopt = solver.get_solution().y(0);      // no negation
+    EXPECT_NEAR(lambda_psopt, -1.0, 1.0e-7);
+    EXPECT_NEAR(solver.get_solution().x(0) + 1.0*lambda_psopt, 0.0, 1.0e-7);
+}
+
+// QPALM reached through the SQP, against the closed form and against qpOASES with a
+// bound active. A third algorithm again -- proximal augmented Lagrangian with a sparse
+// LDL underneath -- so agreement here is agreement between three different methods.
+TEST(SQPSolver, QpalmAgreesWithQpOases)
+{
+    int f1 = -1, f2 = -1, f3 = -1;
+
+    const double a = sqp_test::solve_lq("SQP", 10.0, f1, "limited-memory", "QPALM");
+    const double b = sqp_test::solve_lq("SQP",  0.4, f2, "exact",          "QPALM");
+    const double c = sqp_test::solve_lq("SQP",  0.4, f3, "exact",          "qpOASES");
+
+    ASSERT_EQ(f1, 0); ASSERT_EQ(f2, 0); ASSERT_EQ(f3, 0);
+
+    EXPECT_NEAR(a, 0.775240441234, 1.0e-9);
+    EXPECT_NEAR(b, c, 1.0e-7*std::fabs(c));
+}
+
+#endif // USE_QPALM
 
 #else
 

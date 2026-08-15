@@ -57,6 +57,7 @@ option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror
 option(PSOPT_PYTHON "Build the Python binding (python/). Builds libPSOPT position-independent, which the extension requires." OFF)
 option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). Requires qpOASES." OFF)
 option(WITH_PROXQP "Add ProxQP as a QP backend for the SQP solver (algorithm.qp_solver = \"ProxQP\"). Requires proxsuite; implies WITH_SQP." OFF)
+option(WITH_QPALM "Add QPALM as a QP backend for the SQP solver (algorithm.qp_solver = \"QPALM\"). Requires QPALM; implies WITH_SQP." OFF)
 
 # Automatic-differentiation backend. CPPAD (in-memory tapes) is the production backend; it
 # replaced ADOL-C, whose multi-GB on-disk tapes corrupt/exhaust disk at high node counts.
@@ -197,8 +198,47 @@ if(WITH_SQP)
     target_compile_definitions(${PROJECT_NAME} PUBLIC USE_PROXQP)
     target_include_directories(${PROJECT_NAME} PUBLIC ${PROXSUITE_INCLUDE_DIR})
   endif()
-elseif(WITH_PROXQP)
-  message(FATAL_ERROR "WITH_PROXQP=ON requires WITH_SQP=ON: ProxQP is a backend of PSOPT's SQP solver.")
+  # QPALM, from KU Leuven: a proximal augmented-Lagrangian QP with a sparse LDL
+  # factorisation underneath (LADEL), which handles a nonconvex Hessian directly rather
+  # than needing one convexified for it. Note the licence: QPALM is LGPL-3, so a PSOPT
+  # built with it is distributable under LGPL-3 and not under LGPL-2.1. It is off by
+  # default for that reason as much as for the dependency.
+  if(WITH_QPALM AND WITH_PROXQP)
+    message(FATAL_ERROR
+      "WITH_QPALM and WITH_PROXQP cannot both be ON. QPALM factorises through LADEL, "
+      "which links SuiteSparse's AMD ordering and defines amd_order and amd_l_order as "
+      "global symbols, built for 64-bit indices. Linking that alongside another copy of "
+      "AMD -- ProxQP's, or the one already present through IPOPT -- leaves one caller "
+      "using the other's index width, and the result is a segmentation fault a long way "
+      "from either: with both backends built, PSOPT's own ProxQP test crashes inside "
+      "ProxQP. Choose one QP backend beyond qpOASES per build.")
+  endif()
+
+  if(WITH_QPALM)
+    find_package(QPALM QUIET)
+    if(NOT QPALM_FOUND)
+      message(FATAL_ERROR "WITH_QPALM=ON but QPALM was not found. Set QPALM_DIR to the directory containing QPALMConfig.cmake.")
+    endif()
+    message(STATUS "PSOPT SQP: QPALM backend enabled")
+
+    # QPALM's headers choose their index type from LADEL_64BIT_INDICES, which must
+    # agree with how the library itself was built or the C++ interface's symbols will
+    # not resolve: the mismatch shows up as an undefined reference to
+    # eigen_to_ladel_copy taking a SparseMatrix of the other index width.
+    find_library(LADEL_LIBRARY NAMES ladel HINTS ${QPALM_DIR}/../.. /usr/local/lib /usr/lib)
+    find_library(LADEL_AMD_LIBRARY NAMES ladel_amd HINTS ${QPALM_DIR}/../.. /usr/local/lib /usr/lib)
+    if(NOT LADEL_LIBRARY)
+      message(FATAL_ERROR "WITH_QPALM=ON but LADEL, which QPALM factorises with, was not found.")
+    endif()
+
+    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_QPALM LADEL_64BIT_INDICES)
+    target_link_libraries(${PROJECT_NAME} PUBLIC qpalm_cxx qpalm ${LADEL_LIBRARY})
+    if(LADEL_AMD_LIBRARY)
+      target_link_libraries(${PROJECT_NAME} PUBLIC ${LADEL_AMD_LIBRARY})
+    endif()
+  endif()
+elseif(WITH_PROXQP OR WITH_QPALM)
+  message(FATAL_ERROR "WITH_PROXQP and WITH_QPALM require WITH_SQP=ON: they are backends of PSOPT's SQP solver.")
 endif()
 
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_RELEASE_STRING}" -DHAVE_CSTDDEF)
