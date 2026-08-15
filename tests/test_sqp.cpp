@@ -278,6 +278,9 @@ const Backend backends[] = {
 #ifdef USE_QPALM
     { "QPALM",   true },
 #endif
+#ifdef USE_OSQP
+    { "OSQP",    true },
+#endif
 };
 
 } // namespace

@@ -55,6 +55,7 @@ e-mail:    v.m.becerra@ieee.org
 #include "psopt_qp_plugin.h"
 
 #include <dlfcn.h>
+#include <cctype>
 #include <map>
 #include <string>
 #include <vector>
@@ -125,7 +126,13 @@ LoadedPlugin& open_plugin(const std::string& backend)
     if (it != cache.end()) return it->second;
 
     LoadedPlugin p;
-    const std::string file = "libpsopt_qp_" + backend + ".so";
+
+    // The option is spelled as the backend spells itself -- "ProxQP", "QPALM", "OSQP"
+    // -- and the file is named in lower case, as libraries are.
+    std::string tag = backend;
+    for (size_t k = 0; k < tag.size(); k++)
+        tag[k] = (char) tolower((unsigned char) tag[k]);
+    const std::string file = "libpsopt_qp_" + tag + ".so";
 
     const std::vector<std::string> paths = candidate_paths(file);
     for (size_t k = 0; k < paths.size() && p.handle == NULL; k++) {

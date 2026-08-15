@@ -97,8 +97,9 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     if (algorithm.hessian != "exact" && algorithm.hessian!="limited-memory" && algorithm.hessian!="numerical")
        error_message("Incorrect algorithm.hessian option specified. Valid options are \"limited-memory\", \"exact\" and \"numerical\" ");
     if (algorithm.qp_solver != "qpOASES" && algorithm.qp_solver != "ProxQP"
-                                        && algorithm.qp_solver != "QPALM")
-       error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"qpOASES\", \"ProxQP\" and \"QPALM\" ");
+                                        && algorithm.qp_solver != "QPALM"
+                                        && algorithm.qp_solver != "OSQP")
+       error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"qpOASES\", \"ProxQP\", \"QPALM\" and \"OSQP\" ");
     if (algorithm.qp_solver != "qpOASES" && algorithm.nlp_method != "SQP") {
        snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: algorithm.qp_solver applies only to nlp_method = \"SQP\"");
        psopt_print(workspace,workspace->text);

@@ -59,6 +59,7 @@ include(GNUInstallDirs)
 option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). Requires qpOASES." OFF)
 option(WITH_PROXQP "Add ProxQP as a QP backend for the SQP solver (algorithm.qp_solver = \"ProxQP\"). Requires proxsuite; implies WITH_SQP." OFF)
 option(WITH_QPALM "Add QPALM as a QP backend for the SQP solver (algorithm.qp_solver = \"QPALM\"). Requires QPALM; implies WITH_SQP." OFF)
+option(WITH_OSQP "Add OSQP as a QP backend for the SQP solver (algorithm.qp_solver = \"OSQP\"). Requires OSQP; implies WITH_SQP." OFF)
 
 # Automatic-differentiation backend. CPPAD (in-memory tapes) is the production backend; it
 # replaced ADOL-C, whose multi-GB on-disk tapes corrupt/exhaust disk at high node counts.
@@ -224,6 +225,7 @@ if(WITH_SQP)
     endif()
     message(STATUS "PSOPT SQP: ProxQP backend plugin enabled (proxsuite at ${PROXSUITE_INCLUDE_DIR})")
     psopt_add_qp_plugin(proxqp ${CMAKE_SOURCE_DIR}/src/qp_backends/proxqp_plugin.cxx)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_PROXQP)
     target_include_directories(psopt_qp_proxqp PRIVATE ${PROXSUITE_INCLUDE_DIR})
   endif()
 
@@ -243,13 +245,24 @@ if(WITH_SQP)
     message(STATUS "PSOPT SQP: QPALM backend plugin enabled")
     psopt_add_qp_plugin(qpalm ${CMAKE_SOURCE_DIR}/src/qp_backends/qpalm_plugin.cxx
                         qpalm_cxx qpalm ${LADEL_LIBRARY} ${LADEL_AMD_LIBRARY})
+    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_QPALM)
     target_compile_definitions(psopt_qp_qpalm PRIVATE LADEL_64BIT_INDICES)
+  endif()
+
+  if(WITH_OSQP)
+    find_package(osqp QUIET)
+    if(NOT osqp_FOUND)
+      message(FATAL_ERROR "WITH_OSQP=ON but OSQP was not found. Set osqp_DIR to the directory containing osqpConfig.cmake.")
+    endif()
+    message(STATUS "PSOPT SQP: OSQP backend plugin enabled")
+    psopt_add_qp_plugin(osqp ${CMAKE_SOURCE_DIR}/src/qp_backends/osqp_plugin.cxx osqp::osqpstatic)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_OSQP)
   endif()
 
   # The check that the isolation actually holds. A plugin that exports anything beyond
   # its three entry points has failed at the one job it was given, and the failure would
   # otherwise show up as a crash somewhere else entirely.
-  if(WITH_PROXQP OR WITH_QPALM)
+  if(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP)
     find_program(PSOPT_NM_EXECUTABLE nm)
     if(PSOPT_NM_EXECUTABLE)
       add_test(NAME qp_plugins_export_nothing_else
@@ -259,8 +272,8 @@ if(WITH_SQP)
                        -P ${CMAKE_SOURCE_DIR}/cmake/CheckPluginSymbols.cmake)
     endif()
   endif()
-elseif(WITH_PROXQP OR WITH_QPALM)
-  message(FATAL_ERROR "WITH_PROXQP and WITH_QPALM require WITH_SQP=ON: they are backends of PSOPT's SQP solver.")
+elseif(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP)
+  message(FATAL_ERROR "WITH_PROXQP, WITH_QPALM and WITH_OSQP require WITH_SQP=ON: they are backends of PSOPT's SQP solver.")
 endif()
 
 add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_RELEASE_STRING}" -DHAVE_CSTDDEF)
