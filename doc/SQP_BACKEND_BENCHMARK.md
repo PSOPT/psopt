@@ -215,9 +215,38 @@ variable bounds it has to respect.
 **The optimality phase plateaus on the early meshes.** On low_thrust's second mesh the
 violation reaches 2.7e-13 and the dual error freezes at 3.18e-05 -- a factor of thirty from
 the tolerance -- with the objective static to nine significant figures, a full steplength,
-and the Hessian shifted at every iteration. An unchanging objective under a full step means
-the step itself is essentially zero, which is what a large Levenberg shift produces. It is
-the same signature as the glider fault, and it is the next thing to find.
+and the Hessian shifted at every iteration.
+
+Chasing this produced one fix and two dead ends, and the dead ends are worth recording so
+that nobody spends the afternoon twice.
+
+The fix: on zpm a relaxed subproblem came back from GALAHAD with multipliers of 2.1e+50,
+and at the next iteration with exactly zero -- an overflow and the NaN cascade after it.
+Those multipliers enter the Hessian of the Lagrangian, whose Gerschgorin bound then reads
+-2.8e+50, and the Levenberg shift scaled by that bound is carried forward into every
+iteration that follows, decaying by a fifth each time and needing seventy iterations to
+come back to a sane value. Seventy iterations of a model that is a multiple of the
+identity. A QP answer with a non-finite entry in it is now rejected, which is what it
+deserves: the restoration that follows is a step the solver knows how to take. With the
+guard, the largest multiplier zpm produces is 1.0e+06 and the largest shift 1.7e+08,
+both in scale with the problem.
+
+The first dead end: capping the carried shift at the current Gerschgorin ceiling, which is
+correct in principle -- a shift larger than |sigma| + 1 makes the model's own curvature
+irrelevant -- and which breaks bryson_denham under strategy M. Measured and withdrawn.
+
+The second: the trust-region multipliers. A variable whose step is pinned by the trust
+region rather than by a real bound has its bound multiplier set to zero, and it looked as
+though the dual error was then picking up an unremovable residual at exactly those
+variables. Instrumenting it says otherwise -- the dual error computed over the unpinned
+variables alone is the same number, to four figures, at most iterations.
+
+What the instrumentation does show, and what the next attempt should start from, is that
+zpm's first mesh is not converging quietly at all: the dual error passes through 9.3e+11,
+1.2e+15 and 1.7e+13 at successive iterations, with between 77 and 187 of its 283 variables
+pinned by a trust region that has shrunk to 1.6e-02. The multipliers coming back from the
+subproblem are not multipliers. Whether that is the backend, the relaxation, or the trust
+region interacting with both is the open question.
 
 ## What it does not show
 

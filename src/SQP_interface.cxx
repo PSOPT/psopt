@@ -374,6 +374,14 @@ struct QpSolution {
 
 // Solve a subproblem through a plugin backend. The conversion is only a matter of
 // pointers: the storage the SQP already keeps is exactly what the interface asks for.
+// A vector with a NaN or an infinity in it is not an answer, whatever the solver's
+// return code says. See the note in solve_qp_plugin.
+static bool all_finite(const double* v, int k)
+{
+    for (int i = 0; i < k; i++) if (!std::isfinite(v[i])) return false;
+    return true;
+}
+
 static bool solve_qp_plugin(const string& backend, const QpProblem& p,
                             double tol, int max_iter, bool nonconvex,
                             QpSolution& out, string& message)
@@ -414,6 +422,24 @@ static bool solve_qp_plugin(const string& backend, const QpProblem& p,
 
     out.iterations = r.iterations;
     out.ok = (r.status == PSOPT_QP_SOLVED) || (r.status == PSOPT_QP_APPROXIMATE);
+
+    // A backend that stops early can return a vector that is not a number. On
+    // examples/zpm, GALAHAD's QPA came back from a relaxed subproblem with multipliers
+    // of 2.1e+50 and then, at the next iteration, with exactly zero -- an overflow and
+    // the NaN cascade after it. Those multipliers go into the Hessian of the
+    // Lagrangian, whose Gerschgorin bound then reads -2.8e+50, and the Levenberg shift
+    // that is scaled by it is carried into every iteration that follows. A single
+    // non-finite entry poisons the next fifty steps.
+    //
+    // So a solution with a non-finite entry in it is not a solution, and is reported as
+    // a failure: the restoration that follows is a step the solver knows how to take.
+    if (out.ok) {
+        for (int j = 0; j < p.nv && out.ok; j++)
+            if (!std::isfinite(out.d[(size_t) j]) || !std::isfinite(out.z[(size_t) j]))
+                out.ok = false;
+        for (int i = 0; i < p.mc && out.ok; i++)
+            if (!std::isfinite(out.lambda[(size_t) i])) out.ok = false;
+    }
 
     // An approximate answer is welcome; an inadmissible one is not. A backend that
     // stops at its iteration limit returns wherever it had got to, and for an
@@ -1322,6 +1348,18 @@ int SQP_interface(Alg&         algorithm,
                 Hm.scatter(hval);
                 const double sigma     = Hm.gerschgorin_lower_bound();
                 const double delta_max = fabs(sigma) + 1.0;
+                // The shift that worked last time is the first thing to try, but it
+                // has to be a shift for *this* matrix. delta_max moves with the
+                // multipliers, and on examples/zpm it went from 1.5e+01 to 2.8e+50 and
+                // back within three iterations when a subproblem returned multipliers
+                // of 1e+50. Carried forward uncapped, a shift of 5.6e+49 then sat on a
+                // matrix whose own bound was 15, decaying by a fifth each iteration and
+                // needing seventy of them to come back -- seventy iterations of a model
+                // that is a multiple of the identity, a step of zero, an objective
+                // static to nine figures and a dual error that does not move. That is
+                // the plateau seen on zpm and on low_thrust. Capping the carried value
+                // at the current ceiling costs nothing when the scale is steady and
+                // ends the plateau when it is not.
                 double delta = (tau > 0.0) ? 0.2*tau : 0.0;
                 for (;;) {
                     Hm.scatter(hval);
@@ -1398,6 +1436,8 @@ int SQP_interface(Alg&         algorithm,
                 if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) {
                     qp.getPrimalSolution(&dsol[0]);
                     qp.getDualSolution(&ysol[0]);
+                    if (!all_finite(&dsol[0], n) || !all_finite(&ysol[0], n + m))
+                        rv = RET_INIT_FAILED;
                 }
             }
             else {
@@ -1408,6 +1448,7 @@ int SQP_interface(Alg&         algorithm,
                 if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) {
                     qp.getPrimalSolution(&dsol[0]);
                     qp.getDualSolution(&ysol[0]);
+                    if (!all_finite(&dsol[0], n)) rv = RET_INIT_FAILED;
                 }
             }
 
@@ -1607,6 +1648,8 @@ int SQP_interface(Alg&         algorithm,
                 if (rve == SUCCESSFUL_RETURN || rve == RET_MAX_NWSR_REACHED) {
                     qpe.getPrimalSolution(&ze[0]);
                     qpe.getDualSolution(&ye[0]);
+                    if (!all_finite(&ze[0], ne) || !all_finite(&ye[0], ne + m))
+                        rve = RET_INIT_FAILED;
                 }
             }
 
@@ -1814,6 +1857,8 @@ int SQP_interface(Alg&         algorithm,
                 if (rvs == SUCCESSFUL_RETURN || rvs == RET_MAX_NWSR_REACHED) {
                     qps.getPrimalSolution(&dsoc[0]);
                     qps.getDualSolution(&ysoc[0]);
+                    if (!all_finite(&dsoc[0], n) || !all_finite(&ysoc[0], n + m))
+                        rvs = RET_INIT_FAILED;
                 }
             }
 
