@@ -234,6 +234,18 @@ struct alg_str {
   // stops once a feasible point has been found, which is useful when a new problem
   // formulation is not converging and one wants to know whether the constraints alone
   // are the trouble. Ignored unless nlp_method is "SQP".
+  // How many iterations the SQP allows a QP backend for one subproblem. Betts's own
+  // remedy for a subproblem that will not solve is to eliminate it rather than grind at
+  // it (section 2.7), and the measurement agrees: on examples/zpm, in two hundred
+  // seconds at a budget of 200, GALAHAD's QPA solves 276 subproblems and stops at its
+  // limit on 25; at 3000 it solves 34 and stops on 38. The subproblems that reach the
+  // limit are ones it cannot solve rather than ones it needs longer for, and letting
+  // them grind costs the ones behind them in the queue.
+  //
+  // The value is a budget, not a promise: a backend that finishes sooner finishes
+  // sooner. Ignored unless nlp_method is "SQP".
+  int       qp_iter_max;
+
   string    sqp_strategy;
 
   string    qp_restoration;

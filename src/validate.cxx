@@ -101,6 +101,8 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                                         && algorithm.qp_solver != "OSQP"
                                         && algorithm.qp_solver != "GALAHAD")
        error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"qpOASES\", \"ProxQP\", \"QPALM\", \"OSQP\" and \"GALAHAD\" ");
+    if (algorithm.qp_iter_max < 10)
+       error_message("algorithm.qp_iter_max is too small; it must be at least 10 ");
     if (algorithm.sqp_strategy != "M" && algorithm.sqp_strategy != "FM"
                                      && algorithm.sqp_strategy != "F")
        error_message("Incorrect algorithm.sqp_strategy option specified. Valid options are \"M\", \"FM\" and \"F\" ");

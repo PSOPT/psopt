@@ -268,13 +268,26 @@ subproblems and stops at its limit on 25; at 3000 it solves 34 and stops on 38. 
 subproblems that hit the limit are ones it cannot solve, not ones it needs longer for, and
 letting them grind costs the ones behind them.
 
-**The finding, which is not a fix.** The GALAHAD plugin never sets `control.maxit`, so the
-`max_iter` the plugin interface carries has never reached it: every subproblem has run to
-GALAHAD's own default while PSOPT believed it had set a budget. That is a defect in the
-contract and should be repaired. It cannot be repaired by simply passing the value through,
-because PSOPT's default of 200 is tighter than GALAHAD's own and bryson_denham under
-GALAHAD goes from 32 iterations to failing at 74. Repairing it means choosing a default,
-and choosing a default means a sweep.
+**The finding, since repaired.** The GALAHAD plugin never set `control.maxit`, so the
+`max_iter` the plugin interface carries never reached it: every subproblem ran to
+GALAHAD's own default while PSOPT believed it had set a budget. Three of the four backends
+honoured it; GALAHAD alone did not. Passing the value through is one line and is not safe
+by itself, because PSOPT's default of 200 is tighter than GALAHAD's own and bryson_denham
+under GALAHAD fails at it. The budget is now `algorithm.qp_iter_max`, and the default was
+chosen by sweeping it -- 200, 500, 1000 and 2000, over eight examples and two backends:
+
+| budget | GALAHAD | ProxQP |
+|---|---|---|
+| 200 | bryson_denham fails; shuttle_reentry 113, launch 35 | lts 22, otherwise as below |
+| 500 | bryson_denham 38; shuttle_reentry 88, launch 28 | lts 24 |
+| **1000** | **bryson_denham 35; shuttle_reentry 70, launch 23** | **lts 28** |
+| 2000 | bryson_denham 35; shuttle_reentry 136, launch fails | lts 24 |
+
+1000 is best for GALAHAD on every cell that moves and costs ProxQP six iterations on lts.
+It is also GALAHAD's own default, so honouring the budget changes that backend's behaviour
+not at all while making the option work for the other three. Above it, launch fails and
+shuttle_reentry doubles: a subproblem allowed to grind is a subproblem taken away from the
+ones behind it, which is Betts's argument in section 2.7 arriving as a number.
 
 So the open question is narrower than it was but still open: on zpm's first mesh, seven per
 cent of subproblems are ones QPA cannot solve at any budget, and the multipliers they

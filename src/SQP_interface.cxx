@@ -757,7 +757,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
                                 vector<double>& jval, SparseCsc& Jm,
                                 MatrixXd& gval,
                                 const string& backend, bool use_extern,
-                                double tol, int max_iter, int iprint,
+                                double tol, int max_iter, int qp_iter_max, int iprint,
                                 int& n_iters, int& n_relaxed, Workspace* workspace)
 {
     const int    n         = (int) x.rows();
@@ -859,7 +859,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
 
                 QpSolution qs;
                 string why;
-                if (solve_qp_plugin(backend, qpp, tol, 500, /*nonconvex=*/false, qs, why)
+                if (solve_qp_plugin(backend, qpp, tol, qp_iter_max, /*nonconvex=*/false, qs, why)
                     && qs.ok) {
                     for (int j = 0; j < n; j++) dsol[(size_t) j] = qs.d[(size_t) j];
                     solved = true;
@@ -1071,7 +1071,8 @@ int SQP_interface(Alg&         algorithm,
         feas_status = feasible_point_phase(x, m, gl, gu, xlb, xub, tape_done,
                                            jrow, jcol, jval, Jm, gval,
                                            algorithm.qp_solver, use_extern,
-                                           tol, algorithm.nlp_iter_max, iprint,
+                                           tol, algorithm.nlp_iter_max,
+                                           algorithm.qp_iter_max, iprint,
                                            n_feas_iters, n_feas_relaxed, workspace);
 
         if (iprint) {
@@ -1412,7 +1413,7 @@ int SQP_interface(Alg&         algorithm,
 
                 QpSolution qs;
                 string why;
-                if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, 200,
+                if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
                                      exact_hessian, qs, why)) {
                     status  = 2;
                     message = why;
@@ -1628,7 +1629,7 @@ int SQP_interface(Alg&         algorithm,
 
                 QpSolution qs;
                 string why;
-                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, 200,
+                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
                                        exact_hessian, qs, why);
 
                 rve   = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
@@ -1840,7 +1841,7 @@ int SQP_interface(Alg&         algorithm,
 
                 QpSolution qs;
                 string why;
-                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, 200,
+                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
                                        exact_hessian, qs, why);
                 rvs = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
                 if (qs.ok) {

@@ -163,6 +163,12 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
     control.out         = 0;
     control.error       = 0;
 
+    // The budget the caller gave us. This plugin interface has always carried max_iter
+    // and this backend, alone of the four, has always ignored it: every subproblem ran
+    // to GALAHAD's own default however few iterations PSOPT believed it was allowing,
+    // and PSOPT then drew conclusions from an iteration count it had not asked for.
+    if (p->max_iter > 0) control.maxit = (ipc_) p->max_iter;
+
 
     qpa_import(&control, &data, &status, (ipc_) n, (ipc_) m,
                "coordinate", (ipc_) H_val.size(), &H_row[0], &H_col[0], NULL,
