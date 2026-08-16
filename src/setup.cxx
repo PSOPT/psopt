@@ -160,6 +160,8 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   // usable with numerical derivatives (lets IPOPT take exact-Hessian steps instead of L-BFGS).
   algorithm.hessian                     = "limited-memory";
   algorithm.qp_solver                   = "qpOASES";
+  algorithm.qp_restoration              = "elastic";
+  algorithm.elastic_penalty             = "weights";
   algorithm.collocation_method          = "Legendre";
   algorithm.transcription_method        = "collocation";
   algorithm.ir_residual_nodes           = 4;

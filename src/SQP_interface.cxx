@@ -714,6 +714,7 @@ int SQP_interface(Alg&         algorithm,
     // it is handed, so its memory is quadratic and its work per subproblem cubic in n;
     // ProxQP factorises the KKT system sparsely and tolerates an indefinite Hessian.
     const bool use_extern = (algorithm.qp_solver != "qpOASES");
+    const bool bound_rho_by_multipliers = (algorithm.elastic_penalty == "multipliers");
 
     MatrixXd B;                                       // the quasi-Newton model, if used
     if (!exact_hessian) B = MatrixXd::Identity(n,n);
@@ -1105,39 +1106,80 @@ int SQP_interface(Alg&         algorithm,
         // The linearised constraints can be inconsistent even when the problem is
         // perfectly well posed -- it is the normal situation when the starting guess
         // violates an equality, which is how most people supply one. The subproblem
-        // then has no solution and the iteration would simply stop. Elastic mode
-        // relaxes every constraint by a pair of non-negative slacks and charges them
-        // in the objective,
+        // then has no solution and the iteration would simply stop.
+        //
+        // Two relaxations are offered, and psopt.h records what is known about when
+        // each is the right one.
+        //
+        // Elastic mode, which is the default, gives every constraint its own pair of
+        // non-negative slacks and charges them in the objective (Gill, Murray and
+        // Saunders):
         //
         //   min 1/2 d'Bd + grad_f'd + rho*sum(v + w)
-        //   s.t. lbA <= J d + v - w <= ubA,  lb <= d <= ub,  v, w >= 0,
+        //   s.t. lbA <= J d + v - w <= ubA,  lb <= d <= ub,  v, w >= 0.
         //
-        // which is always feasible, so a step always exists. With rho above the
-        // current penalty weights the step reduces infeasibility; the slacks are
-        // given a small quadratic term as well, to keep the QP's Hessian positive
-        // definite rather than merely semidefinite. This is SNOPT's device (Gill,
-        // Murray and Saunders 2005), in the simplest form that does the job.
+        // Betts's relaxation uses one variable instead of 2m (3rd ed., section 2.7).
+        // For each row let a_i be how far d = 0 falls short of its lower bound and b_i
+        // how far it exceeds its upper -- at most one can be positive, since the two
+        // together would mean an empty interval -- and put
+        //
+        //   min 1/2 d'Bd + grad_f'd + rho*xi
+        //   s.t. lbA <= J d + c xi <= ubA,  lb <= d <= ub,  0 <= xi <= 1,
+        //
+        // with c_i = a_i where the lower bound is the one violated and -b_i where it is
+        // the upper. At xi = 1 the point d = 0 satisfies every row by construction, so
+        // the subproblem is feasible for the same reason elastic mode is; at xi = 0 it
+        // is the original subproblem exactly. Minimising rho*xi asks for the smallest
+        // fraction of the current infeasibility that has to be tolerated for the
+        // linearisation to be consistent.
+        //
+        // Both are always feasible, so a step always exists; both give the slacks a
+        // small quadratic term as well, to keep the subproblem's Hessian positive
+        // definite rather than merely semidefinite.
         if (m > 0 && rv != SUCCESSFUL_RETURN && rv != RET_MAX_NWSR_REACHED) {
 
+            const bool relax = (algorithm.qp_restoration == "relaxation");
+
+            // The price of a unit of infeasibility. See psopt.h for why the default is
+            // taken from the merit weights alone although the multipliers are the
+            // quantity the theory names, and what has to move with it when they are.
             double rho = 10.0;
             for (int i = 0; i < m; i++) rho = max(rho, 10.0*r[i]);
+            if (bound_rho_by_multipliers) {
+                for (int i = 0; i < m; i++) rho = max(rho, 10.0*fabs(lam(i)));
+                for (int j = 0; j < n; j++) rho = max(rho, 10.0*fabs(zbnd(j)));
+            }
             rho_elastic = rho;
 
-            const int ne = n + 2*m;
+            const int ne = relax ? (n + 1) : (n + 2*m);
             vector<double> ge(ne), lbe(ne), ube(ne), ze(ne), ye(ne + m);
 
-            const double eps_slack = 1.0e-8;
+            // Small relative to what the slacks cost, not small in absolute terms: once
+            // rho is bounded below by the multipliers it is no longer near ten, and a
+            // linear cost of 10^5 against a fixed quadratic term of 10^-8 is thirteen
+            // orders of magnitude in one subproblem. qpOASES declined the relaxation on
+            // the first mesh of examples/lts for that reason and no other.
+            const double eps_slack = bound_rho_by_multipliers ? 1.0e-8*rho : 1.0e-8;
 
-            // [ J | I | -I ] and blkdiag(H, eps I), both built on the pattern of the
-            // matrices they extend, so the elastic subproblem costs the slacks and
-            // nothing else. The patterns are built the first time restoration is
-            // needed and kept thereafter.
+            // [ J | I | -I ] or [ J | c ], and blkdiag(H, eps I), built on the pattern
+            // of the matrices they extend so that the relaxed subproblem costs the
+            // extra columns and nothing else. The patterns are built the first time
+            // restoration is needed and kept thereafter; the relaxation column carries
+            // an entry in every row whether that row needs one at this iterate or not,
+            // because the rows that need relaxing change from step to step and the
+            // pattern does not.
             if (Ae.empty()) {
                 vector<unsigned int> ar, ac;
-                ar.reserve(jrow.size() + 2*(size_t)m); ac.reserve(jcol.size() + 2*(size_t)m);
+                const size_t extra = relax ? (size_t) m : 2*(size_t) m;
+                ar.reserve(jrow.size() + extra); ac.reserve(jcol.size() + extra);
                 for (size_t k = 0; k < jrow.size(); k++) { ar.push_back(jrow[k]); ac.push_back(jcol[k]); }
-                for (int i = 0; i < m; i++) { ar.push_back((unsigned int) i); ac.push_back((unsigned int)(n+i)); }
-                for (int i = 0; i < m; i++) { ar.push_back((unsigned int) i); ac.push_back((unsigned int)(n+m+i)); }
+                if (relax) {
+                    for (int i = 0; i < m; i++) { ar.push_back((unsigned int) i); ac.push_back((unsigned int) n); }
+                }
+                else {
+                    for (int i = 0; i < m; i++) { ar.push_back((unsigned int) i); ac.push_back((unsigned int)(n+i)); }
+                    for (int i = 0; i < m; i++) { ar.push_back((unsigned int) i); ac.push_back((unsigned int)(n+m+i)); }
+                }
                 Ae.build(m, ne, ar, ac, /*force_diagonal=*/false);
 
                 vector<unsigned int> hr, hc;
@@ -1157,8 +1199,19 @@ int SQP_interface(Alg&         algorithm,
 
             aeval.clear();
             aeval.insert(aeval.end(), jval.begin(), jval.end());
-            for (int i = 0; i < m; i++) aeval.push_back( 1.0);
-            for (int i = 0; i < m; i++) aeval.push_back(-1.0);
+            if (relax) {
+                for (int i = 0; i < m; i++) {
+                    const double lo = lbA[i], hi = ubA[i];
+                    double c = 0.0;
+                    if      (lo > 0.0 && lo <  qpOASES::INFTY) c = lo;   // short of the lower bound
+                    else if (hi < 0.0 && hi > -qpOASES::INFTY) c = hi;   // past the upper bound
+                    aeval.push_back(c);
+                }
+            }
+            else {
+                for (int i = 0; i < m; i++) aeval.push_back( 1.0);
+                for (int i = 0; i < m; i++) aeval.push_back(-1.0);
+            }
             Ae.scatter(aeval);
 
             heval.clear();
@@ -1173,21 +1226,21 @@ int SQP_interface(Alg&         algorithm,
             // raised along with the rest, which does them no harm.
             if (exact_hessian && tau > 0.0) He.shift_diagonal(tau);
 
-            // The subproblem is stated with its objective divided by rho, so that the
-            // slacks cost one apiece instead of rho and the quadratic block is scaled to
+            // The subproblem is stated with its objective divided by rho, so that a
+            // slack costs one apiece instead of rho and the quadratic block is scaled to
             // match. The minimiser is unchanged -- scaling an objective does not move
             // it -- but the conditioning is transformed: priced directly, a slack with a
             // linear cost of 10^7 against a regularising quadratic term of 10^-8 spans
             // fifteen orders of magnitude, and a proximal method spent twenty-three
-            // thousand iterations on examples/brac1 failing to get through it. The
-            // multipliers come back scaled by 1/rho and are restored below.
-            // ...and it is applied only for ProxQP. qpOASES's active-set method is not
-            // troubled by the unscaled pricing and is measurably worse with it:
-            // examples/bryson_denham goes from twenty iterations to failing after two
-            // hundred and forty-six.
+            // thousand iterations on examples/brac1 failing to get through it.
+            // ...and it is applied only for the plugin backends. qpOASES's active-set
+            // method is not troubled by the unscaled pricing and is measurably worse
+            // with it: examples/bryson_denham goes from twenty iterations to failing
+            // after two hundred and forty-six.
             const double oscale = use_extern ? 1.0/rho : 1.0;
             for (int j = 0; j < n; j++) { ge[j] = oscale*gf(j);   lbe[j] = lbd[j]; ube[j] = ubd[j]; }
-            for (int k = n; k < ne; k++) { ge[k] = oscale*rho;    lbe[k] = 0.0;    ube[k] = qpOASES::INFTY; }
+            for (int k = n; k < ne; k++) { ge[k] = oscale*rho;    lbe[k] = 0.0;
+                                          ube[k] = relax ? 1.0 : qpOASES::INFTY; }
             He.scale(oscale);
 
             returnValue rve;
@@ -1316,7 +1369,19 @@ int SQP_interface(Alg&         algorithm,
                 for (int i = 0; i < m; i++)
                     r[i] = psi0 + rdev(i)*rdev(i)*varsigma/aTa;
 
-            if (elastic) for (int i = 0; i < m; i++) r[i] = max(r[i], rho_elastic);
+            // The l1 merit function is exact only while its weights dominate the
+            // multipliers, so after a restoration they were raised to the price of the
+            // relaxation. Betts's augmented Lagrangian is not a penalty function in
+            // that sense -- it carries the multipliers explicitly and its weights are
+            // the least-norm set that gives descent -- so with the price bounded below
+            // by the multipliers this rule does not make the merit function exact, it
+            // makes it stiff: weights of 10^5 on every constraint of
+            // examples/bryson_denham, and a line search that cannot find a step. The
+            // two rules were reading the same quantity for opposite purposes, and only
+            // worked together while it was the l1 weights, which were the right size
+            // for neither.
+            if (elastic && !bound_rho_by_multipliers)
+                for (int i = 0; i < m; i++) r[i] = max(r[i], rho_elastic);
 
             // The slacks were computed against the previous weights; recompute them
             // against these, so that the function the line search sees is the one the

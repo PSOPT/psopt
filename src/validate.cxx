@@ -101,6 +101,10 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                                         && algorithm.qp_solver != "OSQP"
                                         && algorithm.qp_solver != "GALAHAD")
        error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"qpOASES\", \"ProxQP\", \"QPALM\", \"OSQP\" and \"GALAHAD\" ");
+    if (algorithm.qp_restoration != "elastic" && algorithm.qp_restoration != "relaxation")
+       error_message("Incorrect algorithm.qp_restoration option specified. Valid options are \"elastic\" and \"relaxation\" ");
+    if (algorithm.elastic_penalty != "weights" && algorithm.elastic_penalty != "multipliers")
+       error_message("Incorrect algorithm.elastic_penalty option specified. Valid options are \"weights\" and \"multipliers\" ");
     if (algorithm.qp_solver != "qpOASES" && algorithm.nlp_method != "SQP") {
        snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: algorithm.qp_solver applies only to nlp_method = \"SQP\"");
        psopt_print(workspace,workspace->text);

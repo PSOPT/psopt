@@ -71,6 +71,49 @@ factorisation and no wrapper can contain it.
 Where it does converge it is very fast -- shuttle_reentry in 8 seconds, the quickest
 cell in the table.
 
+## Two settings the table does not vary
+
+The sweep above is one configuration: `algorithm.qp_restoration = "elastic"` and
+`algorithm.elastic_penalty = "weights"`, which are the defaults. Both control what
+happens when the linearised constraints are inconsistent and the subproblem has to be
+relaxed, which on the small examples is occasional and on launch is every iteration.
+They are settings rather than fixes because the evidence does not point one way.
+
+`qp_restoration` chooses the shape of the relaxation. `"elastic"` gives every
+constraint a pair of non-negative slacks, n + 2m variables, and can relax one row
+without relaxing another. `"relaxation"` is Betts's, section 2.7: one variable in
+[0, 1] that relaxes every row by the same fraction of its own infeasibility, n + 1
+variables. Flexibility against size. On the small pseudospectral examples flexibility
+wins and it is not close -- with `"relaxation"`, bryson_denham does not converge and
+lts goes from 19 iterations to 28 under qpOASES and 74 under the multiplier pricing.
+On launch, where 282 of 560 constraints are violated at the start, size wins by as
+wide a margin: the elastic subproblem is 1778 variables, ProxQP took between five and
+twenty seconds over each one, and timing the parts put 99 per cent of the solver's
+wall clock there against 0.03 seconds for the plain subproblem and 0.02 for the
+inertia test. The relaxed subproblem takes GALAHAD 20 iterations where the elastic one
+takes the 1002 at which it gives up. Neither setting solves launch.
+
+`elastic_penalty` chooses what the relaxation costs. `"weights"` prices it above the
+merit function's penalty weights; `"multipliers"` prices it above the multipliers as
+well, which is the classical condition on elastic mode and the theoretically correct
+one. The default is the other one, for a reason worth recording: the rule was written
+for the l1 merit function, whose weights have to dominate the multipliers anyway, so
+pricing from the weights got the bound for free. Betts's augmented Lagrangian carries
+the multipliers itself and its weights are least-norm -- machine epsilon for most of a
+run -- so the price collapsed to its floor of ten, and on launch the same linearised
+constraints a unit Hessian satisfied to a slack of 1.3e-02 came back one solve later
+at 1.1, the objective having bought the difference.
+
+Repairing it is a wash on this benchmark: 26 cells solved either way. `"multipliers"`
+fixes bryson_denham under qpOASES, which goes from 91 iterations at an answer 0.09 per
+cent from IPOPT's to 31 at IPOPT's exactly, and brac1 and lts each gain a backend;
+against that OSQP loses interior_point and manutec, and ProxQP's bryson_denham answer
+drifts by 0.3 per cent. Two things have to move with it or it is worse than useless:
+the weights are no longer raised to the price after a restoration, which under an
+augmented Lagrangian makes the merit stiff rather than exact, and the slacks'
+regularisation scales with the price instead of sitting at 1.0e-08. Each of the three
+alone breaks bryson_denham; they are one mechanism.
+
 ## What it does not show
 
 No backend is close to IPOPT, which solves all ten in a few seconds each. The SQP is

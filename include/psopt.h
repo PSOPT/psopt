@@ -204,6 +204,58 @@ struct alg_str {
   // "SQP". Note that QPALM is LGPL-3: a PSOPT built with it is distributable under
   // LGPL-3 rather than LGPL-2.1.
   string    qp_solver;
+
+  // How the SQP relaxes a subproblem whose linearised constraints are inconsistent,
+  // which is the normal situation when the starting guess violates an equality.
+  // "elastic" (default) is SNOPT's device: a pair of non-negative slacks per
+  // constraint, charged in the objective, giving a subproblem of n + 2m variables that
+  // is always feasible and can relax one row without relaxing another. "relaxation" is
+  // Betts's (3rd ed., section 2.7): a single variable xi in [0,1] that relaxes every
+  // row by the same fraction of its own infeasibility, giving n + 1 variables.
+  //
+  // The trade is flexibility against size, and which way it falls depends on the
+  // problem. On the small pseudospectral examples elastic mode is clearly better --
+  // with "relaxation", bryson_denham does not converge and lts goes from 19 iterations
+  // to 74. On a large sparse problem whose guess is badly infeasible it is the other
+  // way about, and by a wide margin: examples/launch has 658 variables and 560
+  // constraints, 282 of them violated at the start, so restoration runs at every
+  // iteration; the elastic subproblem is 1778 variables and took ProxQP between five
+  // and twenty seconds each, which timing the parts showed to be 99 per cent of the
+  // solver's wall clock, while the relaxed one took GALAHAD 20 iterations instead of
+  // the 1002 at which it gives up. Neither setting solves launch. Ignored unless
+  // nlp_method is "SQP".
+  string    qp_restoration;
+
+  // What the relaxation costs, per unit of infeasibility. "weights" (default) prices it
+  // above the merit function's penalty weights, which is where it has always been taken
+  // from. "multipliers" prices it above the multipliers as well, which is the classical
+  // condition on elastic mode (Gill, Murray and Saunders): below it, the relaxed
+  // subproblem buys a reduction in the objective with a slack and the restoration
+  // restores nothing.
+  //
+  // The default is not the theoretically correct one, and the reason is worth stating.
+  // The rule was written for the l1 merit function, whose weights have to dominate the
+  // multipliers for the penalty to be exact, so taking the price from the weights got
+  // the bound on the multipliers for free. Betts's augmented Lagrangian, which replaced
+  // it, carries the multipliers explicitly and its weights are the least-norm set that
+  // gives descent -- machine epsilon for most of a run -- so the price collapsed to its
+  // floor of ten. On examples/launch that is far below the multipliers, and at the
+  // initial point the same linearised constraints a unit Hessian satisfied to a total
+  // slack of 1.3e-02 came back one solve later with a slack of 1.1.
+  //
+  // "multipliers" repairs that, and two things have to move with it or it makes matters
+  // worse: the weights are no longer raised to the price after a restoration, which
+  // under an augmented Lagrangian makes the merit function stiff rather than exact, and
+  // the slacks' regularisation is scaled by the price rather than fixed at 1.0e-08, or
+  // the subproblem spans thirteen orders of magnitude and qpOASES declines it. Measured
+  // across the ten-example benchmark the setting is a wash -- 26 cells solved either
+  // way. It repairs bryson_denham under qpOASES, which goes from 91 iterations at a
+  // coarse answer to 31 at IPOPT's, and brac1 and lts each gain a backend; against
+  // that, OSQP loses interior_point and manutec and ProxQP's bryson_denham answer
+  // drifts by 0.3 per cent. It is offered rather than imposed for that reason.
+  // Ignored unless nlp_method is "SQP".
+  string    elastic_penalty;
+
   string    scaling;
   string    derivatives;
   string    constraint_scaling;
