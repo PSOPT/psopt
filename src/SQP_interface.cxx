@@ -479,6 +479,7 @@ bool kkt_inertia(const SparseCsc& H, const SparseCsc& J, int n, int m,
 
     id.icntl[0] = -1; id.icntl[1] = -1; id.icntl[2] = -1; id.icntl[3] = 0;  // silent
     id.icntl[23] = 1;                       // ICNTL(24): detect null pivots
+
     id.n   = (MUMPS_INT) (n + m);
     id.nnz = (MUMPS_INT8) irn.size();
     id.irn = &irn[0]; id.jcn = &jcn[0]; id.a = &val[0];
@@ -948,25 +949,27 @@ int SQP_interface(Alg&         algorithm,
                 //
                 // What removes the choice is not the starting value but the memory. The
                 // shift that worked at the last iteration is a far better guess than any
-                // fraction of a bound, so it is carried forward and tried at a third of
-                // a fifth of its size: if the model has improved the shift decays
-                // towards zero and the exact Hessian returns, and if it has not the
-                // escalation begins from somewhere useful instead of from nothing. This
-                // is IPOPT's inertia correction, with Betts's bound setting the scale of
-                // the first attempt and the ceiling.
+                // fraction of a bound, so it is carried forward and tried at a fifth of
+                // its size: if the model has improved the shift decays towards zero and
+                // the exact Hessian returns, and if it has not the escalation begins
+                // from somewhere useful instead of from nothing. This is IPOPT's inertia
+                // correction, with Betts's bound setting the scale of the first attempt
+                // and the ceiling.
                 //
                 // Sweeping the starting fraction over 1.0e-10 to 1.0e-4 and the
                 // escalation over 10 and 100, with and without the carry-over, the
                 // carry-over decides every case: with it all eight combinations solve
                 // all five small examples, without it six of the eight fail or stall on
-                // one or another. The decay factor itself has to be chosen with more
-                // care than it looks: at 0.1 the shift decays faster than the model
-                // improves and bryson_denham fails, and between 1/3 and 0.3333 -- a
-                // relative change of one part in ten thousand -- the same problem takes
-                // 53 iterations or 27. Once the shift is small the iterates are on a
-                // knife edge and the count is not a meaningful quantity to a factor of
-                // two; the failure at 0.1 is, and 0.2 is chosen for the distance from it
-                // rather than for any count.
+                // one or another. The decay factor is a real choice rather than a free
+                // one: at 0.1 the shift decays faster than the model earns its curvature
+                // back and bryson_denham fails, while 0.3333 to 0.6 all solve everything
+                // under qpOASES. Measured across three backends rather than one, 0.2 is
+                // better than 0.5 nearly everywhere -- brac1 in 14, 14 and 20 iterations
+                // against 27, 58 and 40, manutec in 103, 12 and 12 against 193, 12 and
+                // 12 -- and the one exception, bryson_denham under qpOASES, is 91
+                // iterations against 19. Counts move by a factor of two on changes of a
+                // few per cent, so they are not a quantity to tune against; the ends of
+                // the working range are.
                 Hm.scatter(hval);
                 const double sigma     = Hm.gerschgorin_lower_bound();
                 const double delta_max = fabs(sigma) + 1.0;
@@ -978,7 +981,29 @@ int SQP_interface(Alg&         algorithm,
                     int npos = 0, nneg = 0, nzero = 0;
                     const bool got = kkt_inertia(Hm, Jm, n, m, npos, nneg, nzero);
                     n_inertia++;
-                    if (!got || (nneg == m && nzero == 0)) break;
+                    // Gould's condition is usually written In(K) = (n, m, 0), and that
+                    // is what was tested here. It is the right condition only when the
+                    // Jacobian has full row rank. In general, with r = rank(J), the
+                    // inertia of K is (r, r, m-r) plus that of the reduced Hessian on
+                    // the null space of J, so a rank deficiency of m - r shows up as
+                    // m - r zero eigenvalues and m - r fewer negative ones however the
+                    // Hessian is shifted -- the deficiency is in J, and no change to H
+                    // reaches it. Demanding zero zeros therefore asks for something a
+                    // shift cannot deliver, and the loop answers by escalating to its
+                    // ceiling, at every iteration, for ever.
+                    //
+                    // That is what examples/glider had been doing since inertia control
+                    // went in: a Jacobian one row short of full rank, a shift pinned at
+                    // |sigma| + 1, a model that was therefore a multiple of the identity,
+                    // and a steepest-descent step of fixed length taken 1000 times per
+                    // mesh. It solved in 117 iterations before, and stopped solving at
+                    // all.
+                    //
+                    // The rank-tolerant form of the same condition is npos == n: the
+                    // reduced Hessian is positive definite exactly when the positive
+                    // eigenvalues number n, whatever the rank of J. It reduces to
+                    // In(K) = (n, m, 0) when J has full rank, so nothing is given up.
+                    if (!got || npos == n) break;
                     if (delta >= delta_max) break;
                     delta = (delta == 0.0) ? 1.0e-10*delta_max
                                            : min(100.0*delta, delta_max);
