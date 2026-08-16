@@ -438,6 +438,27 @@ static bool solve_qp_plugin(const string& backend, const QpProblem& p,
 }
 
 
+// ---------------------------------------------------------------------------------
+// Betts's constraint violation merit function, (2.51):
+//
+//   Mv(x) = sum_i chi^2(cL_i, c_i, cU_i) + sum_j chi^2(xL_j, x_j, xU_j),
+//   chi(l, y, u) = max[0, l - y, y - u].
+//
+// A sum of squares, not the sum of absolute violations the optimality phase uses for
+// reporting. The square is what makes it differentiable where it matters and what makes
+// a least-distance step a descent direction for it.
+// ---------------------------------------------------------------------------------
+double violation_merit(const MatrixXd& gval, const vector<double>& gl,
+                       const vector<double>& gu)
+{
+    double s = 0.0;
+    for (int i = 0; i < gval.rows(); i++) {
+        const double v = violation(gval(i), gl[(size_t) i], gu[(size_t) i]);
+        s += v*v;
+    }
+    return s;
+}
+
 // The inertia of the KKT matrix
 //
 //     K = [ H   J' ]
@@ -651,6 +672,254 @@ static void sqp_jacobian_triplet(MatrixXd& x, int m, bool& tape_done,
 
 
 // =================================================================================
+//  Betts's feasible point strategy, section 2.8
+// =================================================================================
+//
+//  The first phase of his FM strategy, and the thing the optimality phase falls back on
+//  when it concludes that the trouble is in the constraints rather than in the model.
+//  Its whole point is what it leaves out: no objective, no multipliers, no Hessian of
+//  the Lagrangian, no merit function that is trying to do two things at once. Section
+//  2.7 states the premise plainly -- segregate difficulties caused by the constraints
+//  from difficulties caused by the objective -- and this is the half that deals with the
+//  constraints.
+//
+//  Two subproblems, in Betts's order of preference.
+//
+//  The primary one is a least distance program, (2.46)-(2.47): the shortest step that
+//  satisfies the linearised constraints,
+//
+//      min 1/2 p'p   s.t.  bL <= (Gp; p) <= bU,
+//
+//  which for a problem of equalities alone is p = -G# b, the pseudoinverse solution, and
+//  a generalisation of the Newton step. Its Hessian is the identity, so it is convex
+//  whatever the problem is doing, and its reduced Hessian is positive definite whatever
+//  the rank of G -- which is why no inertia test appears below. What it cannot survive
+//  is an inconsistent linearisation: then it has no solution at all.
+//
+//  The fallback is the relaxation, (2.49)-(2.50): give the constraints a residual vector
+//  and charge it quadratically,
+//
+//      min 1/2 p'p + rho/2 u'u   s.t.  bL <= (Gp + u; p) <= bU,
+//
+//  which always has a solution because u can absorb anything. Betts uses rho = 10^6 and
+//  notes that the KKT matrix is then conditioned like rho^2, which he treats with
+//  iterative refinement; here the value is smaller, because the backends have no such
+//  refinement and because measurement did not reward the larger one.
+//
+//  The step is judged by the constraint violation and by nothing else -- Mv from (2.51),
+//  a sum of squares. This is the part that has to be got right and that an earlier
+//  attempt at this phase got wrong: with the objective removed from the subproblem but
+//  the augmented Lagrangian still judging the step, the line search cut a perfectly good
+//  feasibility step to a thirty-second because the objective had gone the wrong way, and
+//  the violation fell by one per cent an iteration. Half of this phase is worse than
+//  none of it.
+//
+//  The switching between the two is Betts's, section 2.8.2: prefer the least distance
+//  step; when it fails, use the relaxation and keep using it; when the relaxation takes
+//  a full step, which is approximately a Newton step, try the least distance step again.
+//  He calls the logic somewhat ad hoc and reports that it works, which is also what is
+//  found here.
+//
+//  Returns 0 if a feasible point was found, 1 on the iteration limit, 2 if neither
+//  subproblem could be solved, 3 if no step reduced the violation.
+
+static int feasible_point_phase(MatrixXd& x, int m,
+                                const vector<double>& gl, const vector<double>& gu,
+                                MatrixXd* xlb, MatrixXd* xub,
+                                bool& tape_done,
+                                vector<unsigned int>& jrow, vector<unsigned int>& jcol,
+                                vector<double>& jval, SparseCsc& Jm,
+                                MatrixXd& gval,
+                                const string& backend, bool use_extern,
+                                double tol, int max_iter, int iprint,
+                                int& n_iters, int& n_relaxed, Workspace* workspace)
+{
+    const int    n         = (int) x.rows();
+    const int    nr        = n + m;                 // the relaxed subproblem's size
+    const double psopt_inf = 1.0e20;
+    const double rho       = 1.0e4;                 // Betts's 10^6, tempered; see above
+
+    if (m <= 0) return 0;
+
+    // The identity, for the least distance program, and [J | I] with the quadratic
+    // penalty block, for the relaxation. Both patterns are fixed for the mesh.
+    SparseCsc Ip, Ar, Hr;
+    {
+        vector<unsigned int> ir, ic;
+        for (int j = 0; j < n; j++) { ir.push_back((unsigned int) j); ic.push_back((unsigned int) j); }
+        Ip.build(n, n, ir, ic, /*force_diagonal=*/true);
+        Ip.scatter(vector<double>((size_t) n, 1.0));
+
+        vector<unsigned int> ar, ac;
+        ar.reserve(jrow.size() + (size_t) m); ac.reserve(jcol.size() + (size_t) m);
+        for (size_t k = 0; k < jrow.size(); k++) { ar.push_back(jrow[k]); ac.push_back(jcol[k]); }
+        for (int i = 0; i < m; i++) { ar.push_back((unsigned int) i); ac.push_back((unsigned int)(n+i)); }
+        Ar.build(m, nr, ar, ac, /*force_diagonal=*/false);
+
+        vector<unsigned int> hr, hc;
+        for (int k = 0; k < nr; k++) { hr.push_back((unsigned int) k); hc.push_back((unsigned int) k); }
+        Hr.build(nr, nr, hr, hc, /*force_diagonal=*/true);
+        vector<double> hv((size_t) nr);
+        for (int k = 0; k < n;  k++) hv[(size_t) k] = 1.0;
+        for (int k = n; k < nr; k++) hv[(size_t) k] = rho;
+        Hr.scatter(hv);
+    }
+
+    vector<double> lbA((size_t) m), ubA((size_t) m);
+    vector<double> lbd((size_t) nr), ubd((size_t) nr);
+    vector<double> gzero((size_t) nr, 0.0);
+    vector<double> dsol((size_t) nr), ysol((size_t) (nr + m));
+    vector<double> arval;
+
+    MatrixXd d(n,1), xtrial(n,1), gtrial(m,1);
+
+    bool primary = true;                            // the least distance step, first
+    int  status  = 1;
+
+    for (int iter = 0; iter < max_iter; iter++) {
+
+        gg_num(x, &gval, workspace);
+        const double viol = max_violation(gval, gl, gu);
+        const double mv0  = violation_merit(gval, gl, gu);
+
+        if (iprint) {
+            snprintf(workspace->text, sizeof(workspace->text),
+                     "%5d  %14s  %12.3e\n", iter + 1,
+                     primary ? "least distance" : "relaxation", viol);
+            psopt_print(workspace, workspace->text);
+        }
+
+        if (viol <= tol) { status = 0; break; }
+
+        sqp_jacobian_triplet(x, m, tape_done, jrow, jcol, jval, workspace);
+        Jm.scatter(jval);
+
+        for (int i = 0; i < m; i++) {
+            lbA[(size_t) i] = (gl[(size_t) i] <= -psopt_inf) ? -qpOASES::INFTY
+                                                             :  gl[(size_t) i] - gval(i);
+            ubA[(size_t) i] = (gu[(size_t) i] >=  psopt_inf) ?  qpOASES::INFTY
+                                                             :  gu[(size_t) i] - gval(i);
+        }
+        for (int j = 0; j < n; j++) {
+            lbd[(size_t) j] = ((*xlb)(j) <= -psopt_inf) ? -qpOASES::INFTY : (*xlb)(j) - x(j);
+            ubd[(size_t) j] = ((*xub)(j) >=  psopt_inf) ?  qpOASES::INFTY : (*xub)(j) - x(j);
+        }
+        for (int k = n; k < nr; k++) {              // the residuals are free
+            lbd[(size_t) k] = -qpOASES::INFTY;
+            ubd[(size_t) k] =  qpOASES::INFTY;
+        }
+
+        arval.clear();
+        arval.insert(arval.end(), jval.begin(), jval.end());
+        for (int i = 0; i < m; i++) arval.push_back(1.0);
+        Ar.scatter(arval);
+
+        // ---- the subproblem, primary or relaxed -----------------------------
+        bool solved = false;
+        for (int attempt = 0; attempt < 2 && !solved; attempt++) {
+
+            const int  nv = primary ? n : nr;
+            SparseCsc& H  = primary ? Ip : Hr;
+            SparseCsc& A  = primary ? Jm : Ar;
+
+            if (use_extern) {
+                QpProblem qpp;
+                qpp.nv  = nv;             qpp.mc  = m;
+                qpp.H   = &H;             qpp.Bd  = NULL;
+                qpp.g   = &gzero[0];      qpp.A   = &A;
+                qpp.lbA = &lbA[0];        qpp.ubA = &ubA[0];
+                qpp.lbd = &lbd[0];        qpp.ubd = &ubd[0];
+
+                QpSolution qs;
+                string why;
+                if (solve_qp_plugin(backend, qpp, tol, 500, /*nonconvex=*/false, qs, why)
+                    && qs.ok) {
+                    for (int j = 0; j < n; j++) dsol[(size_t) j] = qs.d[(size_t) j];
+                    solved = true;
+                }
+            }
+            else {
+                qpOASES::Options qpopts;
+                qpopts.printLevel = qpOASES::PL_NONE;
+                qpopts.setToReliable();
+                qpopts.printLevel = qpOASES::PL_NONE;
+
+                qpOASES::SymSparseMat Hq(nv, nv, H.ir(), H.jc(), H.val());
+                qpOASES::SparseMatrix Aq(m, nv, A.ir(), A.jc(), A.val());
+                Hq.createDiagInfo();
+
+                qpOASES::QProblem qp(nv, m);
+                qp.setOptions(qpopts);
+                qpOASES::int_t nWSR = 5*(nv + m) + 100;
+                const qpOASES::returnValue rv =
+                    qp.init(&Hq, &gzero[0], &Aq, &lbd[0], &ubd[0], &lbA[0], &ubA[0], nWSR);
+                if (rv == qpOASES::SUCCESSFUL_RETURN || rv == qpOASES::RET_MAX_NWSR_REACHED) {
+                    qp.getPrimalSolution(&dsol[0]);
+                    solved = true;
+                }
+            }
+
+            // Betts, 2.8.2 step 2(a)ii: the least distance program failing is the
+            // signal to change strategy, not to give up.
+            if (!solved && primary) { primary = false; n_relaxed++; }
+            else if (!solved)       break;
+        }
+
+        if (!solved) { status = 2; break; }
+
+        for (int j = 0; j < n; j++) d(j) = dsol[(size_t) j];
+
+        // ---- line search on the violation alone ------------------------------
+        // Sufficient decrease in Mv, and nothing else consulted. The relaxation step
+        // gets a quadratic interpolation as well -- Betts's "accurate line search" --
+        // because it is the step being taken when the linearisation is poor and the
+        // one whose best steplength is least likely to be a power of one half.
+        double alpha = 1.0, mvt = mv0;
+        bool   taken = false;
+        const double kappa = 1.0e-4;
+
+        for (int ls = 0; ls < 30; ls++) {
+            xtrial = x + alpha*d;
+            for (int j = 0; j < n; j++)
+                xtrial(j) = min(max(xtrial(j), (*xlb)(j)), (*xub)(j));
+            gg_num(xtrial, &gtrial, workspace);
+            mvt = violation_merit(gtrial, gl, gu);
+            if (std::isfinite(mvt) && mvt <= (1.0 - kappa*alpha)*mv0) { taken = true; break; }
+            alpha *= 0.5;
+        }
+
+        if (taken && !primary && alpha < 1.0) {
+            // One quadratic through Mv(0), Mv'(0) approximated by -2*mv0, and Mv(alpha).
+            const double denom = 2.0*(mvt - mv0 + 2.0*mv0*alpha);
+            if (fabs(denom) > 0.0) {
+                const double a_q = 2.0*mv0*alpha*alpha/denom;
+                if (a_q > 0.1*alpha && a_q < 1.0) {
+                    MatrixXd xq(n,1), gq(m,1);
+                    xq = x + a_q*d;
+                    for (int j = 0; j < n; j++)
+                        xq(j) = min(max(xq(j), (*xlb)(j)), (*xub)(j));
+                    gg_num(xq, &gq, workspace);
+                    const double mq = violation_merit(gq, gl, gu);
+                    if (std::isfinite(mq) && mq < mvt) { alpha = a_q; xtrial = xq; mvt = mq; }
+                }
+            }
+        }
+
+        if (!taken) { status = 3; break; }
+
+        x = xtrial;
+        n_iters++;
+
+        // Betts, 2.8.2 step 4(b): a full relaxation step is approximately a Newton
+        // step, so it is worth trying the least distance program again.
+        if (!primary && alpha >= 1.0) primary = true;
+    }
+
+    return status;
+}
+
+
+// =================================================================================
 //  The SQP driver
 // =================================================================================
 int SQP_interface(Alg&         algorithm,
@@ -753,6 +1022,63 @@ int SQP_interface(Alg&         algorithm,
         sqp_jacobian_triplet(x, m, tape_done, jrow, jcol, jval, workspace);
         Jm.build(m, n, jrow, jcol, /*force_diagonal=*/false);
         Jm.scatter(jval);
+    }
+
+    // ---- the feasibility phase, if the strategy asks for one --------------------
+    // Betts's FM: locate a point feasible with respect to the constraints before any
+    // attempt is made to optimise, so that the optimality phase begins somewhere its
+    // model is worth trusting. Everything computed above is recomputed afterwards,
+    // because the point has moved.
+    int n_feas_iters = 0, n_feas_relaxed = 0, feas_status = 0;
+    if (m > 0 && (algorithm.sqp_strategy == "FM" || algorithm.sqp_strategy == "F")) {
+
+        if (iprint) {
+            snprintf(workspace->text, sizeof(workspace->text),
+                     "\n Locating a feasible point before optimising (strategy %s)\n"
+                     "\n iter          method     max viol\n",
+                     algorithm.sqp_strategy.c_str());
+            psopt_print(workspace, workspace->text);
+        }
+
+        feas_status = feasible_point_phase(x, m, gl, gu, xlb, xub, tape_done,
+                                           jrow, jcol, jval, Jm, gval,
+                                           algorithm.qp_solver, use_extern,
+                                           tol, algorithm.nlp_iter_max, iprint,
+                                           n_feas_iters, n_feas_relaxed, workspace);
+
+        if (iprint) {
+            static const char* why[4] = { "a feasible point was found",
+                                          "the iteration limit was reached",
+                                          "neither subproblem could be solved",
+                                          "no step reduced the violation" };
+            snprintf(workspace->text, sizeof(workspace->text),
+                     "\n Feasibility phase finished after %d iterations: %s\n"
+                     "   relaxation steps  %d\n\n",
+                     n_feas_iters, why[feas_status <= 3 ? feas_status : 1], n_feas_relaxed);
+            psopt_print(workspace, workspace->text);
+        }
+
+        // The point has moved, so everything evaluated at the old one is stale.
+        fval = ff_num(x, workspace);
+        gg_num(x, &gval, workspace);
+        sqp_gradient(x, gf, workspace);
+        sqp_jacobian_triplet(x, m, tape_done, jrow, jcol, jval, workspace);
+        Jm.scatter(jval);
+
+        if (algorithm.sqp_strategy == "F") {
+            // Strategy F stops here. Reporting it as optimal would be a lie; reporting
+            // it as a failure would be one too, when finding this point is what was
+            // asked for.
+            *x0 = x;
+            if (lambda != NULL && m > 0) *lambda = MatrixXd::Zero(m,1);
+            solution->nlp_return_code = (feas_status == 0) ? 0 : 1;
+            if (iprint) {
+                snprintf(workspace->text, sizeof(workspace->text),
+                         " Strategy F: stopping at the feasible point, as requested.\n");
+                psopt_print(workspace, workspace->text);
+            }
+            return (feas_status == 0) ? 0 : 1;
+        }
     }
 
     // The Hessian's pattern, detected once with every multiplier set to one so that it

@@ -114,6 +114,59 @@ augmented Lagrangian makes the merit stiff rather than exact, and the slacks'
 regularisation scales with the price instead of sitting at 1.0e-08. Each of the three
 alone breaks bryson_denham; they are one mechanism.
 
+## The FM strategy, which is a different table
+
+Everything above is `algorithm.sqp_strategy = "M"`: minimise from the starting guess,
+taking the constraints and the objective together at every iteration. Betts's own
+default is FM -- find a point feasible with respect to the constraints first, ignoring
+the objective, the multipliers and the Hessian entirely, then minimise from there -- and
+on the three backends worth keeping it looks like this. Entries are feasibility-phase
+iterations plus optimality-phase iterations, and seconds.
+
+| example | qpOASES | ProxQP | GALAHAD |
+|---|---|---|---|
+| brac1 | 5 + 5 / 2 s | 5 + 5 / 0 s | 5 + 5 / 1 s |
+| bryson_denham | 6 + 8 / 14 s | 6 + 16 / 116 s (a) | fail |
+| hypersensitive | 7 + 6 / 0 s | 7 + 6 / 0 s | 7 + 6 / 0 s |
+| lts | 8 + 14 / 1 s | 8 + 14 / 0 s | 8 + 15 / 1 s |
+| interior_point | 1 + 2 / 0 s | 1 + 2 / 0 s | 1 + 2 / 0 s |
+| manutec | timeout | 11 + 11 / 1 s | 11 + 11 / 2 s |
+| glider | timeout | timeout | 19 + 364 / 16 s |
+| shuttle_reentry | timeout | 41 + 136 / 8 s | 39 + 70 / 13 s |
+| **launch** | timeout | timeout | **24 + 23 / 57 s** |
+| low_thrust | timeout | timeout | timeout |
+
+**launch is solved, for the first time by anything here, at IPOPT's answer to seven
+figures.** Its starting guess violates 282 of 560 constraints; under strategy M the
+linearisation is inconsistent at every iterate, restoration runs every iteration, and 99
+per cent of the wall clock goes into a relaxed subproblem that is three times the size of
+the real one. The feasibility phase drives the maximum violation from 7.1e-01 to 2.1e-11
+in 23 iterations of a subproblem with no objective in it, switching to the relaxation at
+iteration 3 when the least distance program fails and back at iteration 17 when it takes
+a full step, exactly as section 2.8.2 describes. The optimality phase then takes 23
+iterations from a point its model can be trusted at.
+
+**It also settles the backend question.** With FM, GALAHAD solves eight of the ten,
+against ProxQP's six and qpOASES's five, and it is the only backend that reaches glider
+or launch at all.
+
+The small examples improve throughout, which was not the point of the exercise but is
+worth recording: bryson_denham under qpOASES goes from 91 iterations and 93 seconds to 14
+and 14, brac1 from 14 to 10, interior_point from 2 to 3 but with the first two spent
+proving feasibility. Splitting the work in two makes each half easier than the whole.
+
+Two cells go the other way. manutec under qpOASES was solved under M and times out under
+FM. bryson_denham under GALAHAD stops during the optimality phase -- the feasibility
+phase finds its point in six iterations, and the run then hangs inside a GALAHAD
+subproblem, which is a backend fault rather than a strategy one. Neither is a reason to
+prefer M: qpOASES is the backend being retired, and the hang is the same one that made
+these sweeps need SIGKILL rather than SIGTERM.
+
+The default remains "M", because changing a default changes behaviour for everyone who
+has a working script, and because the backend question should be settled first. On the
+evidence here the configuration to recommend is `sqp_strategy = "FM"` with
+`qp_solver = "GALAHAD"`.
+
 ## What it does not show
 
 No backend is close to IPOPT, which solves all ten in a few seconds each. The SQP is

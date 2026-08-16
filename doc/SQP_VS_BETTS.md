@@ -33,21 +33,22 @@ The reference is *Practical Methods for Optimal Control Using Nonlinear Programm
 | 17 | First iteration solves two QPs, the first with H = I | 2.6.1 | present, `multiplier_pass` |
 | 18 | Inertia control rung (i): raise tau and retry | 2.6.1, step 2(c)i | present |
 | 19 | Inertia control rung (ii): tau = 1 fails, set H = I and retry | 2.6.1, step 2(c)ii | **absent** |
-| 20 | Inertia control rung (iii): H = I fails, go find a feasible point | 2.6.1, step 2(c)iii | **absent** |
+| 20 | Inertia control rung (iii): H = I fails, go find a feasible point | 2.6.1, step 2(c)iii | absent; the phase exists, the hook does not |
 | 21 | Line search on a quadratic and cubic model of the merit | 2.6.1 | absent; plain halving |
 | 22 | Wolfe condition, to stop steplengths collapsing | 2.6.1 | **absent** |
 | 23 | tau and the weights start at zero, merit starts as the Lagrangian | 2.6.1 | present |
 | 24 | Strategy M, minimize from x0 | 2.6.2 | present |
-| 25 | Strategy FM, find a feasible point first — *his default* | 2.6.2 | **absent** |
-| 26 | Strategies FME and F | 2.6.2 | absent |
-| 27 | Segregating constraint difficulties from objective ones | 2.7 | **absent** |
-| 28 | LDP feasibility step, min half p'p | 2.8.1, (2.46)–(2.47) | **absent** |
-| 29 | Relaxation step, min half p'p + rho/2 u'u | 2.8.1, (2.49)–(2.50) | partial |
-| 30 | Constraint-violation merit Mv | 2.8.1, (2.51) | **absent** |
-| 31 | LDP / relaxation switching on alpha = 1 | 2.8.2 | absent |
+| 25 | Strategy FM, find a feasible point first — *his default* | 2.6.2 | present |
+| 26 | Strategy F | 2.6.2 | present |
+| 26b | Strategy FME | 2.6.2 | absent |
+| 27 | Segregating constraint difficulties from objective ones | 2.7 | present, via FM |
+| 28 | LDP feasibility step, min half p'p | 2.8.1, (2.46)–(2.47) | present |
+| 29 | Relaxation step, min half p'p + rho/2 u'u | 2.8.1, (2.49)–(2.50) | present |
+| 30 | Constraint-violation merit Mv | 2.8.1, (2.51) | present |
+| 31 | LDP / relaxation switching on alpha = 1 | 2.8.2 | present |
 | 32 | Abandoning the primary step on fill, conditioning, inertia, QP count | 2.8.2 | inertia only |
 
-Thirteen present, four partial, fifteen absent. That count flatters the gap and
+Twenty present, two partial, eleven absent, after the feasibility phase went in; it was thirteen, four and fifteen when this file was first written. That count flatters the gap and
 understates it at the same time, so it is worth saying where the weight sits.
 
 ## What is actually complete
@@ -73,30 +74,10 @@ exact Hessian is not wanted.
 
 ## What is missing, in order of what it is costing
 
-**First, the whole of section 2.8 and the FM strategy — finding a feasible point before
-optimising.** This is the single largest gap, and it is not a refinement: FM is the
-default strategy in Betts's own software, and section 2.7 explains why in terms that
-describe our benchmark exactly. His first premise is to *segregate difficulties caused by
-the constraints from difficulties caused by the objective*, and his mechanism is to find
-a feasible point first while ignoring the objective, the multipliers and the Hessian
-entirely. What we do instead is carry the objective into every relaxed subproblem and
-judge the resulting step with a merit function that is still trying to optimise.
-
-The two examples the solver cannot touch are the two where this bites. On launch, 282 of
-560 constraints are violated at the starting guess, the linearisation is inconsistent at
-every iterate, and restoration therefore runs at every iteration; timing the parts put 99
-per cent of the wall clock inside the relaxed subproblem. That is precisely the situation
-section 2.7 says the FM strategy exists to avoid. A feasibility phase would replace those
-subproblems with the much smaller LDP of (2.46) — no objective, no Hessian, no
-multipliers, minimum-norm step — and judge it against the constraint-violation merit
-(2.51) rather than an augmented Lagrangian that has no business being consulted yet.
-
-I attempted a version of this in one increment and withdrew it. It failed for a reason
-worth recording: I zeroed the objective in the relaxed subproblem but left the line search
-judging the step with the augmented Lagrangian, so the search cut a perfectly good
-feasibility step to a thirty-second because the objective had gone the wrong way. The
-phase needs its own merit function, which is (2.51), and its own step, which is (2.46).
-Half of it is worse than none.
+*Written before the feasibility phase was built; section 2.8 and the FM strategy headed
+this list and have since gone in. What follows is the rest of it, with the original
+entry on the feasibility phase kept below as an addendum because the reasoning in it is
+what the implementation followed.*
 
 **Second, the last two rungs of the inertia-control ladder.** When the shift reaches its
 ceiling we currently give up on the model and go to restoration. Betts sets H = I and
@@ -157,3 +138,15 @@ Of Betts's algorithm we have the optimisation half and not the feasibility half.
 not a coincidence of what was easy — it is the order the increments were attempted in,
 and each one was chosen by what the benchmark rewarded on the six examples that already
 solved. The four that do not solve are all failures of the half that is missing.
+
+
+## Addendum: the feasibility phase, built
+
+Section 2.8 and the FM strategy went in the increment after this file was written, and
+the prediction it makes above turned out to be right: launch is solved, by GALAHAD, in 24
+feasibility iterations and 23 optimality ones, at IPOPT's answer. The details are in
+SQP_BACKEND_BENCHMARK.md. What remains of the original list is the inertia ladder's
+middle rung and its hook into the phase, the line search model and the Wolfe condition,
+the QP warm start, the merit function's bound terms, and the FME strategy -- which now
+looks more interesting than it did, because the first optimality step on bryson_denham
+takes the violation from 2.3e-11 back to 1.3 and FME exists to stop exactly that.

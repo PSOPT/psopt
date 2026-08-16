@@ -224,6 +224,18 @@ struct alg_str {
   // solver's wall clock, while the relaxed one took GALAHAD 20 iterations instead of
   // the 1002 at which it gives up. Neither setting solves launch. Ignored unless
   // nlp_method is "SQP".
+  // Which of Betts's algorithm strategies the SQP follows (3rd ed., section 2.6.2).
+  // "M" (default) minimises from the starting guess, taking the constraints and the
+  // objective together at every iteration. "FM" first locates a point feasible with
+  // respect to the constraints, ignoring the objective, the multipliers and the Hessian
+  // entirely, and then minimises from there; it is the default in Betts's own software,
+  // on the grounds that difficulties caused by the constraints are better separated from
+  // difficulties caused by the objective than diagnosed together (section 2.7). "F"
+  // stops once a feasible point has been found, which is useful when a new problem
+  // formulation is not converging and one wants to know whether the constraints alone
+  // are the trouble. Ignored unless nlp_method is "SQP".
+  string    sqp_strategy;
+
   string    qp_restoration;
 
   // What the relaxation costs, per unit of infeasibility. "weights" (default) prices it

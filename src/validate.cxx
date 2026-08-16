@@ -101,6 +101,9 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                                         && algorithm.qp_solver != "OSQP"
                                         && algorithm.qp_solver != "GALAHAD")
        error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"qpOASES\", \"ProxQP\", \"QPALM\", \"OSQP\" and \"GALAHAD\" ");
+    if (algorithm.sqp_strategy != "M" && algorithm.sqp_strategy != "FM"
+                                     && algorithm.sqp_strategy != "F")
+       error_message("Incorrect algorithm.sqp_strategy option specified. Valid options are \"M\", \"FM\" and \"F\" ");
     if (algorithm.qp_restoration != "elastic" && algorithm.qp_restoration != "relaxation")
        error_message("Incorrect algorithm.qp_restoration option specified. Valid options are \"elastic\" and \"relaxation\" ");
     if (algorithm.elastic_penalty != "weights" && algorithm.elastic_penalty != "multipliers")
