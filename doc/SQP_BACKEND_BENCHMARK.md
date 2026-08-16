@@ -241,12 +241,46 @@ though the dual error was then picking up an unremovable residual at exactly tho
 variables. Instrumenting it says otherwise -- the dual error computed over the unpinned
 variables alone is the same number, to four figures, at most iterations.
 
-What the instrumentation does show, and what the next attempt should start from, is that
-zpm's first mesh is not converging quietly at all: the dual error passes through 9.3e+11,
-1.2e+15 and 1.7e+13 at successive iterations, with between 77 and 187 of its 283 variables
-pinned by a trust region that has shrunk to 1.6e-02. The multipliers coming back from the
-subproblem are not multipliers. Whether that is the backend, the relaxation, or the trust
-region interacting with both is the open question.
+What the instrumentation does show is that zpm's first mesh is not converging quietly at
+all: the dual error passes through 9.3e+11, 1.2e+15 and 1.7e+13 at successive iterations,
+with between 77 and 187 of its 283 variables pinned by a trust region that has shrunk to
+1.6e-02.
+
+That looked like the thread to pull, and pulling it produced two more dead ends and one
+finding. All four attempts are listed here because each cost an hour and none of them
+needs repeating.
+
+**Not the unconverged multipliers.** Instrumenting the backend's return status showed that
+forty-one of zpm's hundred and nine subproblems stop rather than solve, and that the
+1.2e+15 multipliers came from one of them, where the current multipliers were 5.2e-03.
+Refusing the duals of a subproblem that did not converge is the obvious response and is
+what Betts prescribes for the first iteration, where there is no estimate to be had
+either. It costs bryson_denham its solution outright. Refusing them only when they jump by
+more than four orders of magnitude is neutral on all eight examples that solve -- and takes
+zpm from three meshes of five to none. Suppressing those multipliers makes zpm worse, not
+better, so they are a symptom.
+
+**Not the iteration budget.** GALAHAD's stopping reasons on zpm are 258 solved, 21 at its
+iteration limit and 9 declaring the subproblem primal infeasible; the last is the honest
+signal that sends the solver to restoration and is working as intended. Raising the budget
+does not rescue the 21. In two hundred seconds at a budget of 200, QPA solves 276
+subproblems and stops at its limit on 25; at 3000 it solves 34 and stops on 38. The
+subproblems that hit the limit are ones it cannot solve, not ones it needs longer for, and
+letting them grind costs the ones behind them.
+
+**The finding, which is not a fix.** The GALAHAD plugin never sets `control.maxit`, so the
+`max_iter` the plugin interface carries has never reached it: every subproblem has run to
+GALAHAD's own default while PSOPT believed it had set a budget. That is a defect in the
+contract and should be repaired. It cannot be repaired by simply passing the value through,
+because PSOPT's default of 200 is tighter than GALAHAD's own and bryson_denham under
+GALAHAD goes from 32 iterations to failing at 74. Repairing it means choosing a default,
+and choosing a default means a sweep.
+
+So the open question is narrower than it was but still open: on zpm's first mesh, seven per
+cent of subproblems are ones QPA cannot solve at any budget, and the multipliers they
+return are noise that the solver nonetheless needs. What is not yet known is whether those
+subproblems are hard because of the problem, because of the relaxation that produced them,
+or because of the trust region that shaped them.
 
 ## What it does not show
 
