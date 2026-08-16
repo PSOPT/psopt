@@ -414,6 +414,26 @@ static bool solve_qp_plugin(const string& backend, const QpProblem& p,
 
     out.iterations = r.iterations;
     out.ok = (r.status == PSOPT_QP_SOLVED) || (r.status == PSOPT_QP_APPROXIMATE);
+
+    // An approximate answer is welcome; an inadmissible one is not. A backend that
+    // stops at its iteration limit returns wherever it had got to, and for an
+    // interior-point or proximal method that is a point which need not satisfy the
+    // simple bounds at all. GALAHAD's QPA, given the elastic subproblem of
+    // examples/launch -- 1778 variables and an iteration limit it does not reach the
+    // end of -- came back with a step twice the length of the trust region and a set
+    // of slacks summing to minus twenty-two, the slacks being the variables bounded
+    // below by zero. Nothing downstream can make sense of that: the line search
+    // evaluates a point outside the box, the merit function judges it, the trust
+    // region is not a trust region any more, and the diagnosis of whatever happens
+    // next starts from a false premise.
+    //
+    // The bounds are a box, so the honest repair is to project onto it. It costs
+    // nothing when the backend was right, which is nearly always, and it turns a
+    // meaningless step into the nearest admissible one when it was not.
+    if (out.ok)
+        for (int j = 0; j < p.nv; j++)
+            out.d[(size_t) j] = min(max(out.d[(size_t) j], p.lbd[j]), p.ubd[j]);
+
     return true;
 }
 
