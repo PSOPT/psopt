@@ -167,6 +167,58 @@ has a working script, and because the backend question should be settled first. 
 evidence here the configuration to recommend is `sqp_strategy = "FM"` with
 `qp_solver = "GALAHAD"`.
 
+## Two harder problems, outside the sweep
+
+`low_thrust` is in the table above and fails there. `zpm` -- the zero propellant manoeuvre
+of the International Space Station, Bedrossian's problem and one of Betts's own showcases
+-- is not in the sweep at all, because IPOPT alone needs 153 seconds and 725 iterations on
+it and the ten-example sweep is long enough already. Both were run under FM with GALAHAD
+and a 25-minute budget.
+
+| | IPOPT | SQP, FM + GALAHAD |
+|---|---|---|
+| zpm | 6.680107e+06, 153 s | **6.680106e+06**, 1048 s |
+| low_thrust | -2.203403e-01, 28 s | -2.061760e-01, 1016 s |
+
+**zpm agrees with IPOPT to seven significant figures**, and its discretisation error comes
+out slightly the better of the two, 9.27e-04 against 1.01e-03. Under strategy M it never
+leaves the first mesh.
+
+Neither run converged on every mesh, and both failed in the same place, which is the
+useful part:
+
+| mesh | zpm | low_thrust |
+|---|---|---|
+| 1 | feasible in 38, then the QP failed after 135 | feasibility hit its 1000-iteration limit |
+| 2 | feasible in 3, then the iteration limit at 1000 | feasible in 6, then the limit at 1000 |
+| 3 | feasible in 3, solved in 64 | feasible in 7, solved in 56 |
+| 4 | feasible in 2, solved in 22 | feasible in 5, solved in 14 |
+| 5 | feasible in 2, solved in 3 | feasible in 3, solved in 17 |
+
+The last three meshes are easy on both. All the difficulty is on the first two, and once
+there is a solution to start the next mesh from, the solver walks the rest of the way. zpm
+still reaches IPOPT's answer because mesh refinement recovers; low_thrust does not, and its
+6 per cent error is the arithmetic of building meshes 3 to 5 on a mesh 2 that never
+converged.
+
+Two specific things are responsible, and both are now visible in the traces rather than
+inferred.
+
+**The feasibility phase converges linearly on low_thrust's first mesh.** The steplength is
+1.00 throughout the tail -- the line search is not cutting anything -- and the violation
+still falls by only about a tenth per iteration, from 1.26e+01 to 3.3e-03 over 47
+iterations and not to the tolerance within a thousand. A least distance step that satisfies
+the linearised constraints exactly should do better than that near a feasible point, so
+either the linearisation is a poor model at that scale or the step is being limited by the
+variable bounds it has to respect.
+
+**The optimality phase plateaus on the early meshes.** On low_thrust's second mesh the
+violation reaches 2.7e-13 and the dual error freezes at 3.18e-05 -- a factor of thirty from
+the tolerance -- with the objective static to nine significant figures, a full steplength,
+and the Hessian shifted at every iteration. An unchanging objective under a full step means
+the step itself is essentially zero, which is what a large Levenberg shift produces. It is
+the same signature as the glider fault, and it is the next thing to find.
+
 ## What it does not show
 
 No backend is close to IPOPT, which solves all ten in a few seconds each. The SQP is

@@ -773,8 +773,9 @@ static int feasible_point_phase(MatrixXd& x, int m,
 
     MatrixXd d(n,1), xtrial(n,1), gtrial(m,1);
 
-    bool primary = true;                            // the least distance step, first
-    int  status  = 1;
+    bool   primary    = true;                       // the least distance step, first
+    int    status     = 1;
+    double alpha_prev = 1.0;                        // reported, not used
 
     for (int iter = 0; iter < max_iter; iter++) {
 
@@ -784,8 +785,8 @@ static int feasible_point_phase(MatrixXd& x, int m,
 
         if (iprint) {
             snprintf(workspace->text, sizeof(workspace->text),
-                     "%5d  %14s  %12.3e\n", iter + 1,
-                     primary ? "least distance" : "relaxation", viol);
+                     "%5d  %14s  %12.3e  %9.2e\n", iter + 1,
+                     primary ? "least distance" : "relaxation", viol, alpha_prev);
             psopt_print(workspace, workspace->text);
         }
 
@@ -909,6 +910,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
 
         x = xtrial;
         n_iters++;
+        alpha_prev = alpha;
 
         // Betts, 2.8.2 step 4(b): a full relaxation step is approximately a Newton
         // step, so it is worth trying the least distance program again.
@@ -1035,7 +1037,7 @@ int SQP_interface(Alg&         algorithm,
         if (iprint) {
             snprintf(workspace->text, sizeof(workspace->text),
                      "\n Locating a feasible point before optimising (strategy %s)\n"
-                     "\n iter          method     max viol\n",
+                     "\n iter          method     max viol       step\n",
                      algorithm.sqp_strategy.c_str());
             psopt_print(workspace, workspace->text);
         }
