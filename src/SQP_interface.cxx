@@ -1777,12 +1777,31 @@ int SQP_interface(Alg&         algorithm,
         for (int i = 0; i < m; i++)
             dphi += (dlam(i) - lam(i))*rdev(i) - r[i]*rdev(i)*rdev(i);
 
+        // Betts fits a quadratic and a cubic to the merit function rather than halving,
+        // and imposes the Wolfe condition to stop steplengths becoming too small
+        // (section 2.6.1). Halving is the crudest thing that works, and the traces show
+        // what it costs: steplengths of 1.95e-03 and 1.19e-07 on the harder examples,
+        // each one reached by throwing away a full evaluation of the objective and every
+        // constraint at every power of a half on the way down.
+        //
+        // What is fitted here is the standard safeguarded interpolation (Nocedal and
+        // Wright, section 3.5): a quadratic through phi(0), phi'(0) and the first
+        // rejected point, a cubic through those and the second, each new trial confined
+        // to [0.1, 0.5] of the last so that the search cannot stall or leap. Betts's
+        // Wolfe condition needs phi'(alpha) at the trial point, which for this merit
+        // function means the gradient and the whole Jacobian there -- one full
+        // derivative evaluation per trial, which is not worth it when the purpose the
+        // condition serves is to stop the steplength collapsing and a floor does that
+        // for nothing. The floor is alpha_min.
         double alpha = 1.0;
-        const double eta = 1.0e-4;
+        const double eta       = 1.0e-4;      // Betts's kappa_1
+        const double alpha_min = 1.0e-8;
         MatrixXd xtrial(n,1), gtrial(max(m,1),1);
         MatrixXd lam_a(max(m,1),1), s_a(max(m,1),1);
         double ftrial = fval, phit = phi0;
         bool   accepted = false;
+
+        double a_prev = 0.0, phi_prev = 0.0;   // the last rejected trial, for the cubic
 
         for (int ls = 0; ls < 25; ls++) {
             xtrial = x + alpha*d;
@@ -1796,7 +1815,47 @@ int SQP_interface(Alg&         algorithm,
             }
             phit = merit_al(ftrial, gtrial, lam_a, s_a, r);
             if (std::isfinite(phit) && phit <= phi0 + eta*alpha*dphi) { accepted = true; break; }
-            alpha *= 0.5;
+            if (alpha <= alpha_min) break;
+
+            // The next trial, by interpolation where the numbers allow it and by
+            // halving where they do not. dphi is the slope at zero and is negative by
+            // construction of the penalty weights, so a finite minimiser exists unless
+            // the model is degenerate.
+            double a_new = 0.5*alpha;
+            if (std::isfinite(phit) && dphi < 0.0) {
+                if (a_prev == 0.0) {
+                    // quadratic through phi(0), phi'(0), phi(alpha)
+                    const double den = 2.0*(phit - phi0 - dphi*alpha);
+                    if (den > 0.0) a_new = -dphi*alpha*alpha/den;
+                }
+                else {
+                    // cubic through phi(0), phi'(0), phi(alpha), phi(a_prev)
+                    const double d1 = alpha - a_prev;
+                    if (fabs(d1) > 0.0 && std::isfinite(phi_prev)) {
+                        const double u = phit     - phi0 - dphi*alpha;
+                        const double v = phi_prev - phi0 - dphi*a_prev;
+                        const double aa = ( u/(alpha*alpha) - v/(a_prev*a_prev))/d1;
+                        const double bb = (-u*a_prev/(alpha*alpha)
+                                           + v*alpha/(a_prev*a_prev))/d1;
+                        const double disc = bb*bb - 3.0*aa*dphi;
+                        if (disc >= 0.0) {
+                            if (fabs(aa) < 1.0e-300) { if (bb > 0.0) a_new = -dphi/(2.0*bb); }
+                            else                     a_new = (-bb + sqrt(disc))/(3.0*aa);
+                        }
+                    }
+                }
+            }
+            if (!std::isfinite(a_new)) a_new = 0.5*alpha;
+            // Nocedal and Wright's band. It is not a free parameter: at [0.25, 0.5]
+            // the search cuts too gently and bryson_denham stops converging, while
+            // examples/launch, which wants long steps, takes 30 iterations instead of
+            // 42. The wider band is kept because what it buys on bryson_denham is an
+            // answer rather than a count.
+            a_new = min(max(a_new, 0.1*alpha), 0.5*alpha);
+
+            a_prev   = alpha;
+            phi_prev = phit;
+            alpha    = a_new;
         }
 
         // ---- second-order correction --------------------------------------------

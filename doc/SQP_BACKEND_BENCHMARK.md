@@ -295,6 +295,39 @@ return are noise that the solver nonetheless needs. What is not yet known is whe
 subproblems are hard because of the problem, because of the relaxation that produced them,
 or because of the trust region that shaped them.
 
+## The line search, replaced
+
+Halving was the crudest thing that works. Betts fits a quadratic and a cubic to the merit
+function and imposes the Wolfe condition to stop steplengths becoming too small (section
+2.6.1); what is implemented here is the standard safeguarded interpolation -- a quadratic
+through phi(0), phi'(0) and the first rejected trial, a cubic through those and the
+second, each new trial confined to [0.1, 0.5] of the last. Betts's Wolfe condition needs
+the slope at the trial point, which for this merit function means a gradient and a whole
+Jacobian there, one full derivative evaluation per trial; the purpose it serves is to stop
+the steplength collapsing, and a floor does that for nothing.
+
+| example | halving | interpolation |
+|---|---|---|
+| brac1 | 14 / 4 s | 17 / 5 s |
+| **bryson_denham** | **91 / 74 s, 3.995918 (a)** | **18 / 12 s, 3.999539** |
+| hypersensitive | 10 / 0 s | 11 / 0 s |
+| lts | 19 / 1 s | 20 / 1 s |
+| interior_point | 2 / 0 s | 2 / 0 s |
+| glider (FM) | 364 / 16 s | 364 / 22 s |
+| shuttle_reentry (FM) | 70 / 12 s | 70 / 13 s |
+| launch (FM) | 23 / 56 s | 42 / 179 s |
+
+bryson_denham is why this is kept. It has been the weak cell in this table for four
+commits -- ninety-one iterations at an answer 0.09 per cent from IPOPT's -- and it is now
+eighteen iterations at IPOPT's answer exactly. That is not a faster route to the same
+place; it is a different and better place.
+
+launch is what it costs: 42 iterations against 23, and three times the wall clock. It
+still solves, at the same answer. The safeguard band is the reason and it is not a free
+parameter -- at [0.25, 0.5] launch takes 30 iterations instead of 42 and bryson_denham
+stops converging altogether. The wider band is kept because what it buys on bryson_denham
+is an answer rather than a count.
+
 ## What it does not show
 
 No backend is close to IPOPT, which solves all ten in a few seconds each. The SQP is
