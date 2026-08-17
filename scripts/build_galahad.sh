@@ -186,12 +186,26 @@ else
 fi
 
 # ---------------------------------------------------------------------------------
-# Locate the Fortran compiler.
+# Locate the compilers.
 #
-# MacPorts names it gfortran-mp-14, Homebrew gfortran-14, distributions plain gfortran.
-# meson looks for $FC first and then for 'gfortran', so a MacPorts install with no
-# 'port select' fails at setup with a message about no Fortran compiler. Finding it
-# here and exporting FC avoids that.
+# GALAHAD is a mixed Fortran and C project and meson chooses each compiler
+# independently: $FC or 'gfortran' for the Fortran, $CC or 'cc' for the C. Setting only
+# FC is not enough, and on macOS it fails in a way that looks unrelated to the omission:
+# 'cc' is Apple clang, Apple clang has no -fopenmp, and the build dies part way through
+# the C interface with
+#
+#     clang: error: unsupported option '-fopenmp'
+#
+# -fopenmp cannot be dropped, because QPA's linear solver needs OpenMP cancellation.
+# Apple clang can be made to do OpenMP with a separately installed libomp and a
+# -Xpreprocessor incantation, but that is the LLVM runtime, and gfortran's half of
+# GALAHAD would still be using GCC's libgomp: two OpenMP runtimes in one process, which
+# is a well-known way to get hangs and crashes rather than an answer.
+#
+# So the C compiler is chosen to match the Fortran one -- the same GCC installation
+# provides both -- and it is chosen by *testing* that it compiles an OpenMP program
+# rather than by trusting its name. On macOS 'gcc' is usually Apple clang wearing a
+# different hat, so the name proves nothing.
 # ---------------------------------------------------------------------------------
 find_fortran() {
     if [ -n "${FC:-}" ] && command -v "$FC" >/dev/null 2>&1; then echo "$FC"; return; fi
@@ -204,11 +218,85 @@ find_fortran() {
     echo ""
 }
 
+# Does this compiler actually build and link an OpenMP program with plain -fopenmp?
+supports_openmp() {
+    local cc="$1" tmp rc
+    command -v "$cc" >/dev/null 2>&1 || return 1
+    tmp="$(mktemp -d)"
+    printf '#include <omp.h>\nint main(void){ return omp_get_max_threads() > 0 ? 0 : 1; }\n' > "$tmp/omptest.c"
+    "$cc" -fopenmp "$tmp/omptest.c" -o "$tmp/omptest" >/dev/null 2>&1
+    rc=$?
+    rm -rf "$tmp"
+    return $rc
+}
+
+# Candidate C compilers, best first: an explicit $CC, then the gcc belonging to the same
+# installation as $FC (gfortran-mp-14 -> gcc-mp-14, gfortran-14 -> gcc-14), then the gcc
+# of the same version as $FC -- which is what catches a plain 'gfortran' put there by
+# 'port select', where the name carries no version but the compiler still reports one --
+# then any versioned gcc, then the plain names.
+c_candidates() {
+    local fcbase="${1##*/}" fcver="${2:-}" v
+    [ -n "${CC:-}" ] && echo "$CC"
+    case "$fcbase" in
+        gfortran-mp-*) echo "gcc-mp-${fcbase##*-}" ;;
+        gfortran-*)    echo "gcc-${fcbase##*-}" ;;
+    esac
+    if [ -n "$fcver" ]; then echo "gcc-mp-$fcver"; echo "gcc-$fcver"; fi
+    for v in 15 14 13 12 11 10; do echo "gcc-mp-$v"; echo "gcc-$v"; done
+    echo gcc
+    echo cc
+}
+
 FC_FOUND="$(find_fortran)"
 [ -n "$FC_FOUND" ] || die "no Fortran compiler found. Install one (MacPorts: sudo port install gcc14; Homebrew: brew install gcc) and rerun, or set FC."
 export FC="$FC_FOUND"
+
 say "Toolchain"
 info "Fortran   $FC  ($("$FC" --version 2>/dev/null | head -1))"
+
+FC_VER="$("$FC" -dumpversion 2>/dev/null || true)"
+FC_VER="${FC_VER%%.*}"
+
+CC_FOUND=""
+while read -r cand; do
+    [ -n "$cand" ] || continue
+    if supports_openmp "$cand"; then CC_FOUND="$cand"; break; fi
+done <<EOF
+$(c_candidates "$FC" "$FC_VER")
+EOF
+
+if [ -z "$CC_FOUND" ]; then
+    if [ "$OS" = "Darwin" ]; then
+        die "no C compiler that supports -fopenmp was found.
+
+    This is the usual macOS problem: 'cc' and often 'gcc' are Apple clang, which does not
+    accept -fopenmp, and GALAHAD's QPA needs OpenMP. Install a real GCC and rerun:
+
+        MacPorts:  sudo port install gcc14
+        Homebrew:  brew install gcc
+
+    If you have one under a name this script did not try, set CC and FC yourself, e.g.
+
+        CC=gcc-mp-14 FC=gfortran-mp-14 $0 --skip-deps"
+    fi
+    die "no C compiler that supports -fopenmp was found. Install GCC, or set CC to one that does."
+fi
+export CC="$CC_FOUND"
+info "C         $CC  ($("$CC" --version 2>/dev/null | head -1))"
+info "          (verified: compiles and links -fopenmp)"
+
+# A mismatched pair -- Apple clang for C, MacPorts gfortran for Fortran -- links two
+# different OpenMP runtimes into one library. Worth saying out loud if it happens.
+case "${CC##*/}" in
+    gcc*) : ;;
+    *)    info "note: $CC is not a gcc; if GALAHAD misbehaves at run time, try a matching GCC pair" ;;
+esac
+CC_VER="$("$CC" -dumpversion 2>/dev/null || true)"
+if [ -n "$FC_VER" ] && [ -n "${CC_VER%%.*}" ] && [ "$FC_VER" != "${CC_VER%%.*}" ]; then
+    info "note: GCC $CC_VER for C and GCC $FC_VER for Fortran. Both use libgomp so this"
+    info "      normally works; set CC and FC yourself if you would rather they matched."
+fi
 
 for t in meson ninja pkg-config git; do
     command -v "$t" >/dev/null 2>&1 || die "'$t' not found. Install it, or rerun without --skip-deps."
@@ -281,11 +369,17 @@ fi
 
 say "Configuring"
 cd "$SRCDIR"
+# An existing build directory is removed outright rather than reconfigured. meson caches
+# its choice of compiler, and 'meson setup --wipe' keeps the options it was first given,
+# so a directory left behind by a run that picked the wrong compiler will quietly go on
+# using it -- which is precisely the situation anyone rerunning this script after the
+# clang '-fopenmp' failure is in. --wipe rebuilds everything from scratch in any case,
+# so nothing is lost by being unambiguous about it.
 if [ -d "$BUILDDIR" ]; then
-    meson setup --wipe "$BUILDDIR" "${MESON_OPTS[@]}"
-else
-    meson setup "$BUILDDIR" "${MESON_OPTS[@]}"
+    info "removing the previous build directory at $BUILDDIR"
+    rm -rf "$BUILDDIR"
 fi
+meson setup "$BUILDDIR" "${MESON_OPTS[@]}"
 
 say "Building  (this takes a while -- GALAHAD is large)"
 meson compile -C "$BUILDDIR" -j "$JOBS"
