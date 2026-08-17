@@ -490,10 +490,27 @@ ar d /path/to/libqpOASES.a BLASReplacement.cpp.o LAPACKReplacement.cpp.o
 
 *GALAHAD*
 
-Follow the instructions at https://github.com/ralna/GALAHAD. It is a Fortran package, so
-it needs `gfortran` (MacPorts: `sudo port install gcc13`, or whichever version you have).
-PSOPT links the Fortran runtime by asking CMake's Fortran compiler for its own implicit
-link line, so a MacPorts or Homebrew gcc in a versioned directory is found without help.
+`scripts/build_galahad.sh` does the whole of this: it installs the build tools, clones
+GALAHAD, configures it with the options PSOPT needs, builds and installs it, and writes
+an environment file to source.
+
+```
+./scripts/build_galahad.sh                        # installs under ~/galahad-install
+./scripts/build_galahad.sh --prefix /opt/galahad --sudo
+./scripts/build_galahad.sh --help
+```
+
+It works on macOS with either MacPorts or Homebrew, and on Debian/Ubuntu, Fedora and
+Arch. On MacPorts it also runs `port select` so that a plain `gfortran` exists, since
+MacPorts installs the compiler as `gfortran-mp-14` and meson looks for the plain name.
+
+If you would rather do it by hand, follow the instructions at
+https://github.com/ralna/GALAHAD; the options that matter are `-Dopenmp=true` (QPA's
+linear solver needs OpenMP cancellation) and `-Dciface=true` (PSOPT includes
+`galahad_qpa.h`). GALAHAD is a Fortran package, so it needs `gfortran` (MacPorts:
+`sudo port install gcc14`). PSOPT links the Fortran runtime by asking CMake's Fortran
+compiler for its own implicit link line, so a MacPorts or Homebrew gcc in a versioned
+directory is found without help.
 
 GALAHAD's QPA uses OpenMP cancellation, which the OpenMP runtime reads **once**, when it
 initialises. It cannot be set from inside the process, so it has to be in the environment
