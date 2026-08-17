@@ -449,6 +449,92 @@ cd build/examples/launch
 ```
 
 
+Building PSOPT's own SQP solver
+----------------
+
+PSOPT ships a sequential quadratic programming solver of its own, selected at run time
+with `algorithm.nlp_method = "SQP"`. It is off by default and adds no dependency to an
+ordinary build: with `WITH_SQP=OFF` the solver compiles to a stub. Everything below is
+needed only if you want to build it.
+
+The quadratic programming subproblem goes to one of several backends. **GALAHAD's QPA is
+the one to use**: it is sparse, BSD-3 licensed, and the configuration the solver has been
+tuned and measured against (see `doc/SQP_ALL_EXAMPLES.md`). qpOASES is currently still
+required by `WITH_SQP` because parts of the driver are written in its vocabulary; that
+dependency is being removed.
+
+*What you need beyond a working PSOPT build*
+
+| dependency | why | where CMake looks |
+|---|---|---|
+| MUMPS headers | the SQP reads the inertia of the KKT matrix from MUMPS, which IPOPT already links as its default linear solver -- so this is almost always a matter of pointing at what you have, not installing anything | `MUMPS_DIR`, `CMAKE_PREFIX_PATH`, pkg-config's IPOPT include dirs |
+| qpOASES | the QP vocabulary the driver is written in | `QPOASES_DIR` |
+| GALAHAD | the sparse QP backend | `GALAHAD_DIR` |
+
+If you built IPOPT and MUMPS yourself with coinbrew, as the macOS instructions above
+describe, the MUMPS headers are already in your `~/coin/dist` prefix and the
+`CMAKE_PREFIX_PATH` those instructions set is enough to find them. Nothing further to do.
+
+*qpOASES*
+
+Build it from source. One thing matters: qpOASES ships `BLASReplacement.cpp` and
+`LAPACKReplacement.cpp`, stand-ins for a handful of BLAS and LAPACK routines, and its
+CMake build compiles them in unconditionally. Linked alongside a real BLAS they capture
+`dgemm_` and `dpotrf_` for the whole program -- including for MUMPS inside IPOPT, which
+then crashes in its linear solver on problems that worked perfectly well before. PSOPT's
+CMake checks for this and refuses to configure if it finds them, with the remedy:
+
+```
+ar d /path/to/libqpOASES.a BLASReplacement.cpp.o LAPACKReplacement.cpp.o
+```
+
+*GALAHAD*
+
+Follow the instructions at https://github.com/ralna/GALAHAD. It is a Fortran package, so
+it needs `gfortran` (MacPorts: `sudo port install gcc13`, or whichever version you have).
+PSOPT links the Fortran runtime by asking CMake's Fortran compiler for its own implicit
+link line, so a MacPorts or Homebrew gcc in a versioned directory is found without help.
+
+GALAHAD's QPA uses OpenMP cancellation, which the OpenMP runtime reads **once**, when it
+initialises. It cannot be set from inside the process, so it has to be in the environment
+before the program starts:
+
+```
+export OMP_CANCELLATION=TRUE
+export OMP_PROC_BIND=TRUE
+```
+
+Without these the QP subproblems fail and the solver makes no progress. Put them in your
+shell profile.
+
+*Configuring*
+
+```
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON \
+      -DWITH_SQP=ON -DWITH_GALAHAD=ON \
+      -DQPOASES_DIR=/path/to/qpoases/prefix \
+      -DGALAHAD_DIR=/path/to/galahad/prefix
+cmake --build build -j
+```
+
+Each backend is built as a separate loadable module under `build/qp_plugins` and opened at
+run time with `RTLD_LOCAL`. That is not tidiness: every one of these libraries carries its
+own AMD/COLAMD ordering code under the same C symbol names, and linked into one image they
+bind to each other's and corrupt the result. `include/psopt_qp_plugin.h` has the details.
+A CTest case, `qp_plugins_export_nothing_else`, checks that each module exports only the
+four ABI entry points and nothing more; run it with `ctest -R qp_plugins` after building
+with `-DBUILD_TESTS=ON`.
+
+*Using it*
+
+```cpp
+algorithm.nlp_method = "SQP";
+algorithm.hessian    = "exact";      // sparse exact Hessian of the Lagrangian
+algorithm.qp_solver  = "GALAHAD";
+algorithm.sqp_strategy = "FM";       // Betts's default; see doc/SQP_VS_BETTS.md
+```
+
+
 Running PSOPT within a Docker container
 ----------------
 

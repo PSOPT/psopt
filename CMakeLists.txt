@@ -147,10 +147,25 @@ endif()
 # is opt-in: with WITH_SQP=OFF the file compiles to a stub that reports the option
 # was not built, and PSOPT gains no new dependency.
 if(WITH_SQP)
+  # Where to look for the SQP's dependencies beyond the compiler's defaults. MacPorts
+  # installs under /opt/local and Homebrew under /opt/homebrew on Apple Silicon; neither
+  # is searched by find_library out of the box, so a Mac that has the dependency still
+  # reports it missing. The per-dependency *_DIR variables continue to take precedence.
+  set(PSOPT_SEARCH_PREFIXES /usr/local /usr)
+  if(APPLE)
+    list(INSERT PSOPT_SEARCH_PREFIXES 0 /opt/local /opt/homebrew)
+  endif()
+  set(PSOPT_EXTRA_PREFIXES_INCLUDE "")
+  set(PSOPT_EXTRA_PREFIXES_LIB "")
+  foreach(_p ${PSOPT_SEARCH_PREFIXES})
+    list(APPEND PSOPT_EXTRA_PREFIXES_INCLUDE ${_p}/include)
+    list(APPEND PSOPT_EXTRA_PREFIXES_LIB     ${_p}/lib)
+  endforeach()
+
   find_path(QPOASES_INCLUDE_DIR qpOASES.hpp
-            HINTS ${QPOASES_DIR}/include /usr/local/include /usr/include)
+            HINTS ${QPOASES_DIR}/include ${PSOPT_EXTRA_PREFIXES_INCLUDE})
   find_library(QPOASES_LIBRARY NAMES qpOASES
-            HINTS ${QPOASES_DIR}/lib ${QPOASES_DIR}/bin /usr/local/lib /usr/lib)
+            HINTS ${QPOASES_DIR}/lib ${QPOASES_DIR}/bin ${PSOPT_EXTRA_PREFIXES_LIB})
   if(NOT QPOASES_INCLUDE_DIR OR NOT QPOASES_LIBRARY)
     message(FATAL_ERROR "WITH_SQP=ON but qpOASES was not found. Set QPOASES_DIR to its install prefix.")
   endif()
@@ -183,8 +198,36 @@ if(WITH_SQP)
   find_package(LAPACK REQUIRED)
   find_package(BLAS REQUIRED)
 
+  # MUMPS supplies the inertia of the KKT matrix, which the SQP needs to decide whether
+  # the Hessian has to be modified -- Betts (2.41). No library is added by this: IPOPT's
+  # default linear solver is the same sequential MUMPS, so it is already linked. Only the
+  # header has to be found, and it is found here rather than left to the compiler's
+  # default include path, which is where it happens to sit on Debian and Ubuntu but not
+  # on macOS or on any build where IPOPT and MUMPS were installed under their own prefix.
+  # PATH_SUFFIXES matters as much as the hints. coinbrew -- which is what README.md tells
+  # macOS users to build IPOPT and MUMPS with -- installs the header as
+  # <prefix>/include/coin-or/mumps/dmumps_c.h, so a bare <prefix>/include search misses
+  # it. Listing the suffixes also means CMAKE_PREFIX_PATH alone is enough, which is
+  # already set to that prefix in the macOS build instructions.
+  find_path(MUMPS_INCLUDE_DIR dmumps_c.h
+            HINTS ${MUMPS_DIR}/include ${MUMPS_DIR}
+                  ${IPOPT_DIR}/include
+                  ${ipopt_INCLUDE_DIRS}
+                  ${PSOPT_EXTRA_PREFIXES_INCLUDE}
+            PATH_SUFFIXES coin-or/mumps coin/mumps mumps coin-or coin)
+  if(NOT MUMPS_INCLUDE_DIR)
+    message(FATAL_ERROR
+      "WITH_SQP=ON but dmumps_c.h was not found. PSOPT's SQP reads the inertia of the "
+      "KKT matrix from MUMPS, which IPOPT already provides as its default linear solver, "
+      "so this is almost always a matter of pointing at an existing installation rather "
+      "than installing anything new. Set MUMPS_DIR to the prefix containing "
+      "include/dmumps_c.h (on macOS, the prefix you built MUMPS into when following the "
+      "IPOPT instructions in README.md).")
+  endif()
+  message(STATUS "PSOPT SQP: MUMPS headers at ${MUMPS_INCLUDE_DIR}")
+
   target_compile_definitions(${PROJECT_NAME} PUBLIC USE_SQP)
-  target_include_directories(${PROJECT_NAME} PUBLIC ${QPOASES_INCLUDE_DIR})
+  target_include_directories(${PROJECT_NAME} PUBLIC ${QPOASES_INCLUDE_DIR} ${MUMPS_INCLUDE_DIR})
   target_link_libraries(${PROJECT_NAME} PUBLIC ${QPOASES_LIBRARY} ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
 
   # ---- QP backend plugins ----------------------------------------------------
@@ -198,6 +241,18 @@ if(WITH_SQP)
   # -fvisibility=hidden hides this project's own symbols; --exclude-libs,ALL hides the
   # ones that arrive from the static libraries the plugin links. Both are needed, and
   # the CTest check below verifies the result rather than trusting it.
+  #
+  # Neither flag exists on macOS: Apple's ld64 has no --exclude-libs and does not
+  # understand -z. It has something better for this purpose -- -exported_symbols_list
+  # takes a file naming everything the module may export, which is a whitelist rather
+  # than two overlapping suppressions, and so cannot be defeated by a static library
+  # arriving through a path nobody thought about. The symbol names in that file carry
+  # Mach-O's leading underscore.
+  if(APPLE)
+    set(PSOPT_QP_PLUGIN_EXPORTS "${CMAKE_BINARY_DIR}/psopt_qp_plugin.exp")
+    file(WRITE "${PSOPT_QP_PLUGIN_EXPORTS}"
+         "_psopt_qp_abi_version\n_psopt_qp_name\n_psopt_qp_solve\n_psopt_qp_environment_ok\n")
+  endif()
   set(PSOPT_QP_PLUGIN_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/psopt")
   target_compile_definitions(${PROJECT_NAME}
       PRIVATE PSOPT_QP_PLUGIN_INSTALL_DIR="${PSOPT_QP_PLUGIN_DIR}"
@@ -212,15 +267,24 @@ if(WITH_SQP)
         VISIBILITY_INLINES_HIDDEN ON
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qp_plugins)
     target_include_directories(psopt_qp_${name} PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(psopt_qp_${name} PRIVATE ${MUMPS_INCLUDE_DIR})
     target_link_libraries(psopt_qp_${name} PRIVATE Eigen3::Eigen ${ARGN})
-    target_link_options(psopt_qp_${name} PRIVATE
-        "LINKER:--exclude-libs,ALL" "LINKER:-z,defs")
+    if(APPLE)
+      target_link_options(psopt_qp_${name} PRIVATE
+          "LINKER:-exported_symbols_list,${PSOPT_QP_PLUGIN_EXPORTS}"
+          "LINKER:-undefined,error")
+      set_property(TARGET psopt_qp_${name} APPEND PROPERTY
+          LINK_DEPENDS "${PSOPT_QP_PLUGIN_EXPORTS}")
+    else()
+      target_link_options(psopt_qp_${name} PRIVATE
+          "LINKER:--exclude-libs,ALL" "LINKER:-z,defs")
+    endif()
     install(TARGETS psopt_qp_${name} LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/psopt)
   endfunction()
 
   if(WITH_PROXQP)
     find_path(PROXSUITE_INCLUDE_DIR proxsuite/proxqp/sparse/sparse.hpp
-              HINTS ${PROXSUITE_DIR}/include /usr/local/include /usr/include)
+              HINTS ${PROXSUITE_DIR}/include ${PSOPT_EXTRA_PREFIXES_INCLUDE})
     if(NOT PROXSUITE_INCLUDE_DIR)
       message(FATAL_ERROR "WITH_PROXQP=ON but proxsuite was not found. Set PROXSUITE_DIR to its install prefix.")
     endif()
@@ -238,8 +302,8 @@ if(WITH_SQP)
     # QPALM's headers choose their index width from LADEL_64BIT_INDICES and it must
     # match the library's own build, or the C++ interface fails to link with an
     # undefined reference to eigen_to_ladel_copy taking a matrix of the other width.
-    find_library(LADEL_LIBRARY NAMES ladel HINTS ${QPALM_DIR}/../.. /usr/local/lib /usr/lib)
-    find_library(LADEL_AMD_LIBRARY NAMES ladel_amd HINTS ${QPALM_DIR}/../.. /usr/local/lib /usr/lib)
+    find_library(LADEL_LIBRARY NAMES ladel HINTS ${QPALM_DIR}/../.. ${PSOPT_EXTRA_PREFIXES_LIB})
+    find_library(LADEL_AMD_LIBRARY NAMES ladel_amd HINTS ${QPALM_DIR}/../.. ${PSOPT_EXTRA_PREFIXES_LIB})
     if(NOT LADEL_LIBRARY)
       message(FATAL_ERROR "WITH_QPALM=ON but LADEL, which QPALM factorises with, was not found.")
     endif()
@@ -262,16 +326,41 @@ if(WITH_SQP)
 
   if(WITH_GALAHAD)
     find_path(GALAHAD_INCLUDE_DIR galahad_qpa.h
-              HINTS ${GALAHAD_DIR}/include /usr/local/include /usr/include)
+              HINTS ${GALAHAD_DIR}/include ${PSOPT_EXTRA_PREFIXES_INCLUDE})
     find_library(GALAHAD_LIBRARY NAMES galahad_double galahad
-              HINTS ${GALAHAD_DIR}/lib /usr/local/lib /usr/lib)
+              HINTS ${GALAHAD_DIR}/lib ${PSOPT_EXTRA_PREFIXES_LIB})
     if(NOT GALAHAD_INCLUDE_DIR OR NOT GALAHAD_LIBRARY)
       message(FATAL_ERROR "WITH_GALAHAD=ON but GALAHAD was not found. Set GALAHAD_DIR to its install prefix.")
     endif()
+
+    # GALAHAD is Fortran, so its plugin needs the Fortran runtime. Naming "gfortran" and
+    # hoping the linker finds it works on a Linux distribution that installs libgfortran
+    # into a default search path and nowhere else: on macOS it lives beside whichever
+    # gcc MacPorts or Homebrew put there, under a versioned directory the C++ linker has
+    # never heard of. Asking CMake for the Fortran compiler's own implicit link line
+    # gets the right library and the right -L on both.
+    enable_language(Fortran)
+    set(PSOPT_FORTRAN_RUNTIME "")
+    foreach(_d ${CMAKE_Fortran_IMPLICIT_LINK_DIRECTORIES})
+      list(APPEND PSOPT_FORTRAN_RUNTIME "-L${_d}")
+    endforeach()
+    if(CMAKE_Fortran_IMPLICIT_LINK_LIBRARIES)
+      foreach(_l ${CMAKE_Fortran_IMPLICIT_LINK_LIBRARIES})
+        if(IS_ABSOLUTE "${_l}")
+          list(APPEND PSOPT_FORTRAN_RUNTIME "${_l}")
+        else()
+          list(APPEND PSOPT_FORTRAN_RUNTIME "-l${_l}")
+        endif()
+      endforeach()
+    else()
+      list(APPEND PSOPT_FORTRAN_RUNTIME "-lgfortran")
+    endif()
+    message(STATUS "PSOPT SQP: Fortran runtime for the GALAHAD plugin: ${PSOPT_FORTRAN_RUNTIME}")
     message(STATUS "PSOPT SQP: GALAHAD backend plugin enabled (${GALAHAD_LIBRARY})")
     enable_language(Fortran)
     psopt_add_qp_plugin(galahad ${CMAKE_SOURCE_DIR}/src/qp_backends/galahad_plugin.cxx
-                        ${GALAHAD_LIBRARY} gfortran ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+                        ${GALAHAD_LIBRARY} ${PSOPT_FORTRAN_RUNTIME}
+                        ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
     target_compile_definitions(${PROJECT_NAME} PUBLIC USE_GALAHAD)
     target_include_directories(psopt_qp_galahad PRIVATE ${GALAHAD_INCLUDE_DIR})
   endif()
@@ -282,10 +371,16 @@ if(WITH_SQP)
   if(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_GALAHAD)
     find_program(PSOPT_NM_EXECUTABLE nm)
     if(PSOPT_NM_EXECUTABLE)
+      if(APPLE)
+        set(PSOPT_PLUGIN_FORMAT macho)
+      else()
+        set(PSOPT_PLUGIN_FORMAT elf)
+      endif()
       add_test(NAME qp_plugins_export_nothing_else
                COMMAND ${CMAKE_COMMAND}
                        -DPLUGIN_DIR=${CMAKE_BINARY_DIR}/qp_plugins
                        -DNM=${PSOPT_NM_EXECUTABLE}
+                       -DPLUGIN_FORMAT=${PSOPT_PLUGIN_FORMAT}
                        -P ${CMAKE_SOURCE_DIR}/cmake/CheckPluginSymbols.cmake)
     endif()
   endif()
