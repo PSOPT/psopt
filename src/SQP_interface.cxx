@@ -1027,7 +1027,23 @@ int SQP_interface(Alg&         algorithm,
     // constraint violation to 0.93. Restricting the step to a region around the
     // current point is what makes an exact-Hessian model usable, and the region grows
     // as the model proves itself.
-    const double Delta_0   = 1.0;                     // in the scaled variables, O(1)
+    // The initial radius. It was 1.0, on the reasoning that the variables are scaled
+    // and so an O(1) region is the natural first guess. Measured rather than reasoned,
+    // 0.3 is better, and the reason is visible in what the QP backend is being asked to
+    // do: on examples/zpm, counting GALAHAD's return codes over the first mesh, a radius
+    // of 1.0 has it solving 44 subproblems, declaring 38 primal infeasible and reaching
+    // its iteration limit on 22 -- a 58 per cent failure rate -- while a radius of 0.1
+    // has it solving 386, declaring 19 infeasible and 6 limited, which is 6 per cent,
+    // and gets through four times as many subproblems in the same wall clock. A region
+    // the linearisation cannot be satisfied inside is a subproblem the backend cannot
+    // solve, and a subproblem it cannot solve is a restoration the solver did not need.
+    //
+    // 0.3 rather than 0.1 because the small dense examples want the larger of the two:
+    // at 0.1, brac1 takes 23 iterations against 17 and lts 28 against 20. At 0.3 those
+    // are 17 and 18, and what the reduction buys elsewhere is kept -- launch goes from
+    // 42 iterations and 195 seconds to 26 and 126, and manutec under qpOASES from 103
+    // iterations and 106 seconds to 13 and 15.
+    const double Delta_0   = 0.3;
     const double Delta_min = 1.0e-10;
     const double Delta_max = 1.0e4;
     double       Delta     = exact_hessian ? Delta_0 : qpOASES::INFTY;

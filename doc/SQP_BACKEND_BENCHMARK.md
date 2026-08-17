@@ -328,6 +328,46 @@ parameter -- at [0.25, 0.5] launch takes 30 iterations instead of 42 and bryson_
 stops converging altogether. The wider band is kept because what it buys on bryson_denham
 is an answer rather than a count.
 
+## The initial trust region, measured
+
+The radius the exact-Hessian trust region starts at was 1.0, on the reasoning that the
+variables are scaled and an O(1) region is the natural first guess. That was reasoning
+rather than measurement, and the measurement disagrees.
+
+Counting GALAHAD's return codes over zpm's first mesh, by initial radius:
+
+| radius | solved | primal infeasible | iteration limit | failure rate | subproblems in 150 s |
+|---|---|---|---|---|---|
+| 0.1 | 386 | 19 | 6 | 6% | 411 |
+| 1.0 | 44 | 38 | 22 | 58% | 104 |
+| 10 | 161 | 23 | 21 | 21% | 205 |
+
+A region the linearisation cannot be satisfied inside is a subproblem the backend cannot
+solve, and a subproblem it cannot solve is a restoration the solver did not need. At a
+radius of 1.0 more than half the subproblems on that mesh were being refused. This is
+the answer to the question left open two commits ago -- whether zpm's unsolvable
+subproblems were hard because of the problem, the relaxation, or the trust region. It is
+the trust region.
+
+0.3 is the default rather than 0.1 because the small dense examples want the larger of
+the two: at 0.1, brac1 takes 23 iterations against 17 and lts 28 against 20. At 0.3 they
+are 17 and 18, and what the reduction buys elsewhere is kept:
+
+| example | radius 1.0 | radius 0.3 |
+|---|---|---|
+| brac1 | 17 / 5 s | 17 / 5 s |
+| bryson_denham | 18 / 13 s | 19 / 13 s |
+| hypersensitive | 11 / 0 s | 11 / 0 s |
+| lts | 20 / 1 s | 18 / 1 s |
+| interior_point | 2 / 0 s | 3 / 0 s |
+| **manutec** (qpOASES) | **103 / 106 s** | **13 / 15 s** |
+| glider (FM) | 364 / 16 s | 364 / 17 s |
+| shuttle_reentry (FM) | 70 / 12 s | 70 / 13 s |
+| **launch** (FM) | **42 / 195 s** | **26 / 126 s** |
+
+manutec is the largest single change in this table since the benchmark was started, and
+it came from a constant that had never been questioned.
+
 ## What it does not show
 
 No backend is close to IPOPT, which solves all ten in a few seconds each. The SQP is
