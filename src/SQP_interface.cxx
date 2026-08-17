@@ -769,7 +769,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
 
     // The identity, for the least distance program, and [J | I] with the quadratic
     // penalty block, for the relaxation. Both patterns are fixed for the mesh.
-    SparseCsc Ip, Ar, Hr;
+    SparseCsc Ip, Ar, Hr, Js;
     {
         vector<unsigned int> ir, ic;
         for (int j = 0; j < n; j++) { ir.push_back((unsigned int) j); ic.push_back((unsigned int) j); }
@@ -781,6 +781,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
         for (size_t k = 0; k < jrow.size(); k++) { ar.push_back(jrow[k]); ac.push_back(jcol[k]); }
         for (int i = 0; i < m; i++) { ar.push_back((unsigned int) i); ac.push_back((unsigned int)(n+i)); }
         Ar.build(m, nr, ar, ac, /*force_diagonal=*/false);
+        Js.build(m, n,  jrow, jcol, /*force_diagonal=*/false);
 
         vector<unsigned int> hr, hc;
         for (int k = 0; k < nr; k++) { hr.push_back((unsigned int) k); hc.push_back((unsigned int) k); }
@@ -791,7 +792,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
         Hr.scatter(hv);
     }
 
-    vector<double> lbA((size_t) m), ubA((size_t) m);
+    vector<double> lbA((size_t) m), ubA((size_t) m), rowscale((size_t) m, 1.0), jscaled;
     vector<double> lbd((size_t) nr), ubd((size_t) nr);
     vector<double> gzero((size_t) nr, 0.0);
     vector<double> dsol((size_t) nr), ysol((size_t) (nr + m));
@@ -827,6 +828,32 @@ static int feasible_point_phase(MatrixXd& x, int m,
             ubA[(size_t) i] = (gu[(size_t) i] >=  psopt_inf) ?  qpOASES::INFTY
                                                              :  gu[(size_t) i] - gval(i);
         }
+
+        // Row scaling, and it is not cosmetic. The relaxation charges the residuals
+        // quadratically, rho/2 u'u, and u is the size of the row it absorbs; on
+        // examples/bryson_max_range the starting guess violates a constraint by 6.7e+07,
+        // so at rho = 1.0e+04 the subproblem's objective is of order 1.0e+18 before it
+        // has done anything. No QP solver takes that, and GALAHAD does not: it refuses
+        // both the least distance program and the relaxation, the phase stops after one
+        // iteration having reduced the violation by a thousandth of a per cent, and the
+        // optimality phase then stops after none.
+        //
+        // Dividing each row and its bounds by its own magnitude makes the residuals O(1)
+        // and rho mean what it is meant to mean. It does not change the feasible set of
+        // either subproblem -- a diagonal row scaling never does -- and it costs one pass
+        // over the Jacobian.
+        for (int i = 0; i < m; i++) {
+            double w = 1.0;
+            if (lbA[(size_t) i] > -qpOASES::INFTY) w = max(w, fabs(lbA[(size_t) i]));
+            if (ubA[(size_t) i] <  qpOASES::INFTY) w = max(w, fabs(ubA[(size_t) i]));
+            rowscale[(size_t) i] = w;
+            if (lbA[(size_t) i] > -qpOASES::INFTY) lbA[(size_t) i] /= w;
+            if (ubA[(size_t) i] <  qpOASES::INFTY) ubA[(size_t) i] /= w;
+        }
+        jscaled.resize(jval.size());
+        for (size_t k = 0; k < jval.size(); k++)
+            jscaled[k] = jval[k]/rowscale[(size_t) jrow[k]];
+        Js.scatter(jscaled);
         for (int j = 0; j < n; j++) {
             lbd[(size_t) j] = ((*xlb)(j) <= -psopt_inf) ? -qpOASES::INFTY : (*xlb)(j) - x(j);
             ubd[(size_t) j] = ((*xub)(j) >=  psopt_inf) ?  qpOASES::INFTY : (*xub)(j) - x(j);
@@ -837,7 +864,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
         }
 
         arval.clear();
-        arval.insert(arval.end(), jval.begin(), jval.end());
+        arval.insert(arval.end(), jscaled.begin(), jscaled.end());
         for (int i = 0; i < m; i++) arval.push_back(1.0);
         Ar.scatter(arval);
 
@@ -847,7 +874,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
 
             const int  nv = primary ? n : nr;
             SparseCsc& H  = primary ? Ip : Hr;
-            SparseCsc& A  = primary ? Jm : Ar;
+            SparseCsc& A  = primary ? Js : Ar;
 
             if (use_extern) {
                 QpProblem qpp;

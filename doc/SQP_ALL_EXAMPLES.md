@@ -22,11 +22,11 @@ which is strict but is the only line that does not require judgement.
 
 | | SQP | IPOPT |
 |---|---|---|
-| solved | **43** | 59 |
+| solved | **45** | 61 |
 | timed out at 120 s | 17 | 2 |
-| failed | 6 | 5 |
+| failed | 4 | 3 |
 
-**Forty-three of sixty-six, against IPOPT's fifty-nine.** Of the forty-two both solve,
+**Forty-five of sixty-six, against IPOPT's sixty-one.** Of the forty-two both solve,
 thirty-eight agree with IPOPT to within 1e-4 relative. The four that do not are
 coulomb (1.7e-04), twophase_schwartz (3.0e-04, on an objective that is zero to machine
 precision in both, so the relative measure means nothing), mpec (3.8e-04) and wheat
@@ -60,14 +60,54 @@ where that is enough to cross the limit it appears as a timeout. It is not that 
 problems are unsolvable by this solver; it is that this solver costs what it costs.
 `SQP_BACKEND_BENCHMARK.md` measures where the cost goes.
 
-## The six failures
+## The four failures, and two that were not
 
-Four the SQP fails and IPOPT solves: bryson_max_range, isoperimetric, moon, user.
-Two neither solves: delay_history and int_static_linear.
+The first version of this table reported six failures and named delay_history and
+int_static_linear as examples that defeat both solvers -- which, being examples no NLP
+could handle, looked like the most interesting thing in it. They are nothing of the sort.
+Both are self-verifying programs: they solve their problem, compare the answer against a
+closed form, and print PASS. Neither prints the mesh summary this survey's classifier was
+reading, so both were counted as failures under both solvers. They pass, under both, and
+the counts above are corrected.
 
-The second pair is the more interesting: an example that defeats both solvers is more
-likely to be a problem with the formulation or the initial guess than with either NLP,
-and both are worth a look on those grounds alone.
+The lesson is the ordinary one about harnesses. A classifier that asks "did it print the
+thing I expect" reports a missing print as a failure, and the two most interesting-looking
+rows in the table were an artefact of that.
+
+The four real failures are bryson_max_range, isoperimetric, moon and user -- and user is
+a copy of bryson_max_range, down to the last digit of its mesh error, so there are three
+distinct problems here. All three begin at an enormously infeasible point: 6.7e+07 on
+bryson_max_range, 6.5e+08 on isoperimetric. What happened next is in the next section.
+
+## What the four failures showed, and one fix
+
+The feasibility phase's relaxation charges its residuals quadratically, rho/2 u'u, and u
+is the size of the row it has to absorb. At a starting violation of 6.7e+07 and rho =
+1.0e+04 the subproblem's objective is of order 1.0e+18 before the solver has done
+anything, and GALAHAD refuses it -- and refuses the least distance program with it. The
+phase stopped after one iteration having reduced the violation by a thousandth of a per
+cent, and the optimality phase then stopped after none. That is the whole of the
+"0 iterations" those examples were reporting.
+
+Dividing each row of the feasibility subproblems and its bounds by its own magnitude
+makes the residuals O(1) and rho mean what it is meant to mean. It does not change the
+feasible set of either subproblem, since a diagonal row scaling never does.
+
+| example | before | after |
+|---|---|---|
+| isoperimetric | phase fails at iteration 1, violation 6.5e+08 | **phase succeeds in 13 iterations** |
+| bryson_max_range | violation 6.711e+07 to 6.710e+07 | violation 6.7e+07 to 4.0e+06, then stalls |
+| moon | restoration at every iteration | 47 iterations before failing |
+
+None of the three solves yet. isoperimetric now reaches a feasible point and then spends
+its whole iteration budget in the optimality phase; bryson_max_range gets 94 per cent of
+the way and stops on "no step reduced the violation". But the phase is doing its job on
+problems where it previously could not begin, and that is worth having on its own.
+
+Against the ten-example regression set the scaling is neutral -- brac1 17 iterations,
+bryson_denham 19, hypersensitive 11, lts 18, interior_point 3, glider 364, launch 26, all
+unchanged -- except shuttle_reentry, which takes 100 iterations against 70 and returns
+the same answer.
 
 ## What this says
 
