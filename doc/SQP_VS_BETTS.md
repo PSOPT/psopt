@@ -150,3 +150,50 @@ middle rung and its hook into the phase, the line search model and the Wolfe con
 the QP warm start, the merit function's bound terms, and the FME strategy -- which now
 looks more interesting than it did, because the first optimality step on bryson_denham
 takes the violation from 2.3e-11 back to 1.3 and FME exists to stop exactly that.
+
+
+## Addendum: two more components built, measured, and not kept
+
+Both were implemented in full from the book, both are faithful, and both regress the
+benchmark. They are recorded here rather than in the commit history alone, because "we
+tried it and it made things worse" is the sort of finding that otherwise gets
+rediscovered every eighteen months.
+
+**Rung (ii) of the inertia ladder, section 2.6.1 step 2(c)ii.** When the shift reaches
+its ceiling and the inertia is still wrong, replace the Hessian by the identity rather
+than sending an unusable model to the subproblem. Tried four times, in four
+configurations, and it fails in all of them. The mechanism is that replacing H by the
+identity makes the step *longer*: the ceiling-valued shift it replaces had been acting as
+a strong regulariser, since H + delta I with delta = |sigma| + 1 gives a step of
+-g/delta, and at |sigma| of 8.8e+02 that is very short indeed. On brac1 under strategy M
+the first step then drives the scaled objective of a minimum-time problem to 2e-14, and
+the merit function accepts it, because at the first iteration the penalty weights are at
+machine epsilon by construction and the merit is therefore the objective alone.
+
+The interpolating line search does not save it -- the step is accepted, not truncated, so
+there is nothing for the line search to refuse. Nor do the merit function's bound terms,
+which was the next hypothesis, on the grounds that brac1's collapse is the final time
+going to its bound. Under FM, where the optimality phase starts from a feasible point,
+brac1 and bryson_denham and lts are all fine and launch fails instead.
+
+**The merit function's bound terms, (2.27), (2.29), (2.32) and (2.35).** Bound slacks t,
+bound multipliers nu, penalty weights Xi, and the least-norm weight calculation of (2.37)
+extended from m to m + n components as Betts writes it. This is a straightforward piece
+of work and the result is faithful; the one thing worth flagging for anyone repeating it
+is the sign. Betts writes his Lagrangian as g - G'lambda - nu and PSOPT writes
+grad f + J'lambda - z, so his lambda is minus PSOPT's -- but his nu is PSOPT's z with the
+*same* sign, both being subtracted. The constraint term flips and the bound term does
+not. Getting that wrong costs brac1 and bryson_denham their solutions and looks exactly
+like the terms being harmful.
+
+With the signs right, the bound terms are neutral on all five small examples -- brac1 17
+iterations, bryson_denham 18, hypersensitive 11, lts 20, interior_point 2, cell for cell
+-- and they break launch, which goes from 42 iterations and a solution to 17 and none.
+That is the whole measured effect: no benefit anywhere and one clear loss. The earlier
+assessment in this file, that the bound terms are "a real simplification rather than a
+no-op", turns out to be right about the theory and wrong about which direction the
+practice runs.
+
+Both are kept as files rather than commits, and the audit table above still marks them
+absent, which is the honest state: the code exists, it does what the book says, and it is
+not in the library.
