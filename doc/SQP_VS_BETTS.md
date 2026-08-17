@@ -16,7 +16,7 @@ The reference is *Practical Methods for Optimal Control Using Nonlinear Programm
 |---|---|---|---|
 | 1 | Sparse QP subproblem, standard form | 2.3, (2.17)–(2.19) | delegated to the backend |
 | 2 | Schur-complement active set over one LDL' of K0 | 2.3, (2.21)–(2.26) | absent; the backends do as they please |
-| 3 | Warm start of the QP from the previous active set | 2.3 | **absent** |
+| 3 | Warm start of the QP from the previous active set | 2.3 | absent; measured as not worth building — see below |
 | 4 | Augmented Lagrangian merit function | 2.4, (2.27) | present for the constraints |
 | 5 | Constraint slacks s | 2.4, (2.28) | present, `merit_slacks` |
 | 6 | Bound slacks t, multipliers nu, weights Xi | 2.4, (2.27), (2.29) | **absent** |
@@ -197,3 +197,45 @@ practice runs.
 Both are kept as files rather than commits, and the audit table above still marks them
 absent, which is the honest state: the code exists, it does what the book says, and it is
 not in the library.
+
+
+## Addendum: the warm start, measured and declined
+
+The QP warm start was the last substantial item on the list above, and the argument for
+it is Betts's own: the efficiency of his QP comes from factorising the KKT matrix once
+and updating a small dense Schur complement as the active set changes, and as the NLP
+converges the active set stops changing and the QP iteration count collapses (section
+2.3). We call the equivalent of `init()` on a fresh problem for every subproblem, so
+every one pays a cold start, and carrying an active set across the plugin boundary would
+be an ABI change as well as a code change.
+
+Before building it, the thing to check is whether the count is collapsing already. It is
+printed in every trace, so this cost nothing.
+
+| example | backend | SQP iterations | QP iterations, mean | first five | last five |
+|---|---|---|---|---|---|
+| glider | GALAHAD | 364 | 14 | 4, 4, 4, 4, 4 | 20, 20, 20, 20, 20 |
+| shuttle_reentry | GALAHAD | 70 | 6 | 6, 6, 6, 6, 6 | 4, 4, 4, 4, 4 |
+| launch | GALAHAD | 42 | 89 | 123, 4, 7, 13, 10 | 6, 4, 4, 6, 6 |
+| brac1 | qpOASES | 17 | 517 | 537, 530, 771, 392, 441 | 633, 577, 625, 581, 571 |
+| bryson_denham | qpOASES | 18 | 897 | 527, 1052, 851, 862, 1607 | 601, 548, 594, 585, 754 |
+| lts | qpOASES | 20 | 202 | 128, 226, 326, 336, 214 | 152, 148, 149, 337, 374 |
+
+The two backends could not be further apart. **GALAHAD is already doing what warm starting
+is supposed to achieve**: four to twenty iterations a subproblem, and on launch the count
+falls from 123 on the first to four by the last. There is no warm start that improves on
+four iterations. **qpOASES is the opposite** -- two hundred to nine hundred iterations,
+and flat from the first subproblem to the last, which is precisely the signature of
+paying a cold start every time.
+
+So the warm start is worth a great deal for the backend being retired and essentially
+nothing for the one being kept. It is not built, and this table is the reason. If the
+backend decision is ever revisited, the measurement to repeat is the last two columns:
+flat means there is something to win, falling means there is not.
+
+One implementation note for whoever does revisit it. qpOASES's `hotstart()` is not the
+mechanism it looks like -- it accepts a new gradient and new bounds but not a new Hessian
+or Jacobian, and in an SQP both change at every iteration. The applicable call is `init()`
+with a guessed working set. GALAHAD's QPA takes a warm start through its entry status and
+the x_stat and c_stat arrays, which would need either an opaque per-call-site context in
+the plugin ABI or state held inside the plugin and keyed on the problem dimensions.
