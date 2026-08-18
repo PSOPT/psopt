@@ -105,3 +105,32 @@ sit near the point where the QP subproblem stops being solvable, and two of them
 to change status under a perturbation of the constraint scaling of one part in a hundred
 million. Forty-eight is the right number to quote, but it is not a number with three
 significant figures behind it.
+
+## Re-run after qpOASES was removed
+
+Removing qpOASES touched every QP solve in the driver: its return codes were the
+currency the plugin path converted itself into, its infinity was how an absent bound was
+recognised, and its matrix objects were built at every iteration whichever backend ran.
+Eight regression examples are not enough to be confident about a change of that reach, so
+the whole set was run again under GALAHAD/FM and compared against the SQP column of
+`SQP_ALL_EXAMPLES.csv` above, with the same classifier applied to both sides.
+
+**Nothing moved.** Forty-eight of sixty-six solved before and after; no example was
+gained, none lost, and every objective agrees to better than 1e-6 relative. The new run
+is in `SQP_ALL_EXAMPLES_NOQPOASES.csv`.
+
+Two notes on how that table was read, both of which cost time.
+
+The sweep harness refuses any row whose log lacks the SQP's banner, because a run that
+silently falls back to the example's own solver otherwise appears as a brilliant result
+belonging to IPOPT -- which is exactly what happened on the first attempt, when only the
+eight regression examples had been rebuilt against the instrumented library and the other
+fifty-eight had not. That guard earns its place. But it is a heuristic, and three of the
+four rows it flagged were false positives: `delay_history` and `int_static_linear` set
+`print_level = 0` and print nothing but their own PASS, and `low_thrust` was killed at the
+time limit while still in the feasibility phase, which runs before the banner is printed.
+
+For the two silent examples the question of which solver actually ran cannot be settled
+from the output at all, so it was settled by experiment: run each with GALAHAD and with
+the OpenMP environment GALAHAD's QPA requires, then again without it. Both print PASS with
+it and FAIL without, which IPOPT would not do, so the SQP is what ran and it is right.
