@@ -168,10 +168,33 @@ subproblem, which is a backend fault rather than a strategy one. Neither is a re
 prefer M: qpOASES is the backend being retired, and the hang is the same one that made
 these sweeps need SIGKILL rather than SIGTERM.
 
-The default remains "M", because changing a default changes behaviour for everyone who
-has a working script, and because the backend question should be settled first. On the
-evidence here the configuration to recommend is `sqp_strategy = "FM"` with
-`qp_solver = "GALAHAD"`.
+The default remained "M" at the time of this sweep, because changing a default changes
+behaviour for everyone who has a working script, and because the backend question should
+be settled first. On the evidence here the configuration to recommend is
+`sqp_strategy = "FM"` with `qp_solver = "GALAHAD"`.
+
+**Both of those reservations have since expired, and the default is now "FM".** The
+backend question is settled -- qpOASES is removed and GALAHAD is the default -- which
+disposes of the first of the two cells that went the other way above; the second,
+bryson_denham hanging inside a GALAHAD subproblem, was a backend fault and no longer
+happens, that example now solving in seven iterations under FM. The whole example set was
+then run under each strategy on one machine with one time limit:
+
+| | FM | M |
+|---|---|---|
+| solved, of 66 | **48** | 40 |
+
+The eight are one-way. FM solves conic_soc, coulomb, dae_i3, notorious, obstacle,
+path_window, rayleigh and shuttle_reentry where M does not; there is no example M solves
+and FM does not. Where both solve they agree, the largest objective difference over the
+forty being 3e-05 relative, which is the same answer to fewer figures rather than a
+different one. The M run is in `SQP_STRATEGY_M_VS_FM.csv`.
+
+twoburn is the clearest illustration of the mechanism, and is what prompted the
+re-examination: under FM it clears four meshes inside the limit, under M it does not
+finish the first. M's characteristic failure is grinding in restoration when the guess is
+badly infeasible -- the linearisation is inconsistent at every iterate, so most of the
+wall clock goes into a relaxed subproblem several times the size of the real one.
 
 ## Two harder problems, outside the sweep
 

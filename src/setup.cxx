@@ -161,7 +161,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.hessian                     = "limited-memory";
   algorithm.qp_solver                   = "GALAHAD";
   algorithm.qp_iter_max                 = 1000;
-  algorithm.sqp_strategy                = "M";
+  algorithm.sqp_strategy                = "FM";
   algorithm.qp_restoration              = "elastic";
   algorithm.elastic_penalty             = "weights";
   algorithm.collocation_method          = "Legendre";

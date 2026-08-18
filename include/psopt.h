@@ -231,16 +231,33 @@ struct alg_str {
   // solver's wall clock, while the relaxed one took GALAHAD 20 iterations instead of
   // the 1002 at which it gives up. Neither setting solves launch. Ignored unless
   // nlp_method is "SQP".
+  string    qp_restoration;
+
   // Which of Betts's algorithm strategies the SQP follows (3rd ed., section 2.6.2).
-  // "M" (default) minimises from the starting guess, taking the constraints and the
-  // objective together at every iteration. "FM" first locates a point feasible with
-  // respect to the constraints, ignoring the objective, the multipliers and the Hessian
-  // entirely, and then minimises from there; it is the default in Betts's own software,
-  // on the grounds that difficulties caused by the constraints are better separated from
-  // difficulties caused by the objective than diagnosed together (section 2.7). "F"
-  // stops once a feasible point has been found, which is useful when a new problem
+  //
+  // "FM" (default) first locates a point feasible with respect to the constraints,
+  // ignoring the objective, the multipliers and the Hessian entirely, and then minimises
+  // from there. It is the default in Betts's own software, on the grounds that
+  // difficulties caused by the constraints are better separated from difficulties caused
+  // by the objective than diagnosed together (section 2.7), and it is the default here
+  // for the same reason plus a measurement: across the sixty-six shipped examples under
+  // GALAHAD, FM solves 48 and M solves 40, and the eight are one-way -- there is no
+  // example that M solves and FM does not. Where both solve they agree, the largest
+  // objective difference over the forty being 3e-05 relative.
+  //
+  // "M" minimises from the starting guess, taking the constraints and the objective
+  // together at every iteration. It was the default until the measurement above; the
+  // characteristic failure it shows is grinding in restoration on a problem whose guess
+  // is badly infeasible, since the linearisation is then inconsistent at every iterate
+  // and most of the wall clock goes into a relaxed subproblem several times the size of
+  // the real one. examples/twoburn is typical: under FM it clears four meshes inside the
+  // time limit, under M it does not finish the first.
+  //
+  // "F" stops once a feasible point has been found, which is useful when a new problem
   // formulation is not converging and one wants to know whether the constraints alone
   // are the trouble. Ignored unless nlp_method is "SQP".
+  string    sqp_strategy;
+
   // How many iterations the SQP allows a QP backend for one subproblem. Betts's own
   // remedy for a subproblem that will not solve is to eliminate it rather than grind at
   // it (section 2.7), and the measurement agrees: on examples/zpm, in two hundred
@@ -252,10 +269,6 @@ struct alg_str {
   // The value is a budget, not a promise: a backend that finishes sooner finishes
   // sooner. Ignored unless nlp_method is "SQP".
   int       qp_iter_max;
-
-  string    sqp_strategy;
-
-  string    qp_restoration;
 
   // What the relaxation costs, per unit of infeasibility. "weights" (default) prices it
   // above the merit function's penalty weights, which is where it has always been taken
