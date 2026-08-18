@@ -424,6 +424,40 @@ with `algorithm.nlp_method = "SQP"`. It is off by default and adds no dependency
 ordinary build: with `WITH_SQP=OFF` the solver compiles to a stub. Everything below is
 needed only if you want to build it.
 
+The algorithm is broadly based on the sparse SQP method of Betts, *Practical Methods for
+Optimal Control Using Nonlinear Programming*, 3rd ed., chapter 2. `doc/SQP_VS_BETTS.md`
+records component by component what has been taken from it and what has not, and why.
+
+**Should you build it? For most problems, no.** IPOPT is the default NLP solver and
+performs better across the board: it solves more of the shipped examples than the SQP does,
+and it solves the ones they share by roughly one to two orders of magnitude faster. If you
+have no particular reason to want a second solver, IPOPT is the right choice and this
+section is not for you.
+
+The reasons to build it anyway are worth stating, since they are real:
+
+- **A second opinion from a different algorithm.** On the examples both solve, the two
+  agree to about four significant figures. Two unrelated methods agreeing is a stronger
+  statement about a solution than either produces alone.
+- **Everything is in this repository.** No third-party NLP interface, no licence to obtain,
+  and every part of the method can be read and changed.
+- **One shipped example is solved by the SQP and not by IPOPT** (`lqr_radau`).
+
+And the caveats, plainly:
+
+- **It does not solve everything IPOPT does.** As last measured it fails outright on one of
+  the shipped examples and does not finish within a practical time budget on a further
+  handful, where IPOPT succeeds. `doc/SQP_ALL_EXAMPLES.md` carries the current table and is
+  regenerated as the solver changes; treat it, not this paragraph, as the authoritative
+  statement.
+- **It is slower**, dominated by the QP subproblems, of which there is at least one per
+  iteration.
+- **It needs `hessian = "exact"` to be usable at any size.** The alternative is a dense
+  quasi-Newton model whose storage is quadratic in the number of variables, which a
+  collocation mesh of any size will not tolerate.
+- **It is newer than the rest of PSOPT** and has had correspondingly less exposure to
+  problems its author did not write.
+
 The quadratic programming subproblem goes to one of several backends, every one of them
 sparse, and at least one must be built: `WITH_SQP=ON` on its own is an error, because the
 SQP has no QP solver of its own. **GALAHAD's QPA is the one to use**: it is sparse, BSD-3
@@ -534,11 +568,15 @@ is worth. In a build without the option the variables are ignored entirely.
 *Using it*
 
 ```cpp
-algorithm.nlp_method = "SQP";
-algorithm.hessian    = "exact";      // sparse exact Hessian of the Lagrangian
-algorithm.qp_solver  = "GALAHAD";
-algorithm.sqp_strategy = "FM";       // Betts's default; see doc/SQP_VS_BETTS.md
+algorithm.nlp_method  = "SQP";
+algorithm.hessian     = "exact";       // sparse exact Hessian of the Lagrangian
+algorithm.derivatives = "automatic";   // required by "exact"
 ```
+
+`qp_solver` defaults to `"GALAHAD"` and `sqp_strategy` to `"FM"`, so neither needs setting
+unless you want something else. The other options -- `qp_restoration`, `elastic_penalty`
+and `qp_iter_max` -- have defaults that are the measured best across the example set;
+`include/psopt.h` documents each of them and says what is known about when to change it.
 
 
 Running PSOPT within a Docker container
