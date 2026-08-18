@@ -109,25 +109,49 @@ void estimate_order_reduction(Prob& problem,Alg& algorithm,Sol& solution, Worksp
 
       MatrixXd& old_snodes = workspace->old_snodes[iphase-1];
 
-      j = 0; // EIGEN_UPDATE
+      const int M_new = problem.phase[iphase-1].current_number_of_intervals;
+      const int M_old = length(old_snodes) - 1;
 
-      int I = 1;
+      // Map each interval of the new mesh to the interval of the old mesh that
+      // contains it, and count how many pieces each old interval was cut into.
+      //
+      // The lookup has to advance on the *right* endpoint of the old interval:
+      // a new sub-interval strictly inside old interval j has a left endpoint
+      // greater than old_snodes(j), so comparing against the left endpoint
+      // advances j once per new interval and attributes every sub-interval but
+      // the first to the wrong parent. On a uniformly refined mesh the two agree;
+      // on the non-uniform meshes this algorithm actually produces they do not,
+      // and theta was then read from an unrelated interval.
+      std::vector<int> parent(M_new, 0);
+      std::vector<int> pieces(M_old > 0 ? M_old : 1, 0);
 
-      for (k=0;k< problem.phase[iphase-1].current_number_of_intervals;k++) { // EIGEN_UPDATE: index k shifted by -1
+      j = 0;
+      for (k=0; k<M_new; k++) {
+	    const double sk = snodes(k);
+	    while ( j < M_old-1 && sk >= old_snodes(j+1) - PSOPT_extras::GetEPS() ) j++;
+	    parent[k] = j;
+	    pieces[j]++;
+      }
+
+      for (k=0; k<M_new; k++) {
 
 	    eta   = epsilon(k);
 
-	    if ( snodes(k) > old_snodes(j) ) {
-	       j++; I=1;
-	    }
-	    else {
-	       I++;
-	    }
+	    j = parent[k];
+
+	    // Points added to the parent interval: one fewer than the number of
+	    // pieces it was cut into. Betts's estimate divides by log(1+I_k), so an
+	    // interval that was not subdivided carries no information about the
+	    // order and is left at zero rather than dividing by log(1).
+	    const int Ik = pieces[j] - 1;
+
+	    if ( Ik <= 0 ) { order_reduction(k) = 0; continue; }
 
 	    double theta = old_epsilon(j);
 
-	    rhat = p+1.0 - log(theta/eta)/(log(1.0+I));
+	    if ( !(theta > 0.0) || !(eta > 0.0) ) { order_reduction(k) = 0; continue; }
 
+	    rhat = p+1.0 - log(theta/eta)/(log(1.0+ (double) Ik));
 
 	    r = std::min(nint(rhat),(double) p);
 
