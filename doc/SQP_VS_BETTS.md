@@ -40,7 +40,7 @@ The reference is *Practical Methods for Optimal Control Using Nonlinear Programm
 | 18 | Inertia control rung (i): raise tau and retry | 2.6.1, step 2(c)i | present |
 | 19 | Inertia control rung (ii): tau = 1 fails, set H = I and retry | 2.6.1, step 2(c)ii | **absent** |
 | 20 | Inertia control rung (iii): H = I fails, go find a feasible point | 2.6.1, step 2(c)iii | absent; the phase exists, the hook does not |
-| 21 | Line search on a quadratic and cubic model of the merit | 2.6.1 | absent; plain halving |
+| 21 | Line search on a quadratic and cubic model of the merit | 2.6.1 | present; safeguarded interpolation |
 | 22 | Wolfe condition, to stop steplengths collapsing | 2.6.1 | **absent** |
 | 23 | tau and the weights start at zero, merit starts as the Lagrangian | 2.6.1 | present |
 | 24 | Strategy M, minimize from x0 | 2.6.2 | present |
@@ -94,7 +94,10 @@ inconsistent here", which is the same segregation principle as FM at the scale o
 single iteration. Rung (iii) is a jump into the feasibility phase, so it arrives with the
 first item.
 
-**Third, the line search.** Halving is the crudest thing that works. Betts fits a
+**Third, the line search.** *(Since built: the safeguarded quadratic and cubic
+interpolation described here is now in place, and row 21 reads "present" above. What
+follows is the argument that led to building it.)* Halving is the crudest thing that
+works. Betts fits a
 quadratic and a cubic to the merit function, and imposes the Wolfe condition specifically
 to stop steplengths collapsing. Our traces are full of collapsing steplengths — 6.25e-02,
 1.95e-03, 1.19e-07 on the harder examples — and each one is a full evaluation of the
