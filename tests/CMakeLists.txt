@@ -41,10 +41,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     PSOPT
     )
 
-if(${WITH_SNOPT_INTERFACE})
-    enable_language(Fortran)
-    target_link_libraries(${PROJECT_NAME} PRIVATE gfortran ${snopt7_LIBRARIES} PSOPT_SNOPT_interface)
-endif()
-
 enable_testing()
 add_test(test ${PROJECT_NAME})
+
+# A second pass with the environment GALAHAD's linear solver requires. It cannot be set
+# from inside the process -- the OpenMP runtime reads these once, when it initialises --
+# so the tests that need it skip themselves in the ordinary pass and run here.
+add_test(NAME test_galahad_environment COMMAND ${PROJECT_NAME} --gtest_filter=SQPSolver.*)
+set_tests_properties(test_galahad_environment PROPERTIES
+    ENVIRONMENT "OMP_CANCELLATION=TRUE;OMP_PROC_BIND=TRUE")

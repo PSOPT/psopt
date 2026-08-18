@@ -247,7 +247,11 @@ int main(void)
     x_guess.row(1)  = y0*ones(1,nnodes);
     x_guess.row(2)  = v0*ones(1,nnodes);
 
-    problem.phases(1).guess.controls       = zeros(ncontrols,nnodes);
+    MatrixXd u_guess    =  zeros(ncontrols,nnodes);
+    u_guess.row(0)  = ones(1,nnodes);
+    u_guess.row(1)  = zeros(1,nnodes);
+
+    problem.phases(1).guess.controls       = u_guess;
     problem.phases(1).guess.states         = x_guess;
     problem.phases(1).guess.time           = linspace(0.0,2.0,nnodes);
 

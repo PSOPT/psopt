@@ -193,7 +193,126 @@ typedef struct guess_str Guess;
 struct alg_str {
   int       nlp_iter_max;
   double    nlp_tolerance;
+
+  // Which nonlinear programming solver PSOPT hands the discretised problem to.
+  // "IPOPT" (default) is Waechter and Biegler's interior-point method, and is what most
+  // problems here are solved with. "SQP" is PSOPT's own sequential quadratic programming
+  // solver, described in include/psopt_sqp.hpp and measured in doc/SQP_ALL_EXAMPLES.md;
+  // it must be built with -DWITH_SQP=ON and at least one QP backend, and it offers a
+  // second opinion whose every part lives in this repository rather than behind a
+  // third-party interface.
+  //
+  // "SNOPT" was a third option until 2026 and is no longer accepted. It is commercial,
+  // so it was only ever available to a minority of users, and the SQP above now fills
+  // the same place -- an active-set alternative to an interior-point method -- with no
+  // licence to obtain.
   string    nlp_method;
+  // Which quadratic programming solver the SQP uses for its subproblems: "GALAHAD"
+  // (default), "ProxQP", "QPALM" or "OSQP". All of them factorise the KKT system
+  // sparsely, which is what a collocated optimal control problem needs; they differ in
+  // method. GALAHAD's QPA is active-set and is the one the solver has been tuned and
+  // measured against -- doc/SQP_ALL_EXAMPLES.md reports it across the whole example
+  // set. ProxQP is a proximal augmented-Lagrangian method that tolerates an indefinite
+  // Hessian, as is QPALM, which differs from it in the factorisation underneath and in
+  // estimating the Hessian's smallest eigenvalue itself; OSQP is ADMM-based. Whichever
+  // is named must have been built: see WITH_GALAHAD and its siblings in CMakeLists.
+  // Ignored unless nlp_method is "SQP". Note that QPALM is LGPL-3: a PSOPT built with it
+  // is distributable under LGPL-3 rather than LGPL-2.1.
+  //
+  // qpOASES was the original backend and has been removed. It was a dense active-set
+  // method -- its factorisations were dense in the number of variables whatever sparsity
+  // it was handed, so its memory was quadratic and its work per subproblem cubic in n --
+  // which made it unsuitable for the problems this library exists for.
+  string    qp_solver;
+
+  // How the SQP relaxes a subproblem whose linearised constraints are inconsistent,
+  // which is the normal situation when the starting guess violates an equality.
+  // "elastic" (default) is SNOPT's device: a pair of non-negative slacks per
+  // constraint, charged in the objective, giving a subproblem of n + 2m variables that
+  // is always feasible and can relax one row without relaxing another. "relaxation" is
+  // Betts's (3rd ed., section 2.7): a single variable xi in [0,1] that relaxes every
+  // row by the same fraction of its own infeasibility, giving n + 1 variables.
+  //
+  // The trade is flexibility against size, and which way it falls depends on the
+  // problem. On the small pseudospectral examples elastic mode is clearly better --
+  // with "relaxation", bryson_denham does not converge and lts goes from 19 iterations
+  // to 74. On a large sparse problem whose guess is badly infeasible it is the other
+  // way about, and by a wide margin: examples/launch has 658 variables and 560
+  // constraints, 282 of them violated at the start, so restoration runs at every
+  // iteration; the elastic subproblem is 1778 variables and took ProxQP between five
+  // and twenty seconds each, which timing the parts showed to be 99 per cent of the
+  // solver's wall clock, while the relaxed one took GALAHAD 20 iterations instead of
+  // the 1002 at which it gives up. Neither setting solves launch. Ignored unless
+  // nlp_method is "SQP".
+  string    qp_restoration;
+
+  // Which of Betts's algorithm strategies the SQP follows (3rd ed., section 2.6.2).
+  //
+  // "FM" (default) first locates a point feasible with respect to the constraints,
+  // ignoring the objective, the multipliers and the Hessian entirely, and then minimises
+  // from there. It is the default in Betts's own software, on the grounds that
+  // difficulties caused by the constraints are better separated from difficulties caused
+  // by the objective than diagnosed together (section 2.7), and it is the default here
+  // for the same reason plus a measurement: across the sixty-six shipped examples under
+  // GALAHAD, FM solves 48 and M solves 40, and the eight are one-way -- there is no
+  // example that M solves and FM does not. Where both solve they agree, the largest
+  // objective difference over the forty being 3e-05 relative.
+  //
+  // "M" minimises from the starting guess, taking the constraints and the objective
+  // together at every iteration. It was the default until the measurement above; the
+  // characteristic failure it shows is grinding in restoration on a problem whose guess
+  // is badly infeasible, since the linearisation is then inconsistent at every iterate
+  // and most of the wall clock goes into a relaxed subproblem several times the size of
+  // the real one. examples/twoburn is typical: under FM it clears four meshes inside the
+  // time limit, under M it does not finish the first.
+  //
+  // "F" stops once a feasible point has been found, which is useful when a new problem
+  // formulation is not converging and one wants to know whether the constraints alone
+  // are the trouble. Ignored unless nlp_method is "SQP".
+  string    sqp_strategy;
+
+  // How many iterations the SQP allows a QP backend for one subproblem. Betts's own
+  // remedy for a subproblem that will not solve is to eliminate it rather than grind at
+  // it (section 2.7), and the measurement agrees: on examples/zpm, in two hundred
+  // seconds at a budget of 200, GALAHAD's QPA solves 276 subproblems and stops at its
+  // limit on 25; at 3000 it solves 34 and stops on 38. The subproblems that reach the
+  // limit are ones it cannot solve rather than ones it needs longer for, and letting
+  // them grind costs the ones behind them in the queue.
+  //
+  // The value is a budget, not a promise: a backend that finishes sooner finishes
+  // sooner. Ignored unless nlp_method is "SQP".
+  int       qp_iter_max;
+
+  // What the relaxation costs, per unit of infeasibility. "weights" (default) prices it
+  // above the merit function's penalty weights, which is where it has always been taken
+  // from. "multipliers" prices it above the multipliers as well, which is the classical
+  // condition on elastic mode (Gill, Murray and Saunders): below it, the relaxed
+  // subproblem buys a reduction in the objective with a slack and the restoration
+  // restores nothing.
+  //
+  // The default is not the theoretically correct one, and the reason is worth stating.
+  // The rule was written for the l1 merit function, whose weights have to dominate the
+  // multipliers for the penalty to be exact, so taking the price from the weights got
+  // the bound on the multipliers for free. Betts's augmented Lagrangian, which replaced
+  // it, carries the multipliers explicitly and its weights are the least-norm set that
+  // gives descent -- machine epsilon for most of a run -- so the price collapsed to its
+  // floor of ten. On examples/launch that is far below the multipliers, and at the
+  // initial point the same linearised constraints a unit Hessian satisfied to a total
+  // slack of 1.3e-02 came back one solve later with a slack of 1.1.
+  //
+  // "multipliers" repairs that, and two things have to move with it or it makes matters
+  // worse: the weights are no longer raised to the price after a restoration, which
+  // under an augmented Lagrangian makes the merit function stiff rather than exact, and
+  // the slacks' regularisation is scaled by the price rather than fixed at 1.0e-08, or
+  // the subproblem spans thirteen orders of magnitude and qpOASES declines it. Measured
+  // across the ten-example benchmark the setting is a wash -- 26 cells solved either
+  // way. It repairs bryson_denham under qpOASES, which goes from 91 iterations at a
+  // coarse answer to 31 at IPOPT's, and brac1 and lts each gain a backend; against
+  // that, OSQP loses interior_point and manutec and ProxQP's bryson_denham answer
+  // drifts by 0.3 per cent. It is offered rather than imposed for that reason.
+  // Ignored unless nlp_method is "SQP".
+  string    elastic_penalty;
+
   string    scaling;
   string    derivatives;
   string    constraint_scaling;
@@ -814,8 +933,6 @@ public:
    unique_ptr<MatrixXd[]>  dual_costates;
    unique_ptr<MatrixXd[]>  dual_path;
    unique_ptr<MatrixXd[]>  dual_events;
-   unique_ptr<MatrixXd>  Xsnopt;
-   unique_ptr<MatrixXd>  gsnopt;
    unique_ptr<MatrixXd[]>  DerivResid;
    MatrixXd*  h;
    unique_ptr<MatrixXd[]>  Xdotgg;
@@ -978,8 +1095,6 @@ public:
   psopt_ad::ADHandle ad_f, ad_g, ad_hess, ad_fg, ad_gc;  // tags promoted to AD handles (step 2b)
   void *user_data;
   
-// A persistent variable for warm starts in SNOPT7
-  int nS;  
 
   bool hess_verify_done;   // numerical-Hessian FD-vs-AD check runs once per solve (H1)
 

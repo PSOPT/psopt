@@ -304,7 +304,11 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
         }
     }
 
-    if ( algorithm.nlp_method == "SNOPT") {
+    // The SQP reports a zero return code for a solved problem -- the convention it
+    // inherited from SNOPT, which used to share this branch. Without this the summary
+    // keeps whatever auxstr held from an earlier line and prints nonsense next to
+    // "NLP solver reports".
+    if ( algorithm.nlp_method == "SQP") {
         if (solution.nlp_return_code  == 0) {
             fprintf(outfile,"\nOptimal (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {
@@ -483,7 +487,7 @@ void Save_to_json_file(const string& filename, Prob& problem, Sol& solution, Alg
         solved = (solution.nlp_return_code == (int) Solve_Succeeded);
         if (solved) message = "The problem has been solved!";
     }
-    else if (algorithm.nlp_method == "SNOPT") {
+    else if (algorithm.nlp_method == "SQP") {
         solved = (solution.nlp_return_code == 0);
         if (solved) message = "Finished successfully";
     }
@@ -683,7 +687,11 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
         }
     }
 
-    if ( algorithm.nlp_method == "SNOPT") {
+    // The SQP reports a zero return code for a solved problem -- the convention it
+    // inherited from SNOPT, which used to share this branch. Without this the summary
+    // keeps whatever auxstr held from an earlier line and prints nonsense next to
+    // "NLP solver reports".
+    if ( algorithm.nlp_method == "SQP") {
         if (solution.nlp_return_code  == 0) {
             fprintf(outfile,"\nOptimal (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {

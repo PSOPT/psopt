@@ -282,22 +282,41 @@ void determine_constraint_scaling_factors(MatrixXd & X, Sol& solution, Prob& pro
 
 
 
-		 for (i=0;i<ncons;i++) // EIGEN_UPDATE
-		 {
-		        double sqeps = sqrt(PSOPT_extras::GetEPS());
+     // A row of the Jacobian that is zero at the initial guess carries no information
+     // about that constraint's magnitude, and the earlier form of this loop -- which
+     // divided by (norm + sqrt(eps)) -- gave it the largest factor the loop can produce,
+     // 1/sqrt(eps) = 6.7e+07. That is not a large gradient made comparable to the others;
+     // it is an accident of where the guess happens to sit. bryson_max_range asks for
+     // u1^2 + u2^2 = 1 and is guessed at u = 0, the one point where that constraint's
+     // gradient vanishes, so all fifty of its path rows were multiplied by 6.7e+07 and the
+     // problem was handed to the NLP with an initial violation of exactly 6.7108864e+07 --
+     // a violation of one, scaled. Such a row is given a factor of 1.0 instead: neutral,
+     // which is the only honest reading of no information. Every other factor is clamped
+     // to [1.e-7, 1.e7] symmetrically, closing a gap at exactly 1.e7 where the earlier
+     // form fell through both branches and left the factor unset.
 
-		        if ( jac_row_norm(i) < 1.e7 ) {
+     const double sqeps    = sqrt(PSOPT_extras::GetEPS());
+     const double max_fac  = 1.e7;
+     const double min_fac  = 1.e-7;
 
-			        (*workspace->constraint_scaling)(i) = 1.0/(jac_row_norm(i)+sqeps);
-		
-			     }
-			     else  {
-		                if ( jac_row_norm(i) > 1.e7 ) {
-		    		          (*workspace->constraint_scaling)(i) = 1.0/1.e7;
-		                }
-		
-			    }
-       }
+     for (i=0;i<ncons;i++) // EIGEN_UPDATE
+     {
+            double fac;
+
+            if ( jac_row_norm(i) <= sqeps ) {
+                    // degenerate row: no scale can be inferred from it
+                    fac = 1.0;
+            }
+            else {
+                    fac = 1.0/jac_row_norm(i);
+                    if ( fac > max_fac ) fac = max_fac;
+                    if ( fac < min_fac ) fac = min_fac;
+            }
+
+            (*workspace->constraint_scaling)(i) = fac;
+     }
+
+
 
      workspace->use_constraint_scaling = 1;
 

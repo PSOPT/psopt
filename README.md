@@ -151,14 +151,6 @@ sudo make install
 
 The following optional libraries can be employed for additional functionality.
 
-**SNOPT**
-
-
-
-[SNOPT](http://www.sbsi-sol-optimize.com/manuals/SNOPT-Manual.pdf) is an optimization algorithm for large-scale nonlinearly constrained problems based on sequential quadratic programming.
-
-
-
 **GNUplot**
 
 
@@ -208,25 +200,6 @@ Requires:
 Libs:  -Wl,-rpath,${libdir} -L$${libdir}  
 Cflags: -I${includedir} -std=c++11
 ```
-
-For SNOPT (filename: snopt7.pc):
-	
-
-```
-prefix=/usr/local
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include/snopt7
-
-Name: SNOPT7
-Version: 7
-Description: SNOPT NONLINEAR PROGRAMMING LIBRARY 
-Requires: 
-Libs: -L${libdir} -lsnopt7_cpp -Wl,-rpath,${libdir} -Wl,-rpath,${libdir} 
-Cflags: -I${includedir}
-```
-
-
 
 **Tested Platforms**
 
@@ -429,12 +402,6 @@ make
 sudo make install
 ```
 
-If using SNOPT:
-
-```
-cmake -DBUILD_EXAMPLES=ON -DWITH_SNOPT_INTERFACE=ON ..
-```
-
 For debugging:
 
 ```
@@ -447,6 +414,169 @@ After installation, run at least one example to check that the build is working 
 cd build/examples/launch
 ./launch
 ```
+
+
+Building PSOPT's own SQP solver
+----------------
+
+PSOPT ships a sequential quadratic programming solver of its own, selected at run time
+with `algorithm.nlp_method = "SQP"`. It is off by default and adds no dependency to an
+ordinary build: with `WITH_SQP=OFF` the solver compiles to a stub. Everything below is
+needed only if you want to build it.
+
+The algorithm is broadly based on the sparse SQP method of Betts, *Practical Methods for
+Optimal Control Using Nonlinear Programming*, 3rd ed., chapter 2. `doc/SQP_VS_BETTS.md`
+records component by component what has been taken from it and what has not, and why.
+
+**Should you build it? For most problems, no.** IPOPT is the default NLP solver and
+performs better across the board: it solves more of the shipped examples than the SQP does,
+and it solves the ones they share by roughly one to two orders of magnitude faster. If you
+have no particular reason to want a second solver, IPOPT is the right choice and this
+section is not for you.
+
+The reasons to build it anyway are worth stating, since they are real:
+
+- **A second opinion from a different algorithm.** On the examples both solve, the two
+  agree to about four significant figures. Two unrelated methods agreeing is a stronger
+  statement about a solution than either produces alone.
+- **Everything is in this repository.** No third-party NLP interface, no licence to obtain,
+  and every part of the method can be read and changed.
+- **One shipped example is solved by the SQP and not by IPOPT** (`lqr_radau`).
+
+And the caveats, plainly:
+
+- **It does not solve everything IPOPT does.** As last measured it fails outright on one of
+  the shipped examples and does not finish within a practical time budget on a further
+  handful, where IPOPT succeeds. `doc/SQP_ALL_EXAMPLES.md` carries the current table and is
+  regenerated as the solver changes; treat it, not this paragraph, as the authoritative
+  statement.
+- **It is slower**, dominated by the QP subproblems, of which there is at least one per
+  iteration.
+- **It needs `hessian = "exact"` to be usable at any size.** The alternative is a dense
+  quasi-Newton model whose storage is quadratic in the number of variables, which a
+  collocation mesh of any size will not tolerate.
+- **It is newer than the rest of PSOPT** and has had correspondingly less exposure to
+  problems its author did not write.
+
+The quadratic programming subproblem goes to one of several backends, every one of them
+sparse, and at least one must be built: `WITH_SQP=ON` on its own is an error, because the
+SQP has no QP solver of its own. **GALAHAD's QPA is the one to use**: it is sparse, BSD-3
+licensed, and the configuration the solver has been tuned and measured against (see
+`doc/SQP_ALL_EXAMPLES.md`). ProxQP, QPALM and OSQP are also supported.
+
+SNOPT was supported as a third NLP solver, alongside IPOPT, until 2026, and has been
+removed. It is commercial, so it could never be more than an option a minority of users
+could exercise, and PSOPT's own SQP now occupies the same place -- a sequential quadratic
+programming alternative to an interior-point method -- with no licence to obtain. Its
+removal takes the `snopt-interface` subproject, the `WITH_SNOPT_INTERFACE` option and the
+Fortran dependency that came with it out of the build entirely.
+
+qpOASES was the original backend and has been removed. It was a dense active-set method,
+so its memory was quadratic and its work per subproblem cubic in the number of variables
+however sparse the matrices it was handed, which made it unsuitable for the problems this
+library exists for; it timed out on every large example in
+`doc/SQP_BACKEND_BENCHMARK.md`. It is no longer a dependency of anything.
+
+*What you need beyond a working PSOPT build*
+
+| dependency | why | where CMake looks |
+|---|---|---|
+| MUMPS | the SQP reads the inertia of the KKT matrix from MUMPS, which IPOPT already links as its default linear solver -- so this is almost always a matter of pointing at what you have, not installing anything | `MUMPS_DIR`, `CMAKE_PREFIX_PATH`, pkg-config's IPOPT dirs; `MUMPS_LIBRARY` to name the library directly |
+| GALAHAD | the sparse QP backend | `GALAHAD_DIR` |
+
+If you built IPOPT and MUMPS yourself with coinbrew, as the macOS instructions above
+describe, MUMPS is already in your `~/coin/dist` prefix and the `CMAKE_PREFIX_PATH` those
+instructions set is enough to find both the header and the library. Nothing further to do.
+
+Both halves are needed and they are found separately. On Debian and Ubuntu
+`pkg-config --libs ipopt` lists `-ldmumps_seq` itself, so the library resolves whether or
+not CMake looks for it; a coinbrew IPOPT records the dependency inside `libipopt` instead,
+and macOS will not resolve a symbol through an indirect dylib. If a link fails with an
+undefined `dmumps_c`, point `MUMPS_LIBRARY` at the library holding it -- `libcoinmumps`
+for a coinbrew build.
+
+*GALAHAD*
+
+`scripts/build_galahad.sh` does the whole of this: it installs the build tools, clones
+GALAHAD, configures it with the options PSOPT needs, builds and installs it, and writes
+an environment file to source.
+
+```
+./scripts/build_galahad.sh                        # installs under ~/galahad-install
+./scripts/build_galahad.sh --prefix /opt/galahad --sudo
+./scripts/build_galahad.sh --help
+```
+
+It works on macOS with either MacPorts or Homebrew, and on Debian/Ubuntu, Fedora and
+Arch. On MacPorts it also runs `port select` so that a plain `gfortran` exists, since
+MacPorts installs the compiler as `gfortran-mp-14` and meson looks for the plain name.
+
+If you would rather do it by hand, follow the instructions at
+https://github.com/ralna/GALAHAD; the options that matter are `-Dopenmp=true` (QPA's
+linear solver needs OpenMP cancellation) and `-Dciface=true` (PSOPT includes
+`galahad_qpa.h`). GALAHAD is a Fortran package, so it needs `gfortran` (MacPorts:
+`sudo port install gcc14`). PSOPT links the Fortran runtime by asking CMake's Fortran
+compiler for its own implicit link line, so a MacPorts or Homebrew gcc in a versioned
+directory is found without help.
+
+GALAHAD's QPA uses OpenMP cancellation, which the OpenMP runtime reads **once**, when it
+initialises. It cannot be set from inside the process, so it has to be in the environment
+before the program starts:
+
+```
+export OMP_CANCELLATION=TRUE
+export OMP_PROC_BIND=TRUE
+```
+
+Without these the QP subproblems fail and the solver makes no progress. Put them in your
+shell profile.
+
+*Configuring*
+
+```
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON \
+      -DWITH_SQP=ON -DWITH_GALAHAD=ON \
+      -DGALAHAD_DIR=/path/to/galahad/prefix
+cmake --build build -j
+```
+
+Each backend is built as a separate loadable module under `build/qp_plugins` and opened at
+run time with `RTLD_LOCAL`. That is not tidiness: every one of these libraries carries its
+own AMD/COLAMD ordering code under the same C symbol names, and linked into one image they
+bind to each other's and corrupt the result. `include/psopt_qp_plugin.h` has the details.
+A CTest case, `qp_plugins_export_nothing_else`, checks that each module exports only the
+four ABI entry points and nothing more; run it with `ctest -R qp_plugins` after building
+with `-DBUILD_TESTS=ON`.
+
+*Running an example under a different solver without editing it*
+
+Comparing solvers across many examples means running one binary many ways, which
+otherwise means editing each example's source. Configuring with
+`-DPSOPT_ALLOW_ENV_OVERRIDES=ON` -- off by default -- lets the environment override
+`algorithm` settings instead:
+
+```
+PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER=GALAHAD ./brac1
+```
+
+`PSOPT_SQP_STRATEGY`, `PSOPT_QP_RESTORATION`, `PSOPT_ELASTIC_PENALTY` and
+`PSOPT_QP_ITER_MAX` work the same way. Every override is announced on stdout, naming the
+setting the source asked for and the one being used instead: a program that quietly
+disregards its own source is an unpleasant thing to debug, and worse than the convenience
+is worth. In a build without the option the variables are ignored entirely.
+
+*Using it*
+
+```cpp
+algorithm.nlp_method  = "SQP";
+algorithm.hessian     = "exact";       // sparse exact Hessian of the Lagrangian
+algorithm.derivatives = "automatic";   // required by "exact"
+```
+
+`qp_solver` defaults to `"GALAHAD"` and `sqp_strategy` to `"FM"`, so neither needs setting
+unless you want something else. The other options -- `qp_restoration`, `elastic_penalty`
+and `qp_iter_max` -- have defaults that are the measured best across the example set;
+`include/psopt.h` documents each of them and says what is known about when to change it.
 
 
 Running PSOPT within a Docker container

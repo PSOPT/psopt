@@ -39,8 +39,10 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 {
     int i;
 
-    if (algorithm.nlp_method != "IPOPT" && algorithm.nlp_method != "SNOPT" )
-       error_message("Incorrect NLP method specified. The only valid values are \"IPOPT\" or \"SNOPT\" ");
+    if (algorithm.nlp_method != "IPOPT" && algorithm.nlp_method != "SQP" )
+       error_message("Incorrect NLP method specified. The valid values are \"IPOPT\" and \"SQP\". "
+                     "SNOPT was supported until 2026 and has been removed; it is commercial, and "
+                     "PSOPT's own SQP now fills the same place with no licence to obtain.");
     if (algorithm.collocation_method != "Legendre" && algorithm.collocation_method!="Chebyshev" && algorithm.collocation_method!="trapezoidal" && algorithm.collocation_method!="Hermite-Simpson" && algorithm.collocation_method!="Radau" && algorithm.collocation_method!="Gauss")
        error_message("Incorrect collocation method specified. Valid options are \"Legendre\" , \"Chebyshev\", \"trapezoidal\", \"Hermite-Simpson\", \"Radau\", and \"Gauss\" ");
     if (algorithm.scaling != "automatic" && algorithm.scaling!="user")
@@ -95,10 +97,31 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("Incorrect derivatives option specified. Valid options are \"automatic\" and \"numerical\" ");
     if (algorithm.hessian != "exact" && algorithm.hessian!="limited-memory" && algorithm.hessian!="numerical")
        error_message("Incorrect algorithm.hessian option specified. Valid options are \"limited-memory\", \"exact\" and \"numerical\" ");
+    if (algorithm.qp_solver != "GALAHAD" && algorithm.qp_solver != "ProxQP"
+                                        && algorithm.qp_solver != "QPALM"
+                                        && algorithm.qp_solver != "OSQP")
+       error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"GALAHAD\", \"ProxQP\", \"QPALM\" and \"OSQP\" ");
+    if (algorithm.qp_iter_max < 10)
+       error_message("algorithm.qp_iter_max is too small; it must be at least 10 ");
+    if (algorithm.sqp_strategy != "M" && algorithm.sqp_strategy != "FM"
+                                     && algorithm.sqp_strategy != "F")
+       error_message("Incorrect algorithm.sqp_strategy option specified. Valid options are \"M\", \"FM\" and \"F\" ");
+    if (algorithm.qp_restoration != "elastic" && algorithm.qp_restoration != "relaxation")
+       error_message("Incorrect algorithm.qp_restoration option specified. Valid options are \"elastic\" and \"relaxation\" ");
+    if (algorithm.elastic_penalty != "weights" && algorithm.elastic_penalty != "multipliers")
+       error_message("Incorrect algorithm.elastic_penalty option specified. Valid options are \"weights\" and \"multipliers\" ");
+    if (algorithm.qp_solver != "GALAHAD" && algorithm.nlp_method != "SQP") {
+       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: algorithm.qp_solver applies only to nlp_method = \"SQP\"");
+       psopt_print(workspace,workspace->text);
+    }
     if (algorithm.on_error != "fail-fast" && algorithm.on_error != "fail-soft")
        error_message("Incorrect algorithm.on_error option specified. Valid options are \"fail-fast\" and \"fail-soft\" ");
-    if ((algorithm.hessian == "exact" || algorithm.hessian == "numerical") && algorithm.nlp_method !="IPOPT") {
-       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the '%s' algorithm.hessian option is only available with the IPOPT solver", algorithm.hessian.c_str());
+    if (algorithm.hessian == "numerical" && algorithm.nlp_method !="IPOPT") {
+       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the 'numerical' algorithm.hessian option is only available with the IPOPT solver");
+       psopt_print(workspace,workspace->text);
+    }
+    if (algorithm.hessian == "exact" && algorithm.nlp_method !="IPOPT" && algorithm.nlp_method !="SQP") {
+       snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: the 'exact' algorithm.hessian option is only available with the IPOPT and SQP solvers");
        psopt_print(workspace,workspace->text);
     }
     if (algorithm.diff_matrix != "standard" && algorithm.diff_matrix != "reduced-roundoff" )

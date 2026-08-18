@@ -48,11 +48,11 @@ static const long PSOPT_HESS_DENSE_LIMIT = 200000;
 // entries, preserving existing contents. This lets the buffer size track the
 // DETECTED non-zero count (with headroom) instead of a fixed fraction of the
 // dense bound. It is a no-op when the current capacity already suffices, or when
-// the buffers are not workspace-owned -- jac_nnz_capacity is 0 on the SNOPT path,
+// the buffers are not workspace-owned -- jac_nnz_capacity is 0 when a caller owns them,
 // which passes its own buffers.
 void psopt_grow_jacobian_buffers(Workspace* workspace, long needed)
 {
-   if (workspace->jac_nnz_capacity <= 0)      return;   // external buffers (SNOPT)
+   if (workspace->jac_nnz_capacity <= 0)      return;   // caller-owned buffers
    if (needed <= workspace->jac_nnz_capacity) return;   // already large enough
 
    long oldcap = workspace->jac_nnz_capacity;
@@ -146,8 +146,6 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   workspace->prev_nodes   = make_unique<MatrixXd[]>(nphases);
   workspace->Ax           = make_unique<TripletSparseMatrix>();
   workspace->Gsp          = make_unique<TripletSparseMatrix>();
-  workspace->Xsnopt       = make_unique<MatrixXd>();
-  workspace->gsnopt       = make_unique<MatrixXd>();
   workspace->Xip          = make_unique<MatrixXd>();
   workspace->JacRow       = make_unique<MatrixXd>();
   workspace->Gip          = make_unique<MatrixXd>();
@@ -247,18 +245,12 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
   workspace->hess_use_indexset = false;
   workspace->hess_obj_detected = false;
   
-  if ( algorithm.nlp_method == "SNOPT") {
-  	workspace->iGfun     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->jGvar     = new unsigned int[(int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1))];
-  	workspace->iGfun1    = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1)));
-  	workspace->jGvar1    = make_unique<int[]>((int) (algorithm.jac_sparsity_ratio*max_nvars*(max_ncons+1)));
-  }
-  else {
-  	workspace->iGfun     = NULL;
-  	workspace->jGvar     = NULL;
-  	workspace->iGfun1    = NULL;
-  	workspace->jGvar1    = NULL;
-  }
+  // These held SNOPT's coordinate-form Jacobian index arrays and were allocated only
+  // for it; nothing else has ever read them.
+  workspace->iGfun     = NULL;
+  workspace->jGvar     = NULL;
+  workspace->iGfun1    = NULL;
+  workspace->jGvar1    = NULL;
   workspace->xad       = make_unique<adouble[]>(max_nvars);
   workspace->gad       = make_unique<adouble[]>(max_ncons);
   workspace->fgad      = make_unique<adouble[]>(max_ncons+1);
@@ -406,7 +398,6 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 
   workspace->user_data = problem.user_data;
   
-  workspace->nS           = 0;
 
 }
 
@@ -416,9 +407,6 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
 
   int nlp_ncons = get_number_nlp_constraints(problem, workspace );
   int nvars     = get_number_nlp_vars(problem, workspace);
-
-  workspace->Xsnopt->resize(nvars, 1);
-  workspace->gsnopt->resize(nlp_ncons, 1);
 
   workspace->Xip->resize(nvars,1);
   workspace->JacRow->resize(1,nvars);
@@ -430,16 +418,11 @@ void resize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Workspa
   (*workspace->grw->F2).resize( nlp_ncons, 1 );
   (*workspace->grw->F3).resize( nlp_ncons, 1 );
   (*workspace->grw->F4).resize( nlp_ncons, 1 );
-  if ( algorithm.nlp_method == "SNOPT") {
-    workspace->JacCol1->resize(nlp_ncons+1,1);
-    workspace->JacCol2->resize(nlp_ncons+1,1);
-    workspace->JacCol3->resize(nlp_ncons+1,1);
-  } 
-  else {
-    workspace->JacCol1->resize(nlp_ncons,1);
-    workspace->JacCol2->resize(nlp_ncons,1);
-    workspace->JacCol3->resize(nlp_ncons,1);  
-  }
+  // SNOPT wanted one extra row here, for the objective stacked on top of the
+  // constraints in its combined F vector; nothing that remains does.
+  workspace->JacCol1->resize(nlp_ncons,1);
+  workspace->JacCol2->resize(nlp_ncons,1);
+  workspace->JacCol3->resize(nlp_ncons,1);
   workspace->xp->resize(nvars,1);
   workspace->constraint_scaling->resize(nlp_ncons,1);
 

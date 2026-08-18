@@ -543,17 +543,17 @@ void DetectJacobianSparsity(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), Mat
       for(i=0; i<nf; i++) { // EIGEN_UPDATE: index i shifted by -1
             if ( ( fabs(JacCol1(i,0)) +  fabs(JacCol2(i,0)) + fabs(JacCol3(i,0)) )>=tol ) {
                 // Guard the numerical-path writes against the allocated buffer.
-                // jac_nnz_capacity is set (>0) only for the IPOPT workspace buffers;
-                // it is 0 on the SNOPT path (which passes its own buffers), so the
-                // guard is inactive there. error_message throws, aborting cleanly
-                // before any out-of-bounds write.
+                // jac_nnz_capacity is set (>0) only for the workspace-owned buffers;
+                // where a caller passes its own it is 0 and the guard is inactive.
+                // error_message throws, aborting cleanly before any out-of-bounds
+                // write.
                 if ( workspace->jac_nnz_capacity > 0 &&
                      ( nzcount_A >= workspace->jac_nnz_capacity ||
                        nzcount_G >= workspace->jac_nnz_capacity ) ) {
                     // Grow the workspace buffers to the detected count and refresh
                     // the local pointers, so the buffer tracks the non-zero count
-                    // instead of aborting. The IPOPT buffers are workspace-owned
-                    // here; the SNOPT path has jac_nnz_capacity == 0 and is skipped.
+                    // instead of aborting. These buffers are workspace-owned; a
+                    // caller-owned buffer has jac_nnz_capacity == 0 and is skipped.
                     long need = ((nzcount_A > nzcount_G) ? nzcount_A : nzcount_G) + 1;
                     psopt_grow_jacobian_buffers(workspace, need);
                     iArow = workspace->iArow.get();
