@@ -540,6 +540,23 @@ A CTest case, `qp_plugins_export_nothing_else`, checks that each module exports 
 four ABI entry points and nothing more; run it with `ctest -R qp_plugins` after building
 with `-DBUILD_TESTS=ON`.
 
+*Running an example under a different solver without editing it*
+
+Comparing solvers across many examples means running one binary many ways, which
+otherwise means editing each example's source. Configuring with
+`-DPSOPT_ALLOW_ENV_OVERRIDES=ON` -- off by default -- lets the environment override
+`algorithm` settings instead:
+
+```
+PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER=GALAHAD ./brac1
+```
+
+`PSOPT_SQP_STRATEGY`, `PSOPT_QP_RESTORATION`, `PSOPT_ELASTIC_PENALTY` and
+`PSOPT_QP_ITER_MAX` work the same way. Every override is announced on stdout, naming the
+setting the source asked for and the one being used instead: a program that quietly
+disregards its own source is an unpleasant thing to debug, and worse than the convenience
+is worth. In a build without the option the variables are ignored entirely.
+
 *Using it*
 
 ```cpp

@@ -37,6 +37,65 @@ e-mail:    v.m.becerra@ieee.org
 using namespace std;
 using namespace Ipopt;
 
+#ifdef PSOPT_ALLOW_ENV_OVERRIDES
+// ---------------------------------------------------------------------------------
+// Overriding algorithm settings from the environment.
+//
+// Built only when PSOPT_ALLOW_ENV_OVERRIDES is defined, which CMake leaves off. It
+// exists for benchmarking: comparing two QP backends, or two of Betts's strategies,
+// across the whole example set means running one binary many ways, and the alternative
+// is editing sixty-six example sources or -- as was done here for a while -- patching
+// this file with a script before each sweep. That patch is a tracked source file
+// modified out of band, which has now twice caused trouble: once a sweep whose examples
+// had not all been rebuilt and quietly reported IPOPT's results as the SQP's, and once
+// a commit that nearly shipped the patch itself.
+//
+// Every override is announced. A program that silently disregards the algorithm its own
+// source asked for is a thoroughly confusing thing to debug, and the confusion is worse
+// than the convenience is worth.
+// ---------------------------------------------------------------------------------
+static void psopt_env_override(const char* var, string& field, Workspace* workspace)
+{
+    const char* v = getenv(var);
+    if (v == NULL || field == v) return;
+    snprintf(workspace->text, sizeof(workspace->text),
+             ">>> %s overrides the algorithm setting in the source: \"%s\" -> \"%s\"\n",
+             var, field.c_str(), v);
+    psopt_print(workspace, workspace->text);
+    field = v;
+}
+
+static void psopt_env_override_int(const char* var, int& field, Workspace* workspace)
+{
+    const char* v = getenv(var);
+    if (v == NULL) return;
+    const int nv = atoi(v);
+    if (nv == field) return;
+    snprintf(workspace->text, sizeof(workspace->text),
+             ">>> %s overrides the algorithm setting in the source: %d -> %d\n",
+             var, field, nv);
+    psopt_print(workspace, workspace->text);
+    field = nv;
+}
+
+static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspace)
+{
+    psopt_env_override("PSOPT_NLP_METHOD",       algorithm.nlp_method,      workspace);
+    psopt_env_override("PSOPT_HESSIAN",          algorithm.hessian,         workspace);
+    psopt_env_override("PSOPT_QP_SOLVER",        algorithm.qp_solver,       workspace);
+    psopt_env_override("PSOPT_QP_RESTORATION",   algorithm.qp_restoration,  workspace);
+    psopt_env_override("PSOPT_ELASTIC_PENALTY",  algorithm.elastic_penalty, workspace);
+    psopt_env_override("PSOPT_SQP_STRATEGY",     algorithm.sqp_strategy,    workspace);
+    psopt_env_override_int("PSOPT_QP_ITER_MAX",  algorithm.qp_iter_max,     workspace);
+
+    // The Hessian setting is read again through the workspace further down, so it has to
+    // be carried across as well; the others are taken from this Alg.
+    if (getenv("PSOPT_HESSIAN") && workspace->algorithm)
+        workspace->algorithm->hessian = algorithm.hessian;
+}
+#endif  // PSOPT_ALLOW_ENV_OVERRIDES
+
+
 
 #ifdef USE_SNOPT
 #include "snoptProblem.hpp"
@@ -70,6 +129,10 @@ int NLP_interface(
 
     Sol*  solution= workspace->solution;
     [[maybe_unused]] int use_sparse_jac_function = 1; // referenced only in the USE_SNOPT path
+
+#ifdef PSOPT_ALLOW_ENV_OVERRIDES
+    psopt_apply_environment_overrides(algorithm, workspace);
+#endif
     if ( algorithm.nlp_method=="SNOPT" )
     {
 

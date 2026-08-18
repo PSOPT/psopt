@@ -55,6 +55,7 @@ option(BUILD_TESTS "Build tests for PSOPT." OFF)
 option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but generates PDFs)" OFF)
 option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror (for CI). Default OFF so normal builds are unaffected." OFF)
 option(PSOPT_PYTHON "Build the Python binding (python/). Builds libPSOPT position-independent, which the extension requires." OFF)
+option(PSOPT_ALLOW_ENV_OVERRIDES "Let algorithm settings be overridden from the environment (PSOPT_NLP_METHOD and friends). For benchmarking one binary many ways; every override is announced on stdout. OFF by default." OFF)
 include(GNUInstallDirs)
 option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). Requires at least one QP backend, e.g. WITH_GALAHAD." OFF)
 option(WITH_PROXQP "Add ProxQP as a QP backend for the SQP solver (algorithm.qp_solver = \"ProxQP\"). Requires proxsuite; implies WITH_SQP." OFF)
@@ -140,6 +141,12 @@ elseif(PSOPT_AD_BACKEND STREQUAL "XAD")
   target_compile_definitions(${PROJECT_NAME} PUBLIC PSOPT_AD_BACKEND=4)
   target_include_directories(${PROJECT_NAME} PUBLIC ${XAD_INCLUDE_DIR})
   target_link_libraries(${PROJECT_NAME} PUBLIC ${XAD_LIBRARY})
+endif()
+
+if(PSOPT_ALLOW_ENV_OVERRIDES)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC PSOPT_ALLOW_ENV_OVERRIDES)
+  message(STATUS "PSOPT: algorithm settings may be overridden from the environment "
+                 "(benchmarking build; every override is announced)")
 endif()
 
 # PSOPT's own SQP solver. The quadratic programming subproblem goes to one of the
