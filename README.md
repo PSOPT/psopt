@@ -467,13 +467,20 @@ dependency is being removed.
 
 | dependency | why | where CMake looks |
 |---|---|---|
-| MUMPS headers | the SQP reads the inertia of the KKT matrix from MUMPS, which IPOPT already links as its default linear solver -- so this is almost always a matter of pointing at what you have, not installing anything | `MUMPS_DIR`, `CMAKE_PREFIX_PATH`, pkg-config's IPOPT include dirs |
+| MUMPS | the SQP reads the inertia of the KKT matrix from MUMPS, which IPOPT already links as its default linear solver -- so this is almost always a matter of pointing at what you have, not installing anything | `MUMPS_DIR`, `CMAKE_PREFIX_PATH`, pkg-config's IPOPT dirs; `MUMPS_LIBRARY` to name the library directly |
 | qpOASES | the QP vocabulary the driver is written in | `QPOASES_DIR` |
 | GALAHAD | the sparse QP backend | `GALAHAD_DIR` |
 
 If you built IPOPT and MUMPS yourself with coinbrew, as the macOS instructions above
-describe, the MUMPS headers are already in your `~/coin/dist` prefix and the
-`CMAKE_PREFIX_PATH` those instructions set is enough to find them. Nothing further to do.
+describe, MUMPS is already in your `~/coin/dist` prefix and the `CMAKE_PREFIX_PATH` those
+instructions set is enough to find both the header and the library. Nothing further to do.
+
+Both halves are needed and they are found separately. On Debian and Ubuntu
+`pkg-config --libs ipopt` lists `-ldmumps_seq` itself, so the library resolves whether or
+not CMake looks for it; a coinbrew IPOPT records the dependency inside `libipopt` instead,
+and macOS will not resolve a symbol through an indirect dylib. If a link fails with an
+undefined `dmumps_c`, point `MUMPS_LIBRARY` at the library holding it -- `libcoinmumps`
+for a coinbrew build.
 
 *qpOASES*
 

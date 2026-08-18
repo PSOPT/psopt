@@ -199,11 +199,13 @@ if(WITH_SQP)
   find_package(BLAS REQUIRED)
 
   # MUMPS supplies the inertia of the KKT matrix, which the SQP needs to decide whether
-  # the Hessian has to be modified -- Betts (2.41). No library is added by this: IPOPT's
-  # default linear solver is the same sequential MUMPS, so it is already linked. Only the
-  # header has to be found, and it is found here rather than left to the compiler's
-  # default include path, which is where it happens to sit on Debian and Ubuntu but not
-  # on macOS or on any build where IPOPT and MUMPS were installed under their own prefix.
+  # the Hessian has to be modified -- Betts (2.41). IPOPT's default linear solver is the
+  # same sequential MUMPS, so nothing new is being installed here; both the header and
+  # the library have to be found all the same.
+  #
+  # The header is found here rather than left to the compiler's default include path,
+  # which is where it happens to sit on Debian and Ubuntu but not on macOS or on any
+  # build where IPOPT and MUMPS were installed under their own prefix.
   # PATH_SUFFIXES matters as much as the hints. coinbrew -- which is what README.md tells
   # macOS users to build IPOPT and MUMPS with -- installs the header as
   # <prefix>/include/coin-or/mumps/dmumps_c.h, so a bare <prefix>/include search misses
@@ -226,9 +228,46 @@ if(WITH_SQP)
   endif()
   message(STATUS "PSOPT SQP: MUMPS headers at ${MUMPS_INCLUDE_DIR}")
 
+  # And the library, which is a separate question from the header and was for a while
+  # answered by accident. On Debian and Ubuntu `pkg-config --libs ipopt` lists
+  # -ldmumps_seq itself, so linking PkgConfig::ipopt resolves dmumps_c and nothing here
+  # had to ask for it. An IPOPT built with coinbrew does not list it -- the dependency is
+  # recorded inside libipopt instead -- and macOS's two-level namespace will not resolve a
+  # symbol through an indirect dylib the way ELF will. The result is a link that succeeds
+  # everywhere it was tested and fails on a Mac with three undefined _dmumps_c.
+  #
+  # Name order matters. coinmumps is what coinbrew's ThirdParty/Mumps produces;
+  # dmumps_seq is Debian's sequential build and is preferred over plain dmumps, which on
+  # the same system is the MPI build and would drag in an MPI runtime that IPOPT is not
+  # using.
+  find_library(MUMPS_LIBRARY NAMES coinmumps dmumps_seq dmumps
+               HINTS ${MUMPS_DIR}/lib ${MUMPS_DIR}
+                     ${IPOPT_DIR}/lib
+                     ${ipopt_LIBRARY_DIRS}
+                     ${PSOPT_EXTRA_PREFIXES_LIB})
+  if(MUMPS_LIBRARY)
+    message(STATUS "PSOPT SQP: MUMPS library at ${MUMPS_LIBRARY}")
+  else()
+    # Not fatal: if IPOPT's own link line carries MUMPS, as it does on Debian and Ubuntu,
+    # the symbol resolves without any help from us.
+    string(FIND "${ipopt_LIBRARIES}" "mumps" _psopt_ipopt_has_mumps)
+    if(_psopt_ipopt_has_mumps GREATER -1)
+      message(STATUS "PSOPT SQP: MUMPS comes from IPOPT's own link line")
+    else()
+      message(WARNING
+        "WITH_SQP=ON but no MUMPS library was found, and IPOPT's pkg-config link line "
+        "does not mention one either. If the build fails with an undefined dmumps_c, set "
+        "MUMPS_LIBRARY to the library holding it -- libcoinmumps if you built IPOPT with "
+        "coinbrew, libdmumps_seq on Debian and Ubuntu.")
+    endif()
+  endif()
+
   target_compile_definitions(${PROJECT_NAME} PUBLIC USE_SQP)
   target_include_directories(${PROJECT_NAME} PUBLIC ${QPOASES_INCLUDE_DIR} ${MUMPS_INCLUDE_DIR})
   target_link_libraries(${PROJECT_NAME} PUBLIC ${QPOASES_LIBRARY} ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+  if(MUMPS_LIBRARY)
+    target_link_libraries(${PROJECT_NAME} PUBLIC ${MUMPS_LIBRARY})
+  endif()
 
   # ---- QP backend plugins ----------------------------------------------------
   # Each backend is a shared object that links its own QP library and its own linear
