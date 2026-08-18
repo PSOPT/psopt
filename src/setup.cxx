@@ -159,7 +159,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   // (requires automatic derivatives). "numerical": sparse Lagrangian Hessian by finite differences,
   // usable with numerical derivatives (lets IPOPT take exact-Hessian steps instead of L-BFGS).
   algorithm.hessian                     = "limited-memory";
-  algorithm.qp_solver                   = "qpOASES";
+  algorithm.qp_solver                   = "GALAHAD";
   algorithm.qp_iter_max                 = 1000;
   algorithm.sqp_strategy                = "M";
   algorithm.qp_restoration              = "elastic";

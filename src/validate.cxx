@@ -96,11 +96,10 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("Incorrect derivatives option specified. Valid options are \"automatic\" and \"numerical\" ");
     if (algorithm.hessian != "exact" && algorithm.hessian!="limited-memory" && algorithm.hessian!="numerical")
        error_message("Incorrect algorithm.hessian option specified. Valid options are \"limited-memory\", \"exact\" and \"numerical\" ");
-    if (algorithm.qp_solver != "qpOASES" && algorithm.qp_solver != "ProxQP"
+    if (algorithm.qp_solver != "GALAHAD" && algorithm.qp_solver != "ProxQP"
                                         && algorithm.qp_solver != "QPALM"
-                                        && algorithm.qp_solver != "OSQP"
-                                        && algorithm.qp_solver != "GALAHAD")
-       error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"qpOASES\", \"ProxQP\", \"QPALM\", \"OSQP\" and \"GALAHAD\" ");
+                                        && algorithm.qp_solver != "OSQP")
+       error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"GALAHAD\", \"ProxQP\", \"QPALM\" and \"OSQP\" ");
     if (algorithm.qp_iter_max < 10)
        error_message("algorithm.qp_iter_max is too small; it must be at least 10 ");
     if (algorithm.sqp_strategy != "M" && algorithm.sqp_strategy != "FM"
@@ -110,7 +109,7 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("Incorrect algorithm.qp_restoration option specified. Valid options are \"elastic\" and \"relaxation\" ");
     if (algorithm.elastic_penalty != "weights" && algorithm.elastic_penalty != "multipliers")
        error_message("Incorrect algorithm.elastic_penalty option specified. Valid options are \"weights\" and \"multipliers\" ");
-    if (algorithm.qp_solver != "qpOASES" && algorithm.nlp_method != "SQP") {
+    if (algorithm.qp_solver != "GALAHAD" && algorithm.nlp_method != "SQP") {
        snprintf(workspace->text,sizeof(workspace->text),"\n*** Warning: algorithm.qp_solver applies only to nlp_method = \"SQP\"");
        psopt_print(workspace,workspace->text);
     }

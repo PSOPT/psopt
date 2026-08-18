@@ -1,5 +1,11 @@
 # PSOPT's SQP against Betts's, component by component
 
+> **Note (superseded in part).** qpOASES appears throughout the tables below as one of
+> the backends measured. It was removed from PSOPT after this work: it is a dense
+> active-set method, and the timings here are the evidence for that decision rather than
+> a record of a supported configuration. Its rows are left as measured; nothing else in
+> this document depends on them.
+
 The SQP solver in `src/SQP_interface.cxx` was not built from Betts's chapter 2 and then
 completed; it was built from a dense SQP and then had pieces of chapter 2 grafted onto
 it, one increment at a time, each kept or discarded on what it did to the ten-example

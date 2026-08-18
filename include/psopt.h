@@ -194,15 +194,22 @@ struct alg_str {
   int       nlp_iter_max;
   double    nlp_tolerance;
   string    nlp_method;
-  // Which quadratic programming solver the SQP uses for its subproblems: "qpOASES"
-  // (default), "ProxQP" or "QPALM". They differ in kind, not only in implementation: qpOASES
-  // is an active-set method whose factorisations are dense in the number of variables
-  // whatever sparsity it is handed, and ProxQP is a proximal augmented-Lagrangian
-  // method that factorises the KKT system sparsely and tolerates an indefinite
+  // Which quadratic programming solver the SQP uses for its subproblems: "GALAHAD"
+  // (default), "ProxQP", "QPALM" or "OSQP". All of them factorise the KKT system
+  // sparsely, which is what a collocated optimal control problem needs; they differ in
+  // method. GALAHAD's QPA is active-set and is the one the solver has been tuned and
+  // measured against -- doc/SQP_ALL_EXAMPLES.md reports it across the whole example
+  // set. ProxQP is a proximal augmented-Lagrangian method that tolerates an indefinite
   // Hessian, as is QPALM, which differs from it in the factorisation underneath and in
-  // estimating the Hessian's smallest eigenvalue itself. Ignored unless nlp_method is
-  // "SQP". Note that QPALM is LGPL-3: a PSOPT built with it is distributable under
-  // LGPL-3 rather than LGPL-2.1.
+  // estimating the Hessian's smallest eigenvalue itself; OSQP is ADMM-based. Whichever
+  // is named must have been built: see WITH_GALAHAD and its siblings in CMakeLists.
+  // Ignored unless nlp_method is "SQP". Note that QPALM is LGPL-3: a PSOPT built with it
+  // is distributable under LGPL-3 rather than LGPL-2.1.
+  //
+  // qpOASES was the original backend and has been removed. It was a dense active-set
+  // method -- its factorisations were dense in the number of variables whatever sparsity
+  // it was handed, so its memory was quadratic and its work per subproblem cubic in n --
+  // which made it unsuitable for the problems this library exists for.
   string    qp_solver;
 
   // How the SQP relaxes a subproblem whose linearised constraints are inconsistent,

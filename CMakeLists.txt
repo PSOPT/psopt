@@ -56,7 +56,7 @@ option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but
 option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror (for CI). Default OFF so normal builds are unaffected." OFF)
 option(PSOPT_PYTHON "Build the Python binding (python/). Builds libPSOPT position-independent, which the extension requires." OFF)
 include(GNUInstallDirs)
-option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). Requires qpOASES." OFF)
+option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). Requires at least one QP backend, e.g. WITH_GALAHAD." OFF)
 option(WITH_PROXQP "Add ProxQP as a QP backend for the SQP solver (algorithm.qp_solver = \"ProxQP\"). Requires proxsuite; implies WITH_SQP." OFF)
 option(WITH_QPALM "Add QPALM as a QP backend for the SQP solver (algorithm.qp_solver = \"QPALM\"). Requires QPALM; implies WITH_SQP." OFF)
 option(WITH_OSQP "Add OSQP as a QP backend for the SQP solver (algorithm.qp_solver = \"OSQP\"). Requires OSQP; implies WITH_SQP." OFF)
@@ -142,11 +142,20 @@ elseif(PSOPT_AD_BACKEND STREQUAL "XAD")
   target_link_libraries(${PROJECT_NAME} PUBLIC ${XAD_LIBRARY})
 endif()
 
-# PSOPT's own SQP solver. The quadratic programming subproblem goes to qpOASES,
-# which is LGPL 2.1 and so sits correctly alongside PSOPT's own licence. The solver
-# is opt-in: with WITH_SQP=OFF the file compiles to a stub that reports the option
-# was not built, and PSOPT gains no new dependency.
+# PSOPT's own SQP solver. The quadratic programming subproblem goes to one of the
+# backends below, each of which is sparse. The solver is opt-in: with WITH_SQP=OFF the
+# file compiles to a stub that reports the option was not built, and PSOPT gains no new
+# dependency.
 if(WITH_SQP)
+  if(NOT (WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_GALAHAD))
+    message(FATAL_ERROR
+      "WITH_SQP=ON but no QP backend was selected. The SQP sends every subproblem to a "
+      "backend and has none of its own, so at least one of WITH_GALAHAD, WITH_PROXQP, "
+      "WITH_QPALM or WITH_OSQP must also be ON. WITH_GALAHAD is the one to choose: it is "
+      "sparse, BSD-3 licensed, and the configuration the solver has been measured "
+      "against. scripts/build_galahad.sh will install it.")
+  endif()
+
   # Where to look for the SQP's dependencies beyond the compiler's defaults. MacPorts
   # installs under /opt/local and Homebrew under /opt/homebrew on Apple Silicon; neither
   # is searched by find_library out of the box, so a Mac that has the dependency still
@@ -162,41 +171,11 @@ if(WITH_SQP)
     list(APPEND PSOPT_EXTRA_PREFIXES_LIB     ${_p}/lib)
   endforeach()
 
-  find_path(QPOASES_INCLUDE_DIR qpOASES.hpp
-            HINTS ${QPOASES_DIR}/include ${PSOPT_EXTRA_PREFIXES_INCLUDE})
-  find_library(QPOASES_LIBRARY NAMES qpOASES
-            HINTS ${QPOASES_DIR}/lib ${QPOASES_DIR}/bin ${PSOPT_EXTRA_PREFIXES_LIB})
-  if(NOT QPOASES_INCLUDE_DIR OR NOT QPOASES_LIBRARY)
-    message(FATAL_ERROR "WITH_SQP=ON but qpOASES was not found. Set QPOASES_DIR to its install prefix.")
-  endif()
-  message(STATUS "PSOPT SQP solver enabled; qpOASES at ${QPOASES_LIBRARY}")
-
-  # qpOASES ships BLASReplacement.cpp and LAPACKReplacement.cpp, minimal stand-ins for
-  # the handful of BLAS and LAPACK routines it needs, and its CMake build globs src/*.cpp
-  # so they are compiled in unconditionally. Linked alongside a real BLAS, those stubs
-  # can capture dgemm_ and dpotrf_ for the whole program -- including for MUMPS inside
-  # IPOPT, which then segfaults in its linear solver on problems that solved perfectly
-  # well before. The failure appears nowhere near the SQP code and costs a day to find,
-  # so it is checked for here.
-  find_program(PSOPT_NM_EXECUTABLE nm)
-  if(PSOPT_NM_EXECUTABLE)
-    execute_process(COMMAND ${PSOPT_NM_EXECUTABLE} ${QPOASES_LIBRARY}
-                    OUTPUT_VARIABLE PSOPT_QPOASES_SYMBOLS
-                    ERROR_QUIET)
-    if(PSOPT_QPOASES_SYMBOLS MATCHES "T _?dgemm_" OR PSOPT_QPOASES_SYMBOLS MATCHES "T _?dpotrf_")
-      message(FATAL_ERROR
-        "The qpOASES library at ${QPOASES_LIBRARY} defines dgemm_ and/or dpotrf_, which "
-        "means it was built with its BLAS/LAPACK replacements. Linking it would override "
-        "the real BLAS for the whole program and crash IPOPT's linear solver. Rebuild "
-        "qpOASES without src/BLASReplacement.cpp and src/LAPACKReplacement.cpp, or strip "
-        "them from the archive:\n"
-        "    ar d ${QPOASES_LIBRARY} BLASReplacement.cpp.o LAPACKReplacement.cpp.o")
-    endif()
-  endif()
-  # With its own replacements excluded (see the check above), qpOASES needs a real
-  # BLAS and LAPACK, so they become a dependency of PSOPT whenever the SQP is built.
+  # The QP backend plugins link their own linear algebra, and GALAHAD's needs these.
   find_package(LAPACK REQUIRED)
   find_package(BLAS REQUIRED)
+
+  find_program(PSOPT_NM_EXECUTABLE nm)
 
   # MUMPS supplies the inertia of the KKT matrix, which the SQP needs to decide whether
   # the Hessian has to be modified -- Betts (2.41). IPOPT's default linear solver is the
@@ -263,8 +242,8 @@ if(WITH_SQP)
   endif()
 
   target_compile_definitions(${PROJECT_NAME} PUBLIC USE_SQP)
-  target_include_directories(${PROJECT_NAME} PUBLIC ${QPOASES_INCLUDE_DIR} ${MUMPS_INCLUDE_DIR})
-  target_link_libraries(${PROJECT_NAME} PUBLIC ${QPOASES_LIBRARY} ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
+  target_include_directories(${PROJECT_NAME} PUBLIC ${MUMPS_INCLUDE_DIR})
+  target_link_libraries(${PROJECT_NAME} PUBLIC ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
   if(MUMPS_LIBRARY)
     target_link_libraries(${PROJECT_NAME} PUBLIC ${MUMPS_LIBRARY})
   endif()

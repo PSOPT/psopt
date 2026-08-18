@@ -1,5 +1,11 @@
 # QP backends for PSOPT's SQP solver: a comparison
 
+> **Note (superseded in part).** qpOASES appears throughout the tables below as one of
+> the backends measured. It was removed from PSOPT after this work: it is a dense
+> active-set method, and the timings here are the evidence for that decision rather than
+> a record of a supported configuration. Its rows are left as measured; nothing else in
+> this document depends on them.
+
 This records one sweep, run in one configuration and one sitting, of the five QP
 backends the SQP solver can use, over ten of the shipped examples. It is here because
 the numbers are the reason the backend choice exists, and because they were expensive

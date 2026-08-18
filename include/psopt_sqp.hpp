@@ -33,10 +33,9 @@ e-mail:    v.m.becerra@ieee.org
 
 //  psopt_sqp.hpp -- a sequential quadratic programming solver for PSOPT's NLP.
 //
-//  This is the dense stage of a two-stage plan. The algorithm here is the classical
-//  one: a quadratic model of the Lagrangian built by damped BFGS updates, a quadratic
-//  programming subproblem solved by qpOASES, and an l1 merit function with a
-//  backtracking line search to globalise it. It descends from a dense SQP written by
+//  The algorithm is the classical one: a quadratic model of the Lagrangian, a quadratic
+//  programming subproblem solved by one of the sparse backends, and a merit function
+//  with a line search to globalise it. It descends from a dense SQP written by
 //  the author in 2008 and is restated here against PSOPT's own function, gradient and
 //  Jacobian machinery rather than the ADOL-C layer of the original.
 //
@@ -50,20 +49,19 @@ e-mail:    v.m.becerra@ieee.org
 //  the exact Hessian is worth having on a large mesh quite apart from its faster
 //  convergence.
 //
-//  Two things are still dense, and are what a further stage would change:
+//  One thing is still dense: the quasi-Newton model, when it is the one in use. The
+//  subproblem itself is not. Every QP backend factorises the KKT system sparsely --
+//  "GALAHAD", the default, from RAL's GALAHAD under BSD-3 (-DWITH_GALAHAD=ON);
+//  "ProxQP", from INRIA's ProxSuite, header-only C++ over Eigen under BSD-2-Clause
+//  (-DWITH_PROXQP=ON); "QPALM", from KU Leuven, C over its own LDL factorisation, under
+//  LGPL-3 (-DWITH_QPALM=ON); and "OSQP" (-DWITH_OSQP=ON). The licences differ in
+//  consequence: linking QPALM makes the result distributable under LGPL-3 rather than
+//  under PSOPT's LGPL-2.1.
 //
-//    * the quasi-Newton model, as above, when it is the one in use;
-//    * qpOASES's own factorisations, when it is the QP solver in use. The
-//      subproblem's matrices are handed over in sparse form, but the null-space
-//      method inside qpOASES holds a dense n-by-n orthogonal factor whatever it is
-//      given, so its memory is quadratic and its work per subproblem cubic in n.
-//      algorithm.qp_solver replaces it with one of two proximal augmented-Lagrangian
-//      methods, each of which factorises the KKT system sparsely and tolerates an
-//      indefinite Hessian: "ProxQP", from INRIA's ProxSuite, header-only C++ over
-//      Eigen under BSD-2-Clause (-DWITH_PROXQP=ON), or "QPALM", from KU Leuven, C
-//      over its own LDL factorisation, under LGPL-3 (-DWITH_QPALM=ON). The licences
-//      differ in consequence: linking QPALM makes the result distributable under
-//      LGPL-3 rather than under PSOPT's LGPL-2.1.
+//  qpOASES was the original backend and has been removed. Its null-space method held a
+//  dense n-by-n orthogonal factor whatever sparsity it was handed, so its memory was
+//  quadratic and its work per subproblem cubic in n -- which is the wrong shape for a
+//  collocation mesh, and it timed out on every large example measured.
 //
 //  Simple bounds are passed to the QP as bounds. The 2008 code expanded them into
 //  2n general inequality rows with an identity block, which is harmless on a

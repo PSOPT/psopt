@@ -15,8 +15,8 @@
 //
 //  Its multipliers carry the opposite sign to PSOPT's: QPA's stationarity is
 //  H x + g - A' y - z = 0, so lambda = -y and the bound multipliers pass through
-//  unchanged. That is qpOASES's convention rather than ProxQP's and QPALM's, and it is
-//  pinned by the same test as all the others.
+//  unchanged, which is the opposite of ProxQP's and QPALM's convention. It is pinned by
+//  the same test as all the others.
 //
 //  QPA is an active-set method for a possibly indefinite Hessian, working on an l1
 //  penalty formulation of the constraints. It is the one backend here that needs no

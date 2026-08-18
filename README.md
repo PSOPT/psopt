@@ -457,18 +457,23 @@ with `algorithm.nlp_method = "SQP"`. It is off by default and adds no dependency
 ordinary build: with `WITH_SQP=OFF` the solver compiles to a stub. Everything below is
 needed only if you want to build it.
 
-The quadratic programming subproblem goes to one of several backends. **GALAHAD's QPA is
-the one to use**: it is sparse, BSD-3 licensed, and the configuration the solver has been
-tuned and measured against (see `doc/SQP_ALL_EXAMPLES.md`). qpOASES is currently still
-required by `WITH_SQP` because parts of the driver are written in its vocabulary; that
-dependency is being removed.
+The quadratic programming subproblem goes to one of several backends, every one of them
+sparse, and at least one must be built: `WITH_SQP=ON` on its own is an error, because the
+SQP has no QP solver of its own. **GALAHAD's QPA is the one to use**: it is sparse, BSD-3
+licensed, and the configuration the solver has been tuned and measured against (see
+`doc/SQP_ALL_EXAMPLES.md`). ProxQP, QPALM and OSQP are also supported.
+
+qpOASES was the original backend and has been removed. It was a dense active-set method,
+so its memory was quadratic and its work per subproblem cubic in the number of variables
+however sparse the matrices it was handed, which made it unsuitable for the problems this
+library exists for; it timed out on every large example in
+`doc/SQP_BACKEND_BENCHMARK.md`. It is no longer a dependency of anything.
 
 *What you need beyond a working PSOPT build*
 
 | dependency | why | where CMake looks |
 |---|---|---|
 | MUMPS | the SQP reads the inertia of the KKT matrix from MUMPS, which IPOPT already links as its default linear solver -- so this is almost always a matter of pointing at what you have, not installing anything | `MUMPS_DIR`, `CMAKE_PREFIX_PATH`, pkg-config's IPOPT dirs; `MUMPS_LIBRARY` to name the library directly |
-| qpOASES | the QP vocabulary the driver is written in | `QPOASES_DIR` |
 | GALAHAD | the sparse QP backend | `GALAHAD_DIR` |
 
 If you built IPOPT and MUMPS yourself with coinbrew, as the macOS instructions above
@@ -481,40 +486,6 @@ not CMake looks for it; a coinbrew IPOPT records the dependency inside `libipopt
 and macOS will not resolve a symbol through an indirect dylib. If a link fails with an
 undefined `dmumps_c`, point `MUMPS_LIBRARY` at the library holding it -- `libcoinmumps`
 for a coinbrew build.
-
-*qpOASES*
-
-`scripts/build_qpoases.sh` does this one too:
-
-```
-./scripts/build_qpoases.sh                        # installs under ~/qpoases-install
-./scripts/build_qpoases.sh --help
-```
-
-If you build it by hand, one thing matters. qpOASES ships `BLASReplacement.cpp` and
-`LAPACKReplacement.cpp`, stand-ins for a handful of BLAS and LAPACK routines, and its
-CMake build globs `src/*.cpp` so it compiles them in unconditionally. By default they
-define `dgemm_` and `dpotrf_` under exactly those names, and linked alongside a real BLAS
-they can capture those calls for the whole program -- including for MUMPS inside IPOPT,
-which then crashes in its linear solver on problems that worked perfectly well before.
-The failure appears nowhere near qpOASES. PSOPT's CMake refuses to configure against a
-library in that state.
-
-Configure qpOASES with the option it provides for this, which keeps the replacements but
-renames them to `qpOASES_gemm`, `qpOASES_dpotrf` and so on:
-
-```
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DQPOASES_BUILD_EXAMPLES=OFF \
-      -DQPOASES_AVOID_LA_NAMING_CONFLICTS=ON -DCMAKE_INSTALL_PREFIX=<prefix>
-```
-
-Or, if you would rather qpOASES used the platform's real BLAS, remove the two objects
-from the archive after building:
-
-```
-ar d <prefix>/lib/libqpOASES.a BLASReplacement.cpp.o LAPACKReplacement.cpp.o
-ranlib <prefix>/lib/libqpOASES.a
-```
 
 *GALAHAD*
 
@@ -557,7 +528,6 @@ shell profile.
 ```
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON \
       -DWITH_SQP=ON -DWITH_GALAHAD=ON \
-      -DQPOASES_DIR=/path/to/qpoases/prefix \
       -DGALAHAD_DIR=/path/to/galahad/prefix
 cmake --build build -j
 ```

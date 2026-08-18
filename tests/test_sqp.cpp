@@ -39,7 +39,6 @@ bool psopt_qp_plugin_solve(const std::string& backend,
                            std::string&            message);
 
 #ifdef USE_SQP
-#include <qpOASES.hpp>
 #endif
 
 
@@ -68,10 +67,51 @@ void linkages(adouble* linkages, adouble* xad, Workspace* w) { }
 // step and so counts its iterations.
 static int last_nlp_iterations = 0;
 
+// GALAHAD's default linear solver requires OMP_CANCELLATION and OMP_PROC_BIND to be
+// TRUE in the environment, and cannot be made to work without them from inside the
+// process: the OpenMP runtime reads them when it first initialises, long before a
+// plugin is loaded. So whether GALAHAD can be exercised at all is a property of how
+// this binary was started, and is asked at run time rather than assumed. CTest runs the
+// suite a second time with those variables set, so the backend is covered.
+bool galahad_environment_ok()
+{
+    const char* c = getenv("OMP_CANCELLATION");
+    const char* b = getenv("OMP_PROC_BIND");
+    return c != NULL && b != NULL && (c[0] == 'T' || c[0] == 't')
+                                  && (b[0] != 'F' && b[0] != 'f');
+}
+
+// Which backend the tests use when they do not name one. qpOASES was this default while
+// it existed, and asked nothing of its environment; every remaining backend is a plugin,
+// and GALAHAD additionally needs OMP_CANCELLATION set before the process started. So the
+// default is whichever backend this binary was built with, preferring one that carries
+// no such condition, and tests that rely on it skip when there is none.
+const char* default_backend()
+{
+#if   defined(USE_PROXQP)
+    return "ProxQP";
+#elif defined(USE_QPALM)
+    return "QPALM";
+#elif defined(USE_OSQP)
+    return "OSQP";
+#else
+    return "GALAHAD";
+#endif
+}
+
+bool default_backend_usable()
+{
+#if defined(USE_PROXQP) || defined(USE_QPALM) || defined(USE_OSQP)
+    return true;
+#else
+    return galahad_environment_ok();
+#endif
+}
+
 // Solve with the requested NLP method and control bound; return the objective.
 static double solve_lq(const std::string& nlp_method, double u_bound, int& error_flag,
                        const std::string& hessian   = "limited-memory",
-                       const std::string& qp_solver = "qpOASES")
+                       const std::string& qp_solver = default_backend())
 {
     Alg algorithm; Sol solution; Prob problem;
     const int nodes = 20;
@@ -132,56 +172,24 @@ static double solve_lq(const std::string& nlp_method, double u_bound, int& error
 
 #ifdef USE_SQP
 
-// The sign convention of qpOASES's multipliers, which SQP_interface converts to
-// PSOPT's. It is the one thing in the interface that the documentation does not settle
-// unambiguously, so it is pinned here against a QP whose answer is known: minimising
-// 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1), and in the convention
-// grad f + A' lambda = 0 the multiplier is -1. qpOASES returns +1, which is why
-// SQP_interface negates it.
-TEST(SQPSolver, QpOasesDualSignConvention)
-{
-    USING_NAMESPACE_QPOASES
-
-    real_t H[4]   = {1,0, 0,1};
-    real_t gv[2]  = {0,0};
-    real_t A[2]   = {1,1};
-    real_t lbA[1] = {2}, ubA[1] = {2};
-    real_t lb[2]  = {-1e20,-1e20}, ub[2] = {1e20,1e20};
-
-    QProblem qp(2,1);
-    Options o; o.printLevel = PL_NONE; qp.setOptions(o);
-    int_t nWSR = 100;
-    ASSERT_EQ(qp.init(H, gv, A, lb, ub, lbA, ubA, nWSR), SUCCESSFUL_RETURN);
-
-    real_t x[2], y[3];
-    qp.getPrimalSolution(x);
-    qp.getDualSolution(y);
-
-    EXPECT_NEAR(x[0], 1.0, 1e-10);
-    EXPECT_NEAR(x[1], 1.0, 1e-10);
-    EXPECT_NEAR(y[2], 1.0, 1e-8);
-
-    const double lambda_psopt = -y[2];
-    EXPECT_NEAR(x[0] + 1.0*lambda_psopt, 0.0, 1e-8);   // stationarity in PSOPT's sign
-}
-
-// qpOASES's own BLAS and LAPACK replacements must not be linked in. They are stand-ins
-// for use when no BLAS is available, and if they are present they capture dgemm_ and
-// dpotrf_ for the whole program, including for MUMPS inside IPOPT, which then fails
-// inside its linear solver on problems it otherwise solves without difficulty. The
-// build guards against this in CMakeLists.txt; this checks the guard held, because the
-// symptom appears nowhere near the SQP code.
-TEST(SQPSolver, RealBlasIsNotOverriddenByQpOases)
-{
-    int flag = -1;
-    const double J = sqp_test::solve_lq("IPOPT", 10.0, flag);
-    ASSERT_EQ(flag, 0) << "IPOPT failed; qpOASES's BLAS replacements are the first suspect";
-    EXPECT_NEAR(J, 0.775240441234, 1.0e-9);
-}
+// The sign convention the QP backends use for their multipliers, which SQP_interface
+// converts to PSOPT's, is pinned against a QP whose answer is known by
+// SQPSolver.GalahadPluginSolvesAndUsesTheRightDualSign below -- through the plugin ABI,
+// which is now the only way a subproblem reaches a solver. Two earlier tests here did
+// the same thing by linking qpOASES directly and checked that its BLAS replacements had
+// not captured the real BLAS; both went with qpOASES itself.
 
 // The solver against the closed-form optimum, with no bound active.
 TEST(SQPSolver, LinearQuadraticAgainstClosedForm)
 {
+    // These use whichever backend solve_lq defaults to. When that is GALAHAD -- which
+    // it is whenever GALAHAD is the only backend built -- it cannot run unless the
+    // process was started with OMP_CANCELLATION set, so the test would be measuring the
+    // environment rather than the solver. CTest's second pass sets it and covers this.
+    if (!sqp_test::default_backend_usable())
+        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
+                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+
     int flag = -1;
     const double J = sqp_test::solve_lq("SQP", 10.0, flag);
 
@@ -197,6 +205,14 @@ TEST(SQPSolver, LinearQuadraticAgainstClosedForm)
 // active-set SQP with a BFGS model.
 TEST(SQPSolver, AgreesWithIpoptWithAnActiveControlBound)
 {
+    // These use whichever backend solve_lq defaults to. When that is GALAHAD -- which
+    // it is whenever GALAHAD is the only backend built -- it cannot run unless the
+    // process was started with OMP_CANCELLATION set, so the test would be measuring the
+    // environment rather than the solver. CTest's second pass sets it and covers this.
+    if (!sqp_test::default_backend_usable())
+        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
+                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+
     int flag_ipopt = -1, flag_sqp = -1;
 
     const double J_ipopt = sqp_test::solve_lq("IPOPT", 0.4, flag_ipopt);
@@ -217,6 +233,14 @@ TEST(SQPSolver, AgreesWithIpoptWithAnActiveControlBound)
 // and the trust region that goes with them all agree on the same answer.
 TEST(SQPSolver, ExactHessianReachesTheClosedForm)
 {
+    // These use whichever backend solve_lq defaults to. When that is GALAHAD -- which
+    // it is whenever GALAHAD is the only backend built -- it cannot run unless the
+    // process was started with OMP_CANCELLATION set, so the test would be measuring the
+    // environment rather than the solver. CTest's second pass sets it and covers this.
+    if (!sqp_test::default_backend_usable())
+        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
+                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+
     int flag = -1;
     const double J = sqp_test::solve_lq("SQP", 10.0, flag, "exact");
 
@@ -228,6 +252,14 @@ TEST(SQPSolver, ExactHessianReachesTheClosedForm)
 // exact Hessian has to agree with IPOPT there too.
 TEST(SQPSolver, ExactHessianAgreesWithIpoptWithAnActiveControlBound)
 {
+    // These use whichever backend solve_lq defaults to. When that is GALAHAD -- which
+    // it is whenever GALAHAD is the only backend built -- it cannot run unless the
+    // process was started with OMP_CANCELLATION set, so the test would be measuring the
+    // environment rather than the solver. CTest's second pass sets it and covers this.
+    if (!sqp_test::default_backend_usable())
+        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
+                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+
     int flag_ipopt = -1, flag_sqp = -1;
 
     const double J_ipopt = sqp_test::solve_lq("IPOPT", 0.4, flag_ipopt);
@@ -247,6 +279,14 @@ TEST(SQPSolver, ExactHessianAgreesWithIpoptWithAnActiveControlBound)
 // derivatives are being used at all, not the precise rate.
 TEST(SQPSolver, ExactHessianCostsFewerIterationsThanBfgs)
 {
+    // These use whichever backend solve_lq defaults to. When that is GALAHAD -- which
+    // it is whenever GALAHAD is the only backend built -- it cannot run unless the
+    // process was started with OMP_CANCELLATION set, so the test would be measuring the
+    // environment rather than the solver. CTest's second pass sets it and covers this.
+    if (!sqp_test::default_backend_usable())
+        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
+                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+
     int flag = -1;
     (void) sqp_test::solve_lq("SQP", 0.4, flag, "limited-memory");
     ASSERT_EQ(flag, 0);
@@ -278,38 +318,29 @@ namespace {
 
 struct Backend { const char* name; bool enabled; };
 
-const Backend backends[] = {
-    { "qpOASES", true },
+// Built at run time rather than declared as an array: with GALAHAD the only backend
+// compiled in -- which is now a perfectly ordinary way to build PSOPT -- every entry
+// below is conditioned out and an empty array is not valid C++.
+std::vector<Backend> plugin_backends()
+{
+    std::vector<Backend> v;
 #ifdef USE_PROXQP
-    { "ProxQP",  true },
+    { Backend b = { "ProxQP", true }; v.push_back(b); }
 #endif
 #ifdef USE_QPALM
-    { "QPALM",   true },
+    { Backend b = { "QPALM",  true }; v.push_back(b); }
 #endif
 #ifdef USE_OSQP
-    { "OSQP",    true },
+    { Backend b = { "OSQP",   true }; v.push_back(b); }
 #endif
-};
-
-// GALAHAD's default linear solver requires OMP_CANCELLATION and OMP_PROC_BIND to be
-// TRUE in the environment, and cannot be made to work without them from inside the
-// process: the OpenMP runtime reads them when it first initialises, long before a
-// plugin is loaded. So whether GALAHAD can be exercised at all is a property of how
-// this binary was started, and is asked at run time rather than assumed. CTest runs the
-// suite a second time with those variables set, so the backend is covered.
-bool galahad_environment_ok()
-{
-    const char* c = getenv("OMP_CANCELLATION");
-    const char* b = getenv("OMP_PROC_BIND");
-    return c != NULL && b != NULL && (c[0] == 'T' || c[0] == 't')
-                                  && (b[0] != 'F' && b[0] != 'f');
+    return v;
 }
 
 std::vector<Backend> enabled_backends()
 {
-    std::vector<Backend> out(backends, backends + sizeof(backends)/sizeof(backends[0]));
+    std::vector<Backend> out = plugin_backends();
 #ifdef USE_GALAHAD
-    if (galahad_environment_ok()) { Backend g = { "GALAHAD", true }; out.push_back(g); }
+    if (sqp_test::galahad_environment_ok()) { Backend g = { "GALAHAD", true }; out.push_back(g); }
 #endif
     return out;
 };
@@ -355,20 +386,15 @@ TEST(SQPSolver, EveryBackendAgreesWithAnActiveBoundInOneProcess)
 // against: minimising 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1) and, in the
 // convention grad f + A' lambda = 0, a multiplier of -1. QPA states its own
 // stationarity as H x + g - A' y - z = 0, so its y carries the opposite sign to PSOPT's
-// and the plugin negates it -- qpOASES's convention rather than ProxQP's and QPALM's.
+// and the plugin negates it, as the removed active-set backend also required and
+// ProxQP and QPALM do not.
 //
 // This also exercises the whole plugin path end to end: the loader, the ABI, the
-// coordinate-format conversion and the bound handling.
-// GALAHAD's QPA through the plugin, on the QP every backend's dual convention is
-// pinned against: minimising 1/2 x'x subject to x1 + x2 = 2 gives x = (1,1) and, in the
-// convention grad f + A' lambda = 0, a multiplier of -1. QPA states its own
-// stationarity as H x + g - A' y - z = 0, so its y carries the opposite sign to
-// PSOPT's and the plugin negates it -- qpOASES's convention rather than ProxQP's and
-// QPALM's. This also exercises the whole plugin path: the loader, the ABI, the
-// coordinate-format conversion and the bound handling.
+// coordinate-format conversion and the bound handling. Since the plugin ABI is now the
+// only route from the driver to a solver, this is where that convention is pinned.
 TEST(SQPSolver, GalahadPluginSolvesAndUsesTheRightDualSign)
 {
-    if (!galahad_environment_ok())
+    if (!sqp_test::galahad_environment_ok())
         GTEST_SKIP() << "GALAHAD needs OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE "
                         "in the environment; CTest runs a second pass with them set";
 

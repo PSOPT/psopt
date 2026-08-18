@@ -450,8 +450,7 @@ cat <<EOF
             cd /path/to/psopt
             cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON \\
                   -DWITH_SQP=ON -DWITH_GALAHAD=ON \\
-                  -DGALAHAD_DIR="$PREFIX" \\
-                  -DQPOASES_DIR=/path/to/qpoases
+                  -DGALAHAD_DIR="$PREFIX"
             cmake --build build -j $JOBS
 
     3.  In your problem:

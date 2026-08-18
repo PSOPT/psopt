@@ -34,7 +34,6 @@ e-mail:    v.m.becerra@ieee.org
 #ifdef USE_SQP
 
 #include <Eigen/SparseCore>
-#include <qpOASES.hpp>
 
 extern "C" {
 #include <dmumps_c.h>
@@ -46,9 +45,9 @@ extern "C" {
 #include "psopt_qp_plugin.h"
 #include <string>
 
-// Implemented in qp_plugin_loader.cxx. A QP backend other than qpOASES lives in a
-// plugin, loaded on demand, so that the linear algebra it carries cannot collide with
-// another backend's; psopt_qp_plugin.h explains why that is not optional.
+// Implemented in qp_plugin_loader.cxx. Every QP backend lives in a plugin, loaded on
+// demand, so that the linear algebra it carries cannot collide with another backend's;
+// psopt_qp_plugin.h explains why that is not optional.
 bool psopt_qp_plugin_solve(const std::string& backend,
                            const psopt_qp_problem* problem,
                            psopt_qp_solution*      solution,
@@ -57,10 +56,16 @@ bool psopt_qp_plugin_available(const std::string& backend, std::string& message)
 
 using namespace std;
 
-// The two qpOASES types that appear in the storage below. The rest of the qpOASES
-// names are brought in inside the driver, where they belong.
-using qpOASES::sparse_int_t;
-using qpOASES::real_t;
+// The index and scalar types of the sparse storage below. These were qpOASES's
+// sparse_int_t and real_t for as long as its solver was one of the backends; they are
+// PSOPT's own now, and the plugin ABI converts to its fixed-width types at the boundary.
+typedef int    sparse_int_t;
+typedef double real_t;
+
+// The value at or beyond which a bound is treated as absent. It is the number PSOPT
+// already uses for an absent bound, and the same one the removed solver's own infinity
+// carried, so nothing about how a free variable is recognised has changed.
+static const double qp_inf = 1.0e20;
 
 namespace {
 
@@ -158,13 +163,13 @@ double max_violation(const MatrixXd& gval, const vector<double>& gl,
 
 
 // ---------------------------------------------------------------------------------
-// Compressed sparse column storage, in qpOASES's index type.
+// Compressed sparse column storage.
 //
 // The subproblem's matrices keep their pattern for as long as the mesh does: the
 // Jacobian's comes from the recorded tape, the Hessian's from the same tape's
 // second-order sparsity, and neither depends on the point. So the pattern is built
-// once and only the values are refreshed, which is also the form qpOASES wants --
-// it holds pointers into these arrays and reads them again at every solve.
+// once and only the values are refreshed, which is also the form the QP backends want:
+// the plugin ABI passes these arrays across by pointer at every solve.
 //
 // The class also carries the few matrix operations the algorithm needs, so that no
 // dense copy of the Jacobian is made anywhere: J*d for the second-order correction
@@ -185,8 +190,7 @@ public:
         const size_t nt = row.size();
 
         // (column, row, triplet index), ordered by column and then by row, which is
-        // both the compressed column order and the order qpOASES expects within a
-        // column.
+        // both the compressed column order and the order expected within a column.
         vector<size_t> order(nt + (force_diagonal ? (size_t) min(nr,nc) : 0));
         vector<unsigned int> er(order.size()), ec(order.size());
         vector<int>          ek(order.size());
@@ -314,7 +318,7 @@ public:
     }
 
     // The same pattern in the plugin interface's index type. Built once, on request:
-    // qpOASES wants its own sparse_int_t and the plugins want a fixed 64-bit type, and
+    // The storage keeps int indices and the plugins want a fixed 64-bit type, and
     // on a platform where those are distinct types a cast of the array is not a
     // conversion of it.
     const long long* ir64() const
@@ -756,7 +760,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
                                 vector<unsigned int>& jrow, vector<unsigned int>& jcol,
                                 vector<double>& jval, SparseCsc& Jm,
                                 MatrixXd& gval,
-                                const string& backend, bool use_extern,
+                                const string& backend,
                                 double tol, int max_iter, int qp_iter_max, int iprint,
                                 int& n_iters, int& n_relaxed, Workspace* workspace)
 {
@@ -823,9 +827,9 @@ static int feasible_point_phase(MatrixXd& x, int m,
         Jm.scatter(jval);
 
         for (int i = 0; i < m; i++) {
-            lbA[(size_t) i] = (gl[(size_t) i] <= -psopt_inf) ? -qpOASES::INFTY
+            lbA[(size_t) i] = (gl[(size_t) i] <= -psopt_inf) ? -qp_inf
                                                              :  gl[(size_t) i] - gval(i);
-            ubA[(size_t) i] = (gu[(size_t) i] >=  psopt_inf) ?  qpOASES::INFTY
+            ubA[(size_t) i] = (gu[(size_t) i] >=  psopt_inf) ?  qp_inf
                                                              :  gu[(size_t) i] - gval(i);
         }
 
@@ -844,23 +848,23 @@ static int feasible_point_phase(MatrixXd& x, int m,
         // over the Jacobian.
         for (int i = 0; i < m; i++) {
             double w = 1.0;
-            if (lbA[(size_t) i] > -qpOASES::INFTY) w = max(w, fabs(lbA[(size_t) i]));
-            if (ubA[(size_t) i] <  qpOASES::INFTY) w = max(w, fabs(ubA[(size_t) i]));
+            if (lbA[(size_t) i] > -qp_inf) w = max(w, fabs(lbA[(size_t) i]));
+            if (ubA[(size_t) i] <  qp_inf) w = max(w, fabs(ubA[(size_t) i]));
             rowscale[(size_t) i] = w;
-            if (lbA[(size_t) i] > -qpOASES::INFTY) lbA[(size_t) i] /= w;
-            if (ubA[(size_t) i] <  qpOASES::INFTY) ubA[(size_t) i] /= w;
+            if (lbA[(size_t) i] > -qp_inf) lbA[(size_t) i] /= w;
+            if (ubA[(size_t) i] <  qp_inf) ubA[(size_t) i] /= w;
         }
         jscaled.resize(jval.size());
         for (size_t k = 0; k < jval.size(); k++)
             jscaled[k] = jval[k]/rowscale[(size_t) jrow[k]];
         Js.scatter(jscaled);
         for (int j = 0; j < n; j++) {
-            lbd[(size_t) j] = ((*xlb)(j) <= -psopt_inf) ? -qpOASES::INFTY : (*xlb)(j) - x(j);
-            ubd[(size_t) j] = ((*xub)(j) >=  psopt_inf) ?  qpOASES::INFTY : (*xub)(j) - x(j);
+            lbd[(size_t) j] = ((*xlb)(j) <= -psopt_inf) ? -qp_inf : (*xlb)(j) - x(j);
+            ubd[(size_t) j] = ((*xub)(j) >=  psopt_inf) ?  qp_inf : (*xub)(j) - x(j);
         }
         for (int k = n; k < nr; k++) {              // the residuals are free
-            lbd[(size_t) k] = -qpOASES::INFTY;
-            ubd[(size_t) k] =  qpOASES::INFTY;
+            lbd[(size_t) k] = -qp_inf;
+            ubd[(size_t) k] =  qp_inf;
         }
 
         arval.clear();
@@ -876,7 +880,7 @@ static int feasible_point_phase(MatrixXd& x, int m,
             SparseCsc& H  = primary ? Ip : Hr;
             SparseCsc& A  = primary ? Js : Ar;
 
-            if (use_extern) {
+            {
                 QpProblem qpp;
                 qpp.nv  = nv;             qpp.mc  = m;
                 qpp.H   = &H;             qpp.Bd  = NULL;
@@ -889,26 +893,6 @@ static int feasible_point_phase(MatrixXd& x, int m,
                 if (solve_qp_plugin(backend, qpp, tol, qp_iter_max, /*nonconvex=*/false, qs, why)
                     && qs.ok) {
                     for (int j = 0; j < n; j++) dsol[(size_t) j] = qs.d[(size_t) j];
-                    solved = true;
-                }
-            }
-            else {
-                qpOASES::Options qpopts;
-                qpopts.printLevel = qpOASES::PL_NONE;
-                qpopts.setToReliable();
-                qpopts.printLevel = qpOASES::PL_NONE;
-
-                qpOASES::SymSparseMat Hq(nv, nv, H.ir(), H.jc(), H.val());
-                qpOASES::SparseMatrix Aq(m, nv, A.ir(), A.jc(), A.val());
-                Hq.createDiagInfo();
-
-                qpOASES::QProblem qp(nv, m);
-                qp.setOptions(qpopts);
-                qpOASES::int_t nWSR = 5*(nv + m) + 100;
-                const qpOASES::returnValue rv =
-                    qp.init(&Hq, &gzero[0], &Aq, &lbd[0], &ubd[0], &lbA[0], &ubA[0], nWSR);
-                if (rv == qpOASES::SUCCESSFUL_RETURN || rv == qpOASES::RET_MAX_NWSR_REACHED) {
-                    qp.getPrimalSolution(&dsol[0]);
                     solved = true;
                 }
             }
@@ -991,8 +975,6 @@ int SQP_interface(Alg&         algorithm,
                   Workspace*   workspace,
                   void*        user_data)
 {
-    USING_NAMESPACE_QPOASES
-
     (void) f; (void) g; (void) nlp_neq; (void) hotflag; (void) user_data;
 
     const int n = (int) x0->rows();
@@ -1033,11 +1015,9 @@ int SQP_interface(Alg&         algorithm,
     const bool exact_hessian = (algorithm.hessian == "exact")
                                && useAutomaticDifferentiation(algorithm);
 
-    // Which QP solver handles the subproblems. qpOASES is an active-set method whose
-    // factorisations are dense in the number of variables however sparse the matrices
-    // it is handed, so its memory is quadratic and its work per subproblem cubic in n;
-    // ProxQP factorises the KKT system sparsely and tolerates an indefinite Hessian.
-    const bool use_extern = (algorithm.qp_solver != "qpOASES");
+    // Which QP backend handles the subproblems. Every one of them is sparse: it
+    // factorises the KKT system without forming a dense matrix in the number of
+    // variables, which is what makes a collocated optimal control problem tractable.
     const bool bound_rho_by_multipliers = (algorithm.elastic_penalty == "multipliers");
 
     MatrixXd B;                                       // the quasi-Newton model, if used
@@ -1068,12 +1048,12 @@ int SQP_interface(Alg&         algorithm,
     // 0.3 rather than 0.1 because the small dense examples want the larger of the two:
     // at 0.1, brac1 takes 23 iterations against 17 and lts 28 against 20. At 0.3 those
     // are 17 and 18, and what the reduction buys elsewhere is kept -- launch goes from
-    // 42 iterations and 195 seconds to 26 and 126, and manutec under qpOASES from 103
+    // 42 iterations and 195 seconds to 26 and 126, and manutec from 103
     // iterations and 106 seconds to 13 and 15.
     const double Delta_0   = 0.3;
     const double Delta_min = 1.0e-10;
     const double Delta_max = 1.0e4;
-    double       Delta     = exact_hessian ? Delta_0 : qpOASES::INFTY;
+    double       Delta     = exact_hessian ? Delta_0 : qp_inf;
 
     // ---- the subproblem's matrices ----------------------------------------------
     SparseCsc Jm, Hm, Ae, He;                         // A and H, plain and elastic
@@ -1113,7 +1093,7 @@ int SQP_interface(Alg&         algorithm,
 
         feas_status = feasible_point_phase(x, m, gl, gu, xlb, xub, tape_done,
                                            jrow, jcol, jval, Jm, gval,
-                                           algorithm.qp_solver, use_extern,
+                                           algorithm.qp_solver,
                                            tol, algorithm.nlp_iter_max,
                                            algorithm.qp_iter_max, iprint,
                                            n_feas_iters, n_feas_relaxed, workspace);
@@ -1168,26 +1148,6 @@ int SQP_interface(Alg&         algorithm,
         }
         Hm.build(n, n, hrow, hcol, /*force_diagonal=*/true);
     }
-
-    // The subproblem's matrices, as qpOASES sees them. qpOASES keeps the pointers it
-    // is given and reads through them at every solve, so these objects are built once,
-    // over storage whose pattern does not change, and only the values are refreshed.
-    // SymSparseMat additionally wants to know where each column's diagonal entry sits,
-    // which is a property of the pattern and so is also computed once.
-    unique_ptr<SparseMatrix>  Aqp;
-    unique_ptr<SymSparseMat>  Hsparse;
-    unique_ptr<SymDenseMat>   Hdense;
-
-    if (m > 0) Aqp.reset(new SparseMatrix(m, n, Jm.ir(), Jm.jc(), Jm.val()));
-    if (exact_hessian) {
-        Hsparse.reset(new SymSparseMat(n, n, Hm.ir(), Hm.jc(), Hm.val()));
-        Hsparse->createDiagInfo();
-    }
-    else {
-        Hdense.reset(new SymDenseMat(n, n, n, &B(0,0)));
-    }
-    SymmetricMatrix* Hqp = exact_hessian ? (SymmetricMatrix*) Hsparse.get()
-                                         : (SymmetricMatrix*) Hdense.get();
 
     int    n_restorations = 0;
     int    n_corrections  = 0;
@@ -1303,34 +1263,31 @@ int SQP_interface(Alg&         algorithm,
         //   min  1/2 d' B d + grad_f' d
         //   s.t. g_l - g <= J d <= g_u - g,      xlb - x <= d <= xub - x
         // PSOPT writes an absent constraint bound as +/- 1.0e20 (see NLP_bounds.cxx);
-        // qpOASES has its own infinity and treats anything beyond it as free.
+        // Anything at or beyond qp_inf is treated as an absent bound.
         const double psopt_inf = 1.0e20;
         for (int i = 0; i < m; i++) {
-            lbA[i] = (gl[i] <= -psopt_inf) ? -qpOASES::INFTY : gl[i] - gval(i);
-            ubA[i] = (gu[i] >=  psopt_inf) ?  qpOASES::INFTY : gu[i] - gval(i);
+            lbA[i] = (gl[i] <= -psopt_inf) ? -qp_inf : gl[i] - gval(i);
+            ubA[i] = (gu[i] >=  psopt_inf) ?  qp_inf : gu[i] - gval(i);
         }
         for (int j = 0; j < n; j++) {
-            lo_true[j] = ((*xlb)(j) <= -psopt_inf) ? -qpOASES::INFTY : (*xlb)(j) - x(j);
-            hi_true[j] = ((*xub)(j) >=  psopt_inf) ?  qpOASES::INFTY : (*xub)(j) - x(j);
+            lo_true[j] = ((*xlb)(j) <= -psopt_inf) ? -qp_inf : (*xlb)(j) - x(j);
+            hi_true[j] = ((*xub)(j) >=  psopt_inf) ?  qp_inf : (*xub)(j) - x(j);
             lbd[j]     = max(lo_true[j], -Delta);   // Delta is infinite unless the Hessian
             ubd[j]     = min(hi_true[j],  Delta);   // is exact; both regions contain d = 0
         }
 
-        Options qpopts;
-        qpopts.printLevel = PL_NONE;
-        qpopts.setToReliable();
-        if (exact_hessian) qpopts.enableRegularisation = BT_TRUE;
-        qpopts.printLevel = PL_NONE;
-
-        int_t nWSR = 5*(n + m) + 100;
-        returnValue rv;
+        // Whether the subproblem was solved, and at what cost. These were a qpOASES
+        // return code and its working-set counter, which the plugin path reported in for
+        // as long as both existed; they are now what they always meant.
+        bool   qp_ok    = false;
+        int    qp_iters = 0;
         bool   elastic = false;
         double rho_elastic = 0.0;
 
         // ---- convexification ----------------------------------------------------
         // An exact Hessian of the Lagrangian is indefinite wherever the problem is not
         // convex, which is almost everywhere on an optimal control problem, and the
-        // subproblem then has no minimum: qpOASES declines it. Adding tau*I makes the
+        // subproblem then has no minimum and the backend declines it. Adding tau*I makes the
         // model convex without changing where the Lagrangian is stationary, and the
         // smallest tau that works is the one that leaves the most of the true
         // curvature in place, so tau starts small and is raised only until the
@@ -1339,180 +1296,140 @@ int SQP_interface(Alg&         algorithm,
         // decays when it is not needed, so that the model returns to the exact one as
         // the iterates settle. This is the same device IPOPT uses in its own inertia
         // correction.
-        for (int attempt = 0; ; attempt++) {
 
-            if (exact_hessian && multiplier_pass) {
-                Hm.scatter(vector<double>(hval.size(), 0.0));
-                Hm.shift_diagonal(1.0);                   // H = I, for multipliers only
-            }
-            else if (exact_hessian) {
-                // Raise the Levenberg parameter until the KKT matrix has the inertia
-                // that says the reduced Hessian is positive definite. This is Betts's
-                // inertia control, with the inertia obtained from MUMPS.
-                //
-                // The size of the shift matters as much as the fact of it, and how it is
-                // arrived at matters more than either. Betts's parameter multiplies
-                // |sigma| + 1, where sigma is the Gerschgorin bound on the most negative
-                // eigenvalue of the Hessian, so a shift is always a fraction of a
-                // worst-case bound rather than of anything the model actually needs; and
-                // sigma moves with the multipliers, which on examples/bryson_denham took
-                // it from -8.8e+02 to -5.4e+08 within three iterations. Started afresh
-                // from a fixed fraction of that at every iteration, the shift is either
-                // far too large or far too small, and neither is recoverable within the
-                // iteration: too large flattens the curvature the model does have along
-                // with the direction that has none, and the Newton step becomes a scaled
-                // gradient step -- 150 iterations on bryson_denham, converging linearly,
-                // against 19 or fewer on every other example; too small leaves the model
-                // near-singular, and on brac1 the first full step took the scaled
-                // objective of a minimum-time problem to zero.
-                //
-                // What removes the choice is not the starting value but the memory. The
-                // shift that worked at the last iteration is a far better guess than any
-                // fraction of a bound, so it is carried forward and tried at a fifth of
-                // its size: if the model has improved the shift decays towards zero and
-                // the exact Hessian returns, and if it has not the escalation begins
-                // from somewhere useful instead of from nothing. This is IPOPT's inertia
-                // correction, with Betts's bound setting the scale of the first attempt
-                // and the ceiling.
-                //
-                // Sweeping the starting fraction over 1.0e-10 to 1.0e-4 and the
-                // escalation over 10 and 100, with and without the carry-over, the
-                // carry-over decides every case: with it all eight combinations solve
-                // all five small examples, without it six of the eight fail or stall on
-                // one or another. The decay factor is a real choice rather than a free
-                // one: at 0.1 the shift decays faster than the model earns its curvature
-                // back and bryson_denham fails, while 0.3333 to 0.6 all solve everything
-                // under qpOASES. Measured across three backends rather than one, 0.2 is
-                // better than 0.5 nearly everywhere -- brac1 in 14, 14 and 20 iterations
-                // against 27, 58 and 40, manutec in 103, 12 and 12 against 193, 12 and
-                // 12 -- and the one exception, bryson_denham under qpOASES, is 91
-                // iterations against 19. Counts move by a factor of two on changes of a
-                // few per cent, so they are not a quantity to tune against; the ends of
-                // the working range are.
+        if (exact_hessian && multiplier_pass) {
+            Hm.scatter(vector<double>(hval.size(), 0.0));
+            Hm.shift_diagonal(1.0);                   // H = I, for multipliers only
+        }
+        else if (exact_hessian) {
+            // Raise the Levenberg parameter until the KKT matrix has the inertia
+            // that says the reduced Hessian is positive definite. This is Betts's
+            // inertia control, with the inertia obtained from MUMPS.
+            //
+            // The size of the shift matters as much as the fact of it, and how it is
+            // arrived at matters more than either. Betts's parameter multiplies
+            // |sigma| + 1, where sigma is the Gerschgorin bound on the most negative
+            // eigenvalue of the Hessian, so a shift is always a fraction of a
+            // worst-case bound rather than of anything the model actually needs; and
+            // sigma moves with the multipliers, which on examples/bryson_denham took
+            // it from -8.8e+02 to -5.4e+08 within three iterations. Started afresh
+            // from a fixed fraction of that at every iteration, the shift is either
+            // far too large or far too small, and neither is recoverable within the
+            // iteration: too large flattens the curvature the model does have along
+            // with the direction that has none, and the Newton step becomes a scaled
+            // gradient step -- 150 iterations on bryson_denham, converging linearly,
+            // against 19 or fewer on every other example; too small leaves the model
+            // near-singular, and on brac1 the first full step took the scaled
+            // objective of a minimum-time problem to zero.
+            //
+            // What removes the choice is not the starting value but the memory. The
+            // shift that worked at the last iteration is a far better guess than any
+            // fraction of a bound, so it is carried forward and tried at a fifth of
+            // its size: if the model has improved the shift decays towards zero and
+            // the exact Hessian returns, and if it has not the escalation begins
+            // from somewhere useful instead of from nothing. This is IPOPT's inertia
+            // correction, with Betts's bound setting the scale of the first attempt
+            // and the ceiling.
+            //
+            // Sweeping the starting fraction over 1.0e-10 to 1.0e-4 and the
+            // escalation over 10 and 100, with and without the carry-over, the
+            // carry-over decides every case: with it all eight combinations solve
+            // all five small examples, without it six of the eight fail or stall on
+            // one or another. The decay factor is a real choice rather than a free
+            // one: at 0.1 the shift decays faster than the model earns its curvature
+            // back and bryson_denham fails, while 0.3333 to 0.6 all solve everything
+            // under the active-set backend. Measured across three backends rather than one, 0.2 is
+            // better than 0.5 nearly everywhere -- brac1 in 14, 14 and 20 iterations
+            // against 27, 58 and 40, manutec in 103, 12 and 12 against 193, 12 and
+            // 12 -- and the one exception, bryson_denham on that backend, is 91
+            // iterations against 19. Counts move by a factor of two on changes of a
+            // few per cent, so they are not a quantity to tune against; the ends of
+            // the working range are.
+            Hm.scatter(hval);
+            const double sigma     = Hm.gerschgorin_lower_bound();
+            const double delta_max = fabs(sigma) + 1.0;
+            // The shift that worked last time is the first thing to try, but it
+            // has to be a shift for *this* matrix. delta_max moves with the
+            // multipliers, and on examples/zpm it went from 1.5e+01 to 2.8e+50 and
+            // back within three iterations when a subproblem returned multipliers
+            // of 1e+50. Carried forward uncapped, a shift of 5.6e+49 then sat on a
+            // matrix whose own bound was 15, decaying by a fifth each iteration and
+            // needing seventy of them to come back -- seventy iterations of a model
+            // that is a multiple of the identity, a step of zero, an objective
+            // static to nine figures and a dual error that does not move. That is
+            // the plateau seen on zpm and on low_thrust. Capping the carried value
+            // at the current ceiling costs nothing when the scale is steady and
+            // ends the plateau when it is not.
+            double delta = (tau > 0.0) ? 0.2*tau : 0.0;
+            for (;;) {
                 Hm.scatter(hval);
-                const double sigma     = Hm.gerschgorin_lower_bound();
-                const double delta_max = fabs(sigma) + 1.0;
-                // The shift that worked last time is the first thing to try, but it
-                // has to be a shift for *this* matrix. delta_max moves with the
-                // multipliers, and on examples/zpm it went from 1.5e+01 to 2.8e+50 and
-                // back within three iterations when a subproblem returned multipliers
-                // of 1e+50. Carried forward uncapped, a shift of 5.6e+49 then sat on a
-                // matrix whose own bound was 15, decaying by a fifth each iteration and
-                // needing seventy of them to come back -- seventy iterations of a model
-                // that is a multiple of the identity, a step of zero, an objective
-                // static to nine figures and a dual error that does not move. That is
-                // the plateau seen on zpm and on low_thrust. Capping the carried value
-                // at the current ceiling costs nothing when the scale is steady and
-                // ends the plateau when it is not.
-                double delta = (tau > 0.0) ? 0.2*tau : 0.0;
-                for (;;) {
-                    Hm.scatter(hval);
-                    if (delta > 0.0) Hm.shift_diagonal(delta);
+                if (delta > 0.0) Hm.shift_diagonal(delta);
 
-                    int npos = 0, nneg = 0, nzero = 0;
-                    const bool got = kkt_inertia(Hm, Jm, n, m, npos, nneg, nzero);
-                    n_inertia++;
-                    // Gould's condition is usually written In(K) = (n, m, 0), and that
-                    // is what was tested here. It is the right condition only when the
-                    // Jacobian has full row rank. In general, with r = rank(J), the
-                    // inertia of K is (r, r, m-r) plus that of the reduced Hessian on
-                    // the null space of J, so a rank deficiency of m - r shows up as
-                    // m - r zero eigenvalues and m - r fewer negative ones however the
-                    // Hessian is shifted -- the deficiency is in J, and no change to H
-                    // reaches it. Demanding zero zeros therefore asks for something a
-                    // shift cannot deliver, and the loop answers by escalating to its
-                    // ceiling, at every iteration, for ever.
-                    //
-                    // That is what examples/glider had been doing since inertia control
-                    // went in: a Jacobian one row short of full rank, a shift pinned at
-                    // |sigma| + 1, a model that was therefore a multiple of the identity,
-                    // and a steepest-descent step of fixed length taken 1000 times per
-                    // mesh. It solved in 117 iterations before, and stopped solving at
-                    // all.
-                    //
-                    // The rank-tolerant form of the same condition is npos == n: the
-                    // reduced Hessian is positive definite exactly when the positive
-                    // eigenvalues number n, whatever the rank of J. It reduces to
-                    // In(K) = (n, m, 0) when J has full rank, so nothing is given up.
-                    if (!got || npos == n) break;
-                    if (delta >= delta_max) break;
-                    delta = (delta == 0.0) ? 1.0e-10*delta_max
-                                           : min(100.0*delta, delta_max);
-                    n_shifts++;
-                }
-                tau = delta;                     // carried into the next iteration
+                int npos = 0, nneg = 0, nzero = 0;
+                const bool got = kkt_inertia(Hm, Jm, n, m, npos, nneg, nzero);
+                n_inertia++;
+                // Gould's condition is usually written In(K) = (n, m, 0), and that
+                // is what was tested here. It is the right condition only when the
+                // Jacobian has full row rank. In general, with r = rank(J), the
+                // inertia of K is (r, r, m-r) plus that of the reduced Hessian on
+                // the null space of J, so a rank deficiency of m - r shows up as
+                // m - r zero eigenvalues and m - r fewer negative ones however the
+                // Hessian is shifted -- the deficiency is in J, and no change to H
+                // reaches it. Demanding zero zeros therefore asks for something a
+                // shift cannot deliver, and the loop answers by escalating to its
+                // ceiling, at every iteration, for ever.
+                //
+                // That is what examples/glider had been doing since inertia control
+                // went in: a Jacobian one row short of full rank, a shift pinned at
+                // |sigma| + 1, a model that was therefore a multiple of the identity,
+                // and a steepest-descent step of fixed length taken 1000 times per
+                // mesh. It solved in 117 iterations before, and stopped solving at
+                // all.
+                //
+                // The rank-tolerant form of the same condition is npos == n: the
+                // reduced Hessian is positive definite exactly when the positive
+                // eigenvalues number n, whatever the rank of J. It reduces to
+                // In(K) = (n, m, 0) when J has full rank, so nothing is given up.
+                if (!got || npos == n) break;
+                if (delta >= delta_max) break;
+                delta = (delta == 0.0) ? 1.0e-10*delta_max
+                                       : min(100.0*delta, delta_max);
+                n_shifts++;
+            }
+            tau = delta;                     // carried into the next iteration
+        }
+
+        {
+            QpProblem qpp;
+            qpp.nv  = n;              qpp.mc  = m;
+            qpp.H   = exact_hessian ? &Hm : NULL;
+            qpp.Bd  = exact_hessian ? NULL : &B;
+            qpp.g   = &gf(0);
+            qpp.A   = (m > 0) ? &Jm : NULL;
+            qpp.lbA = (m > 0) ? &lbA[0] : NULL;
+            qpp.ubA = (m > 0) ? &ubA[0] : NULL;
+            qpp.lbd = &lbd[0];        qpp.ubd = &ubd[0];
+
+            QpSolution qs;
+            string why;
+            if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
+                                 exact_hessian, qs, why)) {
+                status  = 2;
+                message = why;
+                break;
             }
 
-            if (use_extern) {
-                QpProblem qpp;
-                qpp.nv  = n;              qpp.mc  = m;
-                qpp.H   = exact_hessian ? &Hm : NULL;
-                qpp.Bd  = exact_hessian ? NULL : &B;
-                qpp.g   = &gf(0);
-                qpp.A   = (m > 0) ? &Jm : NULL;
-                qpp.lbA = (m > 0) ? &lbA[0] : NULL;
-                qpp.ubA = (m > 0) ? &ubA[0] : NULL;
-                qpp.lbd = &lbd[0];        qpp.ubd = &ubd[0];
-
-                QpSolution qs;
-                string why;
-                if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
-                                     exact_hessian, qs, why)) {
-                    status  = 2;
-                    message = why;
-                    break;
-                }
-
-                rv   = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
-                nWSR = qs.iterations;
-                if (qs.ok) {
-                    // Reported in qpOASES's convention, which everything below expects.
-                    for (int j = 0; j < n; j++) dsol[j]   = qs.d[(size_t) j];
-                    for (int j = 0; j < n; j++) ysol[j]   = qs.z[(size_t) j];
-                    for (int i = 0; i < m; i++) ysol[n+i] = -qs.lambda[(size_t) i];
-                }
+            qp_ok    = qs.ok;
+            qp_iters = qs.iterations;
+            if (qs.ok) {
+                // The plugin ABI reports the bound multipliers as they stand and the
+                // constraint multipliers in the backend's own sign; negating the
+                // latter puts both into the convention the rest of this driver uses.
+                // psopt_qp_plugin.h states the ABI's side of it.
+                for (int j = 0; j < n; j++) dsol[j]   = qs.d[(size_t) j];
+                for (int j = 0; j < n; j++) ysol[j]   = qs.z[(size_t) j];
+                for (int i = 0; i < m; i++) ysol[n+i] = -qs.lambda[(size_t) i];
             }
-            else if (m > 0) {
-                QProblem qp(n, m);
-                qp.setOptions(qpopts);
-                nWSR = 5*(n + m) + 100;
-                rv = qp.init(Hqp, &gf(0), Aqp.get(), &lbd[0], &ubd[0], &lbA[0], &ubA[0], nWSR);
-                if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) {
-                    qp.getPrimalSolution(&dsol[0]);
-                    qp.getDualSolution(&ysol[0]);
-                    if (!all_finite(&dsol[0], n) || !all_finite(&ysol[0], n + m))
-                        rv = RET_INIT_FAILED;
-                }
-            }
-            else {
-                QProblemB qp(n);
-                qp.setOptions(qpopts);
-                nWSR = 5*n + 100;
-                rv = qp.init(Hqp, &gf(0), &lbd[0], &ubd[0], nWSR);
-                if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) {
-                    qp.getPrimalSolution(&dsol[0]);
-                    qp.getDualSolution(&ysol[0]);
-                    if (!all_finite(&dsol[0], n)) rv = RET_INIT_FAILED;
-                }
-            }
-
-            if (!exact_hessian) break;
-            if (rv == SUCCESSFUL_RETURN || rv == RET_MAX_NWSR_REACHED) break;
-
-            // Only a failure of the Cholesky factorisation says anything about the
-            // curvature; an infeasible linearisation or an exhausted working set says
-            // nothing, and shifting the diagonal in answer to it would be nine wasted
-            // factorisations before the restoration step that was needed all along.
-            const bool curvature_failure =
-                   (rv == RET_INIT_FAILED_CHOLESKY)
-                || (rv == RET_INIT_FAILED_REGULARISATION)
-                || (rv == RET_HESSIAN_NOT_SPD)
-                || (rv == RET_HESSIAN_INDEFINITE);
-
-            // The inertia was corrected before the subproblem saw the model, so a
-            // refusal now is about the constraints, and restoration is the answer.
-            (void) curvature_failure;
-            break;
         }
 
         // ---- restoration ---------------------------------------------------
@@ -1549,7 +1466,7 @@ int SQP_interface(Alg&         algorithm,
         // Both are always feasible, so a step always exists; both give the slacks a
         // small quadratic term as well, to keep the subproblem's Hessian positive
         // definite rather than merely semidefinite.
-        if (m > 0 && rv != SUCCESSFUL_RETURN && rv != RET_MAX_NWSR_REACHED) {
+        if (m > 0 && !qp_ok) {
 
             const bool relax = (algorithm.qp_restoration == "relaxation");
 
@@ -1570,7 +1487,7 @@ int SQP_interface(Alg&         algorithm,
             // Small relative to what the slacks cost, not small in absolute terms: once
             // rho is bounded below by the multipliers it is no longer near ten, and a
             // linear cost of 10^5 against a fixed quadratic term of 10^-8 is thirteen
-            // orders of magnitude in one subproblem. qpOASES declined the relaxation on
+            // orders of magnitude in one subproblem. The active-set backend declined the relaxation on
             // the first mesh of examples/lts for that reason and no other.
             const double eps_slack = bound_rho_by_multipliers ? 1.0e-8*rho : 1.0e-8;
 
@@ -1616,8 +1533,8 @@ int SQP_interface(Alg&         algorithm,
                 for (int i = 0; i < m; i++) {
                     const double lo = lbA[i], hi = ubA[i];
                     double c = 0.0;
-                    if      (lo > 0.0 && lo <  qpOASES::INFTY) c = lo;   // short of the lower bound
-                    else if (hi < 0.0 && hi > -qpOASES::INFTY) c = hi;   // past the upper bound
+                    if      (lo > 0.0 && lo <  qp_inf) c = lo;   // short of the lower bound
+                    else if (hi < 0.0 && hi > -qp_inf) c = hi;   // past the upper bound
                     aeval.push_back(c);
                 }
             }
@@ -1646,23 +1563,21 @@ int SQP_interface(Alg&         algorithm,
             // linear cost of 10^7 against a regularising quadratic term of 10^-8 spans
             // fifteen orders of magnitude, and a proximal method spent twenty-three
             // thousand iterations on examples/brac1 failing to get through it.
-            // ...and it is applied only for the plugin backends. qpOASES's active-set
-            // method is not troubled by the unscaled pricing and is measurably worse
-            // with it: examples/bryson_denham goes from twenty iterations to failing
-            // after two hundred and forty-six.
-            const double oscale = use_extern ? 1.0/rho : 1.0;
+            // The scaling was applied only to the plugin backends while qpOASES was
+            // also a backend: its active-set method was untroubled by the unscaled
+            // pricing and measurably worse with the scaling, taking bryson_denham from
+            // twenty iterations to failing after two hundred and forty-six. With it gone
+            // the scaling is unconditional.
+            const double oscale = 1.0/rho;
             for (int j = 0; j < n; j++) { ge[j] = oscale*gf(j);   lbe[j] = lbd[j]; ube[j] = ubd[j]; }
             for (int k = n; k < ne; k++) { ge[k] = oscale*rho;    lbe[k] = 0.0;
-                                          ube[k] = relax ? 1.0 : qpOASES::INFTY; }
+                                          ube[k] = relax ? 1.0 : qp_inf; }
             He.scale(oscale);
 
-            returnValue rve;
-            int_t        nWSRe = 5*(ne + m) + 100;
+            bool rve_ok    = false;
+            int  rve_iters = 0;
 
-            SymSparseMat Heqp(ne, ne, He.ir(), He.jc(), He.val());
-            SparseMatrix Aeqp(m, ne, Ae.ir(), Ae.jc(), Ae.val());
-
-            if (use_extern) {
+            {
                 QpProblem qpp;
                 qpp.nv  = ne;      qpp.mc  = m;
                 qpp.H   = &He;     qpp.g   = &ge[0];
@@ -1675,43 +1590,31 @@ int SQP_interface(Alg&         algorithm,
                 (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
                                        exact_hessian, qs, why);
 
-                rve   = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
-                nWSRe = qs.iterations;
+                rve_ok    = qs.ok;
+                rve_iters = qs.iterations;
                 if (qs.ok) {
                     for (int k = 0; k < ne; k++) ze[k]    = qs.d[(size_t) k];
                     for (int k = 0; k < ne; k++) ye[k]    = qs.z[(size_t) k];
                     for (int i = 0; i < m;  i++) ye[ne+i] = -qs.lambda[(size_t) i];
                 }
             }
-            else {
-                Heqp.createDiagInfo();
-                QProblem qpe(ne, m);
-                qpe.setOptions(qpopts);
-                rve = qpe.init(&Heqp, &ge[0], &Aeqp, &lbe[0], &ube[0],
-                               &lbA[0], &ubA[0], nWSRe);
-                if (rve == SUCCESSFUL_RETURN || rve == RET_MAX_NWSR_REACHED) {
-                    qpe.getPrimalSolution(&ze[0]);
-                    qpe.getDualSolution(&ye[0]);
-                    if (!all_finite(&ze[0], ne) || !all_finite(&ye[0], ne + m))
-                        rve = RET_INIT_FAILED;
-                }
-            }
 
             // Undo the 1/rho scaling of the objective on the multipliers it scaled.
-            if (oscale != 1.0 && (rve == SUCCESSFUL_RETURN || rve == RET_MAX_NWSR_REACHED))
+            if (oscale != 1.0 && rve_ok)
                 for (size_t k = 0; k < ye.size(); k++) ye[k] /= oscale;
 
-            if (rve == SUCCESSFUL_RETURN || rve == RET_MAX_NWSR_REACHED) {
+            if (rve_ok) {
                 for (int j = 0; j < n; j++) dsol[j]   = ze[j];
                 for (int i = 0; i < m; i++) ysol[n+i] = ye[ne+i];
                 for (int j = 0; j < n; j++) ysol[j]   = ye[j];
-                rv       = SUCCESSFUL_RETURN;
+                qp_ok    = true;
+                qp_iters = rve_iters;
                 elastic  = true;
                 n_restorations++;
             }
         }
 
-        if (rv != SUCCESSFUL_RETURN && rv != RET_MAX_NWSR_REACHED) {
+        if (!qp_ok) {
             status  = 2;
             message = "The quadratic programming subproblem could not be solved, "
                       "and neither could its elastic relaxation";
@@ -1721,10 +1624,10 @@ int SQP_interface(Alg&         algorithm,
         MatrixXd d(n,1);
         for (int j = 0; j < n; j++) d(j) = dsol[j];
 
-        // qpOASES returns the multipliers of  H d + grad_f = A' y_C + y_B, so its
-        // duals carry the opposite sign to the convention used by the rest of PSOPT,
-        // in which grad f + J' lambda = 0. The reference test for this is
-        // SQPSolver.QpOasesDualSignConvention in tests/test_sqp.cpp.
+        // The QP backends return the multipliers of  H d + grad_f = A' y_C + y_B, so
+        // their duals carry the opposite sign to the convention used by the rest of
+        // PSOPT, in which grad f + J' lambda = 0. The reference test for this is
+        // SQPSolver.QpDualSignConvention in tests/test_sqp.cpp.
         MatrixXd lam_new = MatrixXd::Zero(max(m,1),1);
         for (int i = 0; i < m; i++) lam_new(i) = -ysol[n+i];
         // The bounds the subproblem was given are the variable bounds intersected with
@@ -1924,15 +1827,14 @@ int SQP_interface(Alg&         algorithm,
             vector<double> lbS(m), ubS(m);
             for (int i = 0; i < m; i++) {
                 const double shift = gtrial_soc(i) - Jd(i);
-                lbS[i] = (gl[i] <= -psopt_inf) ? -qpOASES::INFTY : gl[i] - shift;
-                ubS[i] = (gu[i] >=  psopt_inf) ?  qpOASES::INFTY : gu[i] - shift;
+                lbS[i] = (gl[i] <= -psopt_inf) ? -qp_inf : gl[i] - shift;
+                ubS[i] = (gu[i] >=  psopt_inf) ?  qp_inf : gu[i] - shift;
             }
 
-            int_t nWSRs = 5*(n + m) + 100;
             vector<double> dsoc(n), ysoc(n + m);
-            returnValue rvs;
+            bool rvs_ok = false;
 
-            if (use_extern) {
+            {
                 QpProblem qpp;
                 qpp.nv  = n;              qpp.mc  = m;
                 qpp.H   = exact_hessian ? &Hm : NULL;
@@ -1945,27 +1847,15 @@ int SQP_interface(Alg&         algorithm,
                 string why;
                 (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
                                        exact_hessian, qs, why);
-                rvs = qs.ok ? SUCCESSFUL_RETURN : RET_INIT_FAILED;
+                rvs_ok = qs.ok;
                 if (qs.ok) {
                     for (int j = 0; j < n; j++) dsoc[j]   = qs.d[(size_t) j];
                     for (int j = 0; j < n; j++) ysoc[j]   = qs.z[(size_t) j];
                     for (int i = 0; i < m; i++) ysoc[n+i] = -qs.lambda[(size_t) i];
                 }
             }
-            else {
-                QProblem qps(n, m);
-                qps.setOptions(qpopts);
-                rvs = qps.init(Hqp, &gf(0), Aqp.get(), &lbd[0], &ubd[0],
-                               &lbS[0], &ubS[0], nWSRs);
-                if (rvs == SUCCESSFUL_RETURN || rvs == RET_MAX_NWSR_REACHED) {
-                    qps.getPrimalSolution(&dsoc[0]);
-                    qps.getDualSolution(&ysoc[0]);
-                    if (!all_finite(&dsoc[0], n) || !all_finite(&ysoc[0], n + m))
-                        rvs = RET_INIT_FAILED;
-                }
-            }
 
-            if (rvs == SUCCESSFUL_RETURN || rvs == RET_MAX_NWSR_REACHED) {
+            if (rvs_ok) {
 
                 MatrixXd dc(n,1);
                 for (int j = 0; j < n; j++) dc(j) = dsoc[j];
@@ -2101,7 +1991,7 @@ int SQP_interface(Alg&         algorithm,
             snprintf(workspace->text, sizeof(workspace->text),
                      "%5d %16.8e %12.3e %12.3e %10.2e %8d %s%s\n",
                      iter+1, fval, (m > 0) ? max_violation(gval, gl, gu) : 0.0,
-                     dual_err, alpha, (int) nWSR, elastic ? "restoration " : "",
+                     dual_err, alpha, qp_iters, elastic ? "restoration " : "",
                      (exact_hessian && tau > 0.0) ? "shifted" : "");
             psopt_print(workspace, workspace->text);
         }
@@ -2139,7 +2029,7 @@ int SQP_interface(Alg&, MatrixXd*, double (*)(MatrixXd&, Workspace*),
                   Workspace* workspace, void*)
 {
     error_message("algorithm.nlp_method = \"SQP\" requires PSOPT to be built with "
-                  "-DWITH_SQP=ON and qpOASES available");
+                  "-DWITH_SQP=ON and at least one QP backend (e.g. -DWITH_GALAHAD=ON)");
     return 1;
 }
 

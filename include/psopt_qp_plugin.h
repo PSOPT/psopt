@@ -43,8 +43,9 @@ e-mail:    v.m.becerra@ieee.org
  *  compiled against a different index width or a different control-array layout then
  *  writes past the end of something. The symptom is a segmentation fault a long way
  *  from the cause: with QPALM and ProxQP both linked, it was PSOPT's ProxQP test
- *  crashing inside ProxQP, which had not changed. qpOASES's BLAS replacements capturing
- *  dgemm_ for MUMPS was the same failure wearing a different coat.
+ *  crashing inside ProxQP, which had not changed. The BLAS replacements of qpOASES --
+ *  a backend since removed -- capturing dgemm_ for MUMPS was the same failure wearing a
+ *  different coat.
  *
  *  Rather than keep discovering these one at a time, each backend is built as a plugin:
  *  a shared object that links its own QP library and its own linear algebra, compiles
@@ -119,7 +120,7 @@ typedef struct {
 } psopt_qp_problem;
 
 /*  The answer, in PSOPT's sign convention: grad f + A' lambda - z = 0. Backends whose
- *  own convention differs -- qpOASES's duals carry the opposite sign, ProxQP's and
+ *  own convention differs -- GALAHAD's duals carry the opposite sign, ProxQP's and
  *  QPALM's do not -- convert here, and each plugin's conversion is pinned by a test
  *  against a QP whose multiplier is known.
  *
