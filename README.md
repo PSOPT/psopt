@@ -477,15 +477,36 @@ describe, the MUMPS headers are already in your `~/coin/dist` prefix and the
 
 *qpOASES*
 
-Build it from source. One thing matters: qpOASES ships `BLASReplacement.cpp` and
-`LAPACKReplacement.cpp`, stand-ins for a handful of BLAS and LAPACK routines, and its
-CMake build compiles them in unconditionally. Linked alongside a real BLAS they capture
-`dgemm_` and `dpotrf_` for the whole program -- including for MUMPS inside IPOPT, which
-then crashes in its linear solver on problems that worked perfectly well before. PSOPT's
-CMake checks for this and refuses to configure if it finds them, with the remedy:
+`scripts/build_qpoases.sh` does this one too:
 
 ```
-ar d /path/to/libqpOASES.a BLASReplacement.cpp.o LAPACKReplacement.cpp.o
+./scripts/build_qpoases.sh                        # installs under ~/qpoases-install
+./scripts/build_qpoases.sh --help
+```
+
+If you build it by hand, one thing matters. qpOASES ships `BLASReplacement.cpp` and
+`LAPACKReplacement.cpp`, stand-ins for a handful of BLAS and LAPACK routines, and its
+CMake build globs `src/*.cpp` so it compiles them in unconditionally. By default they
+define `dgemm_` and `dpotrf_` under exactly those names, and linked alongside a real BLAS
+they can capture those calls for the whole program -- including for MUMPS inside IPOPT,
+which then crashes in its linear solver on problems that worked perfectly well before.
+The failure appears nowhere near qpOASES. PSOPT's CMake refuses to configure against a
+library in that state.
+
+Configure qpOASES with the option it provides for this, which keeps the replacements but
+renames them to `qpOASES_gemm`, `qpOASES_dpotrf` and so on:
+
+```
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DQPOASES_BUILD_EXAMPLES=OFF \
+      -DQPOASES_AVOID_LA_NAMING_CONFLICTS=ON -DCMAKE_INSTALL_PREFIX=<prefix>
+```
+
+Or, if you would rather qpOASES used the platform's real BLAS, remove the two objects
+from the archive after building:
+
+```
+ar d <prefix>/lib/libqpOASES.a BLASReplacement.cpp.o LAPACKReplacement.cpp.o
+ranlib <prefix>/lib/libqpOASES.a
 ```
 
 *GALAHAD*
