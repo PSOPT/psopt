@@ -1,5 +1,5 @@
 //////////////////////////////////////////////////////////////////////////
-//                  x1.cxx : integrated-residual showcase                 //
+//                  x1_example.cxx : integrated-residual showcase                 //
 //////////////////////////////////////////////////////////////////////////
 // Title:    X1 -- Neuenhofen & Kerrigan analytic optimal-control example  //
 // Method:   collocation vs integrated-residual vs Nie-Kerrigan flexible   //
