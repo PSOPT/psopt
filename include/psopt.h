@@ -193,6 +193,19 @@ typedef struct guess_str Guess;
 struct alg_str {
   int       nlp_iter_max;
   double    nlp_tolerance;
+
+  // Which nonlinear programming solver PSOPT hands the discretised problem to.
+  // "IPOPT" (default) is Waechter and Biegler's interior-point method, and is what most
+  // problems here are solved with. "SQP" is PSOPT's own sequential quadratic programming
+  // solver, described in include/psopt_sqp.hpp and measured in doc/SQP_ALL_EXAMPLES.md;
+  // it must be built with -DWITH_SQP=ON and at least one QP backend, and it offers a
+  // second opinion whose every part lives in this repository rather than behind a
+  // third-party interface.
+  //
+  // "SNOPT" was a third option until 2026 and is no longer accepted. It is commercial,
+  // so it was only ever available to a minority of users, and the SQP above now fills
+  // the same place -- an active-set alternative to an interior-point method -- with no
+  // licence to obtain.
   string    nlp_method;
   // Which quadratic programming solver the SQP uses for its subproblems: "GALAHAD"
   // (default), "ProxQP", "QPALM" or "OSQP". All of them factorise the KKT system
@@ -920,8 +933,6 @@ public:
    unique_ptr<MatrixXd[]>  dual_costates;
    unique_ptr<MatrixXd[]>  dual_path;
    unique_ptr<MatrixXd[]>  dual_events;
-   unique_ptr<MatrixXd>  Xsnopt;
-   unique_ptr<MatrixXd>  gsnopt;
    unique_ptr<MatrixXd[]>  DerivResid;
    MatrixXd*  h;
    unique_ptr<MatrixXd[]>  Xdotgg;
@@ -1084,8 +1095,6 @@ public:
   psopt_ad::ADHandle ad_f, ad_g, ad_hess, ad_fg, ad_gc;  // tags promoted to AD handles (step 2b)
   void *user_data;
   
-// A persistent variable for warm starts in SNOPT7
-  int nS;  
 
   bool hess_verify_done;   // numerical-Hessian FD-vs-AD check runs once per solve (H1)
 

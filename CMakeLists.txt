@@ -50,7 +50,6 @@ project(PSOPT VERSION ${PSOPT_VERSION} LANGUAGES CXX)
 # ────────────────────────────────────────────────────────────────
 
 option(BUILD_EXAMPLES "Build examples from the example subdirectory." OFF)
-option(WITH_SNOPT_INTERFACE "Build interface for the SNOPT optimizer." OFF)
 option(BUILD_TESTS "Build tests for PSOPT." OFF)
 option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but generates PDFs)" OFF)
 option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror (for CI). Default OFF so normal builds are unaffected." OFF)
@@ -105,15 +104,10 @@ endif()
 # BUILD TARGETS
 # ────────────────────────────────────────────────────────────────
 
-if(${WITH_SNOPT_INTERFACE})
-    add_subdirectory(snopt-interface/)
-endif()
-
 file(GLOB SRC src/*.cxx)
 file(GLOB HEADER include/*.h)
 
 add_library(${PROJECT_NAME}
-  $<$<BOOL:$<TARGET_EXISTS:PSOPT_SNOPT_interface>>:$<TARGET_OBJECTS:PSOPT_SNOPT_interface>>
   ${SRC} ${HEADER}
 )
 
@@ -430,10 +424,6 @@ if(PSOPT_STRICT_WARNINGS)
       -Wno-error=maybe-uninitialized
     )
   endif()
-endif()
-
-if(${WITH_SNOPT_INTERFACE})
-    add_definitions(-DPSOPT_RELEASE_STRING="${PSOPT_RELEASE_STRING}" -DHAVE_CSTDDEF -DUSE_SNOPT)
 endif()
 
 if(${HEADLESS})

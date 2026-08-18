@@ -41,11 +41,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     PSOPT
     )
 
-if(${WITH_SNOPT_INTERFACE})
-    enable_language(Fortran)
-    target_link_libraries(${PROJECT_NAME} PRIVATE gfortran ${snopt7_LIBRARIES} PSOPT_SNOPT_interface)
-endif()
-
 enable_testing()
 add_test(test ${PROJECT_NAME})
 

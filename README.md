@@ -151,14 +151,6 @@ sudo make install
 
 The following optional libraries can be employed for additional functionality.
 
-**SNOPT**
-
-
-
-[SNOPT](http://www.sbsi-sol-optimize.com/manuals/SNOPT-Manual.pdf) is an optimization algorithm for large-scale nonlinearly constrained problems based on sequential quadratic programming.
-
-
-
 **GNUplot**
 
 
@@ -208,25 +200,6 @@ Requires:
 Libs:  -Wl,-rpath,${libdir} -L$${libdir}  
 Cflags: -I${includedir} -std=c++11
 ```
-
-For SNOPT (filename: snopt7.pc):
-	
-
-```
-prefix=/usr/local
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include/snopt7
-
-Name: SNOPT7
-Version: 7
-Description: SNOPT NONLINEAR PROGRAMMING LIBRARY 
-Requires: 
-Libs: -L${libdir} -lsnopt7_cpp -Wl,-rpath,${libdir} -Wl,-rpath,${libdir} 
-Cflags: -I${includedir}
-```
-
-
 
 **Tested Platforms**
 
@@ -429,12 +402,6 @@ make
 sudo make install
 ```
 
-If using SNOPT:
-
-```
-cmake -DBUILD_EXAMPLES=ON -DWITH_SNOPT_INTERFACE=ON ..
-```
-
 For debugging:
 
 ```
@@ -462,6 +429,13 @@ sparse, and at least one must be built: `WITH_SQP=ON` on its own is an error, be
 SQP has no QP solver of its own. **GALAHAD's QPA is the one to use**: it is sparse, BSD-3
 licensed, and the configuration the solver has been tuned and measured against (see
 `doc/SQP_ALL_EXAMPLES.md`). ProxQP, QPALM and OSQP are also supported.
+
+SNOPT was supported as a third NLP solver, alongside IPOPT, until 2026, and has been
+removed. It is commercial, so it could never be more than an option a minority of users
+could exercise, and PSOPT's own SQP now occupies the same place -- a sequential quadratic
+programming alternative to an interior-point method -- with no licence to obtain. Its
+removal takes the `snopt-interface` subproject, the `WITH_SNOPT_INTERFACE` option and the
+Fortran dependency that came with it out of the build entirely.
 
 qpOASES was the original backend and has been removed. It was a dense active-set method,
 so its memory was quadratic and its work per subproblem cubic in the number of variables

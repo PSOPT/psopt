@@ -1289,21 +1289,17 @@ bool IPOPT_PSOPT::eval_h(Index n, const Number* x, bool new_x,
 
     }
     else if (nele_hess>0) {     // exactAD
-//    	double *xpr = workspace->Xsnopt->GetPr();
-       double *xpr = &(*workspace->Xsnopt)(0);
-
-
-// *******************************************************************
 	double  obj_factor_d = obj_factor;
 	double*  lambda_d     = workspace->lambda_d.get();
 	for(i=0;i<m;i++)
 		lambda_d[i] = lambda[i];
 	psopt_ad::ad_record(workspace->ad_hess, n, 1, x,
 		[&](const adouble* xin, adouble* yout){ yout[0] = Lagrangian_ad(const_cast<adouble*>(xin), lambda_d, obj_factor_d, m, workspace); });
-	for (i=0;i<n;i++) {
-		xpr[i] = x[i];
-	}
-	psopt_ad::SparseTriplet H = psopt_ad::ad_sparse_hessian(workspace->ad_hess, xpr, /*reuse=*/false);
+	// ad_sparse_hessian takes a const double*, so x goes straight in, as it does in
+	// SQP_interface. It used to be copied into workspace->Xsnopt first -- a buffer that
+	// existed for SNOPT and was borrowed here to obtain a non-const pointer that was
+	// never needed.
+	psopt_ad::SparseTriplet H = psopt_ad::ad_sparse_hessian(workspace->ad_hess, x, /*reuse=*/false);
 	nele_hess = H.nnz();
 	for(i=0;i<nele_hess;i++) {
 		values[i] = H.val[i];
