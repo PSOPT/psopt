@@ -41,6 +41,7 @@ extern "C" {
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <utility>          // std::pair, for the cycle history
 
 #include "psopt_qp_plugin.h"
 #include <string>
@@ -373,6 +374,9 @@ struct QpSolution {
     int            iterations = 0;
     bool           ok = false;
     bool           relaxed = false;   // the constraints could not be met and were relaxed
+    bool           approximate = false; // stopped at its iteration limit; d is not a
+                                        // solution of the subproblem, only a point on
+                                        // the way to one
 };
 
 
@@ -424,7 +428,11 @@ static bool solve_qp_plugin(const string& backend, const QpProblem& p,
 
     if (!psopt_qp_plugin_solve(backend, &q, &r, message)) return false;
 
-    out.iterations = r.iterations;
+    out.iterations  = r.iterations;
+    out.approximate = (r.status == PSOPT_QP_APPROXIMATE);
+    // An approximate step is still usable -- refusing it outright would stall runs that
+    // recover perfectly well from one -- but the caller is told, so that a run of them
+    // can be reacted to rather than accumulated silently.
     out.ok = (r.status == PSOPT_QP_SOLVED) || (r.status == PSOPT_QP_APPROXIMATE);
 
     // A backend that stops early can return a vector that is not a number. On
@@ -1172,6 +1180,48 @@ int SQP_interface(Alg&         algorithm,
     // Lagrangian, and on a minimum-time problem the model is then identically zero.
     bool multiplier_pass = exact_hessian;
     int    status  = 1;                                // 1 = iteration limit
+
+    // ---- stagnation watch ---------------------------------------------------------
+    // Two things can make this loop run to its iteration limit while getting nowhere,
+    // and neither used to be reported.
+    //
+    // The first is a subproblem that stops at qp_iter_max. Its solution is a point on
+    // the way to a step, not a step, and a direction built from it need not be a
+    // descent direction for anything. One such is unremarkable and is often recovered
+    // from; a run of them means the model being handed to the backend is too hard for
+    // the budget it has, and the outer iteration is then walking on noise.
+    //
+    // The second is the consequence: the iterates cycle. On examples/breakwell at 60
+    // Legendre nodes the pairs (objective, maximum violation) recur exactly -- 2.000000
+    // with 2.023e-01, then 3.915909 with 7.573e+02, then back -- for as long as the run
+    // is allowed to continue. Nine hundred seconds of that tells the user nothing,
+    // where naming it after twenty iterations tells them where to look.
+    //
+    // The history is deliberately short and the comparison deliberately tight: this is
+    // meant to catch exact recurrence, not to second-guess a slow but converging run.
+    // Recurrence alone is not enough to call it. A converging run can sit at the same
+    // objective and the same violation for many iterations while the dual error comes
+    // down -- examples/coulomb does exactly that for its last six iterations, printing
+    // 5.26199539e-01 and 2.6e-11 throughout while the dual error falls from 2.7e-04 to
+    // 4.1e-05. Killing that would be a plain error. So a recurrence is only counted
+    // when nothing is improving: neither the best dual error nor the best violation
+    // seen so far. Any improvement in either clears the history and the count, because
+    // the run has moved somewhere new.
+    //
+    // The fingerprint carries the norms of the iterate as well as the objective and the
+    // violation, so that two genuinely different points are not mistaken for one.
+    struct CyclePoint { double f, viol, x2, xinf; };
+    const size_t   cycle_hist_max   = 12;
+    const int      cycle_hits_max   = 3;    // recurrences before the run is stopped
+    const int      qp_capped_max    = 5;    // consecutive capped subproblems before reacting
+    vector<CyclePoint> cycle_hist;
+    int    cycle_hits    = 0;
+    int    qp_capped_run = 0;
+    int    n_qp_capped   = 0;               // over the whole run, for the summary
+    int    n_qp_cap_cuts = 0;               // trust-region cuts made on account of it
+    double best_dual     = PSOPT::inf;
+    double best_viol     = PSOPT::inf;
+
     string message = "Maximum number of SQP iterations reached";
     int    iter    = 0;
 
@@ -1421,6 +1471,8 @@ int SQP_interface(Alg&         algorithm,
 
             qp_ok    = qs.ok;
             qp_iters = qs.iterations;
+            if (qs.approximate) { qp_capped_run++; n_qp_capped++; }
+            else                  qp_capped_run = 0;
             if (qs.ok) {
                 // The plugin ABI reports the bound multipliers as they stand and the
                 // constraint multipliers in the backend's own sign; negating the
@@ -1989,11 +2041,95 @@ int SQP_interface(Alg&         algorithm,
 
         if (iprint) {
             snprintf(workspace->text, sizeof(workspace->text),
-                     "%5d %16.8e %12.3e %12.3e %10.2e %8d %s%s\n",
+                     "%5d %16.8e %12.3e %12.3e %10.2e %8d %s%s%s\n",
                      iter+1, fval, (m > 0) ? max_violation(gval, gl, gu) : 0.0,
                      dual_err, alpha, qp_iters, elastic ? "restoration " : "",
-                     (exact_hessian && tau > 0.0) ? "shifted" : "");
+                     (exact_hessian && tau > 0.0) ? "shifted" : "",
+                     qp_capped_run > 0 ? " qp-capped" : "");
             psopt_print(workspace, workspace->text);
+        }
+
+        // ---- react to a run of subproblems that stopped at their iteration limit ----
+        // The trust region is the honest lever here: a smaller region is a subproblem
+        // the backend can actually finish, and the step it returns is then a step
+        // rather than an interrupted search. Only the exact-Hessian path carries a
+        // trust region; with the quasi-Newton model the shift plays that part, and
+        // raising it is left to the machinery that already owns it.
+        if (qp_capped_run >= qp_capped_max && exact_hessian) {
+            if (Delta > Delta_min) {
+                Delta = max(Delta_min, 0.25*Delta);
+                n_shrinks++;
+                n_qp_cap_cuts++;
+                qp_capped_run = 0;
+                if (iprint) {
+                    snprintf(workspace->text, sizeof(workspace->text),
+                             "   %d consecutive subproblems stopped at the QP iteration limit;"
+                             " trust region reduced to %.2e\n", qp_capped_max, Delta);
+                    psopt_print(workspace, workspace->text);
+                }
+            }
+            else {
+                // The region is already as small as it is allowed to get and the
+                // subproblem still cannot be finished within its budget. Shrinking
+                // further would not help: the difficulty is in the shape of the
+                // subproblem, not its size, which is what a degenerate constraint set
+                // produces -- the SOS1 rows of an integer control being one example.
+                // Grinding on would spend the whole iteration budget to no purpose.
+                status  = 5;
+                message = "The quadratic programming subproblem repeatedly reached "
+                          "algorithm.qp_iter_max at the smallest permitted trust region. "
+                          "The subproblem is too hard for its budget rather than too "
+                          "large: raise algorithm.qp_iter_max, try another "
+                          "algorithm.qp_solver, or reformulate";
+                break;
+            }
+        }
+
+        // ---- cycling ---------------------------------------------------------------
+        {
+            const double viol_now = (m > 0) ? max_violation(gval, gl, gu) : 0.0;
+
+            // Is anything getting better? A one per cent improvement in either measure
+            // counts, which is loose enough not to be defeated by rounding and tight
+            // enough that a run creeping sideways does not qualify.
+            const bool improving = (dual_err < 0.99*best_dual) || (viol_now < 0.99*best_viol);
+            best_dual = min(best_dual, dual_err);
+            best_viol = min(best_viol, viol_now);
+
+            if (improving) {
+                cycle_hits = 0;
+                cycle_hist.clear();
+            }
+            else {
+                double x2 = 0.0, xinf = 0.0;
+                for (int j = 0; j < n; j++) { x2 += x(j)*x(j); xinf = max(xinf, fabs(x(j))); }
+                x2 = sqrt(x2);
+                CyclePoint now; now.f = fval; now.viol = viol_now; now.x2 = x2; now.xinf = xinf;
+
+                bool seen = false;
+                for (size_t k = 0; k < cycle_hist.size(); k++) {
+                    const CyclePoint& c = cycle_hist[k];
+                    if (fabs(c.f    - now.f)    <= 1.0e-12*max(1.0, fabs(now.f))   &&
+                        fabs(c.viol - now.viol) <= 1.0e-12*max(1.0, now.viol)      &&
+                        fabs(c.x2   - now.x2)   <= 1.0e-12*max(1.0, now.x2)        &&
+                        fabs(c.xinf - now.xinf) <= 1.0e-12*max(1.0, now.xinf)) { seen = true; break; }
+                }
+                if (seen) cycle_hits++;
+                cycle_hist.push_back(now);
+                if (cycle_hist.size() > cycle_hist_max) cycle_hist.erase(cycle_hist.begin());
+            }
+
+            if (cycle_hits >= cycle_hits_max) {
+                status  = 4;
+                message = (n_qp_capped > iter/2)
+                    ? "The iterates are cycling, and most subproblems stopped at the QP "
+                      "iteration limit: raise algorithm.qp_iter_max, or reformulate. "
+                      "A Lagrange integrand on a Lobatto pseudospectral mesh is one known "
+                      "cause -- see algorithm.objective_form"
+                    : "The iterates are cycling: the same objective and constraint "
+                      "violation have recurred, so the iteration is not converging";
+                break;
+            }
         }
     }
 
@@ -2011,10 +2147,11 @@ int SQP_interface(Alg&         algorithm,
                  "   restoration steps    %d\n"
                  "   second-order corr.   %d\n"
                  "   Hessian shifts       %d\n"
-                 "   trust region cuts    %d\n",
+                 "   trust region cuts    %d\n"
+                 "   QP hit its limit     %d (%d trust-region cuts on that account)\n",
                  iter, message.c_str(), fval,
                  (m > 0) ? max_violation(gval, gl, gu) : 0.0, n_restorations, n_corrections,
-                 n_shifts, n_shrinks);
+                 n_shifts, n_shrinks, n_qp_capped, n_qp_cap_cuts);
         psopt_print(workspace, workspace->text);
     }
 
