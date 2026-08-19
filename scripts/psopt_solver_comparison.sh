@@ -38,6 +38,7 @@ OUTDIR="psopt_comparison_$(date +%Y%m%d_%H%M%S)"
 LIMIT=1800          # seconds per example per solver
 ONLY=""
 SKIP=""
+QP="GALAHAD"        # which QP backend the SQP runs use; it matters more than expected
  
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
@@ -53,6 +54,7 @@ Options:
   --limit SECS   time limit per run           (default: 1800)
   --only LIST    comma-separated example names, for a quick trial run
   --skip LIST    comma-separated example names to leave out (e.g. unpublished work)
+  --qp NAME      QP backend for the SQP runs (default GALAHAD; try OSQP, ProxQP, QPALM)
   --help         this message
  
 Runs are sequential, deliberately: wall-clock times are comparable between examples
@@ -69,6 +71,7 @@ while [ $# -gt 0 ]; do
         --limit) LIMIT="$2"; shift 2 ;;
         --only)  ONLY="$2"; shift 2 ;;
         --skip)  SKIP="$2"; shift 2 ;;
+        --qp)    QP="$2";   shift 2 ;;
         --help|-h) usage ;;
         *) die "unknown option '$1' (try --help)" ;;
     esac
@@ -113,7 +116,7 @@ done
  
 probe_log=$(mktemp)
 ( cd "$BUILD/examples/$PROBE" && env OMP_CANCELLATION=TRUE OMP_PROC_BIND=TRUE \
-    PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER=GALAHAD \
+    PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER="$QP" \
     "$TIMEOUT" 300 "./$PROBE" > "$probe_log" 2>&1 ) || true
  
 if ! grep -q "^SQP (" "$probe_log"; then
@@ -167,6 +170,8 @@ fi
 N=$(echo "$EXAMPLES" | wc -w | tr -d ' ')
  
 say "Running $N examples under two solvers, limit ${LIMIT}s each"
+info "SQP QP backend: $QP"
+info "SQP QP backend: $QP"
 info "output: $OUTDIR"
 info "this will take a while; results.csv is written as it goes"
  
@@ -177,7 +182,7 @@ run_one() {
     local env_args=""
  
     if [ "$solver" = "SQP" ]; then
-        env_args="PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER=GALAHAD"
+        env_args="PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER=$QP"
     else
         env_args="PSOPT_NLP_METHOD=IPOPT"
     fi
