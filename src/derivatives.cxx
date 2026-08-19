@@ -705,18 +705,12 @@ void ScalarGradient( double (*fun)(MatrixXd& x, Workspace* workspace), MatrixXd&
 
   sqreps=sqrt( PSOPT_extras::GetEPS() )*ones(nvar,1);
   
-  int tcount=0;
-  
-  for (int jj=0; jj<nvar; jj++){
-
-        if(  x(jj) <= (xub(jj)-sqreps(jj))||   x(jj)>=(xlb(jj)+sqreps(jj)) ) 
-           tcount++; 
-  }
-
-  if (tcount)
-  {
-     F3 = fun(x, workspace);
-  }
+  // The base point, needed by the one-sided formulas below. The guard this replaces
+  // counted variables satisfying "x <= xub - sqrt(eps) OR x >= xlb + sqrt(eps)", which
+  // is true unless a variable is somehow close to both ends of its range at once, so it
+  // always fired and F3 was always computed. Reading as though the AND was meant, it was
+  // one edit away from leaving the one-sided branches differencing against zero.
+  F3 = fun(x, workspace);
 
   for(j=0;j<nvar;j++) { // EIGEN_UPDATE: index j shifted by -1
       delj = sqreps(0)*(1.0+fabs(x(j)));
@@ -747,6 +741,27 @@ void ScalarGradient( double (*fun)(MatrixXd& x, Workspace* workspace), MatrixXd&
       (*grad)(j) = dfdx;
   }
 
+  // A derivative checker, for when a run behaves as though its gradient were wrong.
+  // Setting PSOPT_GRAD_VERIFY recomputes the same gradient by automatic
+  // differentiation and reports the worst disagreement, relative to the largest
+  // component. Finite differences should agree to something like 1e-8; a
+  // disagreement far larger than that says the numerical gradient is not to be
+  // trusted on this problem, which is worth knowing before drawing conclusions from
+  // the solve. Costs nothing when the variable is unset.
+  if (getenv("PSOPT_GRAD_VERIFY")) {
+      MatrixXd gad(nvar,1);
+      bool done = false;
+      ScalarGradientAD( ff_ad, x, &gad, &done, workspace->ad_f, workspace );
+      double worst = 0.0; long jw = -1; double gs = 0.0;
+      for (long t = 0; t < nvar; t++) gs = max(gs, fabs(gad(t)));
+      for (long t = 0; t < nvar; t++) {
+          const double e = fabs((*grad)(t) - gad(t))/max(1.0e-30, gs);
+          if (e > worst) { worst = e; jw = t; }
+      }
+      fprintf(stderr, "[grad-verify] n=%ld worst relative difference %.3e at j=%ld "
+                      "(fd %.8e, ad %.8e)\n", (long) nvar, worst, jw,
+                      jw >= 0 ? (*grad)(jw) : 0.0, jw >= 0 ? gad(jw) : 0.0);
+  }
 
 }
 

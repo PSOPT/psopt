@@ -81,6 +81,8 @@ static void psopt_env_override_int(const char* var, int& field, Workspace* works
 static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspace)
 {
     psopt_env_override("PSOPT_NLP_METHOD",       algorithm.nlp_method,      workspace);
+    psopt_env_override("PSOPT_DERIVATIVES",      algorithm.derivatives,     workspace);
+    psopt_env_override("PSOPT_DERIVATIVES",      algorithm.derivatives,     workspace);
     psopt_env_override("PSOPT_HESSIAN",          algorithm.hessian,         workspace);
     psopt_env_override("PSOPT_QP_SOLVER",        algorithm.qp_solver,       workspace);
     psopt_env_override("PSOPT_QP_RESTORATION",   algorithm.qp_restoration,  workspace);
