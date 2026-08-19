@@ -78,6 +78,11 @@ int get_number_nlp_vars(Prob& problem, Workspace* workspace)
         }
    }
 
+   // One variable per phase carrying that phase's running cost, when
+   // algorithm.objective_form asks for it. Appended after every phase, so that
+   // get_iphase_offset and the accessors built on it are untouched.
+   nlp_vars += mayer_extra_vars(problem, *workspace->algorithm, workspace);
+
    return nlp_vars;
 }
 
@@ -117,6 +122,9 @@ int get_number_nlp_constraints(Prob& problem,Workspace* workspace)
     }
 
    nlp_ncons +=  problem.nlinkages;
+
+   // One equality per phase tying that phase's cost variable to its quadrature.
+   nlp_ncons += mayer_extra_vars(problem, *workspace->algorithm, workspace);
 
    // Robust-DAIR (Option B): a box constraint |(xdot-f)_{g,q,j}| <= ir_residual_bound on every
    // raw residual component (group g, GL point q, state j) of every phase. The number of groups

@@ -130,6 +130,16 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
 
    }
 
+   // The cost variables carry no bound of their own: what they may be is decided by the
+   // equality that ties each to its phase's quadrature.
+   {
+       const int nm = mayer_extra_vars(problem, algorithm, workspace);
+       for (int q = 0; q < nm; q++) {
+           xlb(x_phase_offset+q) = -PSOPT::inf;
+           xub(x_phase_offset+q) =  PSOPT::inf;
+       }
+   }
+
 }
 
 
@@ -286,6 +296,18 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
         g_l[j] = problem->bounds.lower.linkage(k); // EIGEN_UPDATE
         g_u[j] = problem->bounds.upper.linkage(k); // EIGEN_UPDATE
 
+  }
+
+  // J_i - (quadrature of phase i) = 0, one per converted phase, immediately after the
+  // linkages. This block and the robust-DAIR block below are mutually exclusive:
+  // mayer_extra_vars declines the integrated-residual transcriptions outright.
+  {
+      const int nm = mayer_extra_vars(*problem, *algorithm, workspace);
+      for (k = 0; k < nm; k++) {
+          j = lam_phase_offset + problem->nlinkages + k;
+          g_l[j] = 0.0;
+          g_u[j] = 0.0;
+      }
   }
 
   // Robust-DAIR (Option B): box bounds on every residual component  |r_{k,q,j}| <= delta.

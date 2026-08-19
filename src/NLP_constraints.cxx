@@ -545,6 +545,27 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
   }
 
+  // The equalities tying each phase's cost variable to its quadrature, appended after
+  // the linkages. Mutually exclusive with the residual-box block below.
+  {
+      const int nm = mayer_extra_vars(*problem, *algorithm, workspace);
+      if (nm > 0) {
+          const int mayer_base = workspace->nvars - nm;
+          int q = 0;
+          for (int ip = 0; ip < problem->nphases; ip++) {
+              if ( problem->phase[ip].zero_cost_integrand ) continue;
+              adouble t0m, tfm;
+              get_times(&t0m, &tfm, xad, ip+1, workspace);
+              adouble* par = workspace->parameters[
+                  (problem->multi_segment_flag || workspace->auto_linked_flag) ? 0 : ip ].get();
+              get_parameters(par, xad, ip+1, workspace);
+              gad[phase_offset + problem->nlinkages + q] =
+                  xad[mayer_base + q] - phase_running_cost(ip, ip+1, xad, t0m, tfm, par, workspace);
+              q++;
+          }
+      }
+  }
+
   // Robust-DAIR optimality step (Option B): append the residual-box constraint block
   //   |(xdot - f)_{k,q,j}| <= ir_residual_bound
   // for every raw residual component, immediately after the linkages. Bounding the residual

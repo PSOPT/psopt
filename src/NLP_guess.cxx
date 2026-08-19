@@ -198,6 +198,11 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
 
   }
 
+  // Start each cost variable at the quadrature its equality will tie it to, so that the
+  // guess satisfies that equality instead of opening with an artificial violation the
+  // size of the whole running cost.
+  seed_mayer_cost_variables(x0, problem, algorithm, workspace);
+
   determine_objective_scaling(x0,solution,problem,algorithm, workspace);
 
   determine_constraint_scaling_factors(x0, solution, problem, algorithm, workspace);

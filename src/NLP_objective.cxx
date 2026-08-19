@@ -49,6 +49,55 @@ using namespace std;
 // residual that must be driven to zero, and folding one in would penalise a feasible point.
 // The test is exact equality of the declared bounds, so a constraint given a deliberate
 // tolerance band stays an ordinary pointwise path constraint.
+// Set each cost variable to its phase's quadrature at the given point.
+void seed_mayer_cost_variables(MatrixXd& x0, Prob& problem, Alg& algorithm, Workspace* workspace)
+{
+    const int nm = mayer_extra_vars(problem, algorithm, workspace);
+    if (nm <= 0) return;
+
+    adouble* xad = workspace->xad.get();
+    for (int j = 0; j < workspace->nvars; j++) xad[j] = x0(j);
+
+    const int base = workspace->nvars - nm;
+    int q = 0;
+    for (int ip = 0; ip < problem.nphases; ip++) {
+        if ( problem.phase[ip].zero_cost_integrand ) continue;
+        adouble t0m, tfm;
+        get_times(&t0m, &tfm, xad, ip+1, workspace);
+        adouble* par = workspace->parameters[
+            (problem.multi_segment_flag || workspace->auto_linked_flag) ? 0 : ip ].get();
+        get_parameters(par, xad, ip+1, workspace);
+        x0(base + q) = phase_running_cost(ip, ip+1, xad, t0m, tfm, par, workspace).value();
+        q++;
+    }
+}
+
+
+// See psopt.h for what this decides and why the Lobatto case is the one that needs it.
+int mayer_extra_vars(Prob& problem, Alg& algorithm, Workspace* workspace)
+{
+    if ( algorithm.objective_form == "as-posed" || algorithm.objective_form == "" ) return 0;
+
+    // Only a plain quadrature objective can be carried this way. The integrated-residual
+    // transcriptions build their objective differently, and a regularisation term couples
+    // the mesh more widely than one variable per phase can represent.
+    if ( algorithm.transcription_method == "integrated-residual" ) return 0;
+    if ( algorithm.ir_regularization > 0.0 )                       return 0;
+
+    if ( algorithm.objective_form == "auto" ) {
+        if ( algorithm.nlp_method != "SQP" ) return 0;
+        const bool lobatto = ( algorithm.collocation_method == "Legendre" ||
+                               algorithm.collocation_method == "Chebyshev" );
+        if ( !lobatto ) return 0;
+    }
+
+    int n = 0;
+    for (int i = 0; i < problem.nphases; i++)
+        if ( !problem.phase[i].zero_cost_integrand ) n++;
+    return n;
+}
+
+
 int ir_algebraic_rows(Prob& problem, Alg& algorithm, int i)
 {
     if ( algorithm.transcription_method != "integrated-residual" ) return 0;
@@ -248,62 +297,34 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
 }
 
 
-adouble ff_ad(adouble* xad, Workspace* workspace)
+// ---------------------------------------------------------------------------------
+// The running cost of one phase: the quadrature of the user's integrand over the mesh,
+// in whichever form the transcription calls for. Extracted so that the objective and,
+// when algorithm.objective_form carries the running cost as a variable, the constraint
+// that ties that variable to it are computed by the same code rather than by two
+// copies of it.
+// ---------------------------------------------------------------------------------
+adouble phase_running_cost(int i, int iphase, adouble* xad, adouble t0, adouble tf,
+                           adouble* parameters, Workspace* workspace)
 {
-    // This function implements the NLP cost function for automatic differentiation
+    Prob&  problem   = *workspace->problem;
+    Alg&   algorithm = *workspace->algorithm;
+    Sol&   solution  = *workspace->solution;
+    const bool obj_restricted = false;   // this path is never called restricted
 
-    adouble retval=0;
-    adouble *states;
-    adouble *states_next;
-    adouble *controls;
-    adouble *parameters;
-    adouble *initial_states;
-    adouble time;
-    adouble t0;
-    adouble tf;
-    adouble sum_cost;
-    adouble tmp1;
+    adouble* states      = workspace->states[i].get();
+    adouble* states_next = workspace->states_next[i].get();
+    adouble* controls    = workspace->controls[i].get();
+
+    MatrixXd& w = workspace->w[i];
+
+    int norder = problem.phase[i].current_number_of_intervals;
+    int k;
+    adouble phase_sum_cost = 0.0;
     adouble integrand_cost;
-    adouble endpoint_cost;
-    adouble phase_sum_cost;
+    adouble time;
 
-    Sol& solution = *workspace->solution;
-
-
-    int i,k, iph;
-
-    Prob& problem = *workspace->problem;
-
-    Alg& algorithm = *workspace->algorithm;
-
-    sum_cost = 0.0;
-
-    for(i=0;i<problem.nphases;i++)
-    {
-        int iphase = i+1;
-	MatrixXd& w = workspace->w[i];
-
-        int norder    = problem.phase[i].current_number_of_intervals;
-
-
-        phase_sum_cost = 0.0;
-
-	if ( problem.multi_segment_flag || workspace->auto_linked_flag ) {
-	  iph = 1;
-	}
-	else {
-	  iph = iphase;
-	}
-
-	states        = workspace->states[i].get();
-	states_next   = workspace->states_next[i].get();
-        controls      = workspace->controls[i].get();
-        parameters    = workspace->parameters[iph-1].get();
-        initial_states= workspace->initial_states[i].get();
-
-        get_parameters(parameters, xad, iphase, workspace);
-
-        get_times(&t0, &tf, xad, iphase, workspace);
+    (void) obj_restricted; (void) solution; (void) states_next;
 
 	if ( workspace->transcription_method == "integrated-residual" && algorithm.ir_objective != "cost" ) {
 	    // Integrated-residual transcription, feasibility step (increment 1 / DAIR
@@ -437,7 +458,84 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 
 	    }
 
-	} // End if-else (zero_cost_integrand)
+
+	}
+
+    return phase_sum_cost;
+}
+
+adouble ff_ad(adouble* xad, Workspace* workspace)
+{
+    // This function implements the NLP cost function for automatic differentiation
+
+    adouble retval=0;
+    adouble *states;
+    adouble *states_next;
+    adouble *controls;
+    adouble *parameters;
+    adouble *initial_states;
+    adouble time;
+    adouble t0;
+    adouble tf;
+    adouble sum_cost;
+    adouble tmp1;
+    adouble integrand_cost;
+    adouble endpoint_cost;
+    adouble phase_sum_cost;
+
+    Sol& solution = *workspace->solution;
+
+
+    int i,k, iph;
+
+    Prob& problem = *workspace->problem;
+
+    Alg& algorithm = *workspace->algorithm;
+
+    sum_cost = 0.0;
+
+    const int n_mayer    = mayer_extra_vars(problem, algorithm, workspace);
+    const int mayer_base = workspace->nvars - n_mayer;
+    int       i_mayer    = 0;
+
+    for(i=0;i<problem.nphases;i++)
+    {
+        int iphase = i+1;
+	MatrixXd& w = workspace->w[i];
+
+        int norder    = problem.phase[i].current_number_of_intervals;
+
+
+        phase_sum_cost = 0.0;
+
+	if ( problem.multi_segment_flag || workspace->auto_linked_flag ) {
+	  iph = 1;
+	}
+	else {
+	  iph = iphase;
+	}
+
+	states        = workspace->states[i].get();
+	states_next   = workspace->states_next[i].get();
+        controls      = workspace->controls[i].get();
+        parameters    = workspace->parameters[iph-1].get();
+        initial_states= workspace->initial_states[i].get();
+
+        get_parameters(parameters, xad, iphase, workspace);
+
+        get_times(&t0, &tf, xad, iphase, workspace);
+
+        // With algorithm.objective_form carrying the running cost as a variable, the
+        // objective reads that variable instead of summing the quadrature here; the
+        // equality appended in gg_ad is what makes the two the same number. The point of
+        // the exercise is that the objective's gradient is then one entry per phase
+        // rather than a weight on every node.
+        if ( n_mayer > 0 && !problem.phase[i].zero_cost_integrand ) {
+            phase_sum_cost = xad[mayer_base + (i_mayer++)];
+        }
+        else {
+	    phase_sum_cost = phase_running_cost(i, iphase, xad, t0, tf, parameters, workspace);
+        }
 
         // Integrated-residual penalty term:
         //  * increment 2 (collocation): J + rho*R with hard defects (costates survive);

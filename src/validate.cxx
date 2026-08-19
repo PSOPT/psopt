@@ -75,6 +75,10 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        if (algorithm.ir_dair_delta_factor <= 0.0)
           error_message("algorithm.ir_dair_delta_factor must be > 0 ");
     }
+    if ( algorithm.objective_form != "as-posed" && algorithm.objective_form != "mayer"
+         && algorithm.objective_form != "auto" )
+       error_message("algorithm.objective_form must be \"as-posed\", \"mayer\" or \"auto\" ");
+
     if (algorithm.ir_local_order != 0) {
        if (algorithm.ir_local_order < 2)
           error_message("algorithm.ir_local_order must be 0 (legacy cubic-Hermite IR) or >= 2 (Nie-Kerrigan) ");

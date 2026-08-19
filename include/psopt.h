@@ -346,6 +346,16 @@ struct alg_str {
                                     // residual component by scale.states(k)/scale.time, so a scalar
                                     // box tolerance and the K schedule are model-independent; "none"
                                     // bounds the raw residual (pre-scaling behaviour).
+  string    objective_form;         // "as-posed" (default) leaves the objective as the user
+                                    // wrote it. "mayer" carries the Lagrange integrand of every
+                                    // phase as an extra NLP variable J_i tied to the quadrature
+                                    // by one equality, so that the objective seen by the solver
+                                    // is a sum of single variables rather than a dense weighted
+                                    // sum over every node. "auto" does that only where it is
+                                    // known to pay: the built-in SQP, a Lobatto pseudospectral
+                                    // scheme (Legendre or Chebyshev), and a phase that actually
+                                    // has an integrand. See the note in SQP_interface on why a
+                                    // Lobatto differentiation matrix is the case that needs it.
   string    ir_include_path;        // integrated-residual transcription: which path constraints
                                     // are folded into the residual alongside xdot-f. "auto"
                                     // (default) includes every path constraint declared as an
@@ -1325,6 +1335,35 @@ inline int ir_box_rows(int norder, int nstates, int m, int ir_local_order, int n
 // unconditionally. Declared here and defined in NLP_objective.cxx; the phase index i is
 // zero-based, matching problem.phase[i].
 int ir_algebraic_rows(Prob& problem, Alg& algorithm, int i);
+
+//! Is the Lagrange-to-Mayer transformation in force, and for how many phases?
+/**
+   Returns the number of phases whose running cost is carried as an extra NLP variable
+   rather than summed straight into the objective; zero when the transformation is off,
+   which is the default and the only state any existing problem sees.
+
+   The variables are appended at the very end of the decision vector, after every phase
+   and every linkage, precisely so that no existing offset moves: get_iphase_offset and
+   the get_states / get_controls / get_parameters family are untouched by this.
+
+   "auto" restricts the transformation to the case measured to need it -- the built-in
+   SQP on a Lobatto pseudospectral mesh -- because a Lobatto scheme collocates at every
+   support point and its differentiation matrix is therefore square and rank-deficient
+   by one, while Radau's is rectangular and of full row rank. The transformation is
+   declined outright for transcriptions whose objective is not a plain quadrature.
+*/
+int mayer_extra_vars(Prob& problem, Alg& algorithm, Workspace* workspace);
+
+//! The running cost of one phase: the quadrature of the user's integrand over its mesh.
+/**
+   Shared by the objective and, when the running cost is carried as a variable, by the
+   equality that ties that variable to it, so that the two are the same computation
+   rather than two copies of it.
+*/
+adouble phase_running_cost(int i, int iphase, adouble* xad, adouble t0, adouble tf,
+                           adouble* parameters, Workspace* workspace);
+
+void seed_mayer_cost_variables(MatrixXd& x0, Prob& problem, Alg& algorithm, Workspace* workspace);
 
 // The corresponding index list (declaration order) and the common bound value of each such
 // equality path constraint. Used by the residual itself and by the residual-box scaling.
