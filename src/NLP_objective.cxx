@@ -468,25 +468,24 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 {
     // This function implements the NLP cost function for automatic differentiation
 
+    // The scratch this function used to need for the quadrature -- states_next,
+    // controls, the weights, the node index and the integrand -- now belongs to
+    // phase_running_cost, which does that work. What is left here is the endpoint cost
+    // and the accumulation.
     adouble retval=0;
     adouble *states;
-    adouble *states_next;
-    adouble *controls;
     adouble *parameters;
     adouble *initial_states;
-    adouble time;
     adouble t0;
     adouble tf;
     adouble sum_cost;
-    adouble tmp1;
-    adouble integrand_cost;
     adouble endpoint_cost;
     adouble phase_sum_cost;
 
     Sol& solution = *workspace->solution;
 
 
-    int i,k, iph;
+    int i, iph;
 
     Prob& problem = *workspace->problem;
 
@@ -501,7 +500,6 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
     for(i=0;i<problem.nphases;i++)
     {
         int iphase = i+1;
-	MatrixXd& w = workspace->w[i];
 
         int norder    = problem.phase[i].current_number_of_intervals;
 
@@ -516,8 +514,6 @@ adouble ff_ad(adouble* xad, Workspace* workspace)
 	}
 
 	states        = workspace->states[i].get();
-	states_next   = workspace->states_next[i].get();
-        controls      = workspace->controls[i].get();
         parameters    = workspace->parameters[iph-1].get();
         initial_states= workspace->initial_states[i].get();
 
