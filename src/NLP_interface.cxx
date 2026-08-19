@@ -183,7 +183,7 @@ int NLP_interface(
   // Ask Ipopt to solve the problem
   status = app->OptimizeTNLP(mynlp);
 
-  if (status == Solve_Succeeded) {
+  if (psopt_ipopt_solved((int) status)) {
     psopt_print(workspace,"\n\n*** The problem has been solved!\n");
   }
   else {

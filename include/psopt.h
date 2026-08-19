@@ -1736,6 +1736,31 @@ bool isSymmetric(const MatrixXd& m);
 // the global scope of code that includes psopt.h.
 
 
+//! Did Ipopt solve the problem?
+/**
+   Ipopt reports more than one flavour of success, and testing only for
+   Solve_Succeeded reports a solved problem as a failure. Solved_To_Acceptable_Level
+   is returned when the tight tolerance proved unreachable but the acceptable one was
+   met: the iterate is a solution, and PSOPT's own mesh refinement and error estimates
+   are the right judges of whether it is good enough, not the tolerance Ipopt happened
+   to stop at. Both count as solved, which is the convention psopt_integer_solution_ok
+   in integer_parameters.cxx already followed.
+
+   Feasible_Point_Found is deliberately excluded. It means a feasible point was found
+   for a pure feasibility problem, which is not the same as an optimal solution --
+   the same distinction the SQP's strategy F draws when it declines to call its
+   feasible point optimal.
+
+   Applies to solution.nlp_return_code only when algorithm.nlp_method == "IPOPT";
+   the SQP uses its own convention, in which zero is success and non-zero is not.
+*/
+inline bool psopt_ipopt_solved(int nlp_return_code)
+{
+    return nlp_return_code == (int) Ipopt::Solve_Succeeded
+        || nlp_return_code == (int) Ipopt::Solved_To_Acceptable_Level;
+}
+
+
 
 //! TripletSparseMatrix class
 /**

@@ -276,7 +276,7 @@ void print_psopt_summary(Prob& problem, Alg& algorithm, Sol& solution, Workspace
     fprintf(outfile,"\nDate and time of this run: \t\t\t%s", solution.end_date_and_time.c_str() );
 
     if ( algorithm.nlp_method == "IPOPT") {
-        if (solution.nlp_return_code  == (int) Solve_Succeeded) {
+        if (psopt_ipopt_solved(solution.nlp_return_code)) {
             fprintf(outfile,"\nOptimal (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {
 
@@ -484,7 +484,7 @@ void Save_to_json_file(const string& filename, Prob& problem, Sol& solution, Alg
     bool solved = false;
     const char* message = "*** The problem FAILED! - see screen output";
     if (algorithm.nlp_method == "IPOPT") {
-        solved = (solution.nlp_return_code == (int) Solve_Succeeded);
+        solved = psopt_ipopt_solved(solution.nlp_return_code);
         if (solved) message = "The problem has been solved!";
     }
     else if (algorithm.nlp_method == "SQP") {
@@ -661,7 +661,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
     fprintf(outfile,"\nTotal CPU time (seconds):\t\t\t%e", solution.cpu_time);
 
     if ( algorithm.nlp_method == "IPOPT") {
-        if (solution.nlp_return_code  == (int) Solve_Succeeded) {
+        if (psopt_ipopt_solved(solution.nlp_return_code)) {
             fprintf(outfile,"\nOptimal (unscaled) cost function value: \t%e", solution.cost);
             for (i=0;i < problem.nphases; i++) {
             	fprintf(outfile,"\nPhase %i endpoint cost function value:\t\t%e",i+1, solution.endpoint_cost[i]);
