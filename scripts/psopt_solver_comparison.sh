@@ -77,6 +77,20 @@ done
 [ -n "$BUILD" ] || die "give --build, the PSOPT build directory (try --help)"
 [ -d "$BUILD/examples" ] || die "no examples directory under $BUILD -- was it configured with -DBUILD_EXAMPLES=ON?"
  
+# Each example is run with the working directory set to its own build directory, because
+# several of them open data files by a path relative to it. Anything this script writes
+# while that is true -- the per-run logs above all -- must therefore be named absolutely,
+# or the redirect lands nowhere and every example is recorded as having failed in zero
+# seconds. Resolve both paths here, once, rather than at each use.
+abspath() {
+    case "$1" in
+        /*) printf '%s\n' "$1" ;;
+        *)  printf '%s\n' "$PWD/${1#./}" ;;
+    esac
+}
+BUILD=$(abspath "$BUILD")
+OUTDIR=$(abspath "$OUTDIR")
+ 
 # ---------------------------------------------------------------------------------
 # Preconditions, checked rather than assumed.
 #
@@ -218,45 +232,88 @@ for r in rows:
  
 def ok(r): return r and r['status'] in ('solved', 'pass_selfcheck')
  
+# Some examples are self-checking studies rather than a single optimal control solve:
+# they run several configurations and print their own verdict, so they have no single
+# objective and no mesh-refinement trace. They are named, but kept out of the counts and
+# the statistics, where they would compare nothing against nothing.
+def is_study(e):
+    for sv in ('IPOPT', 'SQP'):
+        r = by[e].get(sv)
+        if not r: continue
+        if r['status'] == 'pass_selfcheck': return True
+        if r['status'] == 'failed' and not r['objective'] and r['meshes'] == '0': return True
+    return False
+ 
 ex = sorted(by)
-ni = sum(1 for e in ex if ok(by[e].get('IPOPT')))
-ns = sum(1 for e in ex if ok(by[e].get('SQP')))
-both = [e for e in ex if ok(by[e].get('IPOPT')) and ok(by[e].get('SQP'))]
+studies = [e for e in ex if is_study(e)]
+cmp_ex = [e for e in ex if e not in studies]
+ni = sum(1 for e in cmp_ex if ok(by[e].get('IPOPT')))
+ns = sum(1 for e in cmp_ex if ok(by[e].get('SQP')))
+both = [e for e in cmp_ex if ok(by[e].get('IPOPT')) and ok(by[e].get('SQP'))]
  
 out = []
 out.append(f"# PSOPT: IPOPT against the built-in SQP\n")
-out.append(f"{len(ex)} examples, time limit {limit} s per run.\n")
+out.append(f"{len(cmp_ex)} optimal control problems, time limit {limit} s per run.\n")
+if studies:
+    out.append(f"({len(studies)} further examples are self-checking studies rather than a single "
+               f"solve, and are excluded from everything below: " + ", ".join(studies) + ".)\n")
 out.append(f"| | IPOPT | SQP |\n|---|---|---|")
 out.append(f"| solved | **{ni}** | **{ns}** |")
 for st in ('timeout', 'partial', 'failed'):
-    out.append(f"| {st} | {sum(1 for e in ex if (by[e].get('IPOPT') or {}).get('status')==st)} "
-               f"| {sum(1 for e in ex if (by[e].get('SQP') or {}).get('status')==st)} |")
+    out.append(f"| {st} | {sum(1 for e in cmp_ex if (by[e].get('IPOPT') or {}).get('status')==st)} "
+               f"| {sum(1 for e in cmp_ex if (by[e].get('SQP') or {}).get('status')==st)} |")
 out.append("")
  
-only_i = [e for e in ex if ok(by[e].get('IPOPT')) and not ok(by[e].get('SQP'))]
-only_s = [e for e in ex if ok(by[e].get('SQP')) and not ok(by[e].get('IPOPT'))]
+only_i = [e for e in cmp_ex if ok(by[e].get('IPOPT')) and not ok(by[e].get('SQP'))]
+only_s = [e for e in cmp_ex if ok(by[e].get('SQP')) and not ok(by[e].get('IPOPT'))]
 out.append(f"**IPOPT solves, the SQP does not ({len(only_i)}):** " + (", ".join(only_i) or "none") + "\n")
 out.append(f"**The SQP solves, IPOPT does not ({len(only_s)}):** " + (", ".join(only_s) or "none") + "\n")
  
 # agreement and speed, over the examples both solve
 dis, ratios = [], []
+tot_i = tot_s = 0.0
 for e in both:
     try:
         a, b = float(by[e]['IPOPT']['objective']), float(by[e]['SQP']['objective'])
-        rel = abs(a-b)/max(1e-12, abs(a))
-        if rel > 1e-4: dis.append((e, a, b, rel))
+        # A relative comparison of two objectives that are both numerically zero says
+        # nothing: 2.4e-18 against 4.4e-13 is a relative difference of 1, and reporting
+        # it as disagreement invites exactly the wrong conclusion. Require the larger of
+        # the two to be meaningfully non-zero before comparing at all.
+        if max(abs(a), abs(b)) > 1e-8:
+            rel = abs(a-b)/max(abs(a), abs(b))
+            if rel > 1e-4: dis.append((e, a, b, rel))
     except (ValueError, KeyError): pass
     try:
         ti, ts = float(by[e]['IPOPT']['seconds']), float(by[e]['SQP']['seconds'])
-        if ti >= 1.0: ratios.append(ts/ti)
+        # Per-example ratios are only meaningful where the denominator is well clear of
+        # the one-second timing granularity; below that a ratio is mostly quantisation.
+        if ti >= 10.0: ratios.append((ts/ti, e))
+        tot_i += ti; tot_s += ts
     except (ValueError, KeyError): pass
  
 out.append(f"Both solve {len(both)} examples.\n")
-if ratios:
-    ratios.sort()
-    med = ratios[len(ratios)//2]
-    out.append(f"Over the {len(ratios)} of those taking IPOPT at least a second, the SQP takes a "
-               f"median of **{med:.1f} times** as long (range {min(ratios):.1f} to {max(ratios):.1f}).\n")
+# Aggregate wall clock is the honest headline: most examples finish in a second or
+# two, so a median of per-example ratios is dominated by 1s/1s = 1.0 and says almost
+# nothing. Report the total, and name the individual gaps that make it up.
+if tot_i > 0:
+    out.append(f"Total wall clock over those {len(both)}: IPOPT **{tot_i:.0f} s**, "
+               f"SQP **{tot_s:.0f} s** (**{tot_s/tot_i:.1f}x**).\n")
+# No median of per-example ratios is reported. Most of these problems finish in a second
+# or two, and at one-second granularity such a ratio is quantisation, not a measurement.
+# Count instead the runs the SQP stretched by a wide margin.
+wide = sorted(((ts/ti, e) for e in both
+               for ti, ts in [(float(by[e]['IPOPT']['seconds']), float(by[e]['SQP']['seconds']))]
+               if ti >= 2.0 and ts > 5.0*ti), reverse=True)
+if wide:
+    out.append(f"The SQP took more than five times as long on {len(wide)} of the runs where IPOPT "
+               f"needed at least two seconds: " +
+               ", ".join(f"{e} ({r:.0f}x)" for r, e in wide) + ".\n")
+gaps = sorted(((float(by[e]['SQP']['seconds']) - float(by[e]['IPOPT']['seconds']), e) for e in both),
+              reverse=True)[:5]
+gaps = [(g, e) for g, e in gaps if g > 0]
+if gaps:
+    out.append("Largest absolute gaps: " +
+               ", ".join(f"{e} (+{g:.0f} s)" for g, e in gaps) + ".\n")
 if dis:
     out.append(f"Objectives differing by more than 1e-4 relative ({len(dis)}):\n")
     out.append("| example | IPOPT | SQP | relative |\n|---|---|---|---|")
