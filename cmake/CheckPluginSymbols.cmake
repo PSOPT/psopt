@@ -21,6 +21,12 @@ endif()
 set(allowed "psopt_qp_solve" "psopt_qp_name" "psopt_qp_abi_version"
                 "psopt_qp_environment_ok")
 
+# The first three are not merely permitted, they are required: a plugin missing one of
+# them loads and then fails at the first subproblem. psopt_qp_environment_ok is
+# deliberately absent from this list -- it is optional, and only the GALAHAD plugin
+# provides it.
+set(required "psopt_qp_abi_version" "psopt_qp_name" "psopt_qp_solve")
+
 foreach(plugin ${plugins})
     # nm's spelling differs by object format.
     #
@@ -46,6 +52,7 @@ foreach(plugin ${plugins})
 
     string(REPLACE "\n" ";" lines "${dump}")
     set(unexpected "")
+    set(defined "")
     foreach(line ${lines})
         set(symbol "")
         if(PLUGIN_FORMAT STREQUAL "macho")
@@ -70,6 +77,10 @@ foreach(plugin ${plugins})
             # for is the strong C definitions a factorisation library provides,
             # amd_order and its relatives. The linker's own bookkeeping symbols are not
             # definitions of anything a QP library provides.
+            if(kind MATCHES "^[TDBR]$")
+                list(APPEND defined "${symbol}")
+            endif()
+
             if(kind MATCHES "^[TDBR]$"
                AND NOT symbol IN_LIST allowed
                AND NOT symbol MATCHES "^(_init|_fini|__bss_start|_edata|_end|__gmon_start__)$"
@@ -95,5 +106,26 @@ foreach(plugin ${plugins})
             "${how}. Exported symbols from a QP library's linear algebra can bind to "
             "another backend's and corrupt it.")
     endif()
+
+    # The other half of the same question. Restricting what a plugin exports is only
+    # half of keeping the export list and the plugin in step; the list can also name a
+    # symbol the plugin has stopped defining, or fail to name one it still needs. On
+    # Mach-O the second of those is a link error already, because an exported-symbols
+    # list doubles as a set of initial undefines; on ELF nothing catches it until the
+    # loader does, at the first subproblem of a user's run.
+    set(missing "")
+    foreach(req ${required})
+        if(NOT req IN_LIST defined)
+            list(APPEND missing "${req}")
+        endif()
+    endforeach()
+    if(missing)
+        string(REPLACE ";" ", " pretty "${missing}")
+        message(FATAL_ERROR
+            "${base} does not define the required plugin entry point(s): ${pretty}. "
+            "A plugin missing one of these loads and then fails at the first QP "
+            "subproblem, with a message about missing entry points.")
+    endif()
+
     message(STATUS "${base}: exports only the plugin ABI")
 endforeach()

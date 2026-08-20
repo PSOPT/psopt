@@ -267,9 +267,25 @@ if(WITH_SQP)
   # than two overlapping suppressions, and so cannot be defeated by a static library
   # arriving through a path nobody thought about. The symbol names in that file carry
   # Mach-O's leading underscore.
+  #
+  # A Mach-O export list is not only a whitelist, though: ld puts every name in it
+  # among the link's initial undefines, so a symbol that is listed and not defined is
+  # a link error rather than an unused line. psopt_qp_environment_ok is optional by
+  # design -- the loader reads it with dlsym and takes its absence to mean the backend
+  # is ready, see src/qp_plugin_loader.cxx -- and only the GALAHAD plugin defines it,
+  # so a single list for all four cannot be right. There are two, and a plugin that
+  # answers the environment question asks for the longer one by passing
+  # ENVIRONMENT_CHECK to psopt_add_qp_plugin below. Naming the symbol only where it is
+  # defined keeps the linker strict about it: were GALAHAD's definition ever lost, that
+  # plugin would fail to link, rather than quietly ceasing to warn about
+  # OMP_CANCELLATION and leaving the user with the day of diagnosis the check exists to
+  # save.
   if(APPLE)
-    set(PSOPT_QP_PLUGIN_EXPORTS "${CMAKE_BINARY_DIR}/psopt_qp_plugin.exp")
+    set(PSOPT_QP_PLUGIN_EXPORTS     "${CMAKE_BINARY_DIR}/psopt_qp_plugin.exp")
+    set(PSOPT_QP_PLUGIN_EXPORTS_ENV "${CMAKE_BINARY_DIR}/psopt_qp_plugin_env.exp")
     file(WRITE "${PSOPT_QP_PLUGIN_EXPORTS}"
+         "_psopt_qp_abi_version\n_psopt_qp_name\n_psopt_qp_solve\n")
+    file(WRITE "${PSOPT_QP_PLUGIN_EXPORTS_ENV}"
          "_psopt_qp_abi_version\n_psopt_qp_name\n_psopt_qp_solve\n_psopt_qp_environment_ok\n")
   endif()
   set(PSOPT_QP_PLUGIN_DIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/psopt")
@@ -278,7 +294,13 @@ if(WITH_SQP)
               PSOPT_QP_PLUGIN_BUILD_DIR="${CMAKE_BINARY_DIR}/qp_plugins")
   target_link_libraries(${PROJECT_NAME} PUBLIC ${CMAKE_DL_LIBS})
 
+  # psopt_add_qp_plugin(<name> <source> [ENVIRONMENT_CHECK] [libraries...])
+  #
+  # ENVIRONMENT_CHECK says that this plugin defines the optional
+  # psopt_qp_environment_ok entry point; everything else in ARGN is a library to link.
   function(psopt_add_qp_plugin name source)
+    cmake_parse_arguments(PSOPT_QP_PLUGIN "ENVIRONMENT_CHECK" "" "" ${ARGN})
+    set(plugin_libraries ${PSOPT_QP_PLUGIN_UNPARSED_ARGUMENTS})
     add_library(psopt_qp_${name} MODULE ${source})
     set_target_properties(psopt_qp_${name} PROPERTIES
         PREFIX "lib"
@@ -287,13 +309,18 @@ if(WITH_SQP)
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qp_plugins)
     target_include_directories(psopt_qp_${name} PRIVATE ${CMAKE_SOURCE_DIR}/include)
     target_include_directories(psopt_qp_${name} PRIVATE ${MUMPS_INCLUDE_DIR})
-    target_link_libraries(psopt_qp_${name} PRIVATE Eigen3::Eigen ${ARGN})
+    target_link_libraries(psopt_qp_${name} PRIVATE Eigen3::Eigen ${plugin_libraries})
     if(APPLE)
+      if(PSOPT_QP_PLUGIN_ENVIRONMENT_CHECK)
+        set(plugin_exports "${PSOPT_QP_PLUGIN_EXPORTS_ENV}")
+      else()
+        set(plugin_exports "${PSOPT_QP_PLUGIN_EXPORTS}")
+      endif()
       target_link_options(psopt_qp_${name} PRIVATE
-          "LINKER:-exported_symbols_list,${PSOPT_QP_PLUGIN_EXPORTS}"
+          "LINKER:-exported_symbols_list,${plugin_exports}"
           "LINKER:-undefined,error")
       set_property(TARGET psopt_qp_${name} APPEND PROPERTY
-          LINK_DEPENDS "${PSOPT_QP_PLUGIN_EXPORTS}")
+          LINK_DEPENDS "${plugin_exports}")
     else()
       target_link_options(psopt_qp_${name} PRIVATE
           "LINKER:--exclude-libs,ALL" "LINKER:-z,defs")
@@ -378,6 +405,7 @@ if(WITH_SQP)
     message(STATUS "PSOPT SQP: GALAHAD backend plugin enabled (${GALAHAD_LIBRARY})")
     enable_language(Fortran)
     psopt_add_qp_plugin(galahad ${CMAKE_SOURCE_DIR}/src/qp_backends/galahad_plugin.cxx
+                        ENVIRONMENT_CHECK
                         ${GALAHAD_LIBRARY} ${PSOPT_FORTRAN_RUNTIME}
                         ${LAPACK_LIBRARIES} ${BLAS_LIBRARIES})
     target_compile_definitions(${PROJECT_NAME} PUBLIC USE_GALAHAD)
