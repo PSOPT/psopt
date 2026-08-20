@@ -436,6 +436,71 @@ TEST(SQPSolver, GalahadPluginSolvesAndUsesTheRightDualSign)
 
 #endif // USE_GALAHAD
 
+#ifdef USE_PIQP
+
+// PIQP through the plugin, on the same QP, and then on one whose answer is set by an
+// active inequality row. PIQP is the first backend to be given the equalities as
+// equalities rather than as two-sided inequalities, so the row split is exercised here
+// as well as the sign: the first problem's single row is an equality and the second's is
+// not, and the multiplier has to come back in PSOPT's convention from either block.
+TEST(SQPSolver, PiqpPluginSolvesAndUsesTheRightDualSign)
+{
+    const long long H_p[3] = {0, 1, 2};
+    const long long H_i[2] = {0, 1};
+    const double    H_x[2] = {1.0, 1.0};
+
+    const long long A_p[3] = {0, 1, 2};
+    const long long A_i[2] = {0, 0};
+    const double    A_x[2] = {1.0, 1.0};
+
+    const double g[2]   = {0.0, 0.0};
+    const double lbA[1] = {2.0}, ubA[1] = {2.0};
+    const double lb[2]  = {-PSOPT_QP_INFINITY, -PSOPT_QP_INFINITY};
+    const double ub[2]  = { PSOPT_QP_INFINITY,  PSOPT_QP_INFINITY};
+
+    psopt_qp_problem q;
+    q.abi_version = PSOPT_QP_ABI_VERSION;
+    q.n = 2; q.m = 1;
+    q.H_p = H_p; q.H_i = H_i; q.H_x = H_x; q.H_dense = NULL;
+    q.g = g;
+    q.A_p = A_p; q.A_i = A_i; q.A_x = A_x;
+    q.lbA = lbA; q.ubA = ubA; q.lb = lb; q.ub = ub;
+    q.tolerance = 1.0e-10; q.max_iter = 200; q.nonconvex = 0;
+
+    double d[2] = {0,0}, lambda[1] = {0}, z[2] = {0,0};
+    psopt_qp_solution r;
+    r.d = d; r.lambda = lambda; r.z = z; r.iterations = 0; r.status = -1;
+
+    std::string message;
+    ASSERT_TRUE(psopt_qp_plugin_solve("PIQP", &q, &r, message)) << message;
+    ASSERT_EQ(r.status, PSOPT_QP_SOLVED);
+
+    EXPECT_NEAR(d[0], 1.0, 1.0e-7);
+    EXPECT_NEAR(d[1], 1.0, 1.0e-7);
+    EXPECT_NEAR(lambda[0], -1.0, 1.0e-6);
+    EXPECT_NEAR(d[0] + 1.0*lambda[0] - z[0], 0.0, 1.0e-6);   // PSOPT's stationarity
+
+    // min 1/2 x'x - 3x1 - x2  s.t.  x1 + x2 <= 2. The unconstrained optimum is (3,1);
+    // the row is active, the answer is (2,0) and the multiplier is +1.
+    const double g2[2]   = {-3.0, -1.0};
+    const double lbA2[1] = {-PSOPT_QP_INFINITY}, ubA2[1] = {2.0};
+    q.g = g2; q.lbA = lbA2; q.ubA = ubA2;
+
+    double d2[2] = {0,0}, lambda2[1] = {0}, z2[2] = {0,0};
+    r.d = d2; r.lambda = lambda2; r.z = z2; r.iterations = 0; r.status = -1;
+
+    ASSERT_TRUE(psopt_qp_plugin_solve("PIQP", &q, &r, message)) << message;
+    ASSERT_EQ(r.status, PSOPT_QP_SOLVED);
+
+    EXPECT_NEAR(d2[0], 2.0, 1.0e-6);
+    EXPECT_NEAR(d2[1], 0.0, 1.0e-6);
+    EXPECT_NEAR(lambda2[0], 1.0, 1.0e-6);
+    EXPECT_NEAR(d2[0] + g2[0] + lambda2[0] - z2[0], 0.0, 1.0e-6);
+    EXPECT_NEAR(d2[1] + g2[1] + lambda2[0] - z2[1], 0.0, 1.0e-6);
+}
+
+#endif // USE_PIQP
+
 // A plugin that cannot be found must be reported as such, at once and in words, rather
 // than surfacing as a failed subproblem partway through a solve.
 TEST(SQPSolver, AMissingPluginIsReportedClearly)

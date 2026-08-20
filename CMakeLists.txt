@@ -60,6 +60,7 @@ option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). 
 option(WITH_PROXQP "Add ProxQP as a QP backend for the SQP solver (algorithm.qp_solver = \"ProxQP\"). Requires proxsuite; implies WITH_SQP." OFF)
 option(WITH_QPALM "Add QPALM as a QP backend for the SQP solver (algorithm.qp_solver = \"QPALM\"). Requires QPALM; implies WITH_SQP." OFF)
 option(WITH_OSQP "Add OSQP as a QP backend for the SQP solver (algorithm.qp_solver = \"OSQP\"). Requires OSQP; implies WITH_SQP." OFF)
+option(WITH_PIQP "Add PIQP as a QP backend for the SQP solver (algorithm.qp_solver = \"PIQP\"). Requires PIQP; implies WITH_SQP." OFF)
 option(WITH_GALAHAD "Add GALAHAD's QPA as a QP backend for the SQP solver (algorithm.qp_solver = \"GALAHAD\"). Requires GALAHAD; implies WITH_SQP." OFF)
 
 # Automatic-differentiation backend. CPPAD (in-memory tapes) is the production backend; it
@@ -148,11 +149,12 @@ endif()
 # file compiles to a stub that reports the option was not built, and PSOPT gains no new
 # dependency.
 if(WITH_SQP)
-  if(NOT (WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_GALAHAD))
+  if(NOT (WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_PIQP OR WITH_GALAHAD))
     message(FATAL_ERROR
       "WITH_SQP=ON but no QP backend was selected. The SQP sends every subproblem to a "
       "backend and has none of its own, so at least one of WITH_GALAHAD, WITH_PROXQP, "
-      "WITH_QPALM or WITH_OSQP must also be ON. WITH_GALAHAD is the one to choose: it is "
+      "WITH_QPALM, WITH_OSQP or WITH_PIQP must also be ON. WITH_GALAHAD is the one to choose: "
+      "it is "
       "sparse, BSD-3 licensed, and the configuration the solver has been measured "
       "against. scripts/build_galahad.sh will install it.")
   endif()
@@ -370,6 +372,33 @@ if(WITH_SQP)
     target_compile_definitions(${PROJECT_NAME} PUBLIC USE_OSQP)
   endif()
 
+  if(WITH_PIQP)
+    # PIQP is header-only C++14 over Eigen, which PSOPT already requires, so there is no
+    # library to find -- only headers. Its own package config is used when it is
+    # installed; PIQP_DIR pointing at a source or install tree is accepted as well, so
+    # that it can be tried without installing anything.
+    find_package(piqp QUIET)
+    if(piqp_FOUND)
+      set(PSOPT_PIQP_TARGET piqp::piqp)
+    else()
+      find_path(PIQP_INCLUDE_DIR piqp/piqp.hpp
+                HINTS ${PIQP_DIR}/include ${PIQP_DIR} ${PSOPT_EXTRA_PREFIXES_INCLUDE})
+      if(NOT PIQP_INCLUDE_DIR)
+        message(FATAL_ERROR "WITH_PIQP=ON but PIQP was not found. Set piqp_DIR to the "
+                            "directory containing piqpConfig.cmake, or PIQP_DIR to a "
+                            "tree containing include/piqp/piqp.hpp.")
+      endif()
+      set(PSOPT_PIQP_TARGET "")
+    endif()
+    message(STATUS "PSOPT SQP: PIQP backend plugin enabled")
+    psopt_add_qp_plugin(piqp ${CMAKE_SOURCE_DIR}/src/qp_backends/piqp_plugin.cxx
+                        ${PSOPT_PIQP_TARGET})
+    if(NOT piqp_FOUND)
+      target_include_directories(psopt_qp_piqp SYSTEM PRIVATE ${PIQP_INCLUDE_DIR})
+    endif()
+    target_compile_definitions(${PROJECT_NAME} PUBLIC USE_PIQP)
+  endif()
+
   if(WITH_GALAHAD)
     find_path(GALAHAD_INCLUDE_DIR galahad_qpa.h
               HINTS ${GALAHAD_DIR}/include ${PSOPT_EXTRA_PREFIXES_INCLUDE})
@@ -415,7 +444,7 @@ if(WITH_SQP)
   # The check that the isolation actually holds. A plugin that exports anything beyond
   # its three entry points has failed at the one job it was given, and the failure would
   # otherwise show up as a crash somewhere else entirely.
-  if(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_GALAHAD)
+  if(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_PIQP OR WITH_GALAHAD)
     find_program(PSOPT_NM_EXECUTABLE nm)
     if(PSOPT_NM_EXECUTABLE)
       if(APPLE)
@@ -431,7 +460,7 @@ if(WITH_SQP)
                        -P ${CMAKE_SOURCE_DIR}/cmake/CheckPluginSymbols.cmake)
     endif()
   endif()
-elseif(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_GALAHAD)
+elseif(WITH_PROXQP OR WITH_QPALM OR WITH_OSQP OR WITH_PIQP OR WITH_GALAHAD)
   message(FATAL_ERROR "The QP backend options require WITH_SQP=ON: they are backends of PSOPT's SQP solver.")
 endif()
 
