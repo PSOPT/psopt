@@ -1746,8 +1746,19 @@ int SQP_interface(Alg&         algorithm,
 
         if (!qp_ok) {
             status  = 2;
+            // Naming the alternative is worth the words. The most common reason a
+            // backend refuses both the subproblem and its relaxation is that it
+            // requires a convex model and the shift, raised to its ceiling above, has
+            // not produced one it will accept; an active-set method built for
+            // indefinite curvature has no such requirement and takes the model as it
+            // stands.
             message = "The quadratic programming subproblem could not be solved, "
                       "and neither could its elastic relaxation";
+            if (algorithm.qp_solver != "GALAHAD")
+                message += ". A backend that declines a subproblem as non-convex is "
+                           "refusing a model that is positive definite only on the null "
+                           "space of the Jacobian, which is all an SQP needs; "
+                           "algorithm.qp_solver = \"GALAHAD\" accepts one";
             break;
         }
 
@@ -2154,11 +2165,18 @@ int SQP_interface(Alg&         algorithm,
                 // produces -- the SOS1 rows of an integer control being one example.
                 // Grinding on would spend the whole iteration budget to no purpose.
                 status  = 5;
+                // The order of the remedies is the order they were measured to pay
+                // off in. Changing the backend is one line and one run, and on the
+                // example set it is what recovers this failure; raising the budget
+                // spends more iterations on a subproblem whose difficulty is its shape.
                 message = "The quadratic programming subproblem repeatedly reached "
                           "algorithm.qp_iter_max at the smallest permitted trust region. "
                           "The subproblem is too hard for its budget rather than too "
-                          "large: raise algorithm.qp_iter_max, try another "
-                          "algorithm.qp_solver, or reformulate";
+                          "large: try another algorithm.qp_solver";
+                if (algorithm.qp_solver != "OSQP")
+                    message += " -- \"OSQP\" is the one measured to cope with the "
+                               "degenerate constraint sets an integer control produces";
+                message += ", raise algorithm.qp_iter_max, or reformulate";
                 break;
             }
         }
@@ -2201,9 +2219,10 @@ int SQP_interface(Alg&         algorithm,
                 status  = 4;
                 message = (n_qp_capped > iter/2)
                     ? "The iterates are cycling, and most subproblems stopped at the QP "
-                      "iteration limit: raise algorithm.qp_iter_max, or reformulate. "
-                      "A Lagrange integrand on a Lobatto pseudospectral mesh is one known "
-                      "cause -- see algorithm.objective_form"
+                      "iteration limit: try another algorithm.qp_solver, raise "
+                      "algorithm.qp_iter_max, or reformulate. A Lagrange integrand on a "
+                      "Lobatto pseudospectral mesh is one known cause -- see "
+                      "algorithm.objective_form"
                     : "The iterates are cycling: the same objective and constraint "
                       "violation have recurred, so the iteration is not converging";
                 break;
