@@ -120,13 +120,35 @@ probe_log=$(mktemp)
     "$TIMEOUT" 300 "./$PROBE" > "$probe_log" 2>&1 ) || true
  
 if ! grep -q "^SQP (" "$probe_log"; then
-    cat "$probe_log" | tail -20
+    tail -20 "$probe_log"
     die "the probe run of '$PROBE' did not use the SQP.
     Either the build lacks -DPSOPT_ALLOW_ENV_OVERRIDES=ON, or it lacks -DWITH_SQP=ON.
     Rebuild with both before running this script -- without them every SQP row below
     would silently be an IPOPT result."
 fi
 info "environment overrides: working (the probe ran under the SQP)"
+ 
+# The banner above is printed before the first subproblem is attempted, so seeing it
+# proves only that the SQP started. It does not prove that the QP backend exists. An
+# earlier version of this script stopped there, and a whole sweep came back with every
+# SQP row failed in under four seconds because the requested backend had never been
+# built: the plugin is loaded by dlopen at the first subproblem, and a backend that is
+# not there fails every one of them instantly.
+if grep -q "could not load the QP backend plugin" "$probe_log"; then
+    grep -m1 -A2 "could not load the QP backend plugin" "$probe_log"
+    die "the QP backend '$QP' is not available in this build.
+    Rebuild PSOPT with -DWITH_$(echo "$QP" | tr '[:lower:]' '[:upper:]')=ON, or pass
+    --qp with a backend that is built. GALAHAD is the one the default build enables."
+fi
+ 
+# And a backend that loads still has to solve something. A trivial problem it cannot
+# finish means the sweep below would measure the backend's installation, not the SQP.
+if ! grep -q "Optimal solution found" "$probe_log"; then
+    tail -25 "$probe_log"
+    die "the QP backend '$QP' loaded but did not solve the probe problem '$PROBE'.
+    Every SQP row in the sweep would be measuring that, so the run is stopped here."
+fi
+info "QP backend '$QP': working (the probe solved under it)"
  
 if grep -qi "cannot run in this environment\|OMP_CANCELLATION" "$probe_log"; then
     die "GALAHAD reports that it cannot run. Export OMP_CANCELLATION=TRUE and
@@ -323,8 +345,15 @@ if dis:
     out.append(f"Objectives differing by more than 1e-4 relative ({len(dis)}):\n")
     out.append("| example | IPOPT | SQP | relative |\n|---|---|---|---|")
     for e,a,b,r in dis: out.append(f"| {e} | {a:.6e} | {b:.6e} | {r:.1e} |")
-else:
+elif both:
     out.append("Every objective agrees to better than 1e-4 relative.\n")
+else:
+    # Saying "every objective agrees" when nothing solved is worse than saying nothing:
+    # it reads as a clean bill of health for a run that produced no results at all.
+    out.append("**No example was solved by both solvers, so there is nothing to compare.** "
+               "A whole column of failures usually means the run was misconfigured rather "
+               "than that the solver cannot do these problems -- check the QP backend "
+               "first.\n")
  
 text = "\n".join(out) + "\n"
 open(md_path,'w').write(text)
