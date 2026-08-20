@@ -78,10 +78,22 @@ static void psopt_env_override_int(const char* var, int& field, Workspace* works
     field = nv;
 }
 
+static void psopt_env_override_double(const char* var, double& field, Workspace* workspace)
+{
+    const char* v = getenv(var);
+    if (v == NULL) return;
+    const double nv = atof(v);
+    if (nv == field) return;
+    snprintf(workspace->text, sizeof(workspace->text),
+             ">>> %s overrides the algorithm setting in the source: %g -> %g\n",
+             var, field, nv);
+    psopt_print(workspace, workspace->text);
+    field = nv;
+}
+
 static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspace)
 {
     psopt_env_override("PSOPT_NLP_METHOD",       algorithm.nlp_method,      workspace);
-    psopt_env_override("PSOPT_DERIVATIVES",      algorithm.derivatives,     workspace);
     psopt_env_override("PSOPT_DERIVATIVES",      algorithm.derivatives,     workspace);
     psopt_env_override("PSOPT_HESSIAN",          algorithm.hessian,         workspace);
     psopt_env_override("PSOPT_QP_SOLVER",        algorithm.qp_solver,       workspace);
@@ -89,6 +101,10 @@ static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspa
     psopt_env_override("PSOPT_ELASTIC_PENALTY",  algorithm.elastic_penalty, workspace);
     psopt_env_override("PSOPT_SQP_STRATEGY",     algorithm.sqp_strategy,    workspace);
     psopt_env_override_int("PSOPT_QP_ITER_MAX",  algorithm.qp_iter_max,     workspace);
+    // Asking for a tolerance the solver cannot reach is how the acceptable-level
+    // termination is exercised deliberately rather than waited for.
+    psopt_env_override_double("PSOPT_NLP_TOLERANCE", algorithm.nlp_tolerance, workspace);
+    psopt_env_override_int("PSOPT_NLP_ITER_MAX",  algorithm.nlp_iter_max,    workspace);
 
     // The Hessian setting is read again through the workspace further down, so it has to
     // be carried across as well; the others are taken from this Alg.

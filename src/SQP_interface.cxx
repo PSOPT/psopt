@@ -1182,6 +1182,35 @@ int SQP_interface(Alg&         algorithm,
     bool multiplier_pass = exact_hessian;
     int    status  = 1;                                // 1 = iteration limit
 
+    // ---- what counts as an acceptable answer -------------------------------------
+    // Ipopt distinguishes a solve that reached the requested tolerance from one that
+    // reached an acceptable level, and reports the second as a success; PSOPT treats it
+    // as one too, on the Ipopt path, in psopt_ipopt_solved. This solver had no such
+    // notion: a run that came to rest feasible and all but stationary was reported as a
+    // failure, which is both misleading and expensive, because the mesh refinement
+    // above then treats a perfectly good iterate as a mesh that did not solve.
+    //
+    // The factor is a hundred, which is the ratio between Ipopt's own tol and
+    // acceptable_tol defaults. What the constraints must satisfy is not relaxed at all:
+    // an answer that is not feasible is not an answer.
+    //
+    // Two examples in the shipped set are decided by this. On examples/steps the fourth
+    // mesh stops with a violation of 7.9e-12 and a dual error of 1.749e-06 against a
+    // tolerance of 1e-06 -- a factor of 1.75 -- and on examples/twoburn the second mesh
+    // stops at 3.9e-11 and 2.1e-05. Both were reported as failures, and both are
+    // answers.
+    const double acceptable_tol = 100.0*tol;
+    double last_viol = 0.0, last_dual = 0.0;
+
+    // Whether a stop that is not convergence should be reported as an acceptable answer
+    // instead. Written as a lambda so that the three places that can stop early ask the
+    // same question in the same words.
+    const char* acceptable_message =
+        "Optimal solution found to acceptable tolerance: the iterates stopped improving "
+        "with the constraints satisfied and the dual error within a hundred times the "
+        "requested tolerance";
+    #define PSOPT_SQP_ACCEPTABLE(v, d) ((v) <= tol && (d) <= acceptable_tol)
+
     // ---- stagnation watch ---------------------------------------------------------
     // Two things can make this loop run to its iteration limit while getting nowhere,
     // and neither used to be reported.
@@ -1272,6 +1301,8 @@ int SQP_interface(Alg&         algorithm,
         dual_err /= s_d;
 
         const double viol = (m > 0) ? max_violation(gval, gl, gu) : 0.0;
+        last_viol = viol;
+        last_dual = dual_err;
 
         if (viol <= tol && dual_err <= tol) {
             status  = 0;
@@ -2164,6 +2195,11 @@ int SQP_interface(Alg&         algorithm,
                 // subproblem, not its size, which is what a degenerate constraint set
                 // produces -- the SOS1 rows of an integer control being one example.
                 // Grinding on would spend the whole iteration budget to no purpose.
+                if (PSOPT_SQP_ACCEPTABLE(last_viol, last_dual)) {
+                    status  = 0;
+                    message = acceptable_message;
+                    break;
+                }
                 status  = 5;
                 // The order of the remedies is the order they were measured to pay
                 // off in. Changing the backend is one line and one run, and on the
@@ -2216,6 +2252,11 @@ int SQP_interface(Alg&         algorithm,
             }
 
             if (cycle_hits >= cycle_hits_max) {
+                if (PSOPT_SQP_ACCEPTABLE(viol_now, dual_err)) {
+                    status  = 0;
+                    message = acceptable_message;
+                    break;
+                }
                 status  = 4;
                 message = (n_qp_capped > iter/2)
                     ? "The iterates are cycling, and most subproblems stopped at the QP "
@@ -2229,6 +2270,16 @@ int SQP_interface(Alg&         algorithm,
             }
         }
     }
+
+    // The iteration limit is the third way to stop without converging, and it deserves
+    // the same question as the other two: a run that has spent its budget at a feasible
+    // point whose dual error is within a hundredfold of the tolerance has an answer, and
+    // saying so is more useful than reporting the budget.
+    if (status == 1 && PSOPT_SQP_ACCEPTABLE(last_viol, last_dual)) {
+        status  = 0;
+        message = acceptable_message;
+    }
+    #undef PSOPT_SQP_ACCEPTABLE
 
     // ---- report ------------------------------------------------------------------
     *x0 = x;
