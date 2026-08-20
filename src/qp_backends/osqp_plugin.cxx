@@ -23,7 +23,23 @@
 
 #include "psopt_qp_plugin.h"
 
-#include <osqp/osqp.h>
+// OSQP's exported CMake target sets the include directory to <prefix>/include/osqp,
+// so the header it means is <osqp.h>. Writing <osqp/osqp.h> works only where
+// <prefix>/include also happens to be on the default search path -- true of
+// /usr/local on a Linux box, false of Homebrew's /opt/homebrew, where this failed to
+// build. Older layouts put the header a directory up, so both spellings are tried
+// rather than picking one and being wrong somewhere else.
+#if defined(__has_include)
+#  if __has_include(<osqp.h>)
+#    include <osqp.h>
+#  elif __has_include(<osqp/osqp.h>)
+#    include <osqp/osqp.h>
+#  else
+#    error "OSQP headers were not found. Check that osqp_DIR points at the directory holding osqpConfig.cmake."
+#  endif
+#else
+#  include <osqp.h>
+#endif
 
 #include <algorithm>
 #include <vector>
