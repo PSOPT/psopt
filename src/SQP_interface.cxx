@@ -1160,6 +1160,7 @@ int SQP_interface(Alg&         algorithm,
     int    n_restorations = 0;
     int    n_corrections  = 0;
     int    n_shifts       = 0;        // convexifications of the exact Hessian
+    int    n_convexify    = 0;        // extra shifts a backend's refusal asked for
     int    n_shrinks      = 0;        // reductions of the trust region
     // The first subproblem is solved with the multipliers still at zero, so the
     // Hessian of the Lagrangian it is built from carries no information about the
@@ -1334,6 +1335,13 @@ int SQP_interface(Alg&         algorithm,
         bool   elastic = false;
         double rho_elastic = 0.0;
 
+        // The shift the convexification below settled on, and the ceiling it may be
+        // raised to. Both are needed after the subproblem has been attempted, because
+        // a backend that requires a convex model can decline one this shift has not
+        // made convex; see the retry after the QP call.
+        double delta_used = 0.0;
+        double delta_ceiling = 0.0;
+
         // ---- convexification ----------------------------------------------------
         // An exact Hessian of the Lagrangian is indefinite wherever the problem is not
         // convex, which is almost everywhere on an optimal control problem, and the
@@ -1447,6 +1455,8 @@ int SQP_interface(Alg&         algorithm,
                 n_shifts++;
             }
             tau = delta;                     // carried into the next iteration
+            delta_used    = delta;
+            delta_ceiling = delta_max;
         }
 
         {
@@ -1468,6 +1478,47 @@ int SQP_interface(Alg&         algorithm,
                 message = why;
                 break;
             }
+
+            // ---- a subproblem declined for want of convexity --------------------
+            // The inertia control above makes the *reduced* Hessian positive definite,
+            // which is the condition an SQP subproblem needs and is all that a method
+            // built for indefinite curvature asks of it: GALAHAD's QPA takes the model
+            // as it stands. A first-order splitting method cannot. OSQP factorises its
+            // KKT matrix once, at set-up, and a model indefinite on the whole space --
+            // which one whose reduced Hessian is positive definite may perfectly well
+            // be -- makes that factorisation fail: "the problem seems to be non-convex",
+            // and the subproblem is declined before a single iteration of it is run. On
+            // examples/coulomb and examples/dae_i3 that happens at the *first*
+            // subproblem, and the SQP stopped at iteration zero on problems it solves
+            // in fifty-seven and three iterations through the other backend.
+            //
+            // The model belongs to the SQP, so the SQP answers rather than the plugin:
+            // raise the shift and ask again. The ladder is the hundredfold one the
+            // inertia loop already uses and it ends at the same ceiling, |sigma| + 1,
+            // where sigma is the Gerschgorin lower bound -- at that shift H + delta*I is
+            // diagonally dominant with a positive diagonal, hence positive definite, so
+            // a backend still refusing there is refusing for some other reason and the
+            // elastic relaxation below is the right next move. A refusal of this kind
+            // costs a set-up and no iterations, so the ladder is cheap; and because the
+            // shift that worked is carried into the next iteration, a run that needs it
+            // pays for the search once rather than at every iteration.
+            for (int attempt = 0; !qs.ok && exact_hessian && !multiplier_pass
+                                  && delta_used < delta_ceiling && attempt < 8; attempt++)
+            {
+                delta_used = (delta_used > 0.0) ? min(100.0*delta_used, delta_ceiling)
+                                                : 1.0e-6*delta_ceiling;
+                Hm.scatter(hval);
+                Hm.shift_diagonal(delta_used);
+                n_convexify++;
+                if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
+                                     exact_hessian, qs, why)) {
+                    status  = 2;
+                    message = why;
+                    break;
+                }
+            }
+            if (status == 2) break;
+            if (qs.ok && n_convexify > 0) tau = delta_used;  // carry what worked
 
             qp_ok    = qs.ok;
             qp_iters = qs.iterations;
@@ -1606,7 +1657,17 @@ int SQP_interface(Alg&         algorithm,
             // convexification: it is the shift that made the model usable, not the
             // relaxation. The slacks' own small diagonal is already in place and is
             // raised along with the rest, which does them no harm.
-            if (exact_hessian && tau > 0.0) He.shift_diagonal(tau);
+            //
+            // The shift to carry over is the one the *subproblem* ended at, not the one
+            // the inertia test settled on: restoration is reached precisely when the
+            // subproblem was declined, and if it was declined for want of convexity the
+            // shift has been raised since. Measured on examples/dae_i3, the relaxed
+            // model built with the inertia shift had a smallest eigenvalue of -2.1e+04
+            // -- a negative diagonal entry, even -- and the backend declined it for the
+            // same reason it had declined the subproblem, so both were reported as
+            // failing and a run ended at iteration zero.
+            double delta_e = max(tau, delta_used);
+            if (exact_hessian && delta_e > 0.0) He.shift_diagonal(delta_e);
 
             // The subproblem is stated with its objective divided by rho, so that a
             // slack costs one apiece instead of rho and the quadratic block is scaled to
@@ -1641,6 +1702,23 @@ int SQP_interface(Alg&         algorithm,
                 string why;
                 (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
                                        exact_hessian, qs, why);
+
+                // The same ladder the subproblem climbs, for the same reason and with
+                // the same ceiling. He has to be rebuilt from its values at each rung,
+                // because the shift and the objective scaling are both applied in place.
+                for (int attempt = 0; !qs.ok && exact_hessian
+                                      && delta_e < delta_ceiling && attempt < 8; attempt++)
+                {
+                    delta_e = (delta_e > 0.0) ? min(100.0*delta_e, delta_ceiling)
+                                              : 1.0e-6*delta_ceiling;
+                    He.scatter(heval);
+                    He.shift_diagonal(delta_e);
+                    He.scale(oscale);
+                    n_convexify++;
+                    (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol,
+                                           algorithm.qp_iter_max, exact_hessian, qs, why);
+                }
+                if (qs.ok && delta_e > tau) tau = delta_e;   // carry what worked
 
                 rve_ok    = qs.ok;
                 rve_iters = qs.iterations;
@@ -2146,12 +2224,12 @@ int SQP_interface(Alg&         algorithm,
                  "   maximum violation    %.3e\n"
                  "   restoration steps    %d\n"
                  "   second-order corr.   %d\n"
-                 "   Hessian shifts       %d\n"
+                 "   Hessian shifts       %d (%d asked for by the QP backend)\n"
                  "   trust region cuts    %d\n"
                  "   QP hit its limit     %d (%d trust-region cuts on that account)\n",
                  iter, message.c_str(), fval,
                  (m > 0) ? max_violation(gval, gl, gu) : 0.0, n_restorations, n_corrections,
-                 n_shifts, n_shrinks, n_qp_capped, n_qp_cap_cuts);
+                 n_shifts, n_convexify, n_shrinks, n_qp_capped, n_qp_cap_cuts);
         psopt_print(workspace, workspace->text);
     }
 
