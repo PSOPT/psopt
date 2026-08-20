@@ -281,6 +281,12 @@ struct alg_str {
   //
   // The value is a budget, not a promise: a backend that finishes sooner finishes
   // sooner. Ignored unless nlp_method is "SQP".
+  //
+  // Zero, the default, asks for a budget scaled to the subproblem -- twice the number of
+  // variables and constraints, and never less than 1000. An active-set method moves one
+  // constraint into or out of its working set per iteration, so a constant budget is a
+  // tighter constraint the larger the mesh; see the note in SQP_interface.cxx for the
+  // run that established it.
   int       qp_iter_max;
 
   // What the relaxation costs, per unit of infeasibility. "weights" (default) prices it

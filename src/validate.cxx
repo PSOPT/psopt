@@ -103,10 +103,14 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("Incorrect algorithm.hessian option specified. Valid options are \"limited-memory\", \"exact\" and \"numerical\" ");
     if (algorithm.qp_solver != "GALAHAD" && algorithm.qp_solver != "ProxQP"
                                         && algorithm.qp_solver != "QPALM"
-                                        && algorithm.qp_solver != "OSQP")
-       error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"GALAHAD\", \"ProxQP\", \"QPALM\" and \"OSQP\" ");
-    if (algorithm.qp_iter_max < 10)
-       error_message("algorithm.qp_iter_max is too small; it must be at least 10 ");
+                                        && algorithm.qp_solver != "OSQP"
+                                        && algorithm.qp_solver != "PIQP"
+                                        && algorithm.qp_solver != "Clarabel")
+       error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"GALAHAD\", \"ProxQP\", \"QPALM\", \"OSQP\", \"PIQP\" and \"Clarabel\" ");
+    // Zero asks for the automatic budget, which scales with the subproblem; anything
+    // else is used as given, and a handful of iterations is not a budget.
+    if (algorithm.qp_iter_max != 0 && algorithm.qp_iter_max < 10)
+       error_message("algorithm.qp_iter_max is too small; it must be at least 10, or 0 for the automatic budget ");
     if (algorithm.sqp_strategy != "M" && algorithm.sqp_strategy != "FM"
                                      && algorithm.sqp_strategy != "F")
        error_message("Incorrect algorithm.sqp_strategy option specified. Valid options are \"M\", \"FM\" and \"F\" ");

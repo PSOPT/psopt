@@ -988,6 +988,27 @@ int SQP_interface(Alg&         algorithm,
     const int n = (int) x0->rows();
     const int m = nlp_ncons;
 
+    // ---- the subproblem's iteration budget ------------------------------------------
+    // algorithm.qp_iter_max is a constant, and a constant is the wrong shape for this.
+    // An active-set method moves one constraint into or out of its working set per
+    // iteration, so the number of iterations it needs scales with the size of the
+    // subproblem; a fixed budget therefore bites harder the larger the mesh, which is
+    // exactly the wrong way round. On examples/twoburn's sixth mesh -- 1413 variables,
+    // 1131 constraints -- a subproblem stopped at the old budget of 1000, the step built
+    // from that interrupted search took the constraint violation from 7.2e-07 to 2.1,
+    // and the run never recovered. Given 5000 the same subproblem still stopped at its
+    // budget, but 5000 iterations of the search leave a direction good enough to use:
+    // the next subproblem took sixteen iterations and the mesh converged, at an
+    // objective agreeing with Ipopt's to eight figures.
+    //
+    // So the budget is now scaled: twice the number of variables and constraints, with
+    // the old constant as a floor for small problems, where it was never binding --
+    // every subproblem on the first five meshes of that same run finished in fewer than
+    // ten iterations. A positive algorithm.qp_iter_max is still honoured exactly as
+    // given; the automatic rule applies when it is left at its default of zero.
+    const int qp_budget = (algorithm.qp_iter_max > 0) ? algorithm.qp_iter_max
+                                                      : max(1000, 2*(n + m));
+
     Sol* solution = workspace->solution;
 
     // ---- problem data -----------------------------------------------------------
@@ -1103,7 +1124,7 @@ int SQP_interface(Alg&         algorithm,
                                            jrow, jcol, jval, Jm, gval,
                                            algorithm.qp_solver,
                                            tol, algorithm.nlp_iter_max,
-                                           algorithm.qp_iter_max, iprint,
+                                           qp_budget, iprint,
                                            n_feas_iters, n_feas_relaxed, workspace);
 
         if (iprint) {
@@ -1503,7 +1524,7 @@ int SQP_interface(Alg&         algorithm,
 
             QpSolution qs;
             string why;
-            if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
+            if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, qp_budget,
                                  exact_hessian, qs, why)) {
                 status  = 2;
                 message = why;
@@ -1541,7 +1562,7 @@ int SQP_interface(Alg&         algorithm,
                 Hm.scatter(hval);
                 Hm.shift_diagonal(delta_used);
                 n_convexify++;
-                if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
+                if (!solve_qp_plugin(algorithm.qp_solver, qpp, tol, qp_budget,
                                      exact_hessian, qs, why)) {
                     status  = 2;
                     message = why;
@@ -1731,7 +1752,7 @@ int SQP_interface(Alg&         algorithm,
 
                 QpSolution qs;
                 string why;
-                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
+                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, qp_budget,
                                        exact_hessian, qs, why);
 
                 // The same ladder the subproblem climbs, for the same reason and with
@@ -1747,7 +1768,7 @@ int SQP_interface(Alg&         algorithm,
                     He.scale(oscale);
                     n_convexify++;
                     (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol,
-                                           algorithm.qp_iter_max, exact_hessian, qs, why);
+                                           qp_budget, exact_hessian, qs, why);
                 }
                 if (qs.ok && delta_e > tau) tau = delta_e;   // carry what worked
 
@@ -2017,7 +2038,7 @@ int SQP_interface(Alg&         algorithm,
 
                 QpSolution qs;
                 string why;
-                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, algorithm.qp_iter_max,
+                (void) solve_qp_plugin(algorithm.qp_solver, qpp, tol, qp_budget,
                                        exact_hessian, qs, why);
                 rvs_ok = qs.ok;
                 if (qs.ok) {

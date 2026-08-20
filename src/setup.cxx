@@ -160,7 +160,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   // usable with numerical derivatives (lets IPOPT take exact-Hessian steps instead of L-BFGS).
   algorithm.hessian                     = "limited-memory";
   algorithm.qp_solver                   = "GALAHAD";
-  algorithm.qp_iter_max                 = 1000;
+  algorithm.qp_iter_max                 = 0;      // 0 = scale it with the subproblem
   algorithm.sqp_strategy                = "FM";
   algorithm.qp_restoration              = "elastic";
   algorithm.elastic_penalty             = "weights";
