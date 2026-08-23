@@ -245,7 +245,6 @@ int main(void)
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "Gauss";
     algorithm.mesh_refinement             = "automatic";
-    algorithm.switch_order                = 0;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   /////////////////

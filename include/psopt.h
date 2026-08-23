@@ -415,6 +415,12 @@ struct alg_str {
   double    mr_kappa;
   int       mr_M1;
   string    mesh_refinement;
+  // Mesh-refinement iteration at which the local-collocation schedule switches from
+  // trapezoidal to Hermite-Simpson defects; 0 disables the switch. This applies ONLY to
+  // the local (Betts) route, that is to collocation_method "trapezoidal" or
+  // "Hermite-Simpson". The global pseudospectral methods (Legendre, Chebyshev, Radau,
+  // Gauss) refine through the hp driver in hp_refine.cxx and ignore it entirely, so
+  // setting it on one of those has no effect whatsoever.
   int       switch_order;
   double    ipopt_max_cpu_time;
 
