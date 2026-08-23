@@ -217,8 +217,8 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
             }
         }
 
-        // decisions: 0 keep, 1 p (to p_new[j]), 2 h (binary split, sub-order h_sub[j]).
-        std::vector<int> action(K,0), p_new(K,0), h_sub(K,0);
+        // decisions: 0 keep, 1 p (to p_new[j]), 2 h (split into h_m[j] pieces of h_sub[j]).
+        std::vector<int> action(K,0), p_new(K,0), h_sub(K,0), h_m(K,0);
 
         // serve intervals worst-error first, spending the budget.
         std::vector<int> idx;
@@ -248,9 +248,19 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
             // (roughly node-preserving) while still adding resolution. Too-narrow intervals fall
             // back to a unit p-bump if any order headroom remains.
             if ( (right-left) >= 2.0*min_width ) {
-                int sub  = std::max(N_min, std::min(N_max, nj/2 + 1));
-                int cost = 2*sub - nj + (gauss ? 1 : 0);   // Gauss: the new interface breakpoint is an extra stored node
-                if (proj + cost <= N_target) { action[j]=2; h_sub[j]=sub; proj+=cost; }
+                // Split into m pieces, m being the smallest number for which m sub-intervals
+                // capped at N_max can still carry the order the interval already had. A binary
+                // split cannot do that once nj > 2*N_max: two pieces of order N_max total less
+                // than nj, so the "refined" mesh is a strictly coarser discretisation than the
+                // one it replaces and the error is free to rise. That is not hypothetical. An
+                // initial mesh of 32 Gauss nodes is one interval of order 31, and with the
+                // default N_max of 12 the first refinement replaced it by two intervals of
+                // order 12, taking the total order from 31 down to 24 and the stored nodes from
+                // 32 down to 26. The budget test admitted it because the cost was negative.
+                int m    = std::max(2, (int)std::ceil( (double)(nj+1)/(double)N_max ));
+                int sub  = std::max(N_min, std::min(N_max, (int)std::ceil((double)(nj+1)/(double)m)));
+                int cost = m*sub - nj + (gauss ? m-1 : 0);   // Gauss: each new interface breakpoint is an extra stored node
+                if (cost >= 1 && proj + cost <= N_target) { action[j]=2; h_sub[j]=sub; h_m[j]=m; proj+=cost; }
                 else if (nj < N_max && proj + 1 <= N_target) { action[j]=1; p_new[j]=nj+1; proj+=1; }
             } else if (nj < N_max && proj + 1 <= N_target) {
                 action[j]=1; p_new[j]=nj+1; proj+=1;
@@ -262,9 +272,10 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
         for (int j=0;j<K;j++) {
             double left  = (j==0)   ? 0.0 : old_breaks(j-1);
             double right = (j==K-1) ? 1.0 : old_breaks(j);
-            if (action[j]==2) {                          // binary h-split
-                nb.push_back( 0.5*(left+right) );
-                no.push_back( h_sub[j] ); no.push_back( h_sub[j] );
+            if (action[j]==2) {                          // h-split into h_m[j] equal pieces
+                int m = (h_m[j] >= 2) ? h_m[j] : 2;
+                for (int q=1;q<m;q++) nb.push_back( left + (right-left)*(double)q/(double)m );
+                for (int q=0;q<m;q++) no.push_back( h_sub[j] );
             } else if (action[j]==1) {                   // p
                 no.push_back( p_new[j] );
             } else {                                     // keep
