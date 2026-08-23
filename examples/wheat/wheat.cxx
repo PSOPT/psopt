@@ -245,6 +245,10 @@ int main(void)
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "Gauss";
     algorithm.mesh_refinement             = "automatic";
+    // The Hamiltonian of this problem is linear in both controls, so the solution is
+    // bang-bang and what the mesh has to resolve is the switches. Ask the refinement to
+    // find them and cut the mesh at them, rather than at interval midpoints.
+    algorithm.mr_switch_detection         = 1;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   /////////////////

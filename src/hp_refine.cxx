@@ -118,6 +118,77 @@ static double legendre_decay_rate(const VectorXd& xi, const VectorXd& vals, doub
     return sigma;
 }
 
+
+// ---------------------------------------------------------------------------------------
+// Estimate where the control switches inside one mesh interval, in phase coordinate (0,1).
+//
+// A bang-bang control sampled on a polynomial basis does not look like a step: it rings
+// about the two plateaus it is trying to join. The largest node-to-node jump is therefore a
+// poor estimate of the switch, because the ringing produces jumps of its own near the
+// plateaus. The crossings of the level midway between the plateaus are far more stable --
+// the ringing sits about the plateaus, not about the middle -- so those are what is used.
+//
+// An interval is only considered to hold a switch if the control varies over a good
+// fraction of its range across the whole phase; that keeps the detector off intervals where
+// the control is merely curved.
+static void detect_control_switches(const MatrixXd& U, const MatrixXd& sn, int ncontrols,
+                                    int s, int np, const VectorXd& urange_phase,
+                                    double min_width, std::vector<double>& out)
+{
+    out.clear();
+    if ( np < 3 ) return;
+    for (int l=0;l<ncontrols;l++) {
+        if ( urange_phase(l) <= 0.0 ) continue;
+        double umin=U(l,s), umax=U(l,s);
+        for (int c=s;c<s+np;c++){ umin=std::min(umin,U(l,c)); umax=std::max(umax,U(l,c)); }
+        if ( (umax-umin) < 0.25*urange_phase(l) ) continue;      // no real transition here
+        double umid = 0.5*(umin+umax);
+        for (int c=s;c<s+np-1;c++) {
+            double a=U(l,c)-umid, b=U(l,c+1)-umid;
+            if ( (a<0.0 && b>0.0) || (a>0.0 && b<0.0) ) {
+                double th = sn(c) + (sn(c+1)-sn(c))*(-a)/(b-a);  // tau of the crossing
+                out.push_back( 0.5*(th+1.0) );                   // -> phase coordinate (0,1)
+            }
+        }
+    }
+    std::sort(out.begin(), out.end());
+    std::vector<double> merged;                                  // one switch seen in two
+    for (size_t q=0;q<out.size();q++)                            // controls is one switch
+        if ( merged.empty() || out[q]-merged.back() > 2.0*min_width ) merged.push_back(out[q]);
+    out.swap(merged);
+}
+
+// The m-1 interior breakpoints for a split of (left,right) into m pieces: the detected
+// switches first, then bisection of whatever piece is widest until there are enough. With no
+// switches detected this reproduces the uniform split exactly.
+static void breakpoints_for_split(double left, double right, int m,
+                                  const std::vector<double>& sw, double min_width,
+                                  std::vector<double>& bk)
+{
+    bk.clear();
+    for (size_t q=0;q<sw.size() && (int)bk.size()<m-1;q++) {
+        double pnt = sw[q];
+        if ( pnt-left < min_width || right-pnt < min_width ) continue;
+        if ( !bk.empty() && pnt-bk.back() < min_width )      continue;
+        bk.push_back(pnt);
+    }
+    if ( bk.empty() ) {                                          // uniform, as before
+        for (int q=1;q<m;q++) bk.push_back( left + (right-left)*(double)q/(double)m );
+        return;
+    }
+    while ( (int)bk.size() < m-1 ) {
+        std::vector<double> pts; pts.push_back(left);
+        for (size_t q=0;q<bk.size();q++) pts.push_back(bk[q]);
+        pts.push_back(right);
+        int qm=-1; double wm=-1.0;
+        for (size_t q=0;q+1<pts.size();q++){ double w=pts[q+1]-pts[q]; if (w>wm){wm=w;qm=(int)q;} }
+        if ( qm<0 || wm < 2.0*min_width ) break;
+        bk.push_back( 0.5*(pts[qm]+pts[qm+1]) );
+        std::sort(bk.begin(), bk.end());
+    }
+    std::sort(bk.begin(), bk.end());
+}
+
 // ---------------------------------------------------------------------------------------
 // The driver. Rewrites problem.phase[i].hp_orders (and, from 3b, hp_breakpoints) in place.
 void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace )
@@ -147,6 +218,15 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
         const MatrixXd  U   = solution.get_controls_in_phase(i+1); // ncontrols x (N_eff+1)
         const MatrixXd& sn  = workspace->snodes[i];               // (N_eff+1) x 1, tau in [-1,1]
 
+        // range of each control over the whole phase: the scale against which an interval's
+        // own control variation is judged large enough to be a switch rather than curvature.
+        VectorXd urange_phase(ncontrols>0 ? ncontrols : 1); urange_phase.setZero();
+        for (int l=0;l<ncontrols;l++) {
+            double lo=U(l,0), hi=U(l,0);
+            for (int c=0;c<=N_eff;c++){ lo=std::min(lo,U(l,c)); hi=std::max(hi,U(l,c)); }
+            urange_phase(l) = hi-lo;
+        }
+
         RowVectorXi old_orders = problem.phase[i].hp_orders;
         RowVectorXd old_breaks = problem.phase[i].hp_breakpoints;   // size K-1, in (0,1)
 
@@ -169,6 +249,7 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
 
         // interval error and smoothness
         std::vector<double> e_j(K, 0.0), sig(K, 0.0);
+        std::vector< std::vector<double> > sw_pos(K);   // detected switch positions, in (0,1)
         for (int j=0;j<K;j++) {
             int s=start[j], eend=start[j+1];
             for (int c=s; c<eend && c<N_eff; c++) e_j[j] = std::max(e_j[j], err(0,c));
@@ -214,11 +295,21 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
                     }
                 }
                 sig[j]=sg;
+
+                // and where, inside this interval, the control switches
+                if ( algorithm.mr_switch_detection ) {
+                    int su  = s + (gauss ? 1 : 0);
+                    int npu = old_orders(j) + (gauss ? 0 : 1);
+                    if ( ncontrols > 0 && su + npu - 1 <= N_eff )
+                        detect_control_switches(U, sn, ncontrols, su, npu, urange_phase,
+                                                min_width, sw_pos[j]);
+                }
             }
         }
 
         // decisions: 0 keep, 1 p (to p_new[j]), 2 h (split into h_m[j] pieces of h_sub[j]).
         std::vector<int> action(K,0), p_new(K,0), h_sub(K,0), h_m(K,0);
+        std::vector< std::vector<double> > h_bk(K);     // the split's interior breakpoints
 
         // serve intervals worst-error first, spending the budget.
         std::vector<int> idx;
@@ -257,10 +348,41 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
                 // default N_max of 12 the first refinement replaced it by two intervals of
                 // order 12, taking the total order from 31 down to 24 and the stored nodes from
                 // 32 down to 26. The budget test admitted it because the cost was negative.
-                int m    = std::max(2, (int)std::ceil( (double)(nj+1)/(double)N_max ));
-                int sub  = std::max(N_min, std::min(N_max, (int)std::ceil((double)(nj+1)/(double)m)));
-                int cost = m*sub - nj + (gauss ? m-1 : 0);   // Gauss: each new interface breakpoint is an extra stored node
-                if (cost >= 1 && proj + cost <= N_target) { action[j]=2; h_sub[j]=sub; h_m[j]=m; proj+=cost; }
+                // How many pieces. Two demands: enough that the pieces can carry the order
+                // the interval already had (m_ord), and one piece per arc when the control's
+                // switches have been located. A cut placed on a switch puts the discontinuity
+                // on a breakpoint, which is the one place the discretisation is allowed to be
+                // discontinuous, and leaves the pieces either side smooth enough for
+                // p-refinement to work on them afterwards. A cut at the midpoint leaves the
+                // switch inside a piece, where no polynomial degree resolves it.
+                int m_ord = std::max(2, (int)std::ceil( (double)(nj+1)/(double)N_max ));
+                int m     = std::max(m_ord, (int)sw_pos[j].size() + 1);
+
+                // What order each piece gets. Dividing the parent's order among the pieces is
+                // right only when the split was forced by the order cap: a piece created to
+                // isolate an arc still has to resolve that arc to the same tolerance, so it
+                // wants the parent's order, not a share of it. Take the largest order the
+                // budget allows, and only then give up pieces.
+                int sub=0, cost=0;
+                bool placed=false;
+                while ( m >= 2 && !placed ) {
+                    int sub_lo = std::max(N_min, std::min(N_max, (int)std::ceil((double)(nj+1)/(double)m)));
+                    // Only a piece created to isolate an arc asks for more than its share of
+                    // the parent's order. When the split was forced by the order cap alone,
+                    // sub_hi == sub_lo and this reduces exactly to dividing the order up.
+                    int sub_hi = (m > m_ord) ? std::max(N_min, std::min(N_max, nj)) : sub_lo;
+                    for (sub=sub_hi; sub>=sub_lo; sub--) {
+                        cost = m*sub - nj + (gauss ? m-1 : 0);   // Gauss: each new interface breakpoint is an extra stored node
+                        if (cost >= 1 && proj + cost <= N_target) { placed=true; break; }
+                    }
+                    if (placed) break;
+                    if (m == m_ord) break;                       // cannot afford even the minimum
+                    m--; if (m < m_ord) m = m_ord;
+                }
+                if (placed) {
+                    action[j]=2; h_sub[j]=sub; h_m[j]=m; proj+=cost;
+                    breakpoints_for_split(left, right, m, sw_pos[j], min_width, h_bk[j]);
+                }
                 else if (nj < N_max && proj + 1 <= N_target) { action[j]=1; p_new[j]=nj+1; proj+=1; }
             } else if (nj < N_max && proj + 1 <= N_target) {
                 action[j]=1; p_new[j]=nj+1; proj+=1;
@@ -272,9 +394,9 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
         for (int j=0;j<K;j++) {
             double left  = (j==0)   ? 0.0 : old_breaks(j-1);
             double right = (j==K-1) ? 1.0 : old_breaks(j);
-            if (action[j]==2) {                          // h-split into h_m[j] equal pieces
-                int m = (h_m[j] >= 2) ? h_m[j] : 2;
-                for (int q=1;q<m;q++) nb.push_back( left + (right-left)*(double)q/(double)m );
+            if (action[j]==2) {                          // h-split at h_bk[j]
+                int m = (int)h_bk[j].size() + 1;
+                for (size_t q=0;q<h_bk[j].size();q++) nb.push_back( h_bk[j][q] );
                 for (int q=0;q<m;q++) no.push_back( h_sub[j] );
             } else if (action[j]==1) {                   // p
                 no.push_back( p_new[j] );
@@ -305,8 +427,9 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
         if ( getenv("PSOPT_HP_DEBUG") ) {
             fprintf(stderr,"[hp] phase %d  K=%d N_eff=%d N_target=%d R=%d\n", i+1,K,N_eff,N_target,R);
             for (int j=0;j<K;j++)
-                fprintf(stderr,"[hp]   old j=%d order=%d e=%.3e sigma=%.3f action=%d p_new=%d h_sub=%d\n",
-                        j, old_orders(j), e_j[j], sig[j], action[j], p_new[j], h_sub[j]);
+                fprintf(stderr,"[hp]   old j=%d order=%d e=%.3e sigma=%.3f action=%d p_new=%d h_sub=%d switches=%d\n",
+                        j, old_orders(j), e_j[j], sig[j], action[j], p_new[j], h_sub[j],
+                        (int)sw_pos[j].size());
             int dbg_tot=0; for (size_t q=0;q<no.size();q++) dbg_tot+=no[q];
             fprintf(stderr,"[hp]   new K=%d orders=[", (int)no.size());
             for (size_t q=0;q<no.size();q++) fprintf(stderr,"%d%s",no[q],q+1<no.size()?",":"");

@@ -166,6 +166,9 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     if (algorithm.mr_M1 <= 0  )
        error_message("algorithm.mr_M1 must be positive");
 
+    if (algorithm.mr_switch_detection != 0 && algorithm.mr_switch_detection != 1 )
+       error_message("algorithm.mr_switch_detection must be 0 or 1");
+
     if (algorithm.switch_order < 0  )
        error_message("algorithm.switch_order must be >= 0");
 

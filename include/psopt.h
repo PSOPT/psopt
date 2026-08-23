@@ -415,6 +415,12 @@ struct alg_str {
   double    mr_kappa;
   int       mr_M1;
   string    mesh_refinement;
+  // hp automatic refinement: locate the control's switches and cut the mesh at them rather
+  // than at interval midpoints, giving each arc its own sub-interval. 0 (default) off, 1 on.
+  // Worth turning on for a problem whose Hamiltonian is linear in the control, so that the
+  // solution is bang-bang and the switches are what the mesh has to resolve; see the note in
+  // hp_refine.cxx for why it is not the default.
+  int       mr_switch_detection;
   // Mesh-refinement iteration at which the local-collocation schedule switches from
   // trapezoidal to Hermite-Simpson defects; 0 disables the switch. This applies ONLY to
   // the local (Betts) route, that is to collocation_method "trapezoidal" or

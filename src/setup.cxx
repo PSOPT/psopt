@@ -190,6 +190,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.mr_max_iterations		       = 7;
   algorithm.mr_min_order                = 3;
   algorithm.mr_max_order                = 12;
+  algorithm.mr_switch_detection         = 0;
   algorithm.mr_kappa                    = 0.1;
   algorithm.mr_M1                       = 5;
   algorithm.mesh_refinement 		       = "manual";

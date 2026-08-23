@@ -127,6 +127,7 @@ static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspa
 void psopt_apply_mesh_environment_override(Alg& algorithm, Workspace* workspace)
 {
     psopt_env_override("PSOPT_MESH_REFINEMENT", algorithm.mesh_refinement, workspace);
+    psopt_env_override_int("PSOPT_MR_SWITCH_DETECTION", algorithm.mr_switch_detection, workspace);
 }
 
 #endif  // PSOPT_ALLOW_ENV_OVERRIDES
