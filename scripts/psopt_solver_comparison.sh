@@ -229,7 +229,15 @@ run_one() {
     obj=$(grep -E "^Optimal .unscaled. cost function value:" "$log" | tail -1 | grep -oE "[-0-9.e+]+$" || true)
  
     if   [ "$rc" = "137" ] || [ "$rc" = "124" ]; then status="timeout"
-    elif grep -q "PASS" "$log" 2>/dev/null && [ -z "$obj" ]; then status="pass_selfcheck"
+    # A self-checking study rather than a single solve: it ran to completion, printed no
+    # objective, and has no mesh-refinement trace at all. Recognising these by the word
+    # PASS, as this did, missed examples/fuller -- which compares collocation against an
+    # integrated-residual formulation across several residual boxes and prints its own
+    # table without that word -- so fuller was recorded as a failure for both solvers in
+    # every sweep, and read as IPOPT being unable to solve it. Nothing that solves has
+    # zero mesh-refinement iterations, and nothing that fails exits zero with no output,
+    # so the three conditions together are exact on the shipped set.
+    elif [ "$rc" = "0" ] && [ "$meshes" = "0" ] && [ -z "$obj" ]; then status="pass_selfcheck"
     elif [ -n "$obj" ] && [ "$meshes" -gt 0 ] && [ "$solved" = "$meshes" ]; then status="solved"
     elif [ -n "$obj" ]; then status="partial"
     else status="failed"
