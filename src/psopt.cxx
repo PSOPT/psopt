@@ -803,6 +803,46 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         }
     }
 
+    // Gauss: the same problem as Radau's terminal node, at the other end and once per mesh
+    // interval. Gauss collocates strictly interior points, so each interval's left breakpoint
+    // is a stored node carrying a control that appears in no defect constraint. The variable
+    // exists in the NLP but is unconstrained, and the barrier term alone decides it: it comes
+    // back at the midpoint of the control bounds, which for a control bounded in [0,1] is a
+    // reported value of exactly 0.5 at the start of every interval. Those are artefacts, and
+    // they plot as spikes in a control trajectory that is otherwise correct.
+    //
+    // Report instead the control the dynamics actually saw: the Lagrange interpolant of that
+    // interval's own collocation controls, evaluated at the breakpoint. Built per interval,
+    // for the reason given above for Radau -- an interpolant over the clustered nodes of a
+    // whole multi-interval mesh is severely ill-conditioned. This changes only what is
+    // reported (and what the next mesh is hot-started from); it does not change the NLP.
+    if ( algorithm.collocation_method == "Gauss" ) {
+        for(int ip=0; ip<nphases; ip++) {
+            int ncontrols = problem.phase[ip].ncontrols;
+            if ( ncontrols < 1 ) continue;
+            int norder    = problem.phase[ip].current_number_of_intervals;
+            MatrixXd& sn  = workspace->snodes[ip];
+            int K = hp_mesh_active(problem.phase[ip]) ? hp_num_intervals(problem.phase[ip]) : 1;
+            int s = 0;                                   // storage index of interval's breakpoint
+            for (int j=0; j<K; j++) {
+                int nj = hp_mesh_active(problem.phase[ip])
+                         ? hp_interval_order(problem.phase[ip], j) : norder;
+                if ( nj < 1 || s + nj > norder ) break;  // defensive: leave the node as it is
+                double xe = sn(s);                       // the non-collocated breakpoint
+                for(int l=0;l<ncontrols;l++) {
+                    double val = 0.0;
+                    for(int m=s+1;m<=s+nj;m++) {         // interval's collocation nodes
+                        double wL = 1.0;
+                        for(int q=s+1;q<=s+nj;q++) if(q!=m) wL *= (xe - sn(q))/(sn(m)-sn(q));
+                        val += wL*(solution.controls[ip])(l,m);
+                    }
+                    (solution.controls[ip])(l,s) = val;
+                }
+                s += nj + 1;
+            }
+        }
+    }
+
     solution.cost = ff_num(x0, workspace)/problem.scale.objective;
 
     snprintf(workspace->text,sizeof(workspace->text),"\nReturned (unscaled) cost function value: %e", solution.cost);
