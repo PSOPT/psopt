@@ -111,6 +111,24 @@ static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspa
     if (getenv("PSOPT_HESSIAN") && workspace->algorithm)
         workspace->algorithm->hessian = algorithm.hessian;
 }
+// Applied before the mesh loop rather than with the rest, and it has to be. The others
+// are read once per NLP solve, which is where they are applied; mesh_refinement is read
+// by psopt_main *before* the first solve, to fix how many mesh iterations the loop will
+// run. Applied at the same point as the others it changes the option after that bound
+// has been taken, and a manual mesh with one node entry is then indexed a second time --
+// out of range, an unchecked Eigen read, a node count of -1 and a bad_alloc from the
+// workspace resize. That is how this was found.
+//
+// Turning mesh refinement off is what makes a comparison of two NLP solvers a controlled
+// one: with it on, each solver's answer steers its own next mesh, so after the first
+// refinement the two are not solving the same problem and their objectives are not
+// comparable. examples/wheat and examples/mpec turned out to be demonstrating exactly
+// that.
+void psopt_apply_mesh_environment_override(Alg& algorithm, Workspace* workspace)
+{
+    psopt_env_override("PSOPT_MESH_REFINEMENT", algorithm.mesh_refinement, workspace);
+}
+
 #endif  // PSOPT_ALLOW_ENV_OVERRIDES
 
 

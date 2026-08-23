@@ -299,6 +299,11 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                     // compiler can't prove the phase loop always runs).
   int nphases = problem.nphases;
 
+#ifdef PSOPT_ALLOW_ENV_OVERRIDES
+  // Before the loop bound is taken from it; see the note in NLP_interface.cxx.
+  psopt_apply_mesh_environment_override(algorithm, workspace_up.get());
+#endif
+
   int number_of_mesh_refinement_iterations = get_number_of_mesh_refinement_iterations(problem,algorithm);
 
 
@@ -393,6 +398,15 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     {
 			for (i=0; i<nphases; i++)
 			{
+	  			// The loop bound comes from the length of this vector, so the index is in
+	  			// range unless something has changed the option after that bound was
+	  			// taken. Eigen does not check the index in a release build, and what
+	  			// follows an out-of-range read here is a negative interval count and a
+	  			// bad_alloc several functions away, so it is checked.
+	  			if ( iter_nodes > (int) problem.phase[i].nodes.cols() ) {
+	  			    error_message("manual mesh refinement asked for more iterations than "
+	  			                  "there are entries in problem.phases(i).nodes");
+	  			}
 	  			problem.phase[i].current_number_of_intervals    = ( (int) problem.phase[i].nodes(iter_nodes-1)) -1;
 			}
     }

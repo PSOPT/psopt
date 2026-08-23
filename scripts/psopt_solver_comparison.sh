@@ -39,6 +39,7 @@ LIMIT=1800          # seconds per example per solver
 ONLY=""
 SKIP=""
 QP="GALAHAD"        # which QP backend the SQP runs use; it matters more than expected
+FIXED_MESH=0        # compare on each example's initial mesh, with refinement off
  
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
@@ -54,7 +55,10 @@ Options:
   --limit SECS   time limit per run           (default: 1800)
   --only LIST    comma-separated example names, for a quick trial run
   --skip LIST    comma-separated example names to leave out (e.g. unpublished work)
-  --qp NAME      QP backend for the SQP runs (default GALAHAD; try OSQP, ProxQP, QPALM)
+  --qp NAME      QP backend for the SQP runs (default GALAHAD; try PIQP, OSQP, Clarabel)
+  --fixed-mesh   turn mesh refinement off, so that both solvers answer the same
+                 discretized problem. Without this the objective column is not a
+                 controlled comparison: each solver's answer steers its own next mesh.
   --help         this message
  
 Runs are sequential, deliberately: wall-clock times are comparable between examples
@@ -72,6 +76,7 @@ while [ $# -gt 0 ]; do
         --only)  ONLY="$2"; shift 2 ;;
         --skip)  SKIP="$2"; shift 2 ;;
         --qp)    QP="$2";   shift 2 ;;
+        --fixed-mesh) FIXED_MESH=1; shift ;;
         --help|-h) usage ;;
         *) die "unknown option '$1' (try --help)" ;;
     esac
@@ -208,6 +213,7 @@ run_one() {
     else
         env_args="PSOPT_NLP_METHOD=IPOPT"
     fi
+    [ "$FIXED_MESH" = "1" ] && env_args="$env_args PSOPT_MESH_REFINEMENT=manual"
  
     local start end secs rc
     start=$(date +%s)
