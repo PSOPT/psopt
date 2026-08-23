@@ -136,13 +136,15 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
     {
         if ( !hp_mesh_active(problem.phase[i]) ) continue;   // driver seeds this at iter 1
 
-        int    nstates = problem.phase[i].nstates;
+        int    nstates  = problem.phase[i].nstates;
+        int    ncontrols= problem.phase[i].ncontrols;
         int    K       = hp_num_intervals(problem.phase[i]);
         int    N_eff   = problem.phase[i].current_number_of_intervals;   // = sum(hp_orders)
         int    R       = hp_node_ceiling(problem, algorithm, i+1);
 
         const MatrixXd& err = solution.relative_errors[i];        // 1 x N_eff (per node)
         const MatrixXd  X   = solution.get_states_in_phase(i+1);   // nstates x (N_eff+1)
+        const MatrixXd  U   = solution.get_controls_in_phase(i+1); // ncontrols x (N_eff+1)
         const MatrixXd& sn  = workspace->snodes[i];               // (N_eff+1) x 1, tau in [-1,1]
 
         RowVectorXi old_orders = problem.phase[i].hp_orders;
@@ -185,6 +187,32 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
                 for (int l=0;l<nstates;l++){ VectorXd v(np);
                     for (int c=0;c<np;c++) v(c)=X(l,s+c);
                     sg=std::min(sg, legendre_decay_rate(xi,v,sigma_min)); }
+
+                // The control has to be looked at as well as the state. Where the Hamiltonian
+                // is linear in the control the solution is bang-bang: the states stay
+                // continuous and, over a short interval, read as perfectly smooth, while the
+                // control jumps. Judging from the states alone then p-refines an interval that
+                // straddles a switch, and no polynomial degree approximates a discontinuity, so
+                // the error stops falling and the refinement stalls. Measured on examples/wheat:
+                // on every interval whose error exceeded the tolerance the state decay rate was
+                // between 2.0 and 5.5 -- comfortably "smooth" -- while the control decay rate on
+                // the same interval sat on the sigma_min floor of 0.05.
+                //
+                // Gauss stores each interval's left breakpoint as a non-collocated node, at
+                // which the control is not a variable of the NLP; the control fit skips it and
+                // uses the interval's own collocation points.
+                if ( ncontrols > 0 ) {
+                    int su  = s + (gauss ? 1 : 0);
+                    int npu = old_orders(j) + (gauss ? 0 : 1);
+                    if ( npu >= 3 && su + npu - 1 <= N_eff ) {
+                        double au=sn(su), bu=sn(su+npu-1), halfu=0.5*(bu-au);
+                        VectorXd xiu(npu);
+                        for (int c=0;c<npu;c++) xiu(c)=(sn(su+c)-0.5*(au+bu))/halfu;
+                        for (int l=0;l<ncontrols;l++){ VectorXd v(npu);
+                            for (int c=0;c<npu;c++) v(c)=U(l,su+c);
+                            sg=std::min(sg, legendre_decay_rate(xiu,v,sigma_min)); }
+                    }
+                }
                 sig[j]=sg;
             }
         }
@@ -258,6 +286,21 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
                 if (qm<0) break;
                 no[qm]-=1; tot--; storage--;
             }
+        }
+
+        // PSOPT_HP_DEBUG traces the decision the driver took on each interval. The mesh
+        // schedule is otherwise invisible in the output, and a refinement that stalls is very
+        // hard to diagnose without it.
+        if ( getenv("PSOPT_HP_DEBUG") ) {
+            fprintf(stderr,"[hp] phase %d  K=%d N_eff=%d N_target=%d R=%d\n", i+1,K,N_eff,N_target,R);
+            for (int j=0;j<K;j++)
+                fprintf(stderr,"[hp]   old j=%d order=%d e=%.3e sigma=%.3f action=%d p_new=%d h_sub=%d\n",
+                        j, old_orders(j), e_j[j], sig[j], action[j], p_new[j], h_sub[j]);
+            int dbg_tot=0; for (size_t q=0;q<no.size();q++) dbg_tot+=no[q];
+            fprintf(stderr,"[hp]   new K=%d orders=[", (int)no.size());
+            for (size_t q=0;q<no.size();q++) fprintf(stderr,"%d%s",no[q],q+1<no.size()?",":"");
+            fprintf(stderr,"] sum_orders %d -> %d  storage %d -> %d\n",
+                    (int)old_orders.sum(), dbg_tot, N_eff+1, dbg_tot+(gauss?(int)no.size()-1:0)+1);
         }
 
         RowVectorXi new_orders(no.size());
