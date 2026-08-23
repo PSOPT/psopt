@@ -203,8 +203,42 @@ if [ "$DO_CLARABEL" = "1" ]; then
         # shellcheck disable=SC1091
         . "$HOME/.cargo/env"
     fi
-    command -v cargo >/dev/null 2>&1 || die "cargo still is not on the PATH; open a new shell and rerun, or use --piqp-only"
+    command -v cargo >/dev/null 2>&1 || die "cargo still is not on the PATH; open a new shell and rerun, or build without --clarabel"
     info "cargo           $(cargo --version | awk '{print $2}')"
+
+    # Clarabel.cpp's build generates its C header by running cbindgen, which it installs
+    # with `cargo install` and then calls by name. cargo install puts its binaries in
+    # $CARGO_HOME/bin, and rustup adds that directory to the shell profile -- so on a
+    # machine whose cargo came from rustup this is invisible and everything works. Where
+    # cargo came from a package manager instead, MacPorts or Homebrew, nothing has put
+    # that directory on the PATH, and the build gets most of the way through and then
+    # fails with
+    #
+    #     Ignored package `cbindgen v0.29.4` is already installed
+    #     /bin/sh: cbindgen: command not found
+    #
+    # which says both that the tool is installed and that it cannot be found, and does
+    # not mention the PATH at all. So the directory goes on the PATH here, and cbindgen
+    # is checked for before anything is built rather than in the middle of it.
+    CARGO_BIN="${CARGO_HOME:-$HOME/.cargo}/bin"
+    case ":$PATH:" in
+        *":$CARGO_BIN:"*) ;;
+        *) if [ -d "$CARGO_BIN" ]; then
+               PATH="$CARGO_BIN:$PATH"; export PATH
+               info "PATH            $CARGO_BIN added (cargo install puts its binaries there)"
+           fi ;;
+    esac
+
+    if ! command -v cbindgen >/dev/null 2>&1; then
+        info "cbindgen        not found; installing it (Clarabel's build generates its C header with it)"
+        cargo install cbindgen
+        hash -r 2>/dev/null || true
+    fi
+    command -v cbindgen >/dev/null 2>&1 || die "cbindgen is not on the PATH even after installing it.
+    cargo install puts it in $CARGO_BIN; put that directory on your PATH and rerun:
+
+        export PATH=\"$CARGO_BIN:\$PATH\""
+    info "cbindgen        $(cbindgen --version 2>/dev/null | awk '{print $2}')"
 fi
 
 mkdir -p "$SRCDIR"
