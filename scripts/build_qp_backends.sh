@@ -205,20 +205,57 @@ if [ "$DO_CLARABEL" = "1" ]; then
     fi
     command -v cargo >/dev/null 2>&1 || die "cargo still is not on the PATH; open a new shell and rerun, or build without --clarabel"
 
-    # Being on the PATH is not the same as working. rustup installs shims named cargo and
-    # rustc that refuse to do anything until a default toolchain is chosen, and a machine
-    # can easily carry both those shims and a working cargo from a package manager. Ask
-    # the one that will actually be run whether it can run.
-    if ! CARGO_VERSION="$(cargo --version 2>&1)"; then
-        die "cargo is on the PATH at $(command -v cargo) but will not run:
+    # Being on the PATH is not the same as working, and the first cargo on the PATH is
+    # not necessarily the one that works. rustup installs shims named cargo and rustc
+    # that refuse to do anything until a default toolchain has been chosen:
+    #
+    #     error: rustup could not choose a version of cargo to run, because one wasn't
+    #     specified explicitly, and no default is configured.
+    #
+    # A machine can carry those shims and a working cargo from a package manager at the
+    # same time, in either order. Clarabel's CMake runs a bare `cargo build`, so what
+    # matters is which one the PATH resolves -- and the only lever is the PATH. So every
+    # cargo on it is tried in turn and the first that answers --version is the one used,
+    # with its directory moved to the front so that the build resolves the same one.
+    CARGO_WORKING=""
+    CARGO_VERSION=""
+    CARGO_REFUSED=""
+    saved_ifs="$IFS"; IFS=":"
+    for d in $PATH; do
+        [ -n "$d" ] || continue
+        [ -x "$d/cargo" ] || continue
+        if v="$("$d/cargo" --version 2>&1)"; then
+            CARGO_WORKING="$d/cargo"; CARGO_VERSION="$v"; break
+        fi
+        [ -n "$CARGO_REFUSED" ] || CARGO_REFUSED="$d/cargo
+$v"
+    done
+    IFS="$saved_ifs"
 
-    $CARGO_VERSION
+    if [ -z "$CARGO_WORKING" ]; then
+        die "every cargo on the PATH refuses to run. The first was:
 
-    If that is rustup saying no default toolchain is configured, the fix is one line:
+    ${CARGO_REFUSED%%
+*}
+    ${CARGO_REFUSED#*
+}
 
-        rustup default stable"
+    If that is rustup saying no default toolchain is configured, either give it one:
+
+        rustup default stable
+
+    or install cargo from your package manager -- MacPorts: sudo port install cargo;
+    Homebrew: brew install rust -- and rerun."
     fi
-    info "cargo           ${CARGO_VERSION#cargo } ($(command -v cargo))"
+
+    # The build resolves cargo from the PATH itself, so the working one has to be in
+    # front. On a machine with only rustup this changes nothing.
+    CARGO_WORKING_DIR="$(dirname "$CARGO_WORKING")"
+    case ":$PATH:" in
+        "$CARGO_WORKING_DIR:"*) ;;
+        *) PATH="$CARGO_WORKING_DIR:$PATH"; export PATH ;;
+    esac
+    info "cargo           ${CARGO_VERSION#cargo } ($CARGO_WORKING)"
 
     # Clarabel.cpp's build generates its C header by running cbindgen, which it installs
     # with `cargo install` and then calls by name. cargo install puts its binaries in
