@@ -204,7 +204,21 @@ if [ "$DO_CLARABEL" = "1" ]; then
         . "$HOME/.cargo/env"
     fi
     command -v cargo >/dev/null 2>&1 || die "cargo still is not on the PATH; open a new shell and rerun, or build without --clarabel"
-    info "cargo           $(cargo --version | awk '{print $2}')"
+
+    # Being on the PATH is not the same as working. rustup installs shims named cargo and
+    # rustc that refuse to do anything until a default toolchain is chosen, and a machine
+    # can easily carry both those shims and a working cargo from a package manager. Ask
+    # the one that will actually be run whether it can run.
+    if ! CARGO_VERSION="$(cargo --version 2>&1)"; then
+        die "cargo is on the PATH at $(command -v cargo) but will not run:
+
+    $CARGO_VERSION
+
+    If that is rustup saying no default toolchain is configured, the fix is one line:
+
+        rustup default stable"
+    fi
+    info "cargo           ${CARGO_VERSION#cargo } ($(command -v cargo))"
 
     # Clarabel.cpp's build generates its C header by running cbindgen, which it installs
     # with `cargo install` and then calls by name. cargo install puts its binaries in
@@ -220,12 +234,19 @@ if [ "$DO_CLARABEL" = "1" ]; then
     # which says both that the tool is installed and that it cannot be found, and does
     # not mention the PATH at all. So the directory goes on the PATH here, and cbindgen
     # is checked for before anything is built rather than in the middle of it.
+    # Appended, not prepended, and the distinction matters. All that is wanted from this
+    # directory is cbindgen; the cargo that has already been found is the one to keep
+    # using. A machine can carry rustup's shims here *and* a working cargo from a package
+    # manager, and putting this directory first replaces the cargo that works with a shim
+    # that refuses to run until a default toolchain is chosen -- which is a worse failure
+    # than the one being fixed, and one this script caused on a Mac where cargo came from
+    # MacPorts.
     CARGO_BIN="${CARGO_HOME:-$HOME/.cargo}/bin"
     case ":$PATH:" in
         *":$CARGO_BIN:"*) ;;
         *) if [ -d "$CARGO_BIN" ]; then
-               PATH="$CARGO_BIN:$PATH"; export PATH
-               info "PATH            $CARGO_BIN added (cargo install puts its binaries there)"
+               PATH="$PATH:$CARGO_BIN"; export PATH
+               info "PATH            $CARGO_BIN appended (cargo install puts its binaries there)"
            fi ;;
     esac
 
@@ -238,7 +259,7 @@ if [ "$DO_CLARABEL" = "1" ]; then
     cargo install puts it in $CARGO_BIN; put that directory on your PATH and rerun:
 
         export PATH=\"$CARGO_BIN:\$PATH\""
-    info "cbindgen        $(cbindgen --version 2>/dev/null | awk '{print $2}')"
+    info "cbindgen        $(cbindgen --version 2>/dev/null | awk '{print $2}') ($(command -v cbindgen))"
 fi
 
 mkdir -p "$SRCDIR"
