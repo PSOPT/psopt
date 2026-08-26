@@ -240,7 +240,7 @@ rm -f "$probe_log"
  
 mkdir -p "$OUTDIR/logs"
 CSV="$OUTDIR/results.csv"
-echo "example,solver,status,meshes,meshes_solved,sqp_iterations,objective,seconds,exit_code" > "$CSV"
+echo "example,solver,status,meshes,meshes_solved,meshes_acceptable,sqp_iterations,objective,seconds,exit_code" > "$CSV"
  
 # ---------------------------------------------------------------------------------
 # The examples
@@ -302,9 +302,19 @@ run_one() {
     # Classification. An example counts as solved only if it returned an objective and
     # every mesh refinement reached optimality; anything else is reported as what it was
     # rather than folded into a single "failed".
-    local meshes solved iters obj status
+    local meshes solved accept iters obj status
     meshes=$(grep -c "mesh refinement iteration:" "$log" || true)
-    solved=$(grep -cE "Optimal solution found|EXIT: Optimal Solution Found" "$log" || true)
+    # Both solvers can stop at an acceptable level rather than at the requested tolerance,
+    # and both mean the same thing by it: feasible, and dual-feasible to a looser bound.
+    # They say it differently. The SQP prints "Optimal solution found to acceptable
+    # tolerance", which matches the pattern below; IPOPT prints "EXIT: Solved To Acceptable
+    # Level", which did not. So the identical outcome counted as solved for the SQP and as
+    # partial for IPOPT -- a bias in the SQP's favour, in every sweep run so far. It is what
+    # made examples/lqr_radau read as the one example the SQP solves and IPOPT does not,
+    # when IPOPT in fact returns the same objective to seven figures with a dual
+    # infeasibility of 8e-09. Count both, and report how often it happened.
+    solved=$(grep -cE "Optimal solution found|EXIT: Optimal Solution Found|EXIT: Solved To Acceptable Level" "$log" || true)
+    accept=$(grep -cE "Optimal solution found to acceptable tolerance|EXIT: Solved To Acceptable Level" "$log" || true)
     iters=$(grep -oE "SQP finished after [0-9]+" "$log" | grep -oE "[0-9]+" | paste -sd+ - | bc 2>/dev/null || true)
     obj=$(grep -E "^Optimal .unscaled. cost function value:" "$log" | tail -1 | grep -oE "[-0-9.e+]+$" || true)
  
@@ -323,8 +333,8 @@ run_one() {
     else status="failed"
     fi
  
-    printf "%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
-        "$e" "$solver" "$status" "$meshes" "$solved" "${iters:-}" "${obj:-}" "$secs" "$rc" >> "$CSV"
+    printf "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n" \
+        "$e" "$solver" "$status" "$meshes" "$solved" "$accept" "${iters:-}" "${obj:-}" "$secs" "$rc" >> "$CSV"
     printf "    %-22s %-6s %-14s %6ss  %s\n" "$e" "$solver" "$status" "$secs" "${obj:-}"
 }
  
@@ -376,6 +386,19 @@ out.append(f"{len(cmp_ex)} optimal control problems, time limit {limit} s per ru
 # The run's own conditions, recorded here because a sweep is meaningless without them and
 # two sweeps that differ in them must never be put in the same table.
 out.append(f"QP backend: **{qp}**. Mesh: **{mesh_mode}**.\n")
+
+# How often each solver stopped at an acceptable level rather than at the requested
+# tolerance. Both are counted as solved, because both mean the same thing by it, but the
+# counts belong in the report: a column of solves that are mostly acceptable-level is a
+# different claim from one that is not.
+acc = {}
+for sv in ('IPOPT', 'SQP'):
+    acc[sv] = sum(1 for e in cmp_ex
+                  if (by[e].get(sv) or {}).get('meshes_acceptable', '0') not in ('', '0'))
+if acc['IPOPT'] or acc['SQP']:
+    out.append(f"Runs that stopped at an acceptable level rather than the requested "
+               f"tolerance, counted as solved for both: IPOPT {acc['IPOPT']}, "
+               f"SQP {acc['SQP']}.\n")
 if studies:
     out.append(f"({len(studies)} further examples are self-checking studies rather than a single "
                f"solve, and are excluded from everything below: " + ", ".join(studies) + ".)\n")
