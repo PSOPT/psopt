@@ -1551,7 +1551,7 @@ void Save_to_json_file(const std::string& filename, Prob& problem, Sol& solution
 
 void psopt_main(Sol& solution, Prob& problem, Alg& algorithm, unique_ptr<Workspace>& workspace_up);
 #ifdef PSOPT_ALLOW_ENV_OVERRIDES
-void psopt_apply_mesh_environment_override(Alg& algorithm, Workspace* workspace);
+void psopt_apply_mesh_environment_override(Alg& algorithm);
 #endif
 
 void clip_vector_given_bounds(MatrixXd& xp, MatrixXd& xlb, MatrixXd& xub);

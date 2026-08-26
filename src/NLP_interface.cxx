@@ -124,10 +124,29 @@ static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspa
 // refinement the two are not solving the same problem and their objectives are not
 // comparable. examples/wheat and examples/mpec turned out to be demonstrating exactly
 // that.
-void psopt_apply_mesh_environment_override(Alg& algorithm, Workspace* workspace)
+// Applied before the Workspace exists, so it cannot report through it. The Workspace is
+// sized from algorithm.mesh_refinement -- get_max_nodes asks a different question of the
+// node schedule under "manual" than under "automatic" -- so an override applied after the
+// allocation leaves every array in the Workspace sized for the mesh schedule that was NOT
+// used. Writing past them is silent on glibc and traps on macOS; see the note in psopt.cxx.
+void psopt_apply_mesh_environment_override(Alg& algorithm)
 {
-    psopt_env_override("PSOPT_MESH_REFINEMENT", algorithm.mesh_refinement, workspace);
-    psopt_env_override_int("PSOPT_MR_SWITCH_DETECTION", algorithm.mr_switch_detection, workspace);
+    const char* v = getenv("PSOPT_MESH_REFINEMENT");
+    if (v != NULL && algorithm.mesh_refinement != v) {
+        if (algorithm.print_level)
+            fprintf(stderr, ">>> PSOPT_MESH_REFINEMENT overrides the algorithm setting in "
+                            "the source: \"%s\" -> \"%s\"\n",
+                    algorithm.mesh_refinement.c_str(), v);
+        algorithm.mesh_refinement = v;
+    }
+    const char* w = getenv("PSOPT_MR_SWITCH_DETECTION");
+    if (w != NULL && atoi(w) != algorithm.mr_switch_detection) {
+        if (algorithm.print_level)
+            fprintf(stderr, ">>> PSOPT_MR_SWITCH_DETECTION overrides the algorithm setting "
+                            "in the source: %d -> %d\n",
+                    algorithm.mr_switch_detection, atoi(w));
+        algorithm.mr_switch_detection = atoi(w);
+    }
 }
 
 #endif  // PSOPT_ALLOW_ENV_OVERRIDES

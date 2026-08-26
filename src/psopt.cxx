@@ -251,6 +251,20 @@ int psopt(Sol& solution, Prob& problem, Alg& algorithm)
         // sized from it, and restores the user layout on scope exit.
         IntegerControlExpansionGuard psopt_ic_guard(problem);
 
+#ifdef PSOPT_ALLOW_ENV_OVERRIDES
+        // Before the Workspace, not merely before the mesh loop. get_max_nodes reads the
+        // node schedule differently under "manual" than under "automatic" -- manual takes
+        // the last entry the user listed, automatic takes an a-priori growth ceiling -- and
+        // every array in the Workspace is sized from the answer. Applying the override after
+        // the allocation, as this did, leaves the arrays sized for the schedule that was not
+        // used, and a prescribed mesh larger than the automatic ceiling then writes past
+        // them. examples/manutec is such a case: it prescribes 20, 30, 40, 60, 80 nodes
+        // against an automatic ceiling of 76, and its fifth mesh wrote off the end of
+        // workspace->states_traj. glibc absorbs that silently; macOS traps on it, which is
+        // how it was found -- IPOPT exiting 133 (SIGTRAP) on the fifth mesh with no message.
+        psopt_apply_mesh_environment_override(algorithm);
+#endif
+
         unique_ptr<Workspace> workspace_up{ new Workspace{problem, algorithm, solution} };
 
         initialize_solution(solution, problem, algorithm, workspace_up.get());
@@ -298,11 +312,6 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                     // silences a -Wmaybe-uninitialized false positive (the
                     // compiler can't prove the phase loop always runs).
   int nphases = problem.nphases;
-
-#ifdef PSOPT_ALLOW_ENV_OVERRIDES
-  // Before the loop bound is taken from it; see the note in NLP_interface.cxx.
-  psopt_apply_mesh_environment_override(algorithm, workspace_up.get());
-#endif
 
   int number_of_mesh_refinement_iterations = get_number_of_mesh_refinement_iterations(problem,algorithm);
 
