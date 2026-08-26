@@ -392,7 +392,8 @@ void hp_refine_driver( Prob& problem, Alg& algorithm, Sol& solution, Workspace* 
         // assemble the new mesh from the decisions
         std::vector<int> no; std::vector<double> nb;
         for (int j=0;j<K;j++) {
-            double left  = (j==0)   ? 0.0 : old_breaks(j-1);
+            // The interval's left end is no longer needed here: the split's interior
+            // breakpoints were chosen when the decision was taken, and h_bk[j] carries them.
             double right = (j==K-1) ? 1.0 : old_breaks(j);
             if (action[j]==2) {                          // h-split at h_bk[j]
                 int m = (int)h_bk[j].size() + 1;
