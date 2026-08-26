@@ -73,7 +73,33 @@ set_property(CACHE PSOPT_AD_BACKEND PROPERTY STRINGS CPPAD AUTODIFF XAD)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(ipopt REQUIRED IMPORTED_TARGET ipopt)
+# IPOPT is located entirely through pkg-config, so a configure that has worked for months
+# stops working the moment PKG_CONFIG_PATH is not what it was -- a fresh shell that has not
+# sourced the usual exports, a package manager upgrade that moved ipopt.pc, or a pkg-config
+# on PATH that does not search the prefix IPOPT was installed into. The failure then lands
+# as FindPkgConfig's bare "No package 'ipopt' found", which says nothing about any of that.
+# Ask without REQUIRED so the diagnosis below can be given instead.
+pkg_check_modules(ipopt IMPORTED_TARGET ipopt)
+if(NOT ipopt_FOUND)
+  set(_psopt_pcpath "$ENV{PKG_CONFIG_PATH}")
+  if(_psopt_pcpath STREQUAL "")
+    set(_psopt_pcpath "(unset)")
+  endif()
+  message(FATAL_ERROR
+    "IPOPT was not found by pkg-config, so PSOPT cannot be configured.\n"
+    "  pkg-config : ${PKG_CONFIG_EXECUTABLE}\n"
+    "  PKG_CONFIG_PATH : ${_psopt_pcpath}\n"
+    "This is a search-path problem far more often than a missing IPOPT. To find out which:\n"
+    "  pkg-config --list-all | grep -i ipopt      # does this pkg-config know it at all?\n"
+    "  ls /opt/local/lib/pkgconfig/ipopt.pc       # MacPorts\n"
+    "  ls /usr/local/lib/pkgconfig/ipopt.pc       # Homebrew (Intel), /opt/homebrew on arm64\n"
+    "  ls <your-ipopt-prefix>/lib/pkgconfig/ipopt.pc\n"
+    "If ipopt.pc exists but is not listed, point pkg-config at the directory holding it:\n"
+    "  export PKG_CONFIG_PATH=<dir with ipopt.pc>:$PKG_CONFIG_PATH\n"
+    "and configure again. If this build used to work in another shell, that shell almost "
+    "certainly exported PKG_CONFIG_PATH (and likely GALAHAD_DIR, OSQP_DIR and CLARABEL_DIR "
+    "with it); check those are set here too before looking any further.")
+endif()
 
 if(PSOPT_AD_BACKEND STREQUAL "CPPAD")
   find_path(CPPAD_INCLUDE_DIR cppad/cppad.hpp HINTS ENV CPPAD_DIR PATH_SUFFIXES include)
