@@ -64,7 +64,8 @@ option(PSOPT_ALLOW_ENV_OVERRIDES "Let algorithm settings be overridden from the 
 # empty.
 foreach(_psopt_hint
         GALAHAD_DIR OSQP_DIR PIQP_DIR CLARABEL_DIR PROXSUITE_DIR QPALM_DIR
-        IPOPT_DIR MUMPS_DIR CPPAD_DIR AUTODIFF_DIR XAD_DIR)
+        IPOPT_DIR MUMPS_DIR CPPAD_DIR AUTODIFF_DIR XAD_DIR
+        osqp_DIR piqp_DIR proxsuite_DIR)
   if(DEFINED ${_psopt_hint} AND "${${_psopt_hint}}" MATCHES "(^|[ \t])-D")
     message(FATAL_ERROR
       "${_psopt_hint} was given the value:\n"
@@ -418,7 +419,19 @@ if(WITH_SQP)
   if(WITH_OSQP)
     find_package(osqp QUIET)
     if(NOT osqp_FOUND)
-      message(FATAL_ERROR "WITH_OSQP=ON but OSQP was not found. Set osqp_DIR to the directory containing osqpConfig.cmake.")
+      # OSQP is found with find_package, so the hint is named after the package and is
+      # lower case. OSQP_DIR is a name people reach for and PSOPT reads nowhere, so say
+      # so rather than let it look like the path was simply wrong.
+      set(_psopt_osqp_hint "")
+      if(DEFINED OSQP_DIR AND NOT DEFINED osqp_DIR)
+        # One string, not two: set() with two quoted arguments makes a list, and the
+        # list separator shows up as a stray semicolon in the middle of the sentence.
+        set(_psopt_osqp_hint "\nOSQP_DIR is set here and PSOPT does not read it: the variable find_package(osqp) uses is osqp_DIR, lower case.")
+      endif()
+      message(FATAL_ERROR "WITH_OSQP=ON but OSQP was not found. Set osqp_DIR to the "
+                          "directory containing osqpConfig.cmake (or osqp-config.cmake); "
+                          "scripts/build_qp_backends.sh writes an environment file that "
+                          "exports it.${_psopt_osqp_hint}")
     endif()
     message(STATUS "PSOPT SQP: OSQP backend plugin enabled")
     psopt_add_qp_plugin(osqp ${CMAKE_SOURCE_DIR}/src/qp_backends/osqp_plugin.cxx osqp::osqpstatic)

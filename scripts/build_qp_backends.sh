@@ -447,30 +447,61 @@ fi
 # ---------------------------------------------------------------------------------
 # The environment
 # ---------------------------------------------------------------------------------
+# The environment file describes the PREFIX, not this run. It used to describe the run:
+# each invocation rewrote it with exports only for the backends it had just installed, so
+# installing one backend silently deleted the exports for the others already sitting in the
+# same prefix. A file left holding CLARABEL_DIR alone is what that looks like, and the next
+# configure then quietly builds without OSQP and PIQP. So look at what is actually there.
 ENVFILE="$PREFIX/qp-backends-env.sh"
+env_osqp="$(find "$PREFIX" -name 'osqp-config.cmake' -print -quit 2>/dev/null || true)"
+[ -n "$env_osqp" ] || env_osqp="$(find "$PREFIX" -name 'osqpConfig.cmake' -print -quit 2>/dev/null || true)"
+env_piqp="$(find "$PREFIX" -name 'piqpConfig.cmake' -print -quit 2>/dev/null || true)"
+env_clarabel=""
+[ -f "$PREFIX/include/clarabel.h" ] && env_clarabel="$PREFIX"
 {
     echo "# QP backend environment for PSOPT.  Source this, or copy it into your"
     echo "# shell profile:"
     echo "#     source $ENVFILE"
+    echo "#"
+    echo "# Written from what is present in $PREFIX, so it stays complete when this"
+    echo "# script is re-run for one backend."
     echo
-    if [ "$DO_OSQP" = "1" ]; then
+    if [ -n "$env_osqp" ]; then
         echo "# Where PSOPT's find_package(osqp) should look."
-        echo "export osqp_DIR=\"$(dirname "$OSQP_CONFIG")\""
+        echo "export osqp_DIR=\"$(dirname "$env_osqp")\""
         echo
     fi
-    if [ "$DO_PIQP" = "1" ]; then
+    if [ -n "$env_piqp" ]; then
         echo "# Where PSOPT's find_package(piqp) should look."
-        echo "export piqp_DIR=\"$(dirname "$PIQP_CONFIG")\""
+        echo "export piqp_DIR=\"$(dirname "$env_piqp")\""
         echo
     fi
-    if [ "$DO_CLARABEL" = "1" ]; then
+    if [ -n "$env_clarabel" ]; then
         echo "# Where PSOPT's cmake should look for Clarabel's header and static library."
-        echo "export CLARABEL_DIR=\"$PREFIX\""
+        echo "export CLARABEL_DIR=\"$env_clarabel\""
         echo
     fi
     echo "# None of them needs anything on the loader path: PIQP is header-only, and the OSQP"
     echo "# and Clarabel plugins link static libraries."
+    echo
+    echo "# Note the case. OSQP and PIQP are found with find_package, whose hint variable is"
+    echo "# named after the package and is lower case; there is no OSQP_DIR or PIQP_DIR that"
+    echo "# PSOPT reads for OSQP. Clarabel has no package config, so PSOPT looks for its"
+    echo "# header and library directly, and that hint is CLARABEL_DIR."
 } > "$ENVFILE"
+
+say "Configure PSOPT with"
+info "  source $ENVFILE"
+info "  cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON \\"
+info "        -DWITH_SQP=ON -DWITH_GALAHAD=ON -DGALAHAD_DIR=\"\$GALAHAD_DIR\" \\"
+[ -n "$env_osqp" ]     && info "        -DWITH_OSQP=ON \\"
+[ -n "$env_piqp" ]     && info "        -DWITH_PIQP=ON \\"
+[ -n "$env_clarabel" ] && info "        -DWITH_CLARABEL=ON -DCLARABEL_DIR=\"\$CLARABEL_DIR\" \\"
+info "        -DPSOPT_ALLOW_ENV_OVERRIDES=ON"
+info ""
+info "osqp_DIR and piqp_DIR are read from the environment by find_package, so they do not"
+info "need to be repeated on the cmake line. Where a value is passed, keep the closing quote"
+info "immediately after the variable: -DX=\"\$X\" -DY=ON, never -DX=\"\$X -DY=ON\"."
 
 say "Done"
 cat <<EOF
