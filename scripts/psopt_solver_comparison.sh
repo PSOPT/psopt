@@ -114,6 +114,31 @@ command -v gtimeout >/dev/null 2>&1 && TIMEOUT=gtimeout || TIMEOUT=timeout
 command -v "$TIMEOUT" >/dev/null 2>&1 || die "no timeout command. On macOS: brew install coreutils (for gtimeout), or MacPorts: sudo port install coreutils"
 info "timeout command: $TIMEOUT"
  
+# Every probe below depends on the environment overrides being compiled in: without them
+# each example silently uses whatever its own source names, and the SQP column becomes a
+# second IPOPT column. The build records whether the option was given, so ask the cache
+# rather than inferring it from behaviour further down. Inferring it produces a confident
+# diagnosis of the wrong thing -- a build reconfigured without the option failed the
+# fixed-mesh check below, which then blamed the age of the tree.
+if [ -f "$BUILD/CMakeCache.txt" ]; then
+    case "$(grep -m1 '^PSOPT_ALLOW_ENV_OVERRIDES:' "$BUILD/CMakeCache.txt" 2>/dev/null)" in
+        *=ON) info "environment overrides: enabled in this build" ;;
+        "")   warn "this build's CMakeCache.txt does not mention PSOPT_ALLOW_ENV_OVERRIDES,
+    which is expected only for a tree older than the option. The probes below
+    will still catch it if the overrides turn out not to work." ;;
+        *)    die "this build was configured with PSOPT_ALLOW_ENV_OVERRIDES off, so none of
+    the environment variables this script relies on will do anything: every example
+    would run whichever solver, backend and mesh mode its own source names, and the
+    comparison would be meaningless. Reconfigure and rebuild:
+      cmake -B $BUILD -DPSOPT_ALLOW_ENV_OVERRIDES=ON <your other options>
+      cmake --build $BUILD -j
+    A reconfigure that omits the option turns it back off, so it has to be passed
+    every time, not only the first." ;;
+    esac
+else
+    warn "no CMakeCache.txt under $BUILD, so PSOPT_ALLOW_ENV_OVERRIDES cannot be confirmed."
+fi
+
 PROBE=""
 for c in brac1 hypersensitive interior_point; do
     [ -x "$BUILD/examples/$c/$c" ] && PROBE="$c" && break
@@ -158,10 +183,11 @@ if [ "$FIXED_MESH" = "1" ]; then
     elif [ "$got_manual" = "$got_auto" ]; then
         die "--fixed-mesh was asked for, but PSOPT_MESH_REFINEMENT does not change anything:
     the probe '$PROBE' reported '$got_manual' whichever value it was given.
-    This build predates the fixed-mesh mode. Rebuild PSOPT from a tree that has
-    psopt_apply_mesh_environment_override (src/NLP_interface.cxx), with
-    -DPSOPT_ALLOW_ENV_OVERRIDES=ON. Going on would produce a sweep that looks entirely
-    normal and silently answers a different question."
+    The overrides are enabled, so this build is older than the fixed-mesh mode itself.
+    Rebuild from a tree whose src/NLP_interface.cxx has
+    psopt_apply_mesh_environment_override, keeping -DPSOPT_ALLOW_ENV_OVERRIDES=ON.
+    Going on would produce a sweep that looks entirely normal and silently answers a
+    different question."
     else
         info "fixed mesh: working (probe reports '$got_manual' and '$got_auto' as asked)"
     fi
