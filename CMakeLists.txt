@@ -55,6 +55,31 @@ option(HEADLESS "Headless option (Gnuplot does not spawn windows with plots, but
 option(PSOPT_STRICT_WARNINGS "Build the PSOPT library with -Wall -Wextra -Werror (for CI). Default OFF so normal builds are unaffected." OFF)
 option(PSOPT_PYTHON "Build the Python binding (python/). Builds libPSOPT position-independent, which the extension requires." OFF)
 option(PSOPT_ALLOW_ENV_OVERRIDES "Let algorithm settings be overridden from the environment (PSOPT_NLP_METHOD and friends). For benchmarking one binary many ways; every override is announced on stdout. OFF by default." OFF)
+# A -D value that has swallowed the flag after it. This comes from a closing quote in the
+# wrong place -- -DOSQP_DIR="$OSQP_DIR -DPSOPT_ALLOW_ENV_OVERRIDES=ON" rather than
+# -DOSQP_DIR="$OSQP_DIR" -DPSOPT_ALLOW_ENV_OVERRIDES=ON -- and it is close to invisible: the
+# swallowed option never reaches CMake, so it keeps its default and the build comes out
+# quietly different from the one that was asked for. It cost a sweep. The hint variables are
+# where it happens, because they are the ones whose values are shell variables that may be
+# empty.
+foreach(_psopt_hint
+        GALAHAD_DIR OSQP_DIR PIQP_DIR CLARABEL_DIR PROXSUITE_DIR QPALM_DIR
+        IPOPT_DIR MUMPS_DIR CPPAD_DIR AUTODIFF_DIR XAD_DIR)
+  if(DEFINED ${_psopt_hint} AND "${${_psopt_hint}}" MATCHES "(^|[ \t])-D")
+    message(FATAL_ERROR
+      "${_psopt_hint} was given the value:\n"
+      "    ${${_psopt_hint}}\n"
+      "which contains a -D option. A path never does, so a closing quote is in the wrong "
+      "place on the cmake line and this variable has swallowed the option after it -- that "
+      "option never reached CMake and is now at its default. Write\n"
+      "    -D${_psopt_hint}=\"\$${_psopt_hint}\" -DNEXT_OPTION=ON\n"
+      "with the quote closing before the next -D, not after it. Note also that the variable "
+      "expanded to nothing here, which usually means this shell has not exported it.\n"
+      "The wrong value is already in CMakeCache.txt, so correct it explicitly or delete the "
+      "build directory; a plain re-run will not clear it.")
+  endif()
+endforeach()
+
 include(GNUInstallDirs)
 option(WITH_SQP "Build PSOPT's own SQP solver (algorithm.nlp_method = \"SQP\"). Requires at least one QP backend, e.g. WITH_GALAHAD." OFF)
 option(WITH_PROXQP "Add ProxQP as a QP backend for the SQP solver (algorithm.qp_solver = \"ProxQP\"). Requires proxsuite; implies WITH_SQP." OFF)
