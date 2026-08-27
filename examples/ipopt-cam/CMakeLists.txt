@@ -13,6 +13,12 @@ if(NOT PSOPT_AD_BACKEND STREQUAL "CPPAD")
     return()
 endif()
 
+# CppAD's cppad.hpp pulls in sparse2eigen.hpp when CppAD was configured with
+# Eigen support, and that header includes <Eigen/Sparse>. Nothing in this example
+# uses Eigen, but the include path has to be there or the translation unit will
+# not compile. Eigen is header-only, so this costs nothing at link time. It is
+# not conditional on CPPAD_HAS_EIGEN because whether CppAD was built that way is
+# a property of the installation, not of this project.
 add_executable(${PROJECT_NAME} ipopt_cam.cxx)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CPPAD_INCLUDE_DIR})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${CPPAD_LIBRARY} PkgConfig::ipopt)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${CPPAD_LIBRARY} PkgConfig::ipopt Eigen3::Eigen)
