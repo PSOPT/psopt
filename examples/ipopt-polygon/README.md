@@ -28,7 +28,10 @@ figure.
 
 Eleven iterations in both cases, to areas of 0.7718613 for nv = 16 and 0.7840773
 for nv = 50. For nv = 50 the constraint Jacobian has 4,802 nonzeros out of
-122,600 and the Hessian of the Lagrangian 4,857.
+122,600 and the Hessian of the Lagrangian 4,857. Eleven iterations under every
+version of IPOPT tried — 3.11.9, 3.12.12 and 3.14.19 — which is not something to
+take for granted; the cam example in the neighbouring directory takes 64 under
+two of those and 66 under the third.
 
 One option is not a detail here. The problem has many local maxima — a polygon
 can be locally optimal without being the largest — and IPOPT's barrier-parameter
