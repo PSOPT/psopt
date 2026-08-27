@@ -85,8 +85,6 @@ mineng_free_vf,IPOPT,122,1,1,,0.6,1.500000e+00,,0
 mineng_free_vf,SQP,122,1,0,,120.0,,,137
 mineng_target_set,IPOPT,122,1,1,,0.6,2.142857e-01,,0
 mineng_target_set,SQP,122,1,0,,120.0,,,137
-missile,IPOPT,482,2,2,,1.1,4.091755e+01,,0
-missile,SQP,482,2,2,10,2.3,4.091754e+01,,0
 mixed_ic,IPOPT,242,2,2,,0.6,1.250885e+00,PASS,0
 mixed_ic,SQP,242,2,2,8,0.6,1.250811e+00,PASS,0
 moon,IPOPT,202,1,1,,1.0,1.420400e+00,,0

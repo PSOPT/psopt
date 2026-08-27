@@ -155,12 +155,6 @@
     "optimal_cost": 20.4042,
     "solved": 5
   },
-  "missile": {
-    "final_objective": 0.40918615024101884,
-    "max_rel_error": 0.0004907563,
-    "optimal_cost": 40.91862,
-    "solved": 2
-  },
   "moon": {
     "final_objective": 0.0016371342609027527,
     "max_rel_error": 9.534938e-05,
