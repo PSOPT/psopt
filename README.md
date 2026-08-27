@@ -462,7 +462,11 @@ The quadratic programming subproblem goes to one of several backends, every one 
 sparse, and at least one must be built: `WITH_SQP=ON` on its own is an error, because the
 SQP has no QP solver of its own. **GALAHAD's QPA is the one to use**: it is sparse, BSD-3
 licensed, and the configuration the solver has been tuned and measured against (see
-`doc/SQP_ALL_EXAMPLES.md`). ProxQP, QPALM and OSQP are also supported.
+`doc/SQP_ALL_EXAMPLES.md`). **PIQP is the one to try when it disappoints** -- it is
+header-only, so it costs nothing to have, it solves a few examples GALAHAD does not, and
+over the examples both solve it is several times faster at very nearly the same number of
+SQP iterations. Between them the two solve every example any backend solves. Clarabel,
+ProxQP, QPALM and OSQP are also supported, and solve nothing those two do not.
 
 SNOPT was supported as a third NLP solver, alongside IPOPT, until 2026, and has been
 removed. It is commercial, so it could never be more than an option a minority of users
