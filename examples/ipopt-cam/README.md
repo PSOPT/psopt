@@ -26,7 +26,14 @@ The two MATLAB scripts draw the two figures for this example in the book.
 
 ## What to expect for n = 1000
 
-64 iterations to `f(x*) = -4.2790674`, with no constraint violation. The
+Convergence to `f(x*) = -4.2790674426`, with no constraint violation. The
 constraint Jacobian has 5,000 nonzeros out of 2,003,000 and the Hessian of the
-Lagrangian 1,998 out of 1,000,000. The evaluation counts and the timing depend a
-little on the version of IPOPT.
+Lagrangian 1,998 out of 1,000,000. Those two counts are properties of the problem
+and will not vary.
+
+The iteration count will. IPOPT 3.11.9 takes 64 iterations and 3.14.19 takes 66,
+agreeing on the objective to eleven digits. This is worth knowing before reading
+anything into a difference of a few iterations between one machine and another:
+on a problem with a thousand bound-constrained variables the barrier method's
+path is sensitive to the linear solver and to the details of the version, and the
+answer is the same either way.
