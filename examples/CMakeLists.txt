@@ -67,3 +67,8 @@ add_subdirectory(singular_di/)
 add_subdirectory(mineng_di/)
 add_subdirectory(mineng_free_vf/)
 add_subdirectory(mineng_target_set/)
+
+# Two worked examples from Chapter 2 of the book. These call IPOPT directly and
+# do not use PSOPT; see the header comment of each source file.
+add_subdirectory(ipopt-cam/)
+add_subdirectory(ipopt-polygon/)
