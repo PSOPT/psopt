@@ -80,6 +80,14 @@ using namespace PSOPT;
 #define MASS_INITIAL   1200.0         // kg
 #define THRUSTER_EFF   0.55
 
+// Steering-law weights, chosen by sweeping them against the published solution.
+// At 5 kW these give a guess of 122.3 days over 160.6 revolutions, against the
+// published optimum of 118.74 days over about 162 -- so the guess is some three
+// per cent slow and has essentially the right revolution count, which is what
+// decides the size of the discretised problem. The weight on the semi-major axis
+// matters most; the transfer lengthens noticeably if the inclination is given
+// too much priority early, and also if it is given too little.
+static double LYAP_WA = 6.0, LYAP_WI = 10.0;
 static double POWER_KW     = 5.0;
 static double THRUST_NEWTON = 2.0*THRUSTER_EFF*5.0e3/(9.80665*1800.0);
 
@@ -208,13 +216,30 @@ static T sunlit_core(T p, T f, T g, T h, T k, T L, T tdays)
    T nu = sqrt(ux*ux + uy*uy + uz*uz);
 
    T cth = (ex*ux + ey*uy + ez*uz)/(ne*nu);      // cos(theta_es)
-   T se  = RE_EARTH/ne,  ce = sqrt(1.0 - se*se); // sin, cos of theta_e
-   T ss  = RSUN_KM/nu,   cs = sqrt(1.0 - ss*ss); // sin, cos of theta_s
+   T se  = RE_EARTH/ne;                          // sin(theta_e)
+   T ss  = RSUN_KM/nu;                           // sin(theta_s)
+
+   // cos(theta_e) is sqrt(1 - se^2), but the optimiser is free to try states
+   // whose radius is below the radius of the Earth, where that argument is
+   // negative and the square root is not a number. The smooth positive part
+   // below agrees with sqrt(q) to better than one part in 1e8 for the values
+   // this problem actually visits, and stays real and differentiable if the
+   // iterates stray inside the planet.
+   T qe = 1.0 - se*se;
+   T ce = sqrt(0.5*(qe + sqrt(qe*qe + 1.0e-8)));
+   T qs = 1.0 - ss*ss;
+   T cs = sqrt(0.5*(qs + sqrt(qs*qs + 1.0e-8)));
 
    // geometric margin, in radians: positive inside the shadow
    T ell = (cth - (ce*cs - se*ss))/(se*cs + ce*ss);
 
-   return 1.0/(1.0 + exp(SHADOW_GAIN*ell));
+   // The smoothed step, written with a hyperbolic tangent rather than as
+   // 1/(1+exp(c*ell)). The two are identical in exact arithmetic, but the
+   // logistic overflows here: deep in shadow c*ell reaches several hundred, and
+   // although 1/(1+exp) then merely underflows to zero, its DERIVATIVE carries
+   // exp(c*ell) squared, which runs past the largest representable double and
+   // returns a not-a-number to the solver. The tangent saturates instead.
+   return 0.5*(1.0 - tanh(0.5*SHADOW_GAIN*ell));
 }
 
 adouble sunlit_fraction(adouble* states, adouble& L)
@@ -349,16 +374,46 @@ static void gauss_rows(const double* y, double G[5][3])
    G[4][0]=0.0;           G[4][1]=0.0;                           G[4][2]= sq*s2*sin(L)/(2.0*w);
 }
 
+// The steering law drives a Lyapunov function of the orbit elements, and which
+// elements it uses matters more than one might expect.
+//
+// The obvious choice is to drive the semi-latus rectum p to its target. That
+// converges, but it produces a transfer with far more revolutions than it needs.
+// The orbital period depends on the semi-major axis a = p/(1 - e^2), and at the
+// eccentricity of a geostationary transfer orbit those two differ by a factor of
+// two, so a law that raises p while the orbit is still eccentric leaves the
+// period short and spends the transfer grinding through revolutions near the
+// starting semi-major axis. Measured here, targeting p gave a guess of 304
+// revolutions where the published optimum takes 162.
+//
+// Targeting a instead raises the period early, which is what the published
+// solution does: its apoapsis goes above the geostationary radius before being
+// brought back down. Since the size of the discretised problem is proportional
+// to the number of revolutions, this is worth more than any amount of tuning
+// further downstream.
 static void lyapunov_steer(const double* y, double u[3])
 {
-   static const double target[5] = {42165.0, 0.0, 0.0, 0.0, 0.0};
-   static const double weight[5] = {1.0, 1.0, 1.0, 30.0, 30.0};
-   static const double scale [5] = {1.0/42165.0, 1.0, 1.0, 1.0, 1.0};
+   const double a_target = 42165.0;
+   const double w_a = LYAP_WA, w_e = 1.0, w_i = LYAP_WI;
+
+   double p = y[0], f = y[1], g = y[2], h = y[3], k = y[4];
+   double D = 1.0 - f*f - g*g;
+   if (D < 1.0e-6) D = 1.0e-6;
+   double a = p/D;
+
+   double da_dp = 1.0/D;                  // da/dp
+   double da_df = 2.0*p*f/(D*D);          // da/df
+   double da_dg = 2.0*p*g/(D*D);          // da/dg
+
    double G[5][3]; gauss_rows(y, G);
+   double ea = (a - a_target)/a_target;
+
    double grad[3] = {0.0, 0.0, 0.0};
-   for (int i = 0; i < 5; i++) {
-      double d = (y[i] - target[i])*scale[i];
-      for (int j = 0; j < 3; j++) grad[j] += weight[i]*d*G[i][j]*scale[i];
+   for (int j = 0; j < 3; j++) {
+      double da = da_dp*G[0][j] + da_df*G[1][j] + da_dg*G[2][j];
+      grad[j] = w_a*ea*da/a_target
+              + w_e*( f*G[1][j] + g*G[2][j] )
+              + w_i*( h*G[3][j] + k*G[4][j] );
    }
    double n = sqrt(grad[0]*grad[0] + grad[1]*grad[1] + grad[2]*grad[2]);
    if (n > 1.0e-14) { for (int j=0;j<3;j++) u[j] = -grad[j]/n; }
@@ -552,7 +607,10 @@ int main(int argc, char** argv)
     // being sought; with no argument the revolution count is free and the solver
     // finds only the local minimum nearest its initial guess.
     double nrev_fixed = (argc > 1) ? atof(argv[1]) : 0.0;
+    bool guess_only = (argc > 3 && string(argv[3]) == "guess");
     if (argc > 2) POWER_KW = atof(argv[2]);
+    if (argc > 4) LYAP_WA = atof(argv[4]);
+    if (argc > 5) LYAP_WI = atof(argv[5]);
     THRUST_NEWTON = 2.0*THRUSTER_EFF*POWER_KW*1.0e3/(G0*ISP_SECONDS);
     printf("\nthruster: %.1f kW at %.0f per cent efficiency, Isp %.0f s"
            "  ->  %.6f N\n", POWER_KW, 100.0*THRUSTER_EFF, ISP_SECONDS, THRUST_NEWTON);
@@ -681,6 +739,7 @@ int main(int argc, char** argv)
     printf("\n");
     printf("steering-law guess: transfer time %.3f days, %.1f revolutions\n",
            tf_guess/86400.0, t_guess(0,nnodes-1)/(2.0*M_PI));
+    if (guess_only) return 0;
 
     MatrixXd param_guess;
     auto_phase_guess(problem, u_guess, x_guess, param_guess, t_guess);
