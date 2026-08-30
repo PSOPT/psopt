@@ -81,22 +81,38 @@ using namespace PSOPT;
 #define S_REF        110.0      // m^2
 #define R_NOSE         0.8      // m
 
-// THE CONSTRAINT LIMITS ARE OURS, and the reason is worth recording. Sagliano
-// and Mooij state 530 kW/m^2, 2.5 g and 10 kPa, but their heat-flux model is not
-// given in what could be read of their paper, and their limit is not attainable
-// under the one used here. Shooting the vehicle from this entry state at zero
-// bank -- the coolest trajectory available to it -- and sweeping the angle of
-// attack gives a least peak stagnation heat flux of 716 kW/m^2, at 45 degrees;
-// and that trajectory arrives at the interface subsonic, so it is not even a
-// candidate. A trajectory that does reach Mach 2.5 at 25 km needs about 58
-// degrees of bank and peaks near 950 kW/m^2. Heat-flux correlations differ by
-// half again between conventions, so theirs is presumably a different one, or a
-// wall value rather than a stagnation value. Rather than import a number that
-// does not fit the model, the limits below are set from this model: each binds,
-// and a feasible trajectory meeting all three is exhibited by the initial guess.
-#define QDOT_MAX   1.00e6       // W/m^2
-#define NLOAD_MAX      2.5      // g
-#define QDYN_MAX   1.20e4       // N/m^2
+// The three constraint FORMS are those of Sagliano and Mooij, from their
+// equations (24) to (26). Two of the three limits are theirs as well. The heat
+// flux limit is not, and the reason has to be recorded carefully, because it is
+// a statement about our model rather than about theirs.
+//
+// They limit the heat flux to 5.3e5 W/m^2 and report trajectories that meet it.
+// Our model cannot. The peak heat flux on an entry from their tabulated
+// interface occurs at the first pull-out, near 68 km and 7140 m/s, before the
+// vehicle has slowed appreciably, and the deepest point of that pull-out is
+// what sets it. Flying at zero bank -- all the lift used to stay high -- and
+// sweeping the angle of attack, the least peak this model can produce is
+// 818 kW/m^2, at 45 degrees. It is not the atmosphere: their exponential fit
+// and the US Standard 1976 fit used here agree to within three per cent
+// through the whole pull-out region. It is not the heat flux correlation:
+// theirs and Chapman's agree to within fifteen per cent over the speed and
+// density range visited. Reaching 530 kW/m^2 at that pull-out would require
+// about 2.8 times the lift our trimmed coefficients give, which is far outside
+// any reasonable disagreement between two aerodynamic models.
+//
+// The likeliest explanation is the aerodynamics. Our coefficients are trimmed
+// from the tabulated database by the computation described below; theirs are
+// the fitted polynomials of Bergsma and Mooij, which we have not reproduced.
+// Rather than print a limit this model demonstrably cannot meet, the heat flux
+// limit below is set where this model can work: it binds, and the trajectory
+// that meets it is exhibited. The other two limits are theirs unchanged.
+//
+// Note also that their Table 3 gives a maximum heat flux of 550 kW/m^2 while
+// their equation (24) writes the same constraint as 5.3e5 W/m^2. The equation
+// and the figure in which the constraint is plotted agree with each other.
+#define QDOT_MAX   1.00e6       // W/m^2, ours; see above
+#define NLOAD_MAX      2.5      // g,     Sagliano and Mooij eq. (25)
+#define QDYN_MAX   1.00e4       // N/m^2, eq. (26)
 
 // THE BANK RATE LIMIT IS ALSO OURS. Sagliano and Mooij bound the bank angle to
 // +/- 89 degrees but state no rate limit, and without one the problem is not
@@ -114,8 +130,13 @@ using namespace PSOPT;
 
 #define G0             9.80665
 
-// Chapman's stagnation-point relation, in SI throughout
-#define K_CHAPMAN  1.7415e-4
+// Convective heat flux, Sagliano and Mooij eq. (24):
+//     qdot = (C_Q/sqrt(R_n)) * sqrt(rho) * v^M_Q
+// with C_Q in J s^2.15 kg^-0.5 m^-2.15. This is a different correlation from
+// Chapman's, but not by much: over the speed and density range this trajectory
+// visits, the two agree to within 15 per cent.
+#define C_Q        5.28137e-5
+#define M_Q             3.15
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Atmosphere and aerodynamics              ////////////
@@ -174,9 +195,8 @@ adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
 {
    adouble h = states[0], v = states[3];
    adouble rho = air_density(h);
-   // total heat load at the stagnation point, scaled so the integral is of
-   // order one over the trajectory
-   return K_CHAPMAN*sqrt(rho/R_NOSE)*v*v*v/QDOT_MAX;
+   // total convective heat load, scaled so the integral is of order one
+   return C_Q/sqrt(R_NOSE)*sqrt(rho)*pow(v, M_Q)/QDOT_MAX;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -219,9 +239,12 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    derivatives[5] = L*sin(sigma)/(v*cos(gam)) + v*cos(gam)*sin(psi)*tan(theta)/r;
    derivatives[6] = sigmadot;
 
-   // the three constraints that define the entry corridor
-   path[0] = K_CHAPMAN*sqrt(rho/R_NOSE)*v*v*v;             // heat flux, W/m^2
-   path[1] = sqrt(L*L + D*D)/G0;                           // load factor, g
+   // the three constraints that define the entry corridor, in the forms used by
+   // Sagliano and Mooij. The load factor is the NORMAL one: the component of the
+   // aerodynamic acceleration along the body normal axis, not the magnitude of
+   // the whole aerodynamic force.
+   path[0] = C_Q/sqrt(R_NOSE)*sqrt(rho)*pow(v, M_Q);       // heat flux, W/m^2
+   path[1] = (L*cos(alpha) + D*sin(alpha))/G0;             // normal load factor, g
    path[2] = qdyn;                                         // dynamic pressure, N/m^2
 }
 
@@ -289,14 +312,18 @@ int main(int argc, char** argv)
 
     // the entry interface is the one tabulated by Sagliano and Mooij
     double h0 = 122000.0, v0 = 7435.5, gam0 = -1.43*d2r;
-    double phi0 = 0.0, theta0 = 0.0, psi0 = 70.75*d2r;
-    // The terminal interface is a box, not a point, and the tolerances matter:
-    // 25 km at Mach 2.5 gives a dynamic pressure of 11.2 kPa, outside the 10 kPa
-    // limit, so the nominal point is itself infeasible. Sagliano and Mooij state
-    // the interface as 25 +/- 2 km at Mach 2.5 +/- 0.5, and the vehicle has to
-    // arrive in the upper, slower part of that box.
-    double hf_lo = 23000.0, hf_hi = 27000.0;
-    double mf_lo = 2.0,     mf_hi = 3.0;
+    double phi0 = -106.7*d2r, theta0 = -22.3*d2r, psi0 = 70.75*d2r;
+    // The terminal interface is a POINT, not a box. Sagliano and Mooij give
+    // 26.92 +/- 2 km at Mach 2.5 +/- 0.5, but those tolerances are the
+    // dispersions their guidance scheme has to hold against -- their Table 6
+    // reports achieved standard deviations of about 1.2 km in altitude, which is
+    // what the +/- 2 km is there to cover. A reference trajectory should aim at
+    // the nominal point. Treating the tolerances as design freedom instead makes
+    // the problem ill-posed: the cost is nearly flat across the box, and the
+    // solution then jumps between arriving at the top of it and at the bottom
+    // as the mesh is refined, with the heat load differing in the fourth figure.
+    double hf_lo = 26920.0, hf_hi = 26920.0;
+    double mf_lo = 2.5,     mf_hi = 2.5;
     // The terminal flight path angle is NOT given in the source, and the cost
     // does not settle it: the heat flux at Mach 2 and 25 km is three orders
     // below its peak, so what the vehicle does in the last few seconds is very
@@ -333,8 +360,8 @@ int main(int argc, char** argv)
 
     problem.phases(1).bounds.lower.StartTime = 0.0;
     problem.phases(1).bounds.upper.StartTime = 0.0;
-    problem.phases(1).bounds.lower.EndTime   =  600.0;
-    problem.phases(1).bounds.upper.EndTime   = 2500.0;
+    problem.phases(1).bounds.lower.EndTime   =  400.0;
+    problem.phases(1).bounds.upper.EndTime   = 4000.0;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Register problem functions  ///////////////////////////
@@ -474,8 +501,8 @@ int main(int argc, char** argv)
         trimmed_coefficients(aa, M, CL, CD);
         double qdyn = 0.5*rho.value()*x(3,j)*x(3,j);
         double L = qdyn*S_REF*CL.value()/MASS, D = qdyn*S_REF*CD.value()/MASS;
-        double q = K_CHAPMAN*sqrt(rho.value()/R_NOSE)*pow(x(3,j),3.0);
-        double n = sqrt(L*L+D*D)/G0;
+        double q = C_Q/sqrt(R_NOSE)*sqrt(rho.value())*pow(x(3,j), M_Q);
+        double n = (L*cos(aa.value()) + D*sin(aa.value()))/G0;
         qd(0,j)=q/1000.0; nl(0,j)=n; qp(0,j)=qdyn/1000.0; mach(0,j)=M.value();
         if (q>qmax) qmax=q; if (n>nmax) nmax=n; if (qdyn>pmax) pmax=qdyn;
         if (j>0) load += 0.5*(qd(0,j)+qd(0,j-1))*(t(0,j)-t(0,j-1));
@@ -494,7 +521,13 @@ int main(int argc, char** argv)
     printf("bank rate range            %10.2f to %.2f deg/s (limit %.1f)\n",
            u.row(1).minCoeff()/d2r, u.row(1).maxCoeff()/d2r, SIGDOT_MAX);
     printf("terminal flight path angle %10.2f deg\n", x(4,N-1)/d2r);
-    printf("downrange                  %10.2f km\n", x(1,N-1)*RE_EARTH/1000.0);
+    {   // great-circle range from the entry point to the interface
+        double dphi = x(1,N-1) - x(1,0), th0 = x(2,0), thf = x(2,N-1);
+        double cd_ = sin(th0)*sin(thf) + cos(th0)*cos(thf)*cos(dphi);
+        if (cd_ >  1.0) cd_ =  1.0;
+        if (cd_ < -1.0) cd_ = -1.0;
+        printf("range flown                %10.2f km\n", acos(cd_)*RE_EARTH/1000.0);
+    }
     printf("terminal Mach number       %10.4f\n", mach(0,N-1));
     printf("nodes in the final mesh    %10d\n", N);
 
@@ -542,8 +575,8 @@ int main(int argc, char** argv)
                     for (int i = 0; i < 6; i++) yt[i] = y[i] + fs*kk[i];
                 }
             }
-            qload += step*K_CHAPMAN*sqrt(air_density(adouble(y[0])).value()/R_NOSE)
-                     *pow(y[3],3.0);
+            qload += step*C_Q/sqrt(R_NOSE)
+                     *sqrt(air_density(adouble(y[0])).value())*pow(y[3], M_Q);
             for (int i = 0; i < 6; i++)
                 y[i] += step/6.0*(k[0][i] + 2*k[1][i] + 2*k[2][i] + k[3][i]);
             tt += step;
