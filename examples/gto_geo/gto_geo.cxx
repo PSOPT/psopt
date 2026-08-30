@@ -50,6 +50,7 @@
 #include "psopt.h"
 #include <vector>
 #include <array>
+#include <algorithm>
 
 using namespace std;
 using namespace PSOPT;
@@ -65,16 +66,52 @@ using namespace PSOPT;
 #define J2_EARTH     1.08262668e-3
 #define G0             9.80665        // m/s^2, for the propellant equation
 
-// 20 kW at 55 per cent efficiency and 1800 s of specific impulse.
-// The published benchmark is 5 kW, giving 0.31158 N; everything else is the same.
-#define THRUST_NEWTON  1.24632
+// The thruster is specified by its input power, which is what an electric
+// propulsion system is actually sized by. The published benchmark runs at 5 kW,
+// which at 55 per cent efficiency and 1800 s of specific impulse is 0.31158 N --
+// the value Leomanni and co-workers quote, recovered here to six figures.
+//
+// The power is settable at run time because it decides how large the problem is.
+// Thrust scales with power, the transfer time scales roughly inversely with
+// thrust, and the number of revolutions with it: the 5 kW case runs to about 160
+// revolutions and several thousand collocation nodes, while 20 kW needs about a
+// quarter of that. A reader on a modest machine should start at 20 kW.
 #define ISP_SECONDS    1800.0
 #define MASS_INITIAL   1200.0         // kg
+#define THRUSTER_EFF   0.55
 
-// The eclipse model is off by default. The book's results are the eclipse-free
-// ones; the model is here so that the published benchmark, which does include
-// eclipsing, can be reproduced as a check on the dynamics.
-#define USE_ECLIPSE    0
+static double POWER_KW     = 5.0;
+static double THRUST_NEWTON = 2.0*THRUSTER_EFF*5.0e3/(9.80665*1800.0);
+
+// The eclipse model is ON. Every published solution of this transfer includes
+// eclipsing, so an eclipse-free result would have nothing to be compared
+// against. The model below is the one used by Leomanni and co-workers.
+#define USE_ECLIPSE    1
+
+// Solar and shadow constants. The epoch is theirs: JD 2451625.5 is 21 March
+// 2000, essentially the vernal equinox, which is the heaviest eclipse season.
+#define JD_EPOCH   2451625.5
+#define JD_J2000   2451545.0
+#define AU_KM      1.495978707e8
+#define RSUN_KM    695700.0
+#define DEG_RAD    (M_PI/180.0)
+
+// The gain of the logistic that smooths the shadow boundary. This is their
+// value, stated as a realistic one for Earth-centred transfers. It sets the
+// width of the transition: the shadow function goes from 0.95 to 0.05 over
+// about 4/SHADOW_GAIN radians of the geometric margin, which on this transfer
+// is a little over one degree of true longitude.
+#define SHADOW_GAIN    298.78
+
+// The initial mesh. Coarse intervals carry the slow drift of the elements and
+// the once-per-revolution ripple the perturbations put on them; a window of
+// fine intervals straddles each eclipse transition. The window is a little wider
+// than the transition itself, which spans about one degree of true longitude.
+#define MESH_COARSE_DEG    45.0
+#define MESH_WINDOW_DEG     2.0
+#define MESH_SUBDIV           4
+#define MESH_ORDER_COARSE     5
+#define MESH_ORDER_FINE       4
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Define the end point (Mayer) cost function //////////
@@ -101,38 +138,96 @@ adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
 ///////////////////  The shadow function                     /////////////
 //////////////////////////////////////////////////////////////////////////
 
-// A cylindrical shadow, smoothed so that the transition is differentiable.
-// Returns approximately 1 in sunlight and 0 in shadow. The Sun direction is
-// taken in the equatorial plane, rotating at the mean rate of the Earth about
-// the Sun, which is accurate enough over a transfer of a few weeks.
+// The spacecraft is shadowed when the angle between the Earth and the Sun, seen
+// from the spacecraft, is smaller than the sum of their apparent angular radii.
+// This is the condition used by Leomanni and co-workers, and because it adds the
+// apparent radius of the Sun rather than subtracting it, it marks the onset of
+// penumbra rather than of umbra.
+//
+// Two departures from the way it is usually written, both deliberate.
+//
+// The condition is evaluated WITHOUT inverse trigonometric functions. Writing it
+// as theta_es <= theta_e + theta_s requires an arc cosine whose derivative is
+// unbounded when the Sun is directly behind the Earth -- which is exactly what
+// happens in the middle of every eclipse, so it is not a corner case. Comparing
+// cosines instead removes the singularity, and dividing by sin(theta_e+theta_s)
+// puts the margin back into radians so that their smoothing gain keeps its
+// meaning. Against the direct form this shifts the shadow boundary by about a
+// tenth of the width of the smoothed transition, and changes the computed
+// eclipse fraction over the whole transfer by 0.07 per cent.
+//
+// The throttle is not carried as a separate control. Their formulation has one,
+// bounded above by the shadow function, and reports that at the solution it sits
+// at its upper bound everywhere -- which is what a minimum-time transfer must do,
+// since thrust with a free direction is never unhelpful. Substituting the shadow
+// function directly for the throttle therefore gives the same solution while
+// avoiding an extra control and an extra path constraint at every one of several
+// thousand nodes.
+
+template <class T> static void sun_vector(T tdays, T& sx, T& sy, T& sz, T& rsun)
+{
+   // Low-precision solar position, Astronomical Almanac form. Good to about
+   // 0.01 degrees, which is far finer than this problem can distinguish.
+   T n   = (JD_EPOCH - JD_J2000) + tdays;
+   T Lm  = (280.460 + 0.9856474*n)*DEG_RAD;
+   T gm  = (357.528 + 0.9856003*n)*DEG_RAD;
+   T lam = Lm + (1.915*sin(gm) + 0.020*sin(2.0*gm))*DEG_RAD;
+   double eps = 23.439*DEG_RAD;
+   rsun = (1.00014 - 0.01671*cos(gm) - 0.00014*cos(2.0*gm))*AU_KM;
+   sx = cos(lam);
+   sy = cos(eps)*sin(lam);
+   sz = sin(eps)*sin(lam);
+}
+
+// Inertial position from the equinoctial elements and the true longitude.
+template <class T> static void mee_position(T p, T f, T g, T h, T k, T L,
+                                            T& rx, T& ry, T& rz)
+{
+   T s2 = 1.0 + h*h + k*k;
+   T w  = 1.0 + f*cos(L) + g*sin(L);
+   T r  = p/w;
+   T a2 = h*h - k*k;
+   rx = r/s2*(cos(L) + a2*cos(L) + 2.0*h*k*sin(L));
+   ry = r/s2*(sin(L) - a2*sin(L) + 2.0*h*k*cos(L));
+   rz = 2.0*r/s2*(h*sin(L) - k*cos(L));
+}
+
+template <class T>
+static T sunlit_core(T p, T f, T g, T h, T k, T L, T tdays)
+{
+   T rx, ry, rz;
+   mee_position(p, f, g, h, k, L, rx, ry, rz);
+
+   T sx, sy, sz, rsun;
+   sun_vector(tdays, sx, sy, sz, rsun);
+
+   // spacecraft -> Earth, and spacecraft -> Sun
+   T ex = -rx,          ey = -ry,          ez = -rz;
+   T ux = rsun*sx + ex, uy = rsun*sy + ey, uz = rsun*sz + ez;
+   T ne = sqrt(ex*ex + ey*ey + ez*ez);
+   T nu = sqrt(ux*ux + uy*uy + uz*uz);
+
+   T cth = (ex*ux + ey*uy + ez*uz)/(ne*nu);      // cos(theta_es)
+   T se  = RE_EARTH/ne,  ce = sqrt(1.0 - se*se); // sin, cos of theta_e
+   T ss  = RSUN_KM/nu,   cs = sqrt(1.0 - ss*ss); // sin, cos of theta_s
+
+   // geometric margin, in radians: positive inside the shadow
+   T ell = (cth - (ce*cs - se*ss))/(se*cs + ce*ss);
+
+   return 1.0/(1.0 + exp(SHADOW_GAIN*ell));
+}
 
 adouble sunlit_fraction(adouble* states, adouble& L)
 {
-   adouble p = states[0], f = states[1], g = states[2];
-   adouble h = states[3], k = states[4];
-   adouble time = states[6]*86400.0;         // elapsed time is a state, in days
+   // elapsed time is states[6], carried in days
+   return sunlit_core<adouble>(states[0], states[1], states[2], states[3],
+                               states[4], L, states[6]);
+}
 
-   adouble s2 = 1.0 + h*h + k*k;
-   adouble w  = 1.0 + f*cos(L) + g*sin(L);
-   adouble r  = p/w;
-   adouble a2 = h*h - k*k;
-
-   // inertial position
-   adouble rx = r/s2*(cos(L) + a2*cos(L) + 2.0*h*k*sin(L));
-   adouble ry = r/s2*(sin(L) - a2*sin(L) + 2.0*h*k*cos(L));
-   adouble rz = 2.0*r/s2*(h*sin(L) - k*cos(L));
-
-   double  wsun = 2.0*M_PI/(365.25*86400.0);       // rad/s
-   adouble sx = cos(wsun*time), sy = sin(wsun*time), sz = 0.0;
-
-   adouble proj = rx*sx + ry*sy + rz*sz;            // along the Sun direction
-   adouble d2   = rx*rx + ry*ry + rz*rz - proj*proj;   // perpendicular distance^2
-
-   // in shadow when proj < 0 and d < RE
-   double  sharp = 40.0;
-   adouble behind = 0.5*(1.0 + tanh(-sharp*proj/RE_EARTH));
-   adouble inside = 0.5*(1.0 + tanh(sharp*(RE_EARTH*RE_EARTH - d2)/(RE_EARTH*RE_EARTH)));
-   return 1.0 - behind*inside;
+// The same function in double precision, for the guess and the mesh builder.
+static double sunlit_d(const double* y, double tdays)
+{
+   return sunlit_core<double>(y[0], y[1], y[2], y[3], y[4], y[5], tdays);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -270,14 +365,15 @@ static void lyapunov_steer(const double* y, double u[3])
    else             { u[0]=0.0; u[1]=1.0; u[2]=0.0; }
 }
 
-static void guess_rates(const double* y, double m, const double* u, double* dy)
+static void guess_rates(const double* y, double m, const double* u, double* dy,
+                        double duty)
 {
    double p=y[0], f=y[1], g=y[2], h=y[3], k=y[4], L=y[5];
    double sinL=sin(L), cosL=cos(L);
    double w=1.0+f*cosL+g*sinL, s2=1.0+h*h+k*k, r=p/w;
    double q=h*sinL-k*cosL, sq=sqrt(p/MU_EARTH);
    double cj2=-1.5*MU_EARTH*J2_EARTH*RE_EARTH*RE_EARTH/(r*r*r*r);
-   double a = THRUST_NEWTON*1.0e-3/m;
+   double a = duty*THRUST_NEWTON*1.0e-3/m;
    double Dr=cj2*(1.0-12.0*q*q/(s2*s2)) + a*u[0];
    double Dt=cj2*(8.0*q*(h*cosL+k*sinL)/(s2*s2)) + a*u[1];
    double Dn=cj2*(4.0*(1.0-h*h-k*k)*q/(s2*s2)) + a*u[2];
@@ -289,10 +385,62 @@ static void guess_rates(const double* y, double m, const double* u, double* dy)
    dy[5]=sqrt(MU_EARTH*p)*(w/p)*(w/p) + sq*q*Dn/w;
 }
 
+// Builds a multi-interval mesh on (0,1) that is coarse through the smooth arcs
+// and clustered on the eclipse transitions. PSOPT accepts such a mesh directly
+// through hp_breakpoints and hp_orders, which is what makes this problem
+// tractable at all: a mesh uniform in true longitude would need of the order of
+// a quarter of a million nodes to see transitions this narrow.
+static void build_hp_mesh(const vector<double>& Ltrans, double Lf,
+                          double coarse_deg, double window_deg, int nsub,
+                          int order_coarse, int order_fine,
+                          RowVectorXd& breaks, RowVectorXi& orders)
+{
+   const double W = window_deg*M_PI/180.0;      // half-width of a fine window
+   vector<double> b;                            // interior breakpoints, in L
+
+   double step = coarse_deg*M_PI/180.0;
+   for (double L = step; L < Lf - 1.0e-9; L += step) b.push_back(L);
+
+   for (size_t i = 0; i < Ltrans.size(); i++) {
+      double Lc = Ltrans[i];
+      for (int j = 0; j <= nsub; j++) {
+         double Lb = Lc - W + 2.0*W*((double) j)/((double) nsub);
+         if (Lb > 1.0e-9 && Lb < Lf - 1.0e-9) b.push_back(Lb);
+      }
+   }
+
+   sort(b.begin(), b.end());
+   // Drop near-duplicates, which would make a degenerate interval. The tolerance
+   // has to be small against the fine window, not against the whole transfer:
+   // scaled to Lf it would be some ten degrees here and would collapse every
+   // cluster back to a single point, quietly undoing the clustering.
+   vector<double> c;
+   double tol = 0.05*W;
+   for (size_t i = 0; i < b.size(); i++)
+      if (c.empty() || b[i] - c.back() > tol) c.push_back(b[i]);
+
+   int K = (int) c.size() + 1;                  // number of intervals
+   breaks.resize(K - 1);
+   orders.resize(K);
+   for (int i = 0; i < K - 1; i++) breaks(i) = c[i]/Lf;      // normalise to (0,1)
+
+   // an interval is "fine" if its midpoint lies inside one of the windows
+   for (int i = 0; i < K; i++) {
+      double a = (i == 0)     ? 0.0 : c[i-1];
+      double bb= (i == K - 1) ? Lf  : c[i];
+      double mid = 0.5*(a + bb);
+      bool fine = false;
+      for (size_t j = 0; j < Ltrans.size(); j++)
+         if (fabs(mid - Ltrans[j]) < W) { fine = true; break; }
+      orders(i) = fine ? order_fine : order_coarse;
+   }
+}
+
 // Flies the steering law and samples it onto nnodes points.
 // Returns the transfer time it achieved.
 static double build_guess(int nnodes, MatrixXd& x_guess, MatrixXd& u_guess, MatrixXd& t_guess,
-                          const double* y0, double m0, double Lf_target)
+                          const double* y0, double m0, double Lf_target,
+                          vector<double>* Ltrans = NULL, double* ecl_frac = NULL)
 {
    const double dt = 60.0, tmax = 400.0*86400.0;
    const double mdot = THRUST_NEWTON/(G0*ISP_SECONDS);
@@ -310,16 +458,24 @@ static double build_guess(int nnodes, MatrixXd& x_guess, MatrixXd& u_guess, Matr
       array<double,3> uu = {u[0],u[1],u[2]};
       th.push_back(t); sh.push_back(ss); uh.push_back(uu);
 
+      // The guess must fly the same dynamics the optimiser will see, eclipses
+      // included: a guess that thrusts through the shadow is inconsistent with
+      // the model by the eclipse fraction, which is enough to start the solver
+      // badly on a transfer of this length.
+      double duty = 1.0;
+#if USE_ECLIPSE
+      duty = sunlit_d(y, t/86400.0);
+#endif
       double k1[6],k2[6],k3[6],k4[6],yt[6],ut_[3];
-      lyapunov_steer(y,ut_);           guess_rates(y,m,ut_,k1);
+      lyapunov_steer(y,ut_);           guess_rates(y,m,ut_,k1,duty);
       for(int i=0;i<6;i++) yt[i]=y[i]+0.5*dt*k1[i];
-      lyapunov_steer(yt,ut_);          guess_rates(yt,m,ut_,k2);
+      lyapunov_steer(yt,ut_);          guess_rates(yt,m,ut_,k2,duty);
       for(int i=0;i<6;i++) yt[i]=y[i]+0.5*dt*k2[i];
-      lyapunov_steer(yt,ut_);          guess_rates(yt,m,ut_,k3);
+      lyapunov_steer(yt,ut_);          guess_rates(yt,m,ut_,k3,duty);
       for(int i=0;i<6;i++) yt[i]=y[i]+dt*k3[i];
-      lyapunov_steer(yt,ut_);          guess_rates(yt,m,ut_,k4);
+      lyapunov_steer(yt,ut_);          guess_rates(yt,m,ut_,k4,duty);
       for(int i=0;i<6;i++) y[i]+= dt/6.0*(k1[i]+2.0*k2[i]+2.0*k3[i]+k4[i]);
-      m -= mdot*dt; t += dt;
+      m -= duty*mdot*dt; t += dt;
 
       double ecc = sqrt(y[1]*y[1]+y[2]*y[2]);
       double sma = y[0]/(1.0-ecc*ecc);
@@ -330,6 +486,25 @@ static double build_guess(int nnodes, MatrixXd& x_guess, MatrixXd& u_guess, Matr
    // If a revolution count has been imposed, squeeze the same trajectory into it.
    double squeeze = 1.0;
    if (Lf_target > 0.0) { squeeze = Lf_target/Lf; Lf = Lf_target; tf *= squeeze; }
+
+   // Walk the generated trajectory and record where the shadow function crosses
+   // one half. These are the places the mesh has to resolve: the transition is
+   // barely a degree of true longitude wide, so a mesh that does not know about
+   // them will step straight over the eclipses without ever seeing one.
+   if (Ltrans || ecl_frac) {
+      double shaded = 0.0, span = 0.0, prev = -1.0;
+      for (size_t i = 0; i < sh.size(); i++) {
+         double yi[6] = { sh[i][0], sh[i][1], sh[i][2], sh[i][3], sh[i][4], sh[i][5] };
+         double psi = sunlit_d(yi, squeeze*th[i]/86400.0);
+         shaded += (1.0 - psi)*dt;   span += dt;
+         if (Ltrans && i > 0 && (prev - 0.5)*(psi - 0.5) < 0.0) {
+            double fr = (0.5 - prev)/(psi - prev);       // in [0,1]
+            Ltrans->push_back(squeeze*(sh[i-1][5] + fr*(sh[i][5] - sh[i-1][5])));
+         }
+         prev = psi;
+      }
+      if (ecl_frac) *ecl_frac = (span > 0.0) ? shaded/span : 0.0;
+   }
 
    x_guess = zeros(7, nnodes);
    u_guess = zeros(2, nnodes);
@@ -377,6 +552,10 @@ int main(int argc, char** argv)
     // being sought; with no argument the revolution count is free and the solver
     // finds only the local minimum nearest its initial guess.
     double nrev_fixed = (argc > 1) ? atof(argv[1]) : 0.0;
+    if (argc > 2) POWER_KW = atof(argv[2]);
+    THRUST_NEWTON = 2.0*THRUSTER_EFF*POWER_KW*1.0e3/(G0*ISP_SECONDS);
+    printf("\nthruster: %.1f kW at %.0f per cent efficiency, Isp %.0f s"
+           "  ->  %.6f N\n", POWER_KW, 100.0*THRUSTER_EFF, ISP_SECONDS, THRUST_NEWTON);
     Alg  algorithm;
     Sol  solution;
     Prob problem;
@@ -467,9 +646,39 @@ int main(int argc, char** argv)
     int nnodes = 1000;
 
     MatrixXd x_guess, u_guess, t_guess;
+    vector<double> Ltrans;
+    double ecl_frac = 0.0;
     double y0[6] = {p0, f0, g0_, h0, k0, L0};
     double tf_guess = build_guess(nnodes, x_guess, u_guess, t_guess, y0, MASS_INITIAL,
-                                  nrev_fixed > 0.0 ? nrev_fixed*2.0*M_PI : 0.0);
+                                  nrev_fixed > 0.0 ? nrev_fixed*2.0*M_PI : 0.0,
+                                  &Ltrans, &ecl_frac);
+
+    double Lf_guess = t_guess(0, nnodes-1);
+    printf("\n");
+    printf("guess: %.2f days over %.1f revolutions\n",
+           tf_guess/86400.0, Lf_guess/(2.0*M_PI));
+#if USE_ECLIPSE
+    printf("eclipse model on:\n");
+    printf("   shadow transitions found along the guess   %d\n", (int) Ltrans.size());
+    printf("   eclipse fraction of the guess              %.4f\n", ecl_frac);
+
+    // An eclipse-aware mesh, clustered on the transitions.
+    build_hp_mesh(Ltrans, Lf_guess, MESH_COARSE_DEG, MESH_WINDOW_DEG,
+                  MESH_SUBDIV, MESH_ORDER_COARSE, MESH_ORDER_FINE,
+                  problem.phases(1).hp_breakpoints, problem.phases(1).hp_orders);
+    {
+        int K = (int) problem.phases(1).hp_orders.size();
+        long nodes_total = 0;
+        int nfine = 0;
+        for (int i = 0; i < K; i++) {
+            nodes_total += problem.phases(1).hp_orders(i);
+            if (problem.phases(1).hp_orders(i) == MESH_ORDER_FINE) nfine++;
+        }
+        printf("   mesh intervals                             %d  (%d fine)\n", K, nfine);
+        printf("   collocation nodes                          %ld\n", nodes_total);
+    }
+#endif
+    printf("\n");
     printf("steering-law guess: transfer time %.3f days, %.1f revolutions\n",
            tf_guess/86400.0, t_guess(0,nnodes-1)/(2.0*M_PI));
 
@@ -486,9 +695,19 @@ int main(int argc, char** argv)
     algorithm.scaling             = "automatic";
     algorithm.derivatives         = "automatic";
     algorithm.defect_scaling      = "jacobian-based";
+#if USE_ECLIPSE
+    // An explicit multi-interval mesh requires a pseudospectral method. Radau is
+    // the natural choice: it collocates at one endpoint, which suits a problem
+    // whose intervals are joined end to end, and its costate map is the accurate
+    // one of the four (see the comparison in Chapter 5 of the book).
+    algorithm.collocation_method  = "Radau";
+    algorithm.mesh_refinement     = "manual";
+    algorithm.mr_max_iterations   = 1;
+#else
     algorithm.collocation_method  = "Hermite-Simpson";
     algorithm.mesh_refinement     = "automatic";
     algorithm.mr_max_iterations   = 3;
+#endif
     // Three refinements take the mesh from 1000 nodes to 1413 and the maximum
     // discretisation error from 4.2e-3 to 1.4e-3, still short of the tolerance
     // asked for here. The transfer time moves from 27.887 to 27.843 days across
