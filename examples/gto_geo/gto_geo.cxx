@@ -6,7 +6,7 @@
 //////////////////////////////////////////////////////////////////////////
 //////// Title: Minimum time GTO to GEO orbit raising      ///////////////
 ////////        for an all-electric satellite              ///////////////
-//////// Last modified: 29 August 2026                     ///////////////
+//////// Last modified: 31 August 2026                     ///////////////
 //////// Reference:     Falck and Dankanich (2012),        ///////////////
 ////////         NASA/TM-2012-217699; Leomanni et al.      ///////////////
 ////////         (2021), J. Spacecraft and Rockets,        ///////////////
@@ -120,6 +120,36 @@ static double THRUST_NEWTON = 2.0*THRUSTER_EFF*5.0e3/(9.80665*1800.0);
 #define MESH_SUBDIV           4
 #define MESH_ORDER_COARSE     5
 #define MESH_ORDER_FINE       4
+
+// Two safeguards that keep the iterates inside the region where the element set
+// is a valid description of the motion.
+//
+// The equinoctial elements f and g are the components of the eccentricity
+// vector, and a box on them individually cannot bound the eccentricity: with
+// each free to reach one, the box admits e up to the square root of two, which
+// is a hyperbolic orbit. It admits them at every node, and the optimiser will
+// take them. Nothing in the equations objects, because they are written with the
+// true longitude as the independent variable and every derivative carries a
+// factor 1/w with w = 1 + f cos L + g sin L, which merely becomes very large as
+// the orbit approaches parabolic; the elapsed time per radian of true longitude
+// grows without bound, and the whole first revolution can absorb weeks.
+//
+// Left unguarded, the twenty kilowatt case did exactly that: the eccentricity
+// reached 1.0162 after ten days, the apoapsis reached 1.68 million kilometres,
+// and the solver spent an hour of processor time crawling around a transfer of
+// 77.66 days that should take about thirty, burning 474 kg of propellant
+// against the 180 it needs. The iterate was feasible for the discretised
+// problem throughout. It was the continuous problem that had been left open.
+//
+// So the eccentricity is bounded directly, and the apoapsis with it. Both are
+// written as smooth polynomials in the elements -- no square roots, no
+// divisions -- and both are set well outside anything the transfer needs: the
+// steering-law guess peaks at e = 0.732 and an apoapsis of 67000 km, and the
+// starting orbit is itself at e = 0.7306. They are safeguards, not shaping
+// constraints, and the solution should be checked against them; the example
+// reports how close it came.
+#define E_MAX             0.80
+#define R_APO_MAX     100000.0        // km
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Define the end point (Mayer) cost function //////////
@@ -320,6 +350,16 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
    derivatives[4] = dk/dL;
    derivatives[5] = dm/dL;
    derivatives[6] = 1.0/(dL*86400.0);   // elapsed time, carried in DAYS
+
+   // The orbit must stay elliptic, and must not wander out to an apoapsis the
+   // transfer has no use for. Both constraints are on the eccentricity: the
+   // second is r_apo = p/(1-e) <= R_APO_MAX, squared to remove the square root,
+   // which is legitimate because p is bounded well below R_APO_MAX and both
+   // sides are therefore positive.
+   adouble e2 = f*f + g*g;
+   adouble s  = 1.0 - p/R_APO_MAX;
+   path[0] = e2;
+   path[1] = e2 - s*s;
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -641,7 +681,7 @@ int main(int argc, char** argv)
     problem.phases(1).nstates     = 7;
     problem.phases(1).ncontrols   = 2;
     problem.phases(1).nevents     = 12;
-    problem.phases(1).npath       = 0;
+    problem.phases(1).npath       = 2;
     problem.phases(1).nodes       << 1000;
 
     psopt_level2_setup(problem, algorithm);
@@ -668,6 +708,9 @@ int main(int argc, char** argv)
     problem.phases(1).bounds.lower.controls << -4.0*M_PI, -M_PI/2.0;
     problem.phases(1).bounds.upper.controls <<  4.0*M_PI,  M_PI/2.0;
 
+    problem.phases(1).bounds.lower.path << 0.0, -1.0;
+    problem.phases(1).bounds.upper.path << E_MAX*E_MAX, 0.0;
+
     problem.phases(1).bounds.lower.events
         << p0, f0, g0_, h0, k0, MASS_INITIAL, 0.0,
            pf, -e_tol/sqrt(2.0), -e_tol/sqrt(2.0), -i_tol/sqrt(2.0), -i_tol/sqrt(2.0);
@@ -679,13 +722,11 @@ int main(int argc, char** argv)
     problem.phases(1).bounds.lower.StartTime = 0.0;
     problem.phases(1).bounds.upper.StartTime = 0.0;
 
-    if (nrev_fixed > 0.0) {
-        problem.phases(1).bounds.lower.EndTime = nrev_fixed*2.0*M_PI;
-        problem.phases(1).bounds.upper.EndTime = nrev_fixed*2.0*M_PI;
-    } else {
-        problem.phases(1).bounds.lower.EndTime =  20.0*2.0*M_PI;
-        problem.phases(1).bounds.upper.EndTime = 150.0*2.0*M_PI;
-    }
+    // set below, once the guess has been flown and its own revolution count is
+    // known -- a fixed floor of twenty revolutions is wrong at every power but
+    // the smallest
+    problem.phases(1).bounds.lower.EndTime = 0.0;
+    problem.phases(1).bounds.upper.EndTime = 200.0*2.0*M_PI;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Register problem functions  ///////////////////////////
@@ -736,9 +777,50 @@ int main(int argc, char** argv)
         printf("   collocation nodes                          %ld\n", nodes_total);
     }
 #endif
+    // The final true longitude. With the eclipse model on it is FIXED, and that
+    // is not a detail: the clustered mesh is anchored to the true longitudes at
+    // which the guess crosses the shadow boundary, and PSOPT's breakpoints are
+    // fractions of the phase. Were the final longitude free, those fractions
+    // would stretch with it and the fine windows would slide off the eclipses --
+    // not by a little, but by whole revolutions, since ten per cent of the final
+    // longitude is four revolutions at twenty kilowatts. The problem solved is
+    // therefore minimum time for a given number of revolutions; sweeping that
+    // number traces the envelope whose least value is the answer sought.
+    //
+    // What does still move is the elapsed time, and with it the Sun: the guess
+    // is a few per cent slow, so the solution arrives at each revolution at a
+    // slightly different date and its shadow crossings sit a little away from
+    // the guess's. Whether that little is smaller than the half-width of the
+    // fine windows is not something to assume, so the example measures it after
+    // the solve and reports it.
+#if USE_ECLIPSE
+    double Lf_fixed = (nrev_fixed > 0.0) ? nrev_fixed*2.0*M_PI : Lf_guess;
+    problem.phases(1).bounds.lower.EndTime = Lf_fixed;
+    problem.phases(1).bounds.upper.EndTime = Lf_fixed;
+#else
+    if (nrev_fixed > 0.0) {
+        problem.phases(1).bounds.lower.EndTime = nrev_fixed*2.0*M_PI;
+        problem.phases(1).bounds.upper.EndTime = nrev_fixed*2.0*M_PI;
+    } else {
+        problem.phases(1).bounds.lower.EndTime = 0.60*Lf_guess;
+        problem.phases(1).bounds.upper.EndTime = 1.60*Lf_guess;
+    }
+#endif
+
     printf("\n");
     printf("steering-law guess: transfer time %.3f days, %.1f revolutions\n",
            tf_guess/86400.0, t_guess(0,nnodes-1)/(2.0*M_PI));
+    {
+       double emax = 0.0, ramax = 0.0;
+       for (int j = 0; j < nnodes; j++) {
+          double fj = x_guess(1,j), gj = x_guess(2,j);
+          double ej = sqrt(fj*fj + gj*gj);
+          double ra = x_guess(0,j)/(1.0 - ej);
+          if (ej > emax) emax = ej;
+          if (ra > ramax) ramax = ra;
+       }
+       printf("   peak eccentricity %.4f, peak apoapsis %.0f km\n", emax, ramax);
+    }
     if (guess_only) return 0;
 
     MatrixXd param_guess;
@@ -775,6 +857,14 @@ int main(int argc, char** argv)
     // hundred nodes and leaves the error at 4.5e-3, above the value requested.
     algorithm.ode_tolerance       = 1.e-4;
 
+    // PSOPT gives IPOPT an hour of processor time by default. That is ample for
+    // every other example in this distribution and nowhere near enough for this
+    // one: the twenty kilowatt case has some 28000 variables and takes rather
+    // longer than that. A run that ends with IPOPT return code -4 has hit this
+    // limit and not converged, which is easy to mistake for a failure of the
+    // formulation.
+    algorithm.ipopt_max_cpu_time  = 6.0*3600.0;
+
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Now call PSOPT to solve the problem   /////////////////
 ////////////////////////////////////////////////////////////////////////////
@@ -807,6 +897,57 @@ int main(int argc, char** argv)
     printf("final semi-major   %12.4f km\n",   afin);
     printf("final eccentricity %12.3e\n",      efin);
     printf("final inclination  %12.3e deg\n",  ifin);
+
+    // How near the solution came to the two safeguards. If either is close to
+    // its bound the bound is shaping the answer and should be re-examined; if
+    // both are comfortably inside, as they should be, they did nothing but keep
+    // the iterates out of the region where the element set stops meaning
+    // anything, which is what they are for.
+    {
+       double emax = 0.0, ramax = 0.0;
+       for (int j = 0; j < N; j++) {
+          double ej = sqrt(x(1,j)*x(1,j) + x(2,j)*x(2,j));
+          double ra = x(0,j)/(1.0 - ej);
+          if (ej > emax) emax = ej;
+          if (ra > ramax) ramax = ra;
+       }
+       printf("peak eccentricity  %12.4f   (bound %.2f)\n", emax, E_MAX);
+       printf("peak apoapsis      %12.0f km (bound %.0f km)\n", ramax, R_APO_MAX);
+    }
+
+#if USE_ECLIPSE
+    // Did the fine windows stay over the eclipses? The mesh was clustered on the
+    // true longitudes at which the GUESS crossed the shadow boundary, and the
+    // solution takes a different time to get to each revolution, so the Sun is
+    // somewhere slightly different when it arrives and the crossing moves. If
+    // that movement exceeds the half-width of the windows they are no longer
+    // doing their job, and the transitions are being stepped over.
+    {
+       double worst = 0.0;
+       int nfound = 0, noutside = 0;
+       double prev = -1.0;
+       for (int j = 0; j < N; j++) {
+          double y[6] = { x(0,j), x(1,j), x(2,j), x(3,j), x(4,j), t(0,j) };
+          double psi = sunlit_d(y, x(6,j));
+          if (j > 0 && (prev - 0.5)*(psi - 0.5) < 0.0) {
+             double fr = (0.5 - prev)/(psi - prev);
+             double Lc = t(0,j-1) + fr*(t(0,j) - t(0,j-1));
+             double best = 1.0e30;
+             for (size_t q = 0; q < Ltrans.size(); q++)
+                if (fabs(Lc - Ltrans[q]) < best) best = fabs(Lc - Ltrans[q]);
+             nfound++;
+             if (best > worst) worst = best;
+             if (best > MESH_WINDOW_DEG*M_PI/180.0) noutside++;
+          }
+          prev = psi;
+       }
+       printf("shadow crossings found along the solution  %d (guess had %d)\n",
+              nfound, (int) Ltrans.size());
+       printf("   furthest one has moved   %8.3f deg of true longitude"
+              "  (window half-width %.1f deg)\n", worst*180.0/M_PI, MESH_WINDOW_DEG);
+       printf("   crossings now outside a fine window      %d\n", noutside);
+    }
+#endif
     printf("\n");
 
     Save(x, "x.dat");
