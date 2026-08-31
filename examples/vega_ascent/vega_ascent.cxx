@@ -47,6 +47,7 @@
 // constraint on the spent third stage. Neither is modelled here.
 
 #include "psopt.h"
+#include "us76.h"
 
 using namespace std;
 using namespace PSOPT;
@@ -119,9 +120,15 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
       vrel[j] = v[j] - W(j,0)*r[0] - W(j,1)*r[1] - W(j,2)*r[2];
    adouble speedrel = sqrt( dot(vrel, vrel, 3) );
 
-   // exponential atmosphere
-   adouble rho  = C.rho0*exp(-altitude/C.H);
-   adouble pamb = C.p0  *exp(-altitude/C.H);
+   // The atmosphere is the US Standard of 1976, which is what the reference
+   // uses. It replaces an exponential fit with a 7200 m scale height that was
+   // here before: that fit is within about a quarter of the standard below
+   // 70 km, but it is three times too dense at 110 km and four orders of
+   // magnitude too thin at 200 km, and the drag it gives through the first
+   // stage -- twenty six per cent light at 10 km, where the dynamic pressure
+   // peaks -- is large enough to move the payload this problem is maximising.
+   adouble rho, pamb, tamb;
+   us76<adouble>(altitude, rho, pamb, tamb);
 
    adouble bc = (rho/(2.0*m))*C.sref*C.cd;
    adouble Drag[3];
@@ -274,7 +281,7 @@ int main(void)
     CONSTANTS.mu   = 3.986004418e14;
     CONSTANTS.Re   = 6378137.0;
     CONSTANTS.g0   = 9.80665;
-    CONSTANTS.rho0 = 1.225;
+    CONSTANTS.rho0 = 1.225;      // retained only for the initial guess
     CONSTANTS.H    = 7200.0;
     CONSTANTS.p0   = 101325.0;
     CONSTANTS.cd   = 0.381;
