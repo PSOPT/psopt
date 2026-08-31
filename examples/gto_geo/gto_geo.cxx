@@ -115,6 +115,21 @@ static double THRUST_NEWTON = 2.0*THRUSTER_EFF*5.0e3/(9.80665*1800.0);
 // the once-per-revolution ripple the perturbations put on them; a window of
 // fine intervals straddles each eclipse transition. The window is a little wider
 // than the transition itself, which spans about one degree of true longitude.
+//
+// The windows can only be placed on the guess's shadow crossings, and the
+// solution's are not in the same places: it reaches each revolution earlier than
+// the guess did, so the Sun has moved by the time it arrives. At sixty kilowatts
+// the furthest crossing moves 5.9 degrees of true longitude, and four of the
+// twenty-four end up outside a two-degree window. That looks like a defect and
+// was measured rather than assumed. Widening the windows to eight degrees, with
+// the subdivision raised to sixteen to keep the fine intervals at a degree,
+// leaves no crossing outside a window and costs 2791 collocation nodes against
+// 1391 and 897 seconds against 318 -- and moves the answer from 11.0374 days to
+// 11.0598, two parts in a thousand, which is well inside the discretisation
+// error of the mesh itself. So the narrow windows stay. The example reports the
+// movement after every solve, and if it ever grows enough to matter the right
+// answer is not a wider window but a second pass: solve, recompute the crossings
+// from the solution, rebuild the mesh on those, and solve again warm started.
 #define MESH_COARSE_DEG    45.0
 #define MESH_WINDOW_DEG     2.0
 #define MESH_SUBDIV           4
