@@ -606,7 +606,6 @@ static double build_guess(int nnodes, MatrixXd& x_guess, MatrixXd& u_guess, Matr
    t_guess = linspace(0.0, Lf, nnodes);      // the independent variable is L
 
    // sh[] holds (p,f,g,h,k,L,m) at each step; resample it uniformly in L
-   double prev_alpha = 0.0;
    size_t idx = 0;
    for (int j = 0; j < nnodes; j++) {
       double Lj = Lf*((double) j)/((double)(nnodes-1));
@@ -625,10 +624,18 @@ static double build_guess(int nnodes, MatrixXd& x_guess, MatrixXd& u_guess, Matr
       double un = uh[idx][2] + frac*(uh[idx+1][2]-uh[idx][2]);
       double nn = sqrt(ur*ur+ut*ut+un*un); ur/=nn; ut/=nn; un/=nn;
       double beta  = asin(un);
+      // The in-plane angle is left in [-pi, pi]. It is tempting to unwrap it
+      // into a continuous function -- and this routine used to -- but the
+      // steering law turns steadily in the same sense, about two fifths of a
+      // turn per revolution, so over a forty-four revolution transfer the
+      // unwrapped angle reaches 112 radians. No box on a single angle can hold
+      // that and still be a sensible scale for the optimiser, and a box that
+      // does not hold it silently CLIPS the guess: every node past the fifth
+      // revolution arrives at the solver pinned to the same value, and the
+      // steering law's work is thrown away exactly where it was needed. The
+      // angle is only meaningful modulo two pi, so it is wrapped instead, and
+      // the bounds are set wide enough that neither wrap is ever at one.
       double alpha = atan2(ur, ut);
-      while (alpha - prev_alpha >  M_PI) alpha -= 2.0*M_PI;
-      while (alpha - prev_alpha < -M_PI) alpha += 2.0*M_PI;
-      prev_alpha = alpha;
       u_guess(0,j) = alpha;
       u_guess(1,j) = beta;
    }
@@ -705,8 +712,13 @@ int main(int argc, char** argv)
     problem.phases(1).bounds.lower.states << 10000.0, -1.0, -1.0, -1.0, -1.0, 600.0,          0.0;
     problem.phases(1).bounds.upper.states << 46000.0,  1.0,  1.0,  1.0,  1.0, MASS_INITIAL, 120.0;
 
-    problem.phases(1).bounds.lower.controls << -4.0*M_PI, -M_PI/2.0;
-    problem.phases(1).bounds.upper.controls <<  4.0*M_PI,  M_PI/2.0;
+    // The in-plane angle is bounded at plus and minus two pi rather than at plus
+    // and minus pi. Every thrust direction is already representable within one
+    // pi of zero, so the extra turn is slack, and it is there so that a solution
+    // wanting a direction near the wrap has an interior representation on both
+    // sides of it and never sits on a bound that means nothing.
+    problem.phases(1).bounds.lower.controls << -2.0*M_PI, -M_PI/2.0;
+    problem.phases(1).bounds.upper.controls <<  2.0*M_PI,  M_PI/2.0;
 
     problem.phases(1).bounds.lower.path << 0.0, -1.0;
     problem.phases(1).bounds.upper.path << E_MAX*E_MAX, 0.0;
@@ -820,6 +832,13 @@ int main(int argc, char** argv)
           if (ra > ramax) ramax = ra;
        }
        printf("   peak eccentricity %.4f, peak apoapsis %.0f km\n", emax, ramax);
+       double amin = u_guess(0,0), amax = u_guess(0,0);
+       for (int j = 0; j < nnodes; j++) {
+          if (u_guess(0,j) < amin) amin = u_guess(0,j);
+          if (u_guess(0,j) > amax) amax = u_guess(0,j);
+       }
+       printf("   in-plane steering angle spans %.3f to %.3f rad (bound +-%.3f)\n",
+              amin, amax, 2.0*M_PI);
     }
     if (guess_only) return 0;
 
@@ -830,8 +849,18 @@ int main(int argc, char** argv)
 ///////////////////  Enter algorithm options  //////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    algorithm.nlp_iter_max        = 5000;
-    algorithm.nlp_tolerance       = 1.e-6;
+    algorithm.nlp_iter_max        = 8000;
+    // A tolerance of 1e-6 on the nonlinear programme is not reachable here and
+    // would not mean anything if it were. The discretisation error of the mesh
+    // this example uses is about 6e-3, so the transfer time is worth three
+    // significant figures whatever the solver does with the fourth. Measured at
+    // sixty kilowatts, where the whole run fits in minutes: 1e-4 is reached in
+    // 119 iterations and gives 11.054 days, 1e-5 in 460 and gives 11.033, and
+    // 1e-6 is not reached at all -- the barrier parameter falls past 1e-11 and
+    // the last decade of the KKT residual simply does not come out of a
+    // limited-memory quasi-Newton approximation on a problem of this size. The
+    // 1e-5 answer and the 1e-4 answer differ by two parts in ten thousand.
+    algorithm.nlp_tolerance       = 1.e-5;
     algorithm.nlp_method          = "IPOPT";
     algorithm.scaling             = "automatic";
     algorithm.derivatives         = "automatic";
