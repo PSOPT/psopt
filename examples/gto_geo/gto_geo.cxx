@@ -44,8 +44,32 @@
 // That problem is large: Leomanni et al. report 130117 nonlinear programming
 // variables. This example therefore flies the same mission with a larger power
 // system, which changes one number and nothing else, and brings the transfer
-// down to a size a reader can run. Setting THRUST_NEWTON to 0.31158 and
-// widening the bound on the final time recovers the published case.
+// down to a size a reader can run. The power is the second command-line
+// argument, in kilowatts; the published case is recovered by asking for 5.
+//
+// At 20 kW the answer is 30.873 days over 43.73 revolutions for 173.65 kg of
+// propellant, on 3083 collocation nodes and 27758 variables, in 388 seconds.
+// Three checks that it is the right answer, none of which the solver was told:
+//
+//   The propellant. It corresponds to 2759 m/s of velocity change, against the
+//   2686 m/s implied by the 169.38 kg that Leomanni and co-workers report for
+//   the same transfer at a quarter of the thrust. Two and a half per cent more,
+//   which is the direction to expect: four times the thrust means a quarter of
+//   the revolutions, larger changes in each, and rather more steering loss.
+//
+//   The time. Velocity change times mean mass divided by thrust is 28.52 days
+//   of powered flight, and the spacecraft is in sunlight for 92.24 per cent of
+//   the transfer, which puts the elapsed time at 30.92 days. The solver found
+//   30.87, and it arrived there through the collocation of a perturbed
+//   many-revolution trajectory rather than through the rocket equation.
+//
+//   The eclipses. The duty cycle of 0.9224 sits alongside the 0.935 that
+//   Leomanni and co-workers report for the 5 kW case, which has nearly four
+//   times as many revolutions over which to average.
+//
+// Both of the safeguards below are inactive at the solution -- peak eccentricity
+// 0.7306 against a bound of 0.80, peak apoapsis 59411 km against 100000 -- so
+// neither shaped the answer.
 
 #include "psopt.h"
 #include <vector>
