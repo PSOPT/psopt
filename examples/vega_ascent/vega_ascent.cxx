@@ -962,16 +962,32 @@ int main(int argc, char** argv)
     }
     printf("\n");
 
-    // one file with the whole trajectory, phase by phase
+    // One file with the whole trajectory, phase by phase: time, the seven
+    // states, the phase number, and then the two quantities a reader is likely
+    // to want plotted -- the free-molecular heat flux and the dynamic pressure.
+    // Those last two are written from the same us76.h the dynamics used rather
+    // than left to be reconstructed downstream, so that a plot cannot disagree
+    // with the constraint the solver actually imposed.
     int ntot = 0;
     for (i = 0; i < NPH; i++) ntot += (int) xs[i].cols();
-    MatrixXd traj(9, ntot);
+    MatrixXd traj(11, ntot);
     int c = 0;
     for (i = 0; i < NPH; i++)
        for (int k = 0; k < (int) xs[i].cols(); k++, c++) {
           traj(0,c) = ts[i](0,k);
           for (j = 0; j < 7; j++) traj(1+j,c) = xs[i](j,k);
           traj(8,c) = (double)(i+1);
+
+          double yk[7];
+          for (j = 0; j < 7; j++) yk[j] = xs[i](j,k);
+          double rk = sqrt(yk[0]*yk[0] + yk[1]*yk[1] + yk[2]*yk[2]);
+          double vk[3] = { yk[3] + CONSTANTS.omega*yk[1],
+                           yk[4] - CONSTANTS.omega*yk[0], yk[5] };
+          double sk = sqrt(vk[0]*vk[0] + vk[1]*vk[1] + vk[2]*vk[2]);
+          double rhok, pk, Tk;
+          us76<double>(rk - CONSTANTS.Re, rhok, pk, Tk);
+          traj( 9,c) = 0.5*rhok*sk*sk*sk;      // W/m^2
+          traj(10,c) = 0.5*rhok*sk*sk;         // Pa
        }
     Save(traj, "vega_traj.dat");
     return 0;
