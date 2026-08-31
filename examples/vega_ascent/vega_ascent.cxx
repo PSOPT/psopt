@@ -616,8 +616,18 @@ static double fly_guess(const Constants_& C, double m0, double delta, double psi
 ///////////////////  Define main routine ///////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-int main(void)
+// With the argument "relax", the unit-norm equality on the thrust direction is
+// replaced by the inequality |u| <= 1. This is the lossless convexification of
+// Benedikter and co-workers -- their eq. (36) in place of their eq. (34) -- and
+// the point of it is that the relaxation is tight: a solution that thrusts at
+// less than full magnitude while burning propellant at the full rate cannot be
+// optimal for a maximum-payload problem, so the inequality is active at the
+// solution and the relaxed problem has the same answer as the original. The
+// example prints how nearly the recovered directions are unit vectors, which is
+// the check that the argument is sound on this problem and not merely plausible.
+int main(int argc, char** argv)
 {
+    bool relax = (argc > 1 && string(argv[1]) == "relax");
     Alg  algorithm;
     Sol  solution;
     Prob problem;
@@ -749,11 +759,11 @@ int main(void)
             problem.phases(i).bounds.upper.controls <<  1.0,  1.0,  1.0;
         }
         if (PH_MODE[i-1] == MODE_FREE && PH_QDOT[i-1]) {
-            problem.phases(i).bounds.lower.path << 1.0, 0.0;
+            problem.phases(i).bounds.lower.path << (relax ? 0.0 : 1.0), 0.0;
             problem.phases(i).bounds.upper.path << 1.0, QDOT_MAX;
         }
         else if (PH_MODE[i-1] == MODE_FREE) {
-            problem.phases(i).bounds.lower.path << 1.0;
+            problem.phases(i).bounds.lower.path << (relax ? 0.0 : 1.0);
             problem.phases(i).bounds.upper.path << 1.0;
         }
         else if (PH_QDOT[i-1]) {
@@ -932,6 +942,24 @@ int main(void)
     printf("  in a heat flux of          %12.1f W/m^2\n", 0.5*rho8*sr*sr*sr);
     printf("peak heat flux over phases 8-12 %9.1f W/m^2 (limit %.0f) at t = %.1f s, %.1f km\n",
            qpeak, QDOT_MAX, tpeak, hpeak/1000.0);
+
+    // How nearly the thrust directions are unit vectors. Under the equality
+    // this is a restatement of the constraint; under the relaxation it is the
+    // test of whether the relaxation was tight.
+    {
+       double nmin = 1.0e30, nmax = 0.0;
+       for (i = 0; i < NPH; i++) {
+          if (PH_MODE[i] != MODE_FREE) continue;
+          MatrixXd uu = solution.get_controls_in_phase(i+1);
+          for (int k = 0; k < (int) uu.cols(); k++) {
+             double n = sqrt(uu(0,k)*uu(0,k) + uu(1,k)*uu(1,k) + uu(2,k)*uu(2,k));
+             if (n < nmin) nmin = n;
+             if (n > nmax) nmax = n;
+          }
+       }
+       printf("thrust direction norm over the controlled phases  %.9f to %.9f  (%s)\n",
+              nmin, nmax, relax ? "|u| <= 1 imposed" : "|u| = 1 imposed");
+    }
     printf("\n");
 
     // one file with the whole trajectory, phase by phase
