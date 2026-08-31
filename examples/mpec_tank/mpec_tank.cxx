@@ -42,16 +42,30 @@
 //
 // The solution is worth knowing about before running it, because it is not the
 // simple switch one might expect. The objective drains liquid, and liquid drains
-// only while the outlet runs liquid, so the best the vehicle of the tank can do
-// is bring the level down to the outlet height and hold it there. It reaches the
-// height at about eleven seconds and then SLIDES along it for the rest of the
-// horizon. That is not a failure of the formulation but a consequence of it: on
-// the switching surface both multipliers vanish, so neither complementarity
-// condition constrains nu, and nu is free to take any value in [0,1]. What it
-// settles at is the value that holds the level -- the fraction of time the
-// chattering outlet spends running liquid. This is the Filippov solution of the
+// only while the outlet runs liquid, so the best the tank can do is bring the
+// level down to the outlet height and hold it there. It reaches the height in
+// the first third of the horizon and then SLIDES along it for the rest. That is
+// not a failure of the formulation but a consequence of it: on the switching
+// surface both multipliers vanish, so neither complementarity condition
+// constrains nu, and nu is free to take any value in [0,1]. What it settles at
+// is the value that holds the level -- the fraction of time the chattering
+// outlet spends running liquid. This is the Filippov solution of the
 // discontinuous system, and the complementarity formulation reproduces it
 // without being told to.
+//
+// One warning, which is a property of the problem class and not of this
+// instance. The complementarity products in the objective are bilinear, so the
+// penalised problem has many stationary points, as mathematical programs with
+// equilibrium constraints generally do. Started from an initial liquid ramp of
+// 0.4, 0.9 and 1.6 mol/s in place of the 0.9 used below, the solver converges to
+// three different trajectories, reaching the outlet height at 7.89, 8.65 and
+// 7.31 seconds and draining 9.994, 10.023 and 9.957 mol. The differences live
+// entirely in the approach: on the sliding arc all three recover the same
+// Filippov selector to three decimal places, running from 0.689 to 0.974. What
+// the reformulation is for is therefore reproducible; where the optimizer
+// happens to enter the arc is not, and a reader who wants the latter to a
+// stated accuracy should solve from several starting points and keep the best,
+// as one must with any MPEC.
 
 #include "psopt.h"
 
@@ -107,6 +121,7 @@ using namespace PSOPT;
 #define BETA     100.0                  // weight on the valve-tracking term
 #define RHO_PEN 1000.0                  // weight on the complementarity penalty
 #define X_REF      0.1                  // valve opening the objective prefers
+#define ML_0     260.0                  // mol of liquid at t = 0
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Define the end point (Mayer) cost function //////////
@@ -116,7 +131,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
                       adouble* parameters, adouble& t0, adouble& tf,
                       adouble* xad, int iphase, Workspace* workspace)
 {
-   return final_states[1];        // the liquid holdup left at the end
+   return final_states[1] - ML_0; // minus the liquid drained over the horizon
 }
 
 //////////////////////////////////////////////////////////////////////////
