@@ -52,15 +52,16 @@
 // together cannot balance the vehicle. The trajectory here stays well clear of
 // that corner, and so do the published HORUS entries.
 //
-// THE ATMOSPHERE is the US Standard Atmosphere of 1976, fitted over 20 to 125 km
-// rather than tabulated: the logarithm of the density as a degree-seven
-// polynomial in altitude, good to 1.4 per cent in the root mean square, and the
-// speed of sound as a degree-five polynomial, good to 8 m/s. A Mach number that
-// means something matters here, because the aerodynamic coefficients depend on
-// it and the terminal condition is stated in it.
+// THE ATMOSPHERE is us76.h, shared with the Vega ascent example: the US Standard
+// Atmosphere of 1976 written as one branch-free expression, the layer model
+// below 86 km and the tabulated diffusive branch above it, accurate to 0.29 per
+// cent below the join and 0.04 per cent above. A Mach number that means
+// something matters here, because the aerodynamic coefficients depend on it and
+// the terminal condition is stated in it.
 
 #include "psopt.h"
 #include "horus_aero.h"
+#include "us76.h"
 #include <vector>
 #include <array>
 
@@ -142,20 +143,36 @@ using namespace PSOPT;
 ///////////////////  Atmosphere and aerodynamics              ////////////
 //////////////////////////////////////////////////////////////////////////
 
+// The atmosphere is us76.h, the same branch-free US Standard of 1976 the Vega
+// ascent example uses, rather than the two polynomials this example carried
+// before. Those were fitted to the standard over 20 to 125 km and their error
+// was quoted here as 1.4 per cent -- but that figure is the root mean square in
+// the LOGARITHM of the density, which is 14 per cent in the density itself.
+// Measured against the standard: 10 per cent in the root mean square over the
+// whole range, 15 per cent at 80 km, 21 per cent at the 122 km entry interface
+// and as much as 35 per cent between 110 and 125 km. The speed of sound was
+// worse: within 7 m/s below 86 km, but 44 m/s low at 110 km and 141 m/s low at
+// 122 km, which put the Mach number at the entry interface at 27 instead of 18.
+//
+// The speed of sound is taken as sqrt(gamma p / rho), which is exact at every
+// altitude and needs no separate model. That is worth noticing, because the
+// usual difficulty above 86 km is that the mean molecular weight falls, so a
+// speed of sound computed from the temperature and a fixed gas constant is
+// wrong -- Bergsma and Mooij fit the molecular weight to 125 km for exactly this
+// reason. Taking it from the pressure and the density instead makes the
+// molecular weight cancel.
 adouble air_density(adouble h)          // h in metres
 {
-   adouble z = h/1000.0;
-   adouble p = LOGRHO_FIT[0];
-   for (int i = 1; i < 8; i++) p = p*z + LOGRHO_FIT[i];
-   return exp(p);
+   adouble rho, pres, temp;
+   us76<adouble>(h, rho, pres, temp);
+   return rho;
 }
 
 adouble speed_of_sound(adouble h)
 {
-   adouble z = h/1000.0;
-   adouble a = SOUND_FIT[0];
-   for (int i = 1; i < 6; i++) a = a*z + SOUND_FIT[i];
-   return a;
+   adouble rho, pres, temp;
+   us76<adouble>(h, rho, pres, temp);
+   return sqrt(1.4*pres/rho);
 }
 
 // trimmed coefficients: sum over i of alpha^i times a cubic in 1/M

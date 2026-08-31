@@ -43,6 +43,18 @@
 // Beyond 1000 km the altitude is clamped and an exponential of 233 km scale
 // height continues the profile, which keeps it positive and monotone for any
 // iterate the solver may produce without pretending to be the standard.
+//
+// This header lives with the library rather than with an example because two
+// examples now depend on it -- the Vega ascent, whose heat-flux constraint after
+// fairing jettison is met at about 120 km and therefore needs the branch above
+// 86 km to be right, and the HORUS entry, which enters at 122 km. Duplicating a
+// hundred coefficients across two directories invites the two copies to drift.
+//
+// A note on the speed of sound, which this header does not return. Above 86 km
+// the mean molecular weight falls, so sqrt(gamma R T) with a fixed gas constant
+// is wrong up there and the usual remedy is to model the molecular weight as
+// well. It is not needed: sqrt(gamma p / rho) is exact at every altitude, and
+// the molecular weight cancels.
 
 #ifndef US76_H
 #define US76_H
