@@ -290,6 +290,61 @@ int main(int argc, char** argv)
     printf("nodes in the final mesh                   %10d\n", N);
     printf("\n");
 
+    // The clearance above has been evaluated AT THE NODES, which is where the
+    // solver enforced it. Between them nothing has been checked, and on this
+    // problem that is where the answer lives: the narrowest ridge is crossed in
+    // six tenths of a second of a sixty second flight, and a mesh that steps
+    // over it will report a solution that satisfies the constraint at every node
+    // and flies through the hill in between. So the trajectory is propagated
+    // from the initial state with a fourth order Runge-Kutta rule, using the
+    // solved control interpolated linearly, and the clearance is measured on a
+    // grid fine enough to see the narrowest feature.
+    {
+       const int NV = 240000;                 // 0.25 ms steps
+       double dt = T_FINAL/((double) NV);
+       double y[5] = { 0.0, 0.0, 0.0, H_START, 0.0 };
+       double worst_v = 1.0e30, x_worst = 0.0;
+       int    jj = 0;
+
+       for (int k = 0; k < NV; k++) {
+          double tk = k*dt;
+          double k1[5], k2[5], k3[5], k4[5], yt[5];
+          for (int st = 0; st < 4; st++) {
+             double th = tk + ((st == 0) ? 0.0 : (st == 3 ? dt : 0.5*dt));
+             while (jj + 2 < N && t(0,jj+1) < th) jj++;
+             double t0_ = t(0,jj), t1_ = t(0,jj+1);
+             double fr = (t1_ > t0_) ? (th - t0_)/(t1_ - t0_) : 0.0;
+             if (fr < 0.0) fr = 0.0;
+             if (fr > 1.0) fr = 1.0;
+             double uu = u(0,jj) + fr*(u(0,jj+1) - u(0,jj));
+             double* yy = (st == 0) ? y : yt;
+             double* kk = (st == 0) ? k1 : (st == 1 ? k2 : (st == 2 ? k3 : k4));
+             kk[0] = yy[1] - ZALPHA_V*yy[0];
+             kk[1] = M_ALPHA*yy[0] + M_Q*yy[1] + M_DELTA*yy[4];
+             kk[2] = yy[1];
+             kk[3] = V_AIR*(yy[2] - yy[0]);
+             kk[4] = (uu - yy[4])/TAU_ACT;
+             if (st < 3) {
+                double h = (st == 2) ? dt : 0.5*dt;
+                for (int i = 0; i < 5; i++) yt[i] = y[i] + h*kk[i];
+             }
+          }
+          for (int i = 0; i < 5; i++)
+             y[i] += (dt/6.0)*(k1[i] + 2.0*k2[i] + 2.0*k3[i] + k4[i]);
+
+          double xx = V_AIR*(tk + dt);
+          double c  = y[3] - terrain_height<double>(xx) - H_CLEAR;
+          if (c < worst_v) { worst_v = c; x_worst = xx; }
+       }
+
+       printf("verification by Runge-Kutta propagation of the solved control\n");
+       printf("   least clearance along the propagated path %10.4f m at %.0f m along track\n",
+              worst_v, x_worst);
+       printf("   final altitude                            %10.3f m  (collocation %.3f)\n",
+              y[3], x(3,N-1));
+       printf("\n");
+    }
+
     Save(x, "x.dat"); Save(u, "u.dat"); Save(t, "t.dat");
     Save(terr, "terrain.dat"); Save(clear_, "clearance.dat"); Save(track, "track.dat");
 
