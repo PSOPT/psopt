@@ -312,6 +312,40 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
          s = rb;
      }
  }
+
+ // Hermite-Simpson carries a control variable of its own at the midpoint of every
+ // interval, and the control representation the transcription assumes is the quadratic
+ // through (u_k, ubar_k, u_{k+1}) on interval k -- that is the control the Simpson
+ // defect integrates. A spline through the node values alone therefore ignores half of
+ // the control variables. Wherever the node and midpoint branches separate -- on
+ // bang-bang, singular and sliding arcs the separation is systematic and O(1), because
+ // there the defects pin only a weighted combination of the two and leave the split
+ // free -- such a spline describes a control the solver never used, and the residual
+ // computed from it is an artefact of the interpolation rather than a property of the
+ // solution. Since this routine feeds the discretization error estimate, and that
+ // estimate drives mesh refinement, the artefact is not merely cosmetic: it refines
+ // where there is nothing to refine and refuses to stop. Interpolate on the interval
+ // containing `time` instead, using that interval's midpoint control.
+ if ( need_midpoint_controls(algorithm, workspace) && norder >= 1 ) {
+     int    nstates   = problem.phase[i].nstates;
+     int    ncontrols = problem.phase[i].ncontrols;
+     int    nparam    = problem.phase[i].nparameters;
+     int    iphase_offset = get_iphase_offset(problem, iphase, workspace);
+     int    bar_offset    = (nstates+ncontrols)*(norder+1)+nparam;
+     MatrixXd& control_scaling = problem.phase[i].scale.controls;
+     double tq = time.value();
+     int    kk = 0;
+     while ( kk < norder-1 && tq > time_array[kk+1].value() ) kk++;
+     adouble ubar = xad[iphase_offset+bar_offset+(kk)*ncontrols+control_index]
+                    /control_scaling(control_index);
+     adouble hk   = time_array[kk+1] - time_array[kk];
+     adouble s    = (time - time_array[kk])/hk;
+     *interp_control =   (2.0*s-1.0)*(s-1.0)*single_control_traj[kk]
+                       + 4.0*s*(1.0-s)*ubar
+                       + s*(2.0*s-1.0)*single_control_traj[kk+1];
+     return;
+ }
+
  spline_interpolation( interp_control, time, time_array, single_control_traj, norder+1, workspace);
 
 }

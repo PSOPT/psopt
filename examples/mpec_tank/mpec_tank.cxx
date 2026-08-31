@@ -315,15 +315,46 @@ int main(int argc, char** argv)
     // The level reaches the outlet height and then stays on it, so what is
     // worth reporting is the time of arrival and how well the sliding arc is
     // held, rather than a crossover time, of which there is none.
+    //
+    // The selector itself has to be read off the arc with some care, and the
+    // reason is worth stating because it is a property of the problem and not
+    // of this solver. On the sliding arc g vanishes, so the path constraint
+    // forces s1 = s2, and the penalty then drives both to zero; with s1 = s2 = 0
+    // the term rho*(nu*s2 + (1-nu)*s1) is zero whatever nu is, and nu leaves the
+    // objective altogether. Nothing determines it pointwise. What determines it
+    // is the requirement that the level be held, and a Hermite-Simpson
+    // discretization imposes that once per interval, on the Simpson combination
+    // of the two control variables it carries there -- the one at the node and
+    // the one at the midpoint. Their difference is free, and the solver returns
+    // an arbitrary member of that family: here the node and midpoint branches
+    // separate by about four hundredths, systematically, over the whole arc.
+    // This is what a singular arc looks like in a local collocation scheme: the
+    // same phenomenon as the familiar ringing of a collocated singular control,
+    // wearing a different coat.
+    //
+    // The physically meaningful quantity survives it. The fraction of time the
+    // chattering outlet runs liquid is fixed by the requirement nu*L = F_L, so
+    //
+    //           nu* = F_L / ( K_L * x * (P - P_out) ),
+    //
+    // which depends only on the state and the valve -- both of which the cost
+    // does pin down -- and is therefore well determined at every point. That is
+    // the Filippov selector, and it is what is reported and plotted below. The
+    // departure of the node branch from it is reported too, as a measure of how
+    // much of the control the discretization has left free.
     double t_arrive = -1.0, worst_comp = 0.0, worst_comp_int = 0.0;
-    double worst_slide = 0.0, worst_gap = 0.0;
-    double nu_lo = 1.0, nu_hi = 0.0;
+    double worst_split = 0.0, worst_gap = 0.0;
+    double nus_lo = 1.0, nus_hi = 0.0;
+    MatrixXd nu_star = zeros(1, N);
     for (int j = 0; j < N; j++) {
         double nu = u(1,j), s1 = u(2,j), s2 = u(3,j);
         double c  = fabs(nu*s2) + fabs((1.0-nu)*s1);
         if (c > worst_comp) worst_comp = c;
         if (j < N-1 && c > worst_comp_int) worst_comp_int = c;
         double g = x(1,j)/RHO_L - V_S;
+        double P = x(0,j)*R_GAS*TEMP/(V_TANK - x(1,j)/RHO_L);
+        double L = K_L*u(0,j)*(P - P_OUT);
+        nu_star(0,j) = (L > 0.0) ? F_L/L : 1.0;
         if (t_arrive < 0.0 && j > 0 && g < 1.0e-4) {
             double gp = x(1,j-1)/RHO_L - V_S;
             t_arrive = t(0,j-1) + (t(0,j)-t(0,j-1))*gp/(gp - g);
@@ -331,11 +362,9 @@ int main(int argc, char** argv)
         // the last few nodes carry a terminal-cost artefact and are excluded
         if (t_arrive > 0.0 && t(0,j) > t_arrive && t(0,j) < 24.5) {
             if (fabs(g) > worst_gap) worst_gap = fabs(g);
-            double P = x(0,j)*R_GAS*TEMP/(V_TANK - x(1,j)/RHO_L);
-            double L = K_L*u(0,j)*(P - P_OUT);
-            if (fabs(nu*L - F_L) > worst_slide) worst_slide = fabs(nu*L - F_L);
-            if (nu < nu_lo) nu_lo = nu;
-            if (nu > nu_hi) nu_hi = nu;
+            if (fabs(nu - nu_star(0,j)) > worst_split) worst_split = fabs(nu - nu_star(0,j));
+            if (nu_star(0,j) < nus_lo) nus_lo = nu_star(0,j);
+            if (nu_star(0,j) > nus_hi) nus_hi = nu_star(0,j);
         }
     }
 
@@ -346,20 +375,23 @@ int main(int argc, char** argv)
            x(1,N-1)/RHO_L, V_S);
     printf("level reaches the outlet at    %12.5f s, and stays there\n", t_arrive);
     printf("  held to within                %12.3e l over the rest of the horizon\n", worst_gap);
-    printf("  sliding condition nu*L = F_L holds to %8.3e mol/s of %.1f\n",
-           worst_slide, F_L);
-    printf("  the selector runs from %.4f to %.4f on that arc, inside its bounds\n",
-           nu_lo, nu_hi);
+    printf("  the Filippov selector nu* = F_L/L runs from %.4f to %.4f on that arc,\n",
+           nus_lo, nus_hi);
+    printf("  strictly inside [0,1], which is the condition for the sliding mode to exist\n");
+    printf("  the collocated selector departs from it by up to %.4f: the part of nu\n",
+           worst_split);
+    printf("  that the discretization leaves free on a singular arc\n");
     printf("complementarity residual       %12.3e at the final node,\n", worst_comp);
     printf("                               %12.3e over the interior\n", worst_comp_int);
     printf("\n");
 
     Save(x, "x.dat"); Save(u, "u.dat"); Save(t, "t.dat");
+    Save(nu_star, "nu_star.dat");
 
     plot(t, x.row(1)/RHO_L, problem.name + ": liquid volume",
          "time (s)", "V (l)", "V_L");
     plot(t, u.row(0), problem.name + ": valve opening", "time (s)", "x", "x");
-    plot(t, u.row(1), problem.name + ": outlet selector", "time (s)", "nu", "nu");
+    plot(t, nu_star, problem.name + ": Filippov selector", "time (s)", "nu*", "nu*");
 
     return 0;
 }
