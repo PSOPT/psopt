@@ -11,9 +11,9 @@
 ////////         NASA/TM-2012-217699; Leomanni et al.      ///////////////
 ////////         (2021), J. Spacecraft and Rockets,        ///////////////
 ////////         DOI 10.2514/1.A34949. The transfer        ///////////////
-////////         orbits and the propulsion model are       ///////////////
-////////         theirs; the power level used here is      ///////////////
-////////         not (see the note below).                 ///////////////
+////////         orbits, the propulsion model and the      ///////////////
+////////         eclipse model are theirs; the power is    ///////////////
+////////         a run-time choice (see the note below).   ///////////////
 //////////////////////////////////////////////////////////////////////////
 ////////     Copyright (c) Victor M. Becerra, 2026         ///////////////
 //////////////////////////////////////////////////////////////////////////
@@ -39,13 +39,34 @@
 // are free of the singularities the classical elements have at zero
 // eccentricity and zero inclination -- both of which this transfer ends at.
 //
-// The benchmark case in the literature uses a 5 kW system giving 0.31158 N,
-// for which the transfer takes about 118 days over some 160 revolutions.
-// That problem is large: Leomanni et al. report 130117 nonlinear programming
-// variables. This example therefore flies the same mission with a larger power
-// system, which changes one number and nothing else, and brings the transfer
-// down to a size a reader can run. The power is the second command-line
-// argument, in kilowatts; the published case is recovered by asking for 5.
+// The power is the second command-line argument, in kilowatts. The published
+// benchmark uses 5 kW, giving 0.31158 N, and it is a large problem: Leomanni and
+// co-workers report 130117 nonlinear programming variables for it. A reader on a
+// modest machine should start at 20 kW, which flies the same mission with a
+// larger power system -- one number changed and nothing else -- and brings the
+// transfer down to a quarter of the revolutions and an eighth of the variables.
+//
+// AT 5 kW, WHICH IS THE PUBLISHED CASE, this example gives:
+//
+//                          here            Leomanni et al.
+//     transfer time        118.7014 days   118.74 days
+//     propellant           169.3640 kg     169.38 kg
+//     duty cycle           0.9357          about 0.935
+//     revolutions          160.62          about 162
+//     variables            94178           130117
+//
+// Sixteen grammes of propellant in a hundred and sixty-nine kilogrammes, and
+// four hundredths of a day in a hundred and nineteen. Nothing in this file was
+// fitted to those numbers: the thrust follows from the power, the efficiency and
+// the specific impulse, the eclipse model is built from the geometry, and the
+// steering law that generates the initial guess was tuned against the revolution
+// count alone. The duty cycle is the one to dwell on, because it is the output of
+// the shadow model and of nothing else, and it lands on their figure.
+//
+// The run takes 75 minutes and 10464 collocation nodes, and converges on the
+// first mesh. Its internal consistency also holds: 2685.7 m/s of velocity change
+// times the mean mass, divided by the thrust and by the duty cycle, is 118.91
+// days against the 118.70 found, which is two parts in a thousand.
 //
 // At 20 kW the answer is 30.873 days over 43.73 revolutions for 173.65 kg of
 // propellant, on 3083 collocation nodes and 27758 variables, in 388 seconds.
@@ -67,9 +88,19 @@
 //   Leomanni and co-workers report for the 5 kW case, which has nearly four
 //   times as many revolutions over which to average.
 //
-// Both of the safeguards below are inactive at the solution -- peak eccentricity
-// 0.7306 against a bound of 0.80, peak apoapsis 59411 km against 100000 -- so
-// neither shaped the answer.
+// Both of the safeguards below are inactive at both powers. The peak
+// eccentricity is 0.7306 in each case -- which is the value the transfer starts
+// at and never exceeds, against a bound of 0.80 -- and the peak apoapsis is
+// 59411 km at 20 kW and 61609 km at 5 kW, against 100000. Neither shaped either
+// answer.
+//
+// The eclipse windows are settled too, and at the case that matters. At 5 kW the
+// solution has 194 shadow crossings, exactly as many as the guess, the furthest
+// has moved 1.48 degrees of true longitude against a window half-width of two,
+// and none is outside a window. That is the reverse of the sixty kilowatt case
+// used to size the windows, and for a reason worth knowing: the steering-law
+// guess is three per cent slow at 5 kW and twenty per cent slow at 60, so the
+// Sun has moved much less by the time the solution arrives at each revolution.
 
 #include "psopt.h"
 #include <vector>
