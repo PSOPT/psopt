@@ -291,25 +291,52 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
 	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
  }
 
- // For a Gauss hp mesh the control is collocated only at the interior Gauss points; the
- // (non-collocated) breakpoint storage slots carry control variables that enter no collocation
- // condition and are left arbitrary by the NLP. A global spline through them corrupts the
- // interpolated control near every interface and badly inflates the error estimate there.
- // Interpolate instead within the interval containing `time`, using only that interval's
- // Gauss-point controls. Radau (breakpoints collocated) keeps the global spline: bit-identical.
- if ( use_global_collocation(algorithm)
-      && hp_mesh_active(problem.phase[i]) && algorithm.collocation_method=="Gauss" ) {
-     int K = hp_num_intervals(problem.phase[i]); double tq = time.value(); int s = 0;
-     for (int jint=0; jint<K; jint++) {
-         int ord = hp_interval_order(problem.phase[i], jint);
-         int rb  = s + ord + 1; if (rb > norder) rb = norder;   // right breakpoint (x_f if last)
-         if ( tq <= time_array[rb].value() || jint == K-1 ) {
-             // this interval's Gauss-point controls occupy storage indices [s+1 .. s+ord]
-             lagrange_interpolation_ad( interp_control, time, time_array+(s+1),
-                                        single_control_traj+(s+1), ord, workspace );
-             return;
+ // The control representation a global pseudospectral method defines is the Lagrange
+ // polynomial through its COLLOCATED control nodes -- the same rule get_interpolated_state
+ // applies to the state. Fitting a cubic spline instead, as every release before this one did
+ // for every method but Gauss on an hp mesh, interpolates the control by a rule the
+ // transcription never used, and leaves the state and the control interpolated differently
+ // within one and the same residual evaluation.
+ //
+ // Which nodes are collocated depends on the method, and the ones that are not matter here.
+ // Legendre and Chebyshev collocate every node. Radau does not collocate the terminal
+ // breakpoint, and Gauss collocates strictly interior points, so those storage slots carry
+ // control variables that enter no constraint: the barrier alone decides them, and a control
+ // bounded in [0,1] comes back as exactly 0.5 there. psopt_main repairs those slots in the
+ // reported solution by extrapolating the interval's own collocation controls; this routine
+ // reads the raw NLP vector, where they are still artefacts, so it excludes them from the
+ // interpolation instead -- which yields the same polynomial.
+ //
+ // On an hp mesh the interpolation is confined to the interval containing `time`: a global
+ // interpolant over clustered composite nodes is severely ill-conditioned. On a single block
+ // the norder<100 guard is the same one get_interpolated_state uses, so that the two continue
+ // to agree at every node count.
+ if ( use_global_collocation(algorithm) ) {
+     bool   hp    = hp_mesh_active(problem.phase[i]);
+     bool   gauss = ( algorithm.collocation_method == "Gauss" );
+     bool   radau = ( algorithm.collocation_method == "Radau" );
+     if ( hp || norder < 100 ) {
+         int    K  = hp ? hp_num_intervals(problem.phase[i]) : 1;
+         double tq = time.value();
+         int    s  = 0;
+         for (int jint=0; jint<K; jint++) {
+             int ord   = hp ? hp_interval_order(problem.phase[i], jint) : norder;
+             // first collocated control slot of this interval, how many there are, and the
+             // storage index of the boundary that routes `time` to the next interval
+             int first = gauss ? s+1  : s;
+             int count = (gauss || radau) ? ord : ord+1;
+             int rb    = gauss ? s+ord+1 : s+ord;
+             if ( rb > norder ) rb = norder;
+             if ( tq <= time_array[rb].value() || jint == K-1 ) {
+                 if ( count >= 1 && first+count <= norder+1 ) {
+                     lagrange_interpolation_ad( interp_control, time, time_array+first,
+                                                single_control_traj+first, count, workspace );
+                     return;
+                 }
+                 break;      // defensive: fall through to the spline
+             }
+             s = rb;
          }
-         s = rb;
      }
  }
 
