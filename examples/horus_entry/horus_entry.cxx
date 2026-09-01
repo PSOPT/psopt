@@ -476,26 +476,39 @@ int main(int argc, char** argv)
     algorithm.mr_max_iterations  = 4;
     algorithm.ode_tolerance      = 1.e-4;
 
-    // A WORD ON ACCURACY, because the error estimate reported below looks poor
-    // and is not what it seems. The bank rate is bang-bang over much of the
-    // flight, so the bank angle is piecewise linear with corners, and a cubic
-    // cannot represent a corner: the local error estimate is dominated by a
-    // handful of nodes at the switches and falls only about as fast as the mesh
-    // spacing. It does fall. Running the problem on fixed meshes gives
+    // A WORD ON ACCURACY. This example used to report a discretisation error near
+    // 0.3, and carried a long note explaining that the figure was dominated by the
+    // corners the bang-bang bank rate puts into the bank angle, which a cubic
+    // cannot represent, and that the answer was better than the estimate looked.
+    // Most of that was wrong, and wrong for a reason worth recording: the
+    // estimator was reconstructing the control by splining the node values, which
+    // for Hermite-Simpson ignores the control variable at the midpoint of every
+    // interval. The residual it measured was largely its own interpolation.
+    //
+    // The same mistake was in the independent check at the end of main, which
+    // interpolated the node controls linearly. Both are fixed, and on fixed
+    // meshes the problem now gives
     //
     //     nodes    error estimate    heat load      RK4 check on the heat load
-    //       109       3.0e-1        162.80 MJ/m^2          0.56 per cent
-    //       200       1.3e-1        162.71                 0.12
-    //       350       6.7e-2        162.73                 0.04
+    //       109        6.9e-4        180.85 MJ/m^2         0.01 per cent
+    //       200        1.2e-3        180.65                0.00
+    //       350        3.7e-4        180.54                0.00
     //
-    // where the last column is the independent check printed by the block at the
-    // end of main: the optimal controls are interpolated and the states
-    // propagated by Runge-Kutta at a step of 20 ms, two orders below the
-    // collocation spacing. The terminal speed error over that check falls from
-    // 47 to 18 to 2 m/s. The quantity being optimised is therefore settled to
-    // five figures well before the error estimate looks respectable, which is
-    // worth seeing: on a problem with active constraint arcs the estimate
-    // measures the worst-represented corner, not the accuracy of the answer.
+    // where the last column is the block at the end of main: the optimal controls
+    // are read off the transcription's own representation -- the interval
+    // quadratic through node, midpoint and node -- and the states propagated by
+    // Runge-Kutta at a step of 20 ms, two orders below the collocation spacing.
+    // The terminal altitude error over that check is 15, 16 and 5 metres, and the
+    // terminal speed error 0.9, 5.4 and 3.6 m/s.
+    //
+    // What survives of the old note is more useful than what it said. The check
+    // now agrees with each collocated solution to a hundredth of a per cent, so
+    // each mesh's trajectory is a genuine trajectory of the equations of motion.
+    // The heat load nevertheless still drifts, from 180.85 to 180.54 as the mesh
+    // is tripled, because a finer mesh is a richer control parameterisation and
+    // buys the optimiser a slightly better optimum. Those are two different
+    // questions -- is this a trajectory, and is this the best one -- and only the
+    // first is what a propagation check answers.
 
     int rc = psopt(solution, problem, algorithm);
     if (rc != 0) printf("psopt returned %d\n", rc);
@@ -555,6 +568,22 @@ int main(int argc, char** argv)
     // the collocation spacing. If the transcription has done its job the two
     // trajectories agree; the discrepancy is a measure of the discretisation
     // error that owes nothing to the estimate the mesh refinement uses.
+    // The control this check propagates has to be the control the transcription
+    // used, and under Hermite-Simpson that is not the one get_controls_in_phase
+    // returns. That array holds the values at the nodes; the method also carries a
+    // control at the midpoint of every interval, and the representation it assumes
+    // is the quadratic through the three. Interpolating the node values linearly --
+    // which is what this block did until the accessors below existed -- propagates
+    // a control the solver never used, and reports the difference as if it were
+    // discretisation error. The bank angle is a state, so it is read off the cubic
+    // Hermite that the same transcription defines for it, through the node values
+    // and the node bank rates.
+    MatrixXd uhs = solution.get_hs_controls_in_phase(1);
+    MatrixXd ths = solution.get_hs_time_in_phase(1);
+    const bool hs = (uhs.cols() == 2*N - 1);
+    if (!hs)
+        printf("\n(the final mesh is not Hermite-Simpson; the check below "
+               "interpolates the node controls linearly)\n");
     {
         const double dts = 0.02;
         double y[6] = { x(0,0), x(1,0), x(2,0), x(3,0), x(4,0), x(5,0) };
@@ -566,11 +595,28 @@ int main(int argc, char** argv)
             for (int stage = 0; stage < 4; stage++) {
                 double ts = tt + ((stage == 0) ? 0.0 : (stage == 3 ? step : 0.5*step));
                 while (idx < N-2 && t(0,idx+1) < ts) idx++;
-                double f = (t(0,idx+1) > t(0,idx))
-                         ? (ts - t(0,idx))/(t(0,idx+1) - t(0,idx)) : 0.0;
+                double hk = t(0,idx+1) - t(0,idx);
+                double f  = (hk > 0.0) ? (ts - t(0,idx))/hk : 0.0;
                 if (f < 0.0) f = 0.0; if (f > 1.0) f = 1.0;
-                double a_l = u(0,idx) + f*(u(0,idx+1) - u(0,idx));
-                double s_l = x(6,idx) + f*(x(6,idx+1) - x(6,idx));
+                double a_l, s_l;
+                if (hs) {
+                    // angle of attack: the interval's quadratic through node,
+                    // midpoint and node
+                    a_l = (2.0*f - 1.0)*(f - 1.0)*uhs(0, 2*idx)
+                        + 4.0*f*(1.0 - f)      *uhs(0, 2*idx+1)
+                        + f*(2.0*f - 1.0)      *uhs(0, 2*idx+2);
+                    // bank angle: the interval's cubic Hermite, whose end slopes
+                    // are the collocated bank rates
+                    double f2 = f*f, f3 = f2*f;
+                    s_l = ( 2.0*f3 - 3.0*f2 + 1.0)*x(6,idx)
+                        + hk*(f3 - 2.0*f2 + f)    *u(1,idx)
+                        + (-2.0*f3 + 3.0*f2)      *x(6,idx+1)
+                        + hk*(f3 - f2)            *u(1,idx+1);
+                }
+                else {
+                    a_l = u(0,idx) + f*(u(0,idx+1) - u(0,idx));
+                    s_l = x(6,idx) + f*(x(6,idx+1) - x(6,idx));
+                }
                 double* yy = (stage == 0) ? y : yt;
                 double* kk = k[stage];
                 adouble hh = yy[0];
