@@ -145,6 +145,8 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
 	int npath     = problem->phase[i].npath;
 
+	int nctrls    = problem->phase[i].ncontrols;
+
 	int offset;
 
    // Multi-interval Gauss bookkeeping. Gauss collocates strictly interior points, so the
@@ -311,6 +313,98 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                   for (j=0; j<nstates; j++) {
                       l = phase_offset+(k)*nstates+j;
                       gad[l] = 0.0;
+                  }
+                  // The midpoint path-constraint rows belong to the layout whenever
+                  // Hermite-Simpson carries midpoint controls, and need_midpoint_controls
+                  // does not look at the transcription: get_ncons_phase_i counts
+                  // npath*norder of them and NLP_bounds gives them the user's path bounds.
+                  // They must therefore be filled here too. Leaving them at zero made the
+                  // NLP structurally infeasible for every problem whose path bounds exclude
+                  // zero -- IPOPT then reported "converged to a point of local
+                  // infeasibility" however good the trajectory it had found -- and silently
+                  // dropped the path constraint at the midpoints for every problem whose
+                  // bounds admit zero, so that the path was constrained at half the
+                  // resolution the user asked for.
+                  //
+                  // The state and control at the midpoint are taken from the same
+                  // representation that the residual uses, so that the row constrains the
+                  // trajectory the transcription actually defines: the cubic Hermite state
+                  // and the quadratic control of integrated_residual_phase evaluated at
+                  // s = 1/2 are exactly the Hermite midpoint state and the midpoint control
+                  // variable, and under the Nie-Kerrigan local representation
+                  // (ir_local_order >= 2) they are the element's degree-d Lagrange state and
+                  // control evaluated at the interval's midpoint in time.
+                  if ( npath > 0 && k != norder ) {
+                    adouble* states_next      = workspace->states_next[i].get();
+                    adouble* controls_next    = workspace->controls_next[i].get();
+                    adouble* derivatives_next = workspace->derivatives_next[i].get();
+                    adouble* path_next        = workspace->path_next[i].get();
+                    adouble* path_bar         = workspace->path_bar[i].get();
+                    adouble* states_bar       = workspace->states_bar[i].get();
+                    adouble* controls_bar     = workspace->controls_bar[i].get();
+                    adouble* derivatives_bar  = workspace->derivatives_bar[i].get();
+                    adouble  time_next        = convert_to_original_time_ad( (workspace->snodes[i])(k+1), t0, tf );
+                    adouble  hk               = time_next-time;
+                    adouble  time_bar         = time + 0.5*hk;
+                    int path_bar_offset = phase_offset+nstates*(norder+1)+nevents+npath*(norder+1);
+
+                    const int d_ir = workspace->algorithm->ir_local_order;
+
+                    if ( d_ir >= 2 && norder >= d_ir && (norder % d_ir) == 0 ) {
+                        // Nie-Kerrigan: interval k is the (k mod d)-th sub-interval of
+                        // element k/d, whose nodes sit at the local LGL abscissae. The
+                        // midpoint in time has local coordinate s = (a_r + a_{r+1})/2.
+                        MatrixXd& a  = workspace->ir_lgl01;
+                        const int np = d_ir + 1;
+                        const int e  = k / d_ir;
+                        const int r  = k % d_ir;
+                        const double s = 0.5*( a(r) + a(r+1) );
+                        std::vector<double> L(np);
+                        for (int p=0; p<np; p++) {
+                            double v = 1.0;
+                            for (int q2=0; q2<np; q2++) if (q2!=p) v *= (s - a(q2))/(a(p) - a(q2));
+                            L[p] = v;
+                        }
+                        for (j=0;j<nstates;j++) states_bar[j]   = 0.0;
+                        for (j=0;j<nctrls;j++)  controls_bar[j] = 0.0;
+                        for (int p=0; p<np; p++) {
+                            get_states(states_next, xad, iphase, e*d_ir+p, workspace);
+                            for (j=0;j<nstates;j++) states_bar[j] += L[p]*states_next[j];
+                            if (nctrls>0) {
+                                get_controls(controls_next, xad, iphase, e*d_ir+p, workspace);
+                                for (j=0;j<nctrls;j++) controls_bar[j] += L[p]*controls_next[j];
+                            }
+                        }
+                    }
+                    else {
+                        // Cubic-Hermite representation: x(1/2) of the Hermite interpolant is
+                        // the Hermite midpoint state, and u(1/2) of the quadratic through
+                        // (u_k, ubar_k, u_{k+1}) is ubar_k.
+                        get_controls_bar(controls_bar,xad,iphase,k, workspace);
+                        get_states(states_next, xad, iphase, k+1, workspace);
+                        get_controls(controls_next, xad, iphase, k+1, workspace);
+                        problem->dae(derivatives_next,path_next,states_next,controls_next,parameters,time_next,xad, iphase,workspace);
+                        if (workspace->enable_nlp_counters) {
+                            workspace->solution->mesh_stats[  workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals++;
+                        }
+                        for (j=0;j<nstates;j++) {
+                            states_bar[j] = 0.5*(states[j]+states_next[j])+hk*(derivatives[j]-derivatives_next[j])/8.0;
+                        }
+                    }
+
+                    problem->dae(derivatives_bar,path_bar,states_bar,controls_bar,parameters,time_bar,xad,iphase,workspace);
+                    if (workspace->enable_nlp_counters) {
+                        workspace->solution->mesh_stats[  workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals++;
+                    }
+                    for (j=0; j<npath; j++)
+                    {
+                        l = path_bar_offset + (k)*npath + j;
+                        gad[l] = path_bar[j];
+                        if ( algorithm->scaling=="user" ) {
+                            gad[l] *= path_scaling(j);
+                            constraint_scaling(l)= path_scaling(j);
+                        }
+                    }
                   }
               }
               else
