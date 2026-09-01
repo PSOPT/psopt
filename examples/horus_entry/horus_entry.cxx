@@ -490,25 +490,34 @@ int main(int argc, char** argv)
     // meshes the problem now gives
     //
     //     nodes    error estimate    heat load      RK4 check on the heat load
-    //       109        6.9e-4        180.85 MJ/m^2         0.01 per cent
-    //       200        1.2e-3        180.65                0.00
-    //       350        3.7e-4        180.54                0.00
+    //       109        1.8e-4        181.152 MJ/m^2        0.013 per cent
+    //       200        1.1e-3        180.598               0.002
+    //       350        4.3e-4        180.571               0.001
     //
     // where the last column is the block at the end of main: the optimal controls
     // are read off the transcription's own representation -- the interval
     // quadratic through node, midpoint and node -- and the states propagated by
     // Runge-Kutta at a step of 20 ms, two orders below the collocation spacing.
-    // The terminal altitude error over that check is 15, 16 and 5 metres, and the
-    // terminal speed error 0.9, 5.4 and 3.6 m/s.
+    // The terminal altitude error over that check is -13.0, 0.5 and 0.4 metres,
+    // and the terminal speed error -0.70, 0.55 and 2.32 m/s.
+    //
+    // There was a third instance of the same mistake, on the other side of the
+    // comparison. The heat load is this problem's objective, and PSOPT integrates
+    // it with the Simpson rule of the transcription over the transcription's own
+    // representation; this example accumulated its own trapezoidal sum over the
+    // node values of qdot and compared the propagation against that. On the
+    // automatic mesh, which is strongly non-uniform, the trapezoidal sum reads
+    // 180.904 MJ/m^2 against the objective's 180.679 -- a fifth of a per cent,
+    // fifty times the discrepancy being measured. Both figures are printed now.
     //
     // What survives of the old note is more useful than what it said. The check
-    // now agrees with each collocated solution to a hundredth of a per cent, so
-    // each mesh's trajectory is a genuine trajectory of the equations of motion.
-    // The heat load nevertheless still drifts, from 180.85 to 180.54 as the mesh
-    // is tripled, because a finer mesh is a richer control parameterisation and
-    // buys the optimiser a slightly better optimum. Those are two different
-    // questions -- is this a trajectory, and is this the best one -- and only the
-    // first is what a propagation check answers.
+    // agrees with each collocated solution to a hundredth of a per cent or
+    // better, so each mesh's trajectory is a genuine trajectory of the equations
+    // of motion. The heat load nevertheless still drifts, from 181.15 to 180.57
+    // as the mesh is tripled, because a finer mesh is a richer control
+    // parameterisation and buys the optimiser a slightly better optimum. Those
+    // are two different questions -- is this a trajectory, and is this the best
+    // one -- and only the first is what a propagation check answers.
 
     int rc = psopt(solution, problem, algorithm);
     if (rc != 0) printf("psopt returned %d\n", rc);

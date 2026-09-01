@@ -150,9 +150,11 @@ int main(int argc, char* argv[])
     problem.phases(1).npath     = 0;
 
     // A delay equation carries kinks at t0 + k*tau, so Hermite-Simpson achieves order
-    // two here rather than four: at 30 nodes the maximum relative local error is 1.8e-2
-    // and the objective is wrong in its third significant figure. The example therefore
-    // starts from a finer mesh and lets mesh refinement finish the job.
+    // three here rather than four: on uniform meshes of 30, 60 and 120 nodes the maximum
+    // relative local error is 1.11e-3, 1.13e-4 and 1.54e-5, falling by a factor of
+    // between seven and ten per halving, and |J - J*| behaves the same way. The example
+    // starts from a finer mesh than a smooth problem of this size would need and lets
+    // mesh refinement finish the job.
     problem.phases(1).nodes     << ( (fixed_nodes > 0) ? fixed_nodes : 60 );
 
     psopt_level2_setup(problem, algorithm);

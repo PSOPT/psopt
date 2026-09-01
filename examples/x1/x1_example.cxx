@@ -216,7 +216,10 @@ int main()
         print_row(lab, nodes, r);
     }
     printf("================================================================================\n");
-    printf("Collocation reports J below J* (infeasible between nodes) and a ringing control;\n");
+    printf("Collocation reports J below J* -- not because the trajectory is infeasible\n");
+    printf("between the nodes (its relative local error is ~3e-5) but because Simpson's\n");
+    printf("rule cannot integrate u(t)cos(t) for a control that rings at the mesh scale --\n");
+    printf("and the control itself is wrong by more than the range of u*;\n");
     printf("integrated-residual is feasibility-honest; flexible-order p-refinement converges\n");
     printf("to the analytic optimum.\n\n");
     return 0;
