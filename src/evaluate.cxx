@@ -229,6 +229,124 @@ static void evaluate_integral_of_differential_error_hermite(MatrixXd& eta, int i
 }
 
 
+// ---------------------------------------------------------------------------------------
+// The Nie-Kerrigan flexible-order local representation (algorithm.ir_local_order = d >= 2).
+//
+// Here an element spans d mesh intervals and carries a degree-d Lagrange state AND a degree-d
+// Lagrange control through its d+1 nodes, placed at the element's local LGL abscissae. That
+// pair is the continuous solution the integrated residual was minimised over, so it is the
+// pair the discretization error has to be read off.
+//
+// Neither of the two branches above will do. The state is not a cubic Hermite: the element
+// polynomial does not interpolate f at the nodes, and forcing it to would change the function.
+// The control is worse: the Hermite-Simpson midpoint variables that the local branch reads are
+// allocated by the collocation method but enter no residual under this basis, so the barrier
+// alone decides them. Measuring against them reports the error of a control the solver never
+// used -- on Fuller's problem at d=2 that inflates a genuine 2e-5 into 1e-2 and reverses the
+// comparison the example exists to make.
+//
+// The element polynomial and its derivative are formed in the barycentric-free Lagrange form
+// used by build_ir_local_basis, evaluated at the local coordinate s of the requested time.
+// ---------------------------------------------------------------------------------------
+
+static void ir_local_basis_at(double s, const MatrixXd& a, int np, double* L, double* dL)
+{
+// Values and s-derivatives of the np Lagrange cardinal functions of the abscissae a(0..np-1).
+     for (int r=0;r<np;r++) {
+          double val = 1.0, der = 0.0;
+          for (int j=0;j<np;j++) if (j!=r) val *= (s - a(j))/(a(r) - a(j));
+          for (int k=0;k<np;k++) if (k!=r) {
+               double term = 1.0/(a(r) - a(k));
+               for (int j=0;j<np;j++) if (j!=r && j!=k) term *= (s - a(j))/(a(r) - a(j));
+               der += term;
+          }
+          L[r] = val;  dL[r] = der;
+     }
+}
+
+static void evaluate_differential_error_ir_local(MatrixXd& state_error, int iphase, adouble time,
+                                                 const double* Xe, const double* Ue,
+                                                 double te, double he, int d,
+                                                 adouble* xad, Workspace* workspace)
+{
+     Prob* problem = workspace->problem;
+     int i         = iphase-1;
+     int nstates   = problem->phase[i].nstates;
+     int ncontrols = problem->phase[i].ncontrols;
+     int iph = ( problem->multi_segment_flag || workspace->auto_linked_flag ) ? 1 : iphase;
+
+     adouble* states      = workspace->states[i].get();
+     adouble* controls    = workspace->controls[i].get();
+     adouble* parameters  = workspace->parameters[iph-1].get();
+     adouble* path        = workspace->path[i].get();
+     adouble* derivatives = workspace->derivatives[i].get();
+
+     int np = d + 1;
+     std::vector<double> L(np), dL(np);
+     ir_local_basis_at( (time.value() - te)/he, workspace->ir_lgl01, np, L.data(), dL.data() );
+
+     for (int j=0;j<nstates;j++) {
+          double xv = 0.0;
+          for (int r=0;r<np;r++) xv += L[r]*Xe[r*nstates+j];
+          states[j] = xv;
+     }
+     for (int c=0;c<ncontrols;c++) {
+          double uv = 0.0;
+          for (int r=0;r<np;r++) uv += L[r]*Ue[r*ncontrols+c];
+          controls[c] = uv;
+     }
+
+     get_parameters( parameters, xad, iphase, workspace );
+
+     problem->dae(derivatives, path, states, controls, parameters, time, xad, iphase, workspace);
+
+     for (int j=0;j<nstates;j++) {
+          double xdot = 0.0;
+          for (int r=0;r<np;r++) xdot += dL[r]*Xe[r*nstates+j];
+          state_error(j) = xdot/he - derivatives[j].value();
+     }
+}
+
+
+static void evaluate_integral_of_differential_error_ir_local(MatrixXd& eta, int iphase,
+                 const double* Xe, const double* Ue, double te, double he, int d,
+                 double t1, double t2, adouble* xad, int n, Workspace* workspace)
+{
+// The same composite Simpson quadrature of |xdot-f| as elsewhere, taken over ONE MESH INTERVAL
+// [t1,t2] of the element that starts at te. The integral is kept per interval, not per element,
+// so that the error matrix keeps one column per interval and the mesh-refinement logic and the
+// reported statistics are unchanged by the choice of local representation.
+
+     Prob* problem = workspace->problem;
+     int nstates   = problem->phase[iphase-1].nstates;
+     double h      = (t2-t1)/n;
+     int j;
+
+     MatrixXd R1(nstates,1);
+     MatrixXd e1(nstates,1);
+     MatrixXd e2(nstates,1);
+
+     evaluate_differential_error_ir_local( e1, iphase, (adouble) t1, Xe,Ue, te,he,d, xad, workspace );
+     evaluate_differential_error_ir_local( e2, iphase, (adouble) t2, Xe,Ue, te,he,d, xad, workspace );
+
+     R1 = e1.cwiseAbs() + e2.cwiseAbs();
+
+     int nover2 = (int) n/2;
+
+     for (j=1; j<=nover2-1; j++) {
+          evaluate_differential_error_ir_local( e1, iphase, (adouble)(t1+2*j*h), Xe,Ue, te,he,d, xad, workspace );
+          R1 += 2.0*e1.cwiseAbs();
+     }
+
+     for (j=1; j<=nover2; j++) {
+          evaluate_differential_error_ir_local( e1, iphase, (adouble)(t1+(2*j-1)*h), Xe,Ue, te,he,d, xad, workspace );
+          R1 += 4.0*e1.cwiseAbs();
+     }
+
+     eta = (h/3.0)*R1;
+}
+
+
 void evaluate_integral_of_differential_error(MatrixXd& eta, int iphase, adouble t1, adouble t2, adouble* xad, int n, Workspace* workspace)
 {
 // This function evaluates integral[t1,t2]{ |xdot-f(x,u,p,t)| } dt
@@ -325,7 +443,15 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
 	MatrixXd eta_k(nstates,1);
         get_times(&t0, &tf, xad, iphase, workspace );
 
-   bool local = use_local_collocation(*workspace->algorithm)
+   // The Nie-Kerrigan flexible-order basis is asked about first: it can be laid on top of any
+   // collocation method, and where it is in force it, not the collocation method, defines the
+   // continuous state and control between the nodes.
+   int  d_ir  = workspace->algorithm->ir_local_order;
+   bool irloc = ir_local_basis_active(*workspace->algorithm)
+                && norder >= d_ir && (norder % d_ir) == 0;
+
+   bool local = !irloc
+                && use_local_collocation(*workspace->algorithm)
                 && ( workspace->differential_defects == "trapezoidal"
                      || workspace->differential_defects == "Hermite-Simpson" );
 
@@ -335,11 +461,44 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
         local_node_state_and_derivative( x0.data(), f0.data(), iphase, 0, xad, workspace );
    }
 
+   // Element node values, gathered once per element and reused by its d intervals.
+   int ncontrols_ph = problem->phase[iphase-1].ncontrols;
+   vector<double> Xe, Ue;
+   int e_cached = -1;
+   double te = 0.0, he = 0.0;
+   if ( irloc ) { Xe.resize((d_ir+1)*nstates); Ue.resize((d_ir+1)*((ncontrols_ph>0)?ncontrols_ph:1)); }
+
 	for (k=0;k< nnodes-1;k++){  // EIGEN_UPDATE: k index shifted by -1
 		t1 = convert_to_original_time_ad( (workspace->snodes[iphase-1])(k), t0, tf );
 		t2 = convert_to_original_time_ad( (workspace->snodes[iphase-1])(k+1), t0, tf );;
 
-      if ( local ) {
+      if ( irloc ) {
+           int e = k/d_ir;
+           if ( e != e_cached ) {
+                int base = e*d_ir;
+                adouble* sbuf = workspace->states[iphase-1].get();
+                adouble* ubuf = workspace->controls[iphase-1].get();
+                for (int r=0; r<=d_ir; r++) {
+                     get_states( sbuf, xad, iphase, base+r, workspace );
+                     for (int j=0;j<nstates;j++) Xe[r*nstates+j] = sbuf[j].value();
+                     if (ncontrols_ph>0) {
+                          get_controls( ubuf, xad, iphase, base+r, workspace );
+                          for (int c=0;c<ncontrols_ph;c++) Ue[r*ncontrols_ph+c] = ubuf[c].value();
+                     }
+                }
+                te = convert_to_original_time_ad( (workspace->snodes[iphase-1])(base),       t0, tf ).value();
+                he = convert_to_original_time_ad( (workspace->snodes[iphase-1])(base+d_ir),  t0, tf ).value() - te;
+                e_cached = e;
+           }
+           if ( he > 0.0 ) {
+                evaluate_integral_of_differential_error_ir_local( eta_k, iphase, Xe.data(), Ue.data(),
+                      te, he, d_ir, t1.value(), t2.value(), xad, n, workspace );
+           }
+           else {
+                eta_k.setZero();
+           }
+      }
+      else if ( local ) {
            // Sweep the nodes once: the right-hand end of one interval is the left-hand end of
            // the next, so each node's derivative is evaluated exactly once over the phase.
            local_node_state_and_derivative( x1.data(), f1.data(), iphase, k+1, xad, workspace );

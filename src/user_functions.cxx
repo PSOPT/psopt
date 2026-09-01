@@ -229,6 +229,21 @@ void get_interpolated_state(adouble* interp_state, int state_index, int iphase, 
 	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
  }
 
+ // The Nie-Kerrigan flexible-order local representation: the state of an element is the
+ // degree-d Lagrange polynomial through the element's own d+1 nodes, so interpolate on that
+ // element and no further. Elements are consecutive blocks of d intervals, and their nodes
+ // sit at the element's local LGL abscissae, which psopt_main lays into snodes.
+ if ( ir_local_basis_active(algorithm) && norder >= algorithm.ir_local_order ) {
+        int d    = algorithm.ir_local_order;
+        int M    = norder/d;
+        double tq = time.value();
+        int e = 0;
+        while ( e < M-1 && tq > time_array[(e+1)*d].value() ) e++;
+        lagrange_interpolation_ad( interp_state, time, time_array+e*d,
+                                   single_state_traj+e*d, d+1, workspace );
+        return;
+ }
+
  if (  use_global_collocation(algorithm) && hp_mesh_active(problem.phase[i]) ) {
         // hp multi-interval mesh: a global Lagrange interpolant over the clustered composite
         // nodes is ill-conditioned and blows up the error estimator. Interpolate only on the
@@ -311,6 +326,23 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
  // interpolant over clustered composite nodes is severely ill-conditioned. On a single block
  // the norder<100 guard is the same one get_interpolated_state uses, so that the two continue
  // to agree at every node count.
+ // The Nie-Kerrigan flexible-order local representation is checked before the collocation
+ // branches, because it can be laid on top of any collocation method and it overrides the
+ // control representation that method would otherwise define: the element's control is the
+ // degree-d Lagrange polynomial through its d+1 node values, and the Hermite-Simpson
+ // midpoint variables -- which the branch below would read, and which the collocation
+ // method allocates whether or not this basis uses them -- enter no residual under it.
+ if ( ir_local_basis_active(algorithm) && norder >= algorithm.ir_local_order ) {
+     int    d  = algorithm.ir_local_order;
+     int    M  = norder/d;
+     double tq = time.value();
+     int    e  = 0;
+     while ( e < M-1 && tq > time_array[(e+1)*d].value() ) e++;
+     lagrange_interpolation_ad( interp_control, time, time_array+e*d,
+                                single_control_traj+e*d, d+1, workspace );
+     return;
+ }
+
  if ( use_global_collocation(algorithm) ) {
      bool   hp    = hp_mesh_active(problem.phase[i]);
      bool   gauss = ( algorithm.collocation_method == "Gauss" );

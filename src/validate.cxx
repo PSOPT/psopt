@@ -84,8 +84,17 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
           error_message("algorithm.ir_local_order must be 0 (legacy cubic-Hermite IR) or >= 2 (Nie-Kerrigan) ");
        if (algorithm.transcription_method != "integrated-residual")
           error_message("ir_local_order requires transcription_method=\"integrated-residual\" ");
-       if (algorithm.ir_residual_nodes < algorithm.ir_local_order)
-          error_message("ir_residual_nodes must be >= ir_local_order so the residual is well sampled ");
+       // The residual box constrains the residual only where it samples it. A degree-d element
+       // state has d+1 coefficients per component and its residual xdot-f is of higher degree
+       // still, so a rule with too few points leaves the residual free to oscillate between
+       // them: the box is then satisfied to its stated tolerance while the true error is orders
+       // of magnitude larger. Measured on examples/dae_i3 at d=4 and delta=1e-6, the maximum
+       // relative local error is 9.7e-2 with m=4, 7.9e-4 with m=5 and 1.5e-8 -- the box itself --
+       // from m=6 onward. Hence m >= d+2, which the former m >= d did not give.
+       if (algorithm.ir_residual_nodes < algorithm.ir_local_order + 2)
+          error_message("ir_residual_nodes must be >= ir_local_order+2, so that the residual box "
+                        "samples the element residual densely enough to constrain it between the "
+                        "sample points ");
     }
     if (algorithm.ir_regularization < 0.0)
        error_message("algorithm.ir_regularization must be >= 0 ");

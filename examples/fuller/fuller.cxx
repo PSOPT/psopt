@@ -277,12 +277,17 @@ int main(void)
     print_row("  local order 0 (cubic-Hermite)", 81, c0);
     Row c2 = solve_fuller(81, "integrated-residual", "cost", 2, 1.0e-3, 6, 1.0e-6, wx, wu, wt);
     print_row("  local order 2 (Nie-Kerrigan)", 81, c2);
+    Row c4 = solve_fuller(81, "integrated-residual", "cost", 4, 1.0e-3, 8, 1.0e-6, wx, wu, wt);
+    print_row("  local order 4 (Nie-Kerrigan)", 81, c4);
 
     printf("--------------------------------------------------------------------------------\n");
-    printf("  Collocation attains only rle ~ 1e-2 with no way to control it; the residual\n");
-    printf("  box drives the cost up to a specified accuracy, and local order 2 lowers the\n");
-    printf("  residual error further for the same box.  See the header for the fixed-mesh\n");
-    printf("  high-order limitation on this discontinuous solution.\n");
+    printf("  Collocation offers no way to improve its accuracy short of refining the mesh;\n");
+    printf("  the residual box drives the cost up to a specified accuracy instead.  Note that\n");
+    printf("  local order 2 is a LOWER degree per unit length than the default cubic-Hermite\n");
+    printf("  form -- a quadratic over two intervals against a cubic over one -- so it does\n");
+    printf("  not by itself improve the error; what the flexible-order representation gives\n");
+    printf("  is a degree that is a parameter, and order 4 exercises it.  See the header for\n");
+    printf("  the fixed-mesh high-order limitation on this discontinuous solution.\n");
 
     return 0;
 }

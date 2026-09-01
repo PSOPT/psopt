@@ -114,8 +114,32 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
 ///////////////////  Define the main routine ///////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-int main(void)
+int main(int argc, char* argv[])
 {
+// Optional arguments select the integrated-residual variants of the comparison reported in
+// the book, so that the table can be reproduced without editing the source:
+//
+//     ./dae_i3                       Legendre collocation on 30 nodes (the default)
+//     ./dae_i3 <d> <delta> [in|out] [m]
+//                                    integrated residual on 33 nodes, local order d,
+//                                    residual box delta, holonomic constraint folded into
+//                                    the residual ("in", the default) or left as a
+//                                    pointwise path constraint ("out"), and m residual
+//                                    points per element (default d+2)
+//
+// d must divide the number of intervals: 32 intervals admit d = 2, 4, 8, 16.
+//
+// The last argument is worth a word, because it is the pitfall this example was found to
+// expose. The residual box binds only where the quadrature rule samples the residual. At
+// d = 4 and delta = 1e-6 the reported maximum relative local error is 9.7e-2 with m = 4,
+// 7.9e-4 with m = 5, and 1.5e-8 -- the box itself -- from m = 6 = d+2 upward: with too few
+// points the element polynomial simply oscillates between them and the certificate is
+// worthless. PSOPT now refuses m < d+2 for that reason.
+    int    ir_d     = (argc > 1) ? atoi(argv[1]) : 0;
+    double ir_delta = (argc > 2) ? atof(argv[2]) : 1.0e-6;
+    bool   alg_in   = (argc > 3) ? (std::string(argv[3]) != "out") : true;
+    int    ir_m     = (argc > 4) ? atoi(argv[4]) : 0;
+
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Declare key structures ////////////////////////////////
@@ -151,7 +175,7 @@ int main(void)
     problem.phases(1).nevents   			 = 0;
     problem.phases(1).npath     			 = 1;
     problem.phases(1).nparameters       = 1;
-    problem.phases(1).nodes    		    << 30;
+    problem.phases(1).nodes    		    << ( (ir_d >= 2) ? 33 : 30 );
     problem.phases(1).nobserved         = 2;
     problem.phases(1).nsamples          = 20;
 
@@ -250,6 +274,21 @@ int main(void)
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
     algorithm.collocation_method          = "Legendre";
+
+    if (ir_d >= 2) {
+        // The Nie-Kerrigan flexible-order local representation, over a Hermite-Simpson mesh:
+        // the residual box is the accuracy specification and the local order d is what is
+        // being varied.  With ir_include_path = "auto" the holonomic constraint joins the
+        // residual, so the index-3 system is solved as posed rather than by index reduction.
+        algorithm.collocation_method   = "Hermite-Simpson";
+        algorithm.transcription_method = "integrated-residual";
+        algorithm.ir_objective         = "cost";
+        algorithm.ir_local_order       = ir_d;
+        algorithm.ir_residual_bound    = ir_delta;
+        algorithm.ir_residual_nodes    = (ir_m > 0) ? ir_m : (ir_d + 2);
+        algorithm.ir_include_path      = alg_in ? "auto" : "none";
+        algorithm.nlp_iter_max         = 3000;
+    }
 
 
 ////////////////////////////////////////////////////////////////////////////

@@ -105,8 +105,13 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
 ///////////////////  Define the main routine ///////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-int main(void)
+int main(int argc, char* argv[])
 {
+// An optional argument fixes the mesh and switches mesh refinement off, so that the
+// order-of-accuracy study of the book (30, 60, 120 uniform nodes) can be reproduced
+// without editing the source:   ./delay1 [nodes]
+    int fixed_nodes = (argc > 1) ? atoi(argv[1]) : 0;
+
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Declare key structures ////////////////////////////////
@@ -148,7 +153,7 @@ int main(void)
     // two here rather than four: at 30 nodes the maximum relative local error is 1.8e-2
     // and the objective is wrong in its third significant figure. The example therefore
     // starts from a finer mesh and lets mesh refinement finish the job.
-    problem.phases(1).nodes     << 60;
+    problem.phases(1).nodes     << ( (fixed_nodes > 0) ? fixed_nodes : 60 );
 
     psopt_level2_setup(problem, algorithm);
 
@@ -230,7 +235,7 @@ int main(void)
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
     algorithm.collocation_method          = "Hermite-Simpson";
-    algorithm.mesh_refinement             = "automatic";
+    if (fixed_nodes == 0) algorithm.mesh_refinement = "automatic";
 
 
 ////////////////////////////////////////////////////////////////////////////

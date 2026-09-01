@@ -1366,6 +1366,20 @@ inline int ir_box_rows(int norder, int nstates, int m, int ir_local_order, int n
     return groups * m * (nstates + nalg);
 }
 
+// Is the Nie-Kerrigan flexible-order local representation in force? When it is, the state
+// and the control of an element are the degree-d Lagrange polynomials through the element's
+// d+1 nodes, which sit at its local LGL abscissae -- NOT the cubic Hermite state and the
+// Hermite-Simpson quadratic control of the legacy (ir_local_order==0) form. Every routine
+// that has to reconstruct the continuous solution between nodes -- the interpolators and the
+// discretization-error estimate that is built on them -- has to ask this question first,
+// because under this basis the Hermite-Simpson midpoint control variables enter no residual
+// at all and reading them describes a control the solver never used.
+inline bool ir_local_basis_active(Alg& algorithm)
+{
+    return algorithm.transcription_method == "integrated-residual"
+           && algorithm.ir_local_order >= 2;
+}
+
 // Number of path constraints of a phase that are declared as equalities, and which are
 // therefore folded into the integrated residual when algorithm.ir_include_path == "auto".
 // Returns 0 for any other transcription method or setting, so that call sites can add it
