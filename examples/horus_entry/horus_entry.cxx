@@ -540,7 +540,14 @@ int main(int argc, char** argv)
 
     printf("\n");
     printf("time of flight             %10.2f s\n", t(0,N-1));
-    printf("total heat load            %10.2f MJ/m^2\n", load/1000.0);
+    // The heat load is the problem's own objective, and PSOPT integrates it with the
+    // Simpson rule of the transcription, over the transcription's own representation.
+    // The trapezoidal sum accumulated in `load` above is second order and is a poor
+    // substitute: on this problem it reads 180.90 against 180.68, a fifth of a per cent
+    // high, which is the size of the drift the accuracy discussion of the book turns on.
+    const double heat_load = solution.get_cost();      // MJ/m^2
+    printf("total heat load            %10.3f MJ/m^2  (trapezoidal sum over the nodes: %.3f)\n",
+           heat_load, load/1000.0);
     printf("peak heat flux             %10.2f kW/m^2  (limit %.0f)\n", qmax/1000.0, QDOT_MAX/1000.0);
     printf("peak load factor           %10.4f g       (limit %.1f)\n", nmax, NLOAD_MAX);
     printf("peak dynamic pressure      %10.2f kPa     (limit %.1f)\n", pmax/1000.0, QDYN_MAX/1000.0);
@@ -654,9 +661,8 @@ int main(int argc, char** argv)
         printf("   Mach           %10.4f      (collocation %8.4f)\n", Mv, mach(0,N-1));
         printf("   flight path    %10.3f deg  (collocation %8.3f)\n",
                y[4]/d2r, x(4,N-1)/d2r);
-        printf("   heat load      %10.3f MJ/m^2 (collocation %8.3f, %.2f%% apart)\n",
-               qload/1.0e6, load/1000.0, 100.0*fabs(qload/1.0e6 - load/1000.0)
-               /(load/1000.0));
+        printf("   heat load      %10.3f MJ/m^2 (collocation %8.3f, %.3f%% apart)\n",
+               qload/1.0e6, heat_load, 100.0*fabs(qload/1.0e6 - heat_load)/heat_load);
     }
     printf("\n");
 
