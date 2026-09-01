@@ -139,6 +139,20 @@ void psopt_apply_mesh_environment_override(Alg& algorithm)
                     algorithm.mesh_refinement.c_str(), v);
         algorithm.mesh_refinement = v;
     }
+    // Scaling belongs here rather than with the per-solve overrides for the same reason:
+    // the factors are computed once, before the mesh loop, so an override applied at the
+    // NLP interface arrives after they have been fixed and does nothing at all. "user"
+    // with no factors set is unit scaling, since psopt_level1_setup and psopt_level2_setup
+    // initialise every factor to one, which makes a scaling study over the whole example
+    // set a sweep rather than sixty-six edited sources.
+    const char* sc = getenv("PSOPT_SCALING");
+    if (sc != NULL && algorithm.scaling != sc) {
+        if (algorithm.print_level)
+            fprintf(stderr, ">>> PSOPT_SCALING overrides the algorithm setting in the "
+                            "source: \"%s\" -> \"%s\"\n", algorithm.scaling.c_str(), sc);
+        algorithm.scaling = sc;
+    }
+
     const char* w = getenv("PSOPT_MR_SWITCH_DETECTION");
     if (w != NULL && atoi(w) != algorithm.mr_switch_detection) {
         if (algorithm.print_level)

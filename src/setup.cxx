@@ -42,7 +42,14 @@ void psopt_level1_setup(Prob& problem)
    problem.phase   = new Phases[nphases];
    problem.user_dae             = nullptr;
    problem.user_integrand_cost  = nullptr;
+   // The two scalar scale factors, for the same reason the arrays are initialised in
+   // psopt_level2_setup: they are consulted directly when algorithm.scaling == "user",
+   // and neither is an Eigen object that would default to something harmless. A user who
+   // selects user scaling and sets the arrays but not these two divides the objective and
+   // the time by whatever happened to be on the stack. Automatic scaling overwrites both.
+   problem.scale.objective = 1.0;
    for(i=0;i<nphases;i++) {
+       problem.phase[i].scale.time = 1.0;
        problem.phase[i].nparameters = 0;
        problem.phase[i].nobserved   = 0;
        problem.phase[i].nsamples    = 0;
