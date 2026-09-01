@@ -90,6 +90,17 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 	else {
 
 
+		  // Under Hermite-Simpson the midpoint state of Simpson's rule is the cubic
+		  // Hermite value the transcription defines, not the arithmetic mean; see the
+		  // note in phase_running_cost (NLP_objective.cxx), which had the same defect.
+		  const bool     hs_int    = need_midpoint_controls(algorithm, workspace);
+		  const int      ns_int    = problem.phase[i].nstates;
+		  adouble* const derivs    = workspace->derivatives[i].get();
+		  adouble* const derivs_nx = workspace->derivatives_next[i].get();
+		  adouble* const path_scr  = workspace->path[i].get();
+		  adouble* const path_scr2 = workspace->path_next[i].get();
+		  adouble* const states_bar= workspace->states_bar[i].get();
+
 		  for (k=0; k<norder;k++) {  // EIGEN_UPDATE: k index shifted by -1
 		      int l;
 
@@ -105,6 +116,12 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 
 		      interval_value = (*integrand)(states,controls,parameters,tk,xad,iphase, workspace);
 
+		      if (hs_int) {
+		          if (k == 0)
+		              problem.dae(derivs, path_scr, states, controls, parameters, tk, xad, iphase, workspace);
+		          else
+		              for (l=0; l<ns_int; l++) derivs[l] = derivs_nx[l];
+		      }
 
 		      get_controls(controls, xad, iphase,k+1 , workspace);
 		      get_states(states_next, xad, iphase, k+1, workspace);
@@ -112,19 +129,22 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 
 		      interval_value += (*integrand)(states_next,controls,parameters,tk1,xad,iphase, workspace);
 
-		      if (need_midpoint_controls(algorithm, workspace)) {
+		      if (hs_int) {
+
+			         problem.dae(derivs_nx, path_scr2, states_next, controls, parameters, tk1, xad, iphase, workspace);
 
 			         adouble tmiddle = (tk+tk1)/2.0;
 
-			         get_controls_bar(controls,xad,iphase,k, workspace);
+			         for( l =0; l< ns_int; l++ ) {
 
-			         for( l =0; l< problem.phase[i].nstates; l++ ) {
-
-			             states[l] = 0.5*(states[l]+states_next[l]);
+			             states_bar[l] = 0.5*(states[l]+states_next[l])
+			                             + h*(derivs[l]-derivs_nx[l])/8.0;
 
 			        }
 
-			        interval_value += 4.0*(*integrand)(states,controls,parameters,tmiddle,xad,iphase, workspace);
+			         get_controls_bar(controls,xad,iphase,k, workspace);
+
+			        interval_value += 4.0*(*integrand)(states_bar,controls,parameters,tmiddle,xad,iphase, workspace);
 
 
 			        interval_value *= h/6.0;
