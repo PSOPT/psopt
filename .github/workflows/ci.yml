@@ -63,6 +63,24 @@ jobs:
       # print_level 0, so it writes no solver summary for this script to parse, and
       # the same problem is covered exactly by the DelayedVariables tests that ctest
       # runs a few steps above, against the same closed-form answers.
+      #
+      # Re-measured on 1 September 2026, after the discretization-error estimator was
+      # corrected to use the polynomial each transcription defines rather than a cubic
+      # spline through the node values. That changes where automatic mesh refinement
+      # stops, so five of these ten converge on a different final mesh than they did.
+      # All ten still agree with the values below, the largest departure being
+      # low_thrust at 6.0e-5 relative, sixteen times inside the 1e-3 tolerance:
+      #
+      #   low_thrust  -2.203512e-01   (114 nodes before, 101 now)
+      #   zpm          6.680106e+06
+      #   manutec      2.040442e+01
+      #   delay1       2.525754e+00   (72 nodes before, 67 now)
+      #   climb        3.211094e+02   (74 nodes before, 58 now)
+      #
+      # The values are deliberately left as they are. They were established
+      # independently of this machine, and a reference that a later build reproduces
+      # to 6e-5 is a stronger test than one re-centred on whatever the last run
+      # happened to give.
       REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,5.228971e-03,2.525738e+00,5.549682e+03,3.211089e+02"
 
     steps:

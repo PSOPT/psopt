@@ -788,6 +788,8 @@ public:
       relative_errors = NULL;
       smoothness = NULL;
       stationarity_residual = NULL;
+      controls_hs = NULL;
+      nodes_hs = NULL;
       integrand_cost = NULL;
       endpoint_cost = NULL;
       integrated_cost = NULL;
@@ -808,6 +810,8 @@ public:
       if (this->relative_errors) delete [] this->relative_errors;
       if (this->smoothness) delete [] this->smoothness;
       if (this->stationarity_residual) delete [] this->stationarity_residual;
+      if (this->controls_hs) delete [] this->controls_hs;
+      if (this->nodes_hs) delete [] this->nodes_hs;
       if (this->endpoint_cost) delete [] this->endpoint_cost;
       if (this->integrated_cost) delete [] this->integrated_cost;
       if (this->mesh_stats) delete [] this->mesh_stats;
@@ -876,9 +880,24 @@ public:
    // psopt() before its try. Appended as the last data member so the offsets of all
    // pre-existing members are unchanged.
    bool      on_error_fast;
+   // The complete control history of a Hermite-Simpson phase, and the times that go
+   // with it. Hermite-Simpson carries a control variable of its own at the midpoint
+   // of every interval, so a phase of M nodes has 2M-1 control variables; controls
+   // and nodes above hold only the M at the nodes, which is what every other
+   // discretization has and what a caller expecting a state-sized array wants.
+   // Reading a control trajectory from those alone is nevertheless a mistake wherever
+   // the two branches differ, which they do systematically on a singular or a
+   // bang-bang arc: see Sol::get_hs_controls_in_phase. These two arrays interleave
+   // node and midpoint values into one strictly increasing sequence, and are empty
+   // when the phase was not discretized by Hermite-Simpson. Appended as the last data
+   // members so the offsets of all pre-existing ones are unchanged.
+   MatrixXd *controls_hs;
+   MatrixXd *nodes_hs;
    MatrixXd& get_states_in_phase(int iphase);
    MatrixXd& get_controls_in_phase(int iphase);
    MatrixXd& get_time_in_phase(int iphase);
+   MatrixXd& get_hs_controls_in_phase(int iphase);
+   MatrixXd& get_hs_time_in_phase(int iphase);
    MatrixXd& get_parameters_in_phase(int iphase);
    MatrixXd& get_dual_costates_in_phase(int iphase);
    MatrixXd& get_dual_terminal_costate_in_phase(int iphase);

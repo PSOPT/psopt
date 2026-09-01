@@ -593,6 +593,35 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
   	   (solution.nodes[i])(0,k)          =  convert_to_original_time( (workspace->snodes[i])(k), t0, tf );
 	}
 
+        // The complete Hermite-Simpson control history: the midpoint controls, which live
+        // in their own block after the parameters, interleaved with the node controls into
+        // one strictly increasing sequence for Sol::get_hs_controls_in_phase. The node
+        // arrays above are left exactly as they were, so nothing that reads them changes.
+        // When the phase is not on a Hermite-Simpson mesh the two arrays are emptied, and
+        // the accessors report that.
+        if ( solution.controls_hs != NULL ) {
+            if ( need_midpoint_controls(algorithm, workspace) && ncontrols > 0 && norder > 0 ) {
+                int nhs        = 2*norder + 1;
+                int bar_offset = (nstates+ncontrols)*(norder+1) + nparam;
+                (solution.controls_hs[i]).resize(ncontrols, nhs);
+                (solution.nodes_hs[i]).resize(1, nhs);
+                for (k = 0; k < norder+1; k++) {
+                    (solution.controls_hs[i]).col(2*k) = (solution.controls[i]).col(k);
+                    (solution.nodes_hs[i])(0,2*k)      = (solution.nodes[i])(0,k);
+                    if (k < norder) {
+                        (solution.controls_hs[i]).col(2*k+1) =
+                            elemDivision( x.block(iphase_offset+bar_offset+(k)*ncontrols, 0,
+                                                  ncontrols, 1), control_scaling );
+                        (solution.nodes_hs[i])(0,2*k+1) =
+                            0.5*( (solution.nodes[i])(0,k) + (solution.nodes[i])(0,k+1) );
+                    }
+                }
+            }
+            else {
+                (solution.controls_hs[i]).resize(0,0);
+                (solution.nodes_hs[i]).resize(0,0);
+            }
+        }
 
         solution.parameters[i] = elemDivision( x.block(iphase_offset+offset2,0,nparam,1), param_scaling);
 

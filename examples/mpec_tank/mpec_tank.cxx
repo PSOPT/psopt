@@ -398,6 +398,31 @@ int main(int argc, char** argv)
     printf("  that the discretization leaves free on a singular arc\n");
     printf("complementarity residual       %12.3e at the final node,\n", worst_comp);
     printf("                               %12.3e over the interior\n", worst_comp_int);
+
+    // The whole of the collocated selector, node values and midpoint values alike.
+    // get_controls_in_phase returns only the node branch; on this problem's sliding
+    // arc that branch is not the control the solver used, and the two accessors
+    // below are what show it. They return an empty matrix on any mesh that is not
+    // Hermite-Simpson, which the first mesh of this run is not.
+    MatrixXd uhs = solution.get_hs_controls_in_phase(1);
+    MatrixXd ths = solution.get_hs_time_in_phase(1);
+    if (uhs.cols() > 0) {
+        double lo = 1.0, hi = 0.0, worst_gap_hs = 0.0;
+        for (int j = 1; j < (int) ths.cols(); j += 2) {         // the midpoints
+            if (ths(0,j) > t_arrive && ths(0,j) < 24.5) {
+                if (uhs(1,j) < lo) lo = uhs(1,j);
+                if (uhs(1,j) > hi) hi = uhs(1,j);
+                double mean = 0.5*(uhs(1,j-1) + uhs(1,j+1));
+                if (fabs(uhs(1,j) - mean) > worst_gap_hs)
+                    worst_gap_hs = fabs(uhs(1,j) - mean);
+            }
+        }
+        printf("the midpoint branch of nu runs from %.4f to %.4f on the arc, and sits\n",
+               lo, hi);
+        printf("  up to %.4f away from the mean of the nodes on either side of it\n",
+               worst_gap_hs);
+        Save(uhs, "u_hs.dat"); Save(ths, "t_hs.dat");
+    }
     printf("\n");
 
     Save(x, "x.dat"); Save(u, "u.dat"); Save(t, "t.dat");

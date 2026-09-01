@@ -331,8 +331,9 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
 
    vector<double> x0(nstates), f0(nstates), x1(nstates), f1(nstates);
 
-   if ( local && nnodes > 1 )
+   if ( local && nnodes > 1 ) {
         local_node_state_and_derivative( x0.data(), f0.data(), iphase, 0, xad, workspace );
+   }
 
 	for (k=0;k< nnodes-1;k++){  // EIGEN_UPDATE: k index shifted by -1
 		t1 = convert_to_original_time_ad( (workspace->snodes[iphase-1])(k), t0, tf );

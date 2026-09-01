@@ -69,13 +69,17 @@ bool psopt_solution_failed(const char* fn, const Sol& solution)
 }
 
 
+// A persistent empty matrix, shared by the fail-soft guard below and by the accessors
+// that legitimately have nothing to return -- get_hs_*_in_phase on a phase that was not
+// discretized by Hermite-Simpson. It is never written to.
+static MatrixXd psopt_empty_result;
+
 // Accessor wrapper over the shared policy: returns NULL if the accessor may proceed, or
-// a persistent empty sentinel to hand back in the fail-soft case (fail-fast does not
+// the persistent empty sentinel to hand back in the fail-soft case (fail-fast does not
 // return).
 static MatrixXd* psopt_accessor_guard(const char* accessor, const Sol& solution)
 {
-   static MatrixXd empty;
-   if (psopt_solution_failed(accessor, solution)) return &empty;
+   if (psopt_solution_failed(accessor, solution)) return &psopt_empty_result;
    return NULL;
 }
 
@@ -113,6 +117,42 @@ MatrixXd& Sol::get_time_in_phase(int iphase)
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_time_in_phase()");
      return nodes[iphase-1];
+}
+
+// ---------------------------------------------------------------------------------------
+// The complete Hermite-Simpson control history
+//
+// Hermite-Simpson carries a control variable at the midpoint of every interval as well as
+// at every node, so a phase of M nodes has 2M-1 of them. get_controls_in_phase returns the
+// M at the nodes, which is the array that matches the states and is what a caller usually
+// wants. It is not, however, the control trajectory: the Simpson defect constrains a
+// weighted combination of the node and midpoint values on each interval, not either alone,
+// and where the transcription leaves their difference free -- on a singular arc, or across
+// a bang-bang switch -- the two branches separate by an O(1) amount and neither of them is
+// the answer. Plotting the node branch there produces a curve the solver never used.
+//
+// These two accessors return the whole of it, interleaved into a single strictly increasing
+// sequence t_0, tbar_0, t_1, tbar_1, ..., t_{M-1}, so that the controls can be plotted
+// against the times without further arrangement. They return an empty matrix when the phase
+// was not discretized by Hermite-Simpson, which the caller should test for.
+// ---------------------------------------------------------------------------------------
+
+MatrixXd& Sol::get_hs_controls_in_phase(int iphase)
+{
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_hs_controls_in_phase", *this)) return *e;
+     if (iphase <1 || iphase > problem->nphases)
+          error_message("incorrect phase index in Sol::get_hs_controls_in_phase()");
+     if (controls_hs == NULL) return psopt_empty_result;
+     return controls_hs[iphase-1];
+}
+
+MatrixXd& Sol::get_hs_time_in_phase(int iphase)
+{
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_hs_time_in_phase", *this)) return *e;
+     if (iphase <1 || iphase > problem->nphases)
+          error_message("incorrect phase index in Sol::get_hs_time_in_phase()");
+     if (nodes_hs == NULL) return psopt_empty_result;
+     return nodes_hs[iphase-1];
 }
 
 MatrixXd& Sol::get_dual_costates_in_phase(int iphase)
@@ -202,7 +242,17 @@ void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace
    if (algorithm.diagnostic_level >= 2)
       solution.stationarity_residual = new MatrixXd[nphases];
 
-   solution.dual.costates = new MatrixXd[nphases];         
+   // Allocated whenever Hermite-Simpson could be used, which includes local
+   // collocation started on the trapezoidal method, since the automatic refinement
+   // switches to Hermite-Simpson after the first iteration. The arrays stay empty
+   // until a Hermite-Simpson mesh actually fills them, and the accessors report that
+   // by returning an empty matrix.
+   if ( use_local_collocation(algorithm) ) {
+      solution.controls_hs = new MatrixXd[nphases];
+      solution.nodes_hs    = new MatrixXd[nphases];
+   }
+
+   solution.dual.costates = new MatrixXd[nphases];
    solution.dual.path     = new MatrixXd[nphases];         
    solution.dual.events   = new MatrixXd[nphases];         
    solution.dual.Hamiltonian = new MatrixXd[nphases];      
