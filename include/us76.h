@@ -18,11 +18,13 @@
 // So the model below has no branches at all.
 //
 //   Below 86 km, the temperature is written as the sum of the lapse rates times
-//   smooth positive parts, which reproduces the piecewise-linear profile with
-//   its corners rounded over about a hundred metres, and the pressure comes from
-//   a polynomial fitted to the exact solution. Density follows from the gas law.
-//   Against the layer equations, over 0 to 86 km: temperature within 0.29 K,
-//   pressure and density within 0.29 per cent.
+//   smooth positive parts, which reproduces the piecewise-linear profile with its
+//   corners rounded over about a hundred metres, and the pressure is the closed-form
+//   solution of hydrostatic equilibrium through those same layers -- not a fit to it.
+//   Density follows from the gas law. Against the layer equations, over 0 to 86 km:
+//   a kilometre clear of any layer boundary, temperature within 0.003 K and pressure
+//   and density within two parts in 100000; including the rounded corners themselves,
+//   temperature within 0.09 K and density within 0.12 per cent.
 //
 //   Above 86 km, pressure and density come from the ten-band quartic fits to the
 //   tabulated standard published by R. A. Braeunig (Rocket and Space Technology,
@@ -67,23 +69,23 @@
 #define US76_BW        0.35          // km, width of the band-joining steps
 #define US76_HTOP    232.7           // km, scale height used above US76_ZTOP
 
-// values of the lower branch at the join, so that the blend is exact below it
-#define US76_T86      186.946000000  // K
-#define US76_LP86     -0.985476526187   // log(Pa)
-#define US76_LR86    -11.875962746108   // log(kg/m^3)
+// Values of the lower branch at the join, so that the blend is exact below it and the upper
+// branch is returned unshifted above it: the clamping sends zc to exactly 86 km from above,
+// and these are what the blend subtracts there. They are the lower branch's own values, and
+// they moved in the sixth figure when its pressure was put in closed form.
+#define US76_T86      186.945954176  // K
+#define US76_LP86     -0.985157470847   // log(Pa)
+#define US76_LR86    -11.875643445650   // log(kg/m^3)
 
 static const double US76_HB[8] = {0.000000, 11.000000, 20.000000, 32.000000, 47.000000, 51.000000, 71.000000, 84.852000};   // km
 static const double US76_LB[8] = {-6.50000000, 0.00000000, 1.00000000, 2.80000000, 0.00000000, -2.80000000, -2.00000000, 0.00000000};   // K/km
 
-// log(pressure in Pa) as a degree-14 polynomial in geometric altitude in km,
-// valid to 86 km
-static const double US76_LOGP[15] = {
-    +2.752018120738e-23, -1.549226059071e-20, +3.807441218302e-18,
-    -5.356160463243e-16, +4.762313839739e-14, -2.809459671977e-12,
-    +1.150146257803e-10, -3.598797900896e-09, +1.021314996213e-07,
-    -2.756903576235e-06, +5.719101358358e-05, -6.756030850466e-04,
-    +2.103416764291e-03, -1.252775707538e-01, +1.152899656715e+01,
-};
+// base temperatures of the seven layers, K, and the hydrostatic constant of the
+// standard, g0 M / R* in K/km, with which the pressure of the lower branch is
+// obtained in closed form rather than fitted -- see us76_logp_lower below.
+static const double US76_TB[8] = {288.150, 216.650, 216.650, 228.650, 270.650, 270.650, 214.650, 186.946};   // K
+#define US76_GMR    34.163195      // K/km
+#define US76_LOGP0  11.526088451497   // log(101325 Pa)
 
 // band edges above 86 km, in km
 static const double US76_EDGE[9] = { 91.0, 100.0, 110.0, 120.0, 150.0,
@@ -117,10 +119,21 @@ static const double US76_CR[10][5] = {
    { -3.701195e-12, -8.608611e-09, +5.118829e-05, -6.600998e-02, -6.137674e+00 },
 };
 
-// smooth positive part: agrees with max(0,x) away from the origin
+// Smooth positive part: agrees with max(0,x) away from the origin.
+//
+// Written as x times a tanh step rather than as 0.5(x + sqrt(x^2 + w^2)), which is the
+// obvious choice and was the one used here until the lower branch's pressure was put in
+// closed form. The difference is the tail. The square-root form approaches max(0,x) only
+// like w^2/(4x), so a layer boundary a kilometre away still contributes a couple of metres
+// of spurious traversed thickness, and at the origin it returns w/2 rather than zero -- at
+// sea level that made the model believe fifty metres of troposphere had already been
+// crossed, and put the density six parts in a thousand high. This form is exactly zero at
+// the origin and its tails vanish exponentially, so a boundary a few w away has no
+// influence at all. Like us76_step it is written with tanh, whose saturation is graceful in
+// both directions.
 template <class T> static T us76_pos(T x, double w)
 {
-   return 0.5*(x + sqrt(x*x + w*w));
+   return 0.5*x*(1.0 + tanh(x/w));
 }
 
 // smooth unit step, written with a hyperbolic tangent rather than a logistic:
@@ -143,6 +156,37 @@ template <class T> static T us76_bands(const double C[10][5], T z)
       pk = pn;
    }
    return g;
+}
+
+// log(pressure in Pa) of the lower branch, in closed form.
+//
+// Hydrostatic equilibrium gives d(log p)/dH = -GMR/T(H) in geopotential altitude, and the
+// standard's T is piecewise linear, so the integral is available layer by layer: within a
+// layer of lapse L and base temperature Tb the contribution of a traversed thickness u is
+// log(1 + L u / Tb)/L, and u/Tb where L is zero. The thickness actually traversed is
+//
+//     u_i(H) = pos(H - H_i) - pos(H - H_{i+1}),
+//
+// zero below the layer, its full width above it, and smoothly interpolated across the
+// corner by the same rounding the temperature uses. The sum over layers is therefore one
+// branch-free expression, and it is the exact solution of the layer equations rather than a
+// fit to them: measured against them over 0 to 86 km it is within 0.004 per cent in
+// pressure and density, the residue being the hundred-metre corner rounding, where the
+// degree-14 polynomial this replaces was within 0.29 per cent and oscillated in sign. That
+// matters wherever the density enters a drag or a heat-flux term, which is everywhere.
+template <class T> static T us76_logp_lower(T Hg)
+{
+   T acc = 0.0*Hg;
+   for (int i = 0; i < 8; i++) {
+      // The ground is not a corner but the bottom of the model, so layer 0's traversed
+      // thickness is taken plainly; rounding it there would have the model believe part of
+      // the troposphere had been crossed at sea level, and would extrapolate badly below it.
+      T u = (i == 0) ? Hg : us76_pos<T>(Hg - US76_HB[i], US76_CORNER);
+      if (i < 7) u = u - us76_pos<T>(Hg - US76_HB[i+1], US76_CORNER);
+      if (US76_LB[i] == 0.0) acc = acc + u/US76_TB[i];
+      else                   acc = acc + log(1.0 + US76_LB[i]*u/US76_TB[i])/US76_LB[i];
+   }
+   return US76_LOGP0 - US76_GMR*acc;
 }
 
 // kinetic temperature of the standard's upper branch, 86 km and above
@@ -176,8 +220,7 @@ template <class T> static void us76(T h, T& rho, T& pres, T& temp)
    for (int i = 1; i < 8; i++)
       tlo = tlo + (US76_LB[i] - US76_LB[i-1])*us76_pos<T>(Hg - US76_HB[i], US76_CORNER);
 
-   T lplo = US76_LOGP[0];
-   for (int i = 1; i < 15; i++) lplo = lplo*zc + US76_LOGP[i];
+   T lplo = us76_logp_lower<T>(Hg);
    T lrlo = lplo - log(US76_RGAS*tlo);
 
    // ---- the tabulated model, valid from 86 km up

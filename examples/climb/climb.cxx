@@ -17,6 +17,7 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include "psopt.h"
+#include "us76.h"
 
 using namespace std;
 
@@ -42,17 +43,12 @@ struct Constants {
   MatrixXd* M1;
   MatrixXd* M2;
   MatrixXd* h1;
-  MatrixXd* htab;
-  MatrixXd* ttab;
-  MatrixXd* ptab;
-  MatrixXd* gtab;
 };
 
 typedef struct Constants Constants_;
 
-void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta, Constants_& CONSTANTS);
 
-void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h, Constants_& CONSTANTS);
+void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h);
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -119,7 +115,7 @@ void dae(adouble* derivatives, adouble* path, adouble* states,
   adouble   m = w/g0;
   adouble   M;
 
-  atmosphere_model( &rho, &M, v, h, CONSTANTS);
+  atmosphere_model( &rho, &M, v, h);
 
   adouble CL_a, CD0, eta, T;
 
@@ -310,16 +306,6 @@ int main(void)
    32500., 35200.,  42100.,  38700.,35700.,32000.,28100.,19300.,11900.,2900.,
    30700., 33800.,  45700.,  41300.,39800.,34600.,31100.,21700.,13300.,3100. ;
 
-   MatrixXd htab(1,8);
-   htab <<      0.0, 11.0, 20.0, 32.0, 47.0, 51.0, 71.0, 84.852;
-   MatrixXd ttab(1,8);
-   ttab <<      288.15, 216.65, 216.65, 228.65, 270.65, 270.65, 214.65, 186.946;
-   MatrixXd ptab(1,8);
-   ptab <<      1.0, 2.233611E-1, 5.403295E-2, 8.5666784E-3, 1.0945601E-3,
-                                     6.6063531E-4, 3.9046834E-5, 3.68501E-6;
-   MatrixXd gtab(1,8);
-   gtab << -6.5, 0.0, 1.0, 2.8, 0.0, -2.8, -2.0, 0.0;
-
 //   M1.Print("M1");
 
 //   M2.Print("M2");
@@ -342,10 +328,6 @@ int main(void)
    CONSTANTS.CD0_table  = &CD0_table;
    CONSTANTS.eta_table  = &eta_table;
    CONSTANTS.T_table    = &T_table;
-   CONSTANTS.htab       = &htab;
-   CONSTANTS.ttab       = &ttab;
-   CONSTANTS.ptab       = &ptab;
-   CONSTANTS.gtab       = &gtab;
 
    double h0     = 0.0;
    double hf     = 65600.0;
@@ -477,7 +459,8 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 
 
-    psopt(solution, problem, algorithm);
+    int rc = psopt(solution, problem, algorithm);
+    if (rc != 0) printf("psopt returned %d\n", rc);
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -529,153 +512,40 @@ int main(void)
 }
 
 
-void atmosphere(adouble* alt,adouble* sigma,adouble* delta,adouble* theta, Constants_& CONSTANTS)
-// US Standard Atmosphere Model 1976
-// Adopted from original Fortran 90 code by Ralph Carmichael
-// Fortran code located at: http://www.pdas.com/programs/atmos.f90
+// The atmosphere.
+//
+// This example carried its own transcription of the 1976 standard, adapted from Ralph
+// Carmichael's atmos.f90, and it carried two defects with it: an inverted binary search
+// that left every altitude in the troposphere, and a comparison on a taped quantity that
+// froze the layer when the derivative tape was recorded. Both were fixed here, and then
+// the same model was needed by the HORUS entry and the Vega ascent, which go far above
+// 86 km. It now lives in include/us76.h, written without branches so that no layer
+// selection can be frozen on a tape, and this example uses it. That leaves one
+// implementation of the standard atmosphere in the distribution instead of three.
+//
+// us76 returns SI density, pressure and temperature at geometric altitude in metres. The
+// speed of sound is taken as sqrt(gamma p / rho), which is exact at every altitude,
+// rather than sqrt(gamma R T), which assumes a fixed mean molecular weight and is wrong
+// above 86 km -- irrelevant to a climb ending at 20 km, but there is no reason to write
+// the version that is only sometimes right.
+
+void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h)
 {
-/*!   -------------------------------------------------------------------------
-! PURPOSE - Compute the properties of the 1976 standard atmosphere to 86 km.
-! AUTHOR - Ralph Carmichael, Public Domain Aeronautical Software
-! NOTE - If alt > 86, the values returned will not be correct, but they will
-!   not be too far removed from the correct values for density.
-!   The reference document does not use the terms pressure and temperature
-!   above 86 km.
-  IMPLICIT NONE
-!============================================================================
-!     A R G U M E N T S                                                     |
-!============================================================================
-  alt        ! geometric altitude, km.
-  sigma      ! density/sea-level standard density
-  delta      ! pressure/sea-level standard pressure
-  theta      ! temperature/sea-level standard temperature
-*/
+   const double feet2meter = 0.3048;
+   const double kgperm3_to_slug_per_feet3 = 0.062427960841/32.174049;
+   const double GAMMA = 1.4;
 
-/*!============================================================================
-!     L O C A L   C O N S T A N T S                                         |
-!============================================================================
-*/
-  double REARTH = 6369.0;                 // radius of the Earth (km)
-  double GMR = 34.163195;                 // hydrostatic constant
-  int NTAB=8;       // number of entries in the defining tables
-/*!============================================================================
-!     L O C A L   V A R I A B L E S                                         |
-!============================================================================
-*/
-  int i,j,k;                                                  // counters
-  adouble h;                                      // geopotential altitude (km)
-  adouble tgrad, tbase;      // temperature gradient and base temp of this layer
-  adouble tlocal;                                           // local temperature
-  adouble deltah;                             // height above base of this layer
-/*!============================================================================
-!     L O C A L   A R R A Y S   ( 1 9 7 6   S T D.  A T M O S P H E R E )   |
-!============================================================================
-*/
-
-  MatrixXd& htab = *CONSTANTS.htab;
-  MatrixXd& ttab = *CONSTANTS.ttab;
-  MatrixXd& ptab = *CONSTANTS.ptab;
-  MatrixXd& gtab = *CONSTANTS.gtab;
-
-
-//!----------------------------------------------------------------------------
-  h=(*alt)*REARTH/((*alt)+REARTH);      //convert geometric to geopotential altitude
-
-  // Layer selection without branching on a taped quantity.
-  //
-  // The original code found the layer by binary search, comparing the geopotential
-  // altitude -- an adouble -- against the table. Under automatic differentiation such a
-  // comparison is resolved once, when the derivative tape is recorded, so the layer stays
-  // fixed at whatever it was then and the model becomes wrong as soon as the trajectory
-  // leaves that layer. Here every layer's formula is evaluated, which is harmless because
-  // each is analytic everywhere, and psopt_cond_lt picks the one that applies with the
-  // comparison itself recorded on the tape. Folding from the top down gives
-  //
-  //     h < htab(1) ? layer 0 : ( h < htab(2) ? layer 1 : ... : top layer )
-  //
-  // The local temperature is floored at 50 K inside each layer's expression. Within its own
-  // layer that floor is never active -- the coldest point of the 1976 atmosphere is 186.9 K
-  // -- but the extrapolated temperature of a layer evaluated far outside its range goes
-  // negative (the troposphere lapse rate reaches 0 K at about 44 km), and a negative base
-  // in the pressure power law would put a NaN on the tape even in the arm that is not
-  // selected.
-
-  const double TFLOOR = 50.0;
-
-  adouble theta_v, delta_v;
-
-  for (k = NTAB-1; k >= 0; k--) {
-
-      double tgrad_k = gtab(k);
-      double tbase_k = ttab(k);
-      double hbase_k = htab(k);
-      double pbase_k = ptab(k);
-
-      adouble deltah_k = h - hbase_k;
-      adouble tlocal_k = psopt_max( tbase_k + tgrad_k*deltah_k, (adouble) TFLOOR );
-
-      adouble theta_k  = tlocal_k/ttab(0);
-      adouble delta_k  = ( tgrad_k == 0.0 )
-                         ? (adouble)( pbase_k*exp(-GMR*deltah_k/tbase_k) )
-                         : (adouble)( pbase_k*pow(tbase_k/tlocal_k, GMR/tgrad_k) );
-
-      if ( k == NTAB-1 ) {
-          theta_v = theta_k;                       // above the last base altitude
-          delta_v = delta_k;
-      }
-      else {
-          adouble htop = htab(k+1);
-          theta_v = psopt_cond_lt(h, htop, theta_k, theta_v);
-          delta_v = psopt_cond_lt(h, htop, delta_k, delta_v);
-      }
-  }
-
-  *theta = theta_v;                                         // temperature ratio
-  *delta = delta_v;                                         // pressure ratio
-  *sigma = (*delta)/(*theta);                               // density ratio
-  return;
-
-}
-
-
-void atmosphere_model(adouble* rho, adouble* M, adouble v, adouble h, Constants_& CONSTANTS)
-{
-   double feet2meter = 0.3048;
-   double kgperm3_to_slug_per_feet3 = 0.062427960841/32.174049;
-   adouble alt, sigma, delta, theta;
    // h, not h.value(): taking the value here would make the altitude a constant on the
    // derivative tape, and the air density and speed of sound would carry no sensitivity to
    // altitude at all -- in a minimum-time-to-climb problem, where the whole point is that
    // climbing reduces drag.
-   alt = h*feet2meter/1000.0;
+   adouble rho_si, p_si, T_si;
+   us76<adouble>( h*feet2meter, rho_si, p_si, T_si );
 
-   // Call the standard atmosphere model 1976
+   *rho = rho_si*kgperm3_to_slug_per_feet3;
 
-   atmosphere(&alt, &sigma, &delta, &theta, CONSTANTS);
-
-   adouble rho1 = 1.22521 * sigma; // Multiply by standard density at zero altitude and 15 deg C.
-
-   rho1 = rho1*kgperm3_to_slug_per_feet3;
-
-   *rho = rho1;
-
-   adouble T;
-   adouble mach;
-
-   double TempStandardSeaLevel = 288.15; // in K, or 15 deg C.
-
-   T = theta*TempStandardSeaLevel;
-
-   adouble a = 20.0468 * sqrt(T); // Speed of sound in m/s.
-
-   a = a/feet2meter;  // Speed of sound in ft/s
-
-   mach = v/a;
-
-   *M = mach;
-
-
-  return;
+   adouble a = sqrt(GAMMA*p_si/rho_si)/feet2meter;   // speed of sound, ft/s
+   *M = v/a;
 }
 
 ////////////////////////////////////////////////////////////////////////////
