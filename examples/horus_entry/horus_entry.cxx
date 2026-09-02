@@ -395,57 +395,98 @@ int main(int argc, char** argv)
 ////////////////////////////////////////////////////////////////////////////
 
     // A crude guess will not do on an entry problem: the constraints are all
-    // nearly active and a trajectory that is not dynamically plausible starts
-    // the optimiser outside the corridor. The guess is therefore flown, with the
-    // angle of attack eased from 40 degrees down to 15 as the vehicle slows --
-    // the profile the published HORUS entries use -- and the bank held at the
-    // value that brings it to the interface. It is a feasible trajectory, which
-    // is what demonstrates that the constraint set is not empty.
+    // nearly active and a trajectory that is not dynamically plausible starts the
+    // optimiser outside the corridor. The guess is therefore flown, with the angle
+    // of attack eased from 45 degrees down to 15 as the vehicle slows -- the
+    // profile the published HORUS entries use, and the bound the optimal solution
+    // sits on for most of the flight -- at a constant bank angle.
+    //
+    // That bank angle is not chosen by hand. It is found by bisection, so that the
+    // flown trajectory arrives at the terminal interface: 40.07 degrees brings the
+    // vehicle to 26.92 km at Mach 2.504, against the 26.92 km and Mach 2.5 the
+    // events require, with a terminal flight path angle of -6.03 degrees, inside
+    // the -15 to -5 the events allow. Along the way it reaches 89 per cent of the
+    // heat flux limit, 74 per cent of the load factor limit and 84 per cent of the
+    // dynamic pressure limit. It is therefore an admissible trajectory of the
+    // problem, which is what demonstrates that the constraint set is not empty.
+    //
+    // It was not, until this was written. The guess used to hold the bank at 58
+    // degrees and fly to 25 km, which arrives at Mach 2.87 rather than 2.5 and
+    // exceeds the heat flux limit by 7 per cent and the dynamic pressure limit by
+    // 9 per cent on the way. The claim in this comment that the guess was feasible
+    // was simply not true, and the cost of it was paid on coarse meshes: from that
+    // guess the solver reached its iteration limit on 109 and 140 nodes, crawling
+    // along a nearly flat direction and stopping at a heat load of 188.7 and 190.8
+    // MJ/m^2 -- four and five per cent above the answer -- while 160 nodes and
+    // above converged. From the guess below every mesh from 80 nodes up converges.
+    const double A_HI = 45.0, A_LO = 15.0;      // angle of attack schedule, degrees
+    const double HF_INTERFACE = hf_lo;          // terminal altitude the guess aims at
+    const double MF_INTERFACE = mf_lo;          // terminal Mach the bisection matches
+    double g_tf = 0.0;
     int nnodes = 120;
     MatrixXd xg = zeros(7, nnodes), ug = zeros(2, nnodes);
     MatrixXd tg = zeros(1, nnodes);
     {
-        const double dt = 0.5, sigma_g = 58.0*d2r;
+        const double dt = 0.5;
         vector<double> th_; vector< array<double,6> > sh_; vector<double> ah_;
-        double y[6] = { h0, phi0, theta0, v0, gam0, psi0 }, tt = 0.0;
 
-        while (tt < 4000.0 && y[0] > 25000.0) {
-            double k1[6], k2[6], k3[6], k4[6], yt[6];
-            double al = 0.0;
-            for (int stage = 0; stage < 4; stage++) {
-                double* yy = (stage == 0) ? y : yt;
-                double* kk = (stage == 0) ? k1 : (stage == 1 ? k2 : (stage == 2 ? k3 : k4));
-                double sfrac = (yy[3] - 800.0)/(6000.0 - 800.0);
-                if (sfrac < 0.0) sfrac = 0.0; if (sfrac > 1.0) sfrac = 1.0;
-                double a_l = (15.0 + 25.0*sfrac)*d2r;
-                if (stage == 0) al = a_l;
-                adouble hh = yy[0], vv = yy[3];
-                double rr = air_density(hh).value(), aa = speed_of_sound(hh).value();
-                double M = vv.value()/aa; if (M < 1.5) M = 1.5;
-                adouble CLa, CDa; trimmed_coefficients(adouble(a_l), adouble(M), CLa, CDa);
-                double r = RE_EARTH + yy[0], g = MU_EARTH/(r*r);
-                double q = 0.5*rr*yy[3]*yy[3];
-                double L = q*S_REF*CLa.value()/MASS, D = q*S_REF*CDa.value()/MASS;
-                kk[0] = yy[3]*sin(yy[4]);
-                kk[1] = yy[3]*cos(yy[4])*sin(yy[5])/(r*cos(yy[2]));
-                kk[2] = yy[3]*cos(yy[4])*cos(yy[5])/r;
-                kk[3] = -D - g*sin(yy[4]);
-                kk[4] = L*cos(sigma_g)/yy[3] + cos(yy[4])*(yy[3]/r - g/yy[3]);
-                kk[5] = L*sin(sigma_g)/(yy[3]*cos(yy[4]))
-                        + yy[3]*cos(yy[4])*sin(yy[5])*tan(yy[2])/r;
-                if (stage < 3) {
-                    double f = (stage == 2) ? dt : 0.5*dt;
-                    for (int i = 0; i < 6; i++) yt[i] = y[i] + f*kk[i];
+        // Fly the guess at a given bank angle, from the entry interface down to the
+        // terminal altitude, and report the Mach number it arrives with.
+        auto fly = [&](double sigma_g, bool keep) -> double {
+            double y[6] = { h0, phi0, theta0, v0, gam0, psi0 }, tt = 0.0;
+            if (keep) { th_.clear(); sh_.clear(); ah_.clear(); }
+            while (tt < 4000.0 && y[0] > HF_INTERFACE) {
+                double k1[6], k2[6], k3[6], k4[6], yt[6];
+                double al = 0.0;
+                for (int stage = 0; stage < 4; stage++) {
+                    double* yy = (stage == 0) ? y : yt;
+                    double* kk = (stage == 0) ? k1 : (stage == 1 ? k2 : (stage == 2 ? k3 : k4));
+                    double sfrac = (yy[3] - 800.0)/(6000.0 - 800.0);
+                    if (sfrac < 0.0) sfrac = 0.0; if (sfrac > 1.0) sfrac = 1.0;
+                    double a_l = (A_LO + (A_HI-A_LO)*sfrac)*d2r;
+                    if (stage == 0) al = a_l;
+                    adouble hh = yy[0];
+                    double rr = air_density(hh).value(), aa = speed_of_sound(hh).value();
+                    double M = yy[3]/aa; if (M < 1.5) M = 1.5;
+                    adouble CLa, CDa; trimmed_coefficients(adouble(a_l), adouble(M), CLa, CDa);
+                    double r = RE_EARTH + yy[0], g = MU_EARTH/(r*r);
+                    double q = 0.5*rr*yy[3]*yy[3];
+                    double L = q*S_REF*CLa.value()/MASS, D = q*S_REF*CDa.value()/MASS;
+                    kk[0] = yy[3]*sin(yy[4]);
+                    kk[1] = yy[3]*cos(yy[4])*sin(yy[5])/(r*cos(yy[2]));
+                    kk[2] = yy[3]*cos(yy[4])*cos(yy[5])/r;
+                    kk[3] = -D - g*sin(yy[4]);
+                    kk[4] = L*cos(sigma_g)/yy[3] + cos(yy[4])*(yy[3]/r - g/yy[3]);
+                    kk[5] = L*sin(sigma_g)/(yy[3]*cos(yy[4]))
+                            + yy[3]*cos(yy[4])*sin(yy[5])*tan(yy[2])/r;
+                    if (stage < 3) {
+                        double f = (stage == 2) ? dt : 0.5*dt;
+                        for (int i = 0; i < 6; i++) yt[i] = y[i] + f*kk[i];
+                    }
                 }
+                if (keep) { array<double,6> ss; for (int i = 0; i < 6; i++) ss[i] = y[i];
+                            th_.push_back(tt); sh_.push_back(ss); ah_.push_back(al); }
+                for (int i = 0; i < 6; i++) y[i] += dt/6.0*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i]);
+                tt += dt;
             }
-            array<double,6> ss; for (int i = 0; i < 6; i++) ss[i] = y[i];
-            th_.push_back(tt); sh_.push_back(ss); ah_.push_back(al);
-            for (int i = 0; i < 6; i++) y[i] += dt/6.0*(k1[i] + 2*k2[i] + 2*k3[i] + k4[i]);
-            tt += dt;
+            if (keep) { array<double,6> ss; for (int i = 0; i < 6; i++) ss[i] = y[i];
+                        th_.push_back(tt); sh_.push_back(ss); ah_.push_back(ah_.back()); }
+            adouble hh = y[0];
+            g_tf = tt;
+            return y[3]/speed_of_sound(hh).value();
+        };
+
+        double lo = 0.0*d2r, hi = 80.0*d2r, sigma_g;
+        for (int it = 0; it < 40; it++) {
+            sigma_g = 0.5*(lo+hi);
+            double M = fly(sigma_g, false);
+            if (M > MF_INTERFACE) hi = sigma_g; else lo = sigma_g;
         }
-        double tf_g = tt;
-        printf("shooting guess: %.1f s to 25 km, bank held at %.1f deg\n",
-               tf_g, sigma_g/d2r);
+        sigma_g = 0.5*(lo+hi);
+        double Mg = fly(sigma_g, true);
+        double tf_g = g_tf;
+        printf("shooting guess: bank %.2f deg by bisection, %.1f s to %.2f km at Mach %.4f\n",
+               sigma_g/d2r, tf_g, HF_INTERFACE/1000.0, Mg);
         for (int j = 0; j < nnodes; j++) {
             double tj = tf_g*((double) j)/((double)(nnodes-1));
             int idx = (int)(tj/dt); if (idx > (int)th_.size()-2) idx = (int)th_.size()-2;
@@ -489,10 +530,13 @@ int main(int argc, char** argv)
     // interpolated the node controls linearly. Both are fixed, and on fixed
     // meshes the problem now gives
     //
-    //     nodes    error estimate    heat load      RK4 check on the heat load
-    //       109        1.8e-4        181.152 MJ/m^2        0.013 per cent
-    //       200        1.1e-3        180.598               0.002
-    //       350        4.3e-4        180.571               0.001
+    //     nodes    error estimate    heat load        RK4 check on the heat load
+    //        80        1.7e-3        180.832 MJ/m^2        0.004 per cent
+    //       109        8.6e-4        180.853               0.012
+    //       140        1.1e-3        180.802               0.003
+    //       160        5.9e-4        180.727               0.002
+    //       200        1.1e-3        180.550               0.000
+    //       350        3.5e-4        180.538               0.001
     //
     // where the last column is the block at the end of main: the optimal controls
     // are read off the transcription's own representation -- the interval
