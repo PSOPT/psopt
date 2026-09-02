@@ -217,7 +217,25 @@ int main(int argc, char* argv[])
     problem.phases(1).bounds.lower.controls(0) = -10.0;
     problem.phases(1).bounds.upper.controls(0) =  10.0;
 
-    problem.phases(1).bounds.lower.parameters(0)  = 0.0;
+    // The pendulum length is bounded away from zero. With L allowed to reach zero the
+    // problem has a degenerate stationary point -- x = 0 with L = 0 satisfies the
+    // dynamics and the holonomic constraint exactly, fits none of the twenty
+    // observations, and gives J = 20 -- and the integrated-residual solves fall into it
+    // readily. Which of the two they return has turned out to depend on incidental
+    // details of the NLP rather than on the transcription: it changed when a block of
+    // inert constraint rows was written instead of left unwritten, it changes with the
+    // residual box tolerance, and it changed again when the unread midpoint control
+    // variables were removed from the decision vector. Excluding a pendulum of zero
+    // length is a statement about the model, not about the answer, and it makes the
+    // reported estimate a property of the method rather than of the barrier path.
+    //
+    // The value matters. At 0.1 the bound perturbs the collocation solve enough to stop
+    // it converging -- it returns L = 1.000010 in restoration where it used to return
+    // 1.0000000 cleanly -- and at 0.01 it is too close to zero to keep the
+    // integrated-residual solves off the degenerate branch, which then simply stop at
+    // the bound. At 0.05 the collocation solve is untouched and the residual solves
+    // either return an admissible estimate or fail honestly.
+    problem.phases(1).bounds.lower.parameters(0)  = 0.05;
     problem.phases(1).bounds.upper.parameters(0)  = 5.0;
 
 
