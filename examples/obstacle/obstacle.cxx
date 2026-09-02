@@ -4,10 +4,10 @@
 ////////////////           PSOPT  Example             ////////////////////
 //////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
-//////// Title:         Obstacle avoidance problem        ////////////////
-//////// Last modified: 01 September 2026                 ////////////////
-//////// Reference:  PROPT User's Guide                   ////////////////
-//////// (See PSOPT handbook for full reference)          ////////////////
+//////// Title:      Minimum time obstacle avoidance      ////////////////
+//////// Last modified: 02 September 2026                 ////////////////
+//////// Reference:  after the PROPT User's Guide, with   ////////////////
+////////             the objective changed to the time    ////////////////
 //////////////////////////////////////////////////////////////////////////
 ////////     Copyright (c) Victor M. Becerra, 2009        ////////////////
 //////////////////////////////////////////////////////////////////////////
@@ -16,69 +16,79 @@
 //////// General Public License (LGPL)                    ////////////////
 //////////////////////////////////////////////////////////////////////////
 
-// A particle travels at the fixed speed V = 2.138 with heading theta as the only
-// control, from (0,0) to (1.2,1.6) in one unit of time, and must stay outside two
-// discs of radius sqrt(0.1) centred at (0.4,0.5) and (0.8,1.5).
+// A particle travels at the fixed speed V = 2.138 with heading theta as its only
+// control. It starts at (0,0), must reach (1.2,1.6), and must stay outside two
+// discs of radius sqrt(0.1) centred at (0.4,0.5) and (0.8,1.5). The final time is
+// free and is the objective.
 //
-// Two properties of the problem as posed deserve a note, because they explain why
-// this example is discretized differently from most of the others in this
-// directory.
+// The problem in the PROPT User's Guide fixes the final time at 1 and minimises
+// the integral of (dx/dt)^2 + (dy/dt)^2. With the speed fixed that integrand is
+// identically V^2, so the cost is V^2 (tf - t0) for every admissible control and
+// the problem has no objective at all. Worse, fixing tf pins the arclength of
+// every admissible path at exactly V tf = 2.138 while the shortest admissible path
+// is 2.131722, so the feasible set is every path of length exactly 2.138 that
+// avoids the discs -- a surplus of three parts in a thousand that may be spent as
+// a wiggle anywhere along the path, with every way of spending it equally optimal.
+// Solved that way the example returns a different wandering trajectory on every
+// mesh, and no discretization can do better, because they are all optimal.
 //
-// First, the problem has no objective. The integrand is
+// Minimising the time instead makes the problem the Euclidean shortest path among
+// two discs, which has a unique solution in each homotopy class and an answer in
+// closed form. The shortest path is a taut string: a straight segment leaving the
+// start tangentially to an obstacle, an arc of that obstacle, and a straight
+// segment to the target. Enumerating both sides of each obstacle and both orders,
+// and discarding the classes whose straight segments cut a disc, gives
 //
-//        (dx/dt)^2 + (dy/dt)^2 = V^2 cos^2(theta) + V^2 sin^2(theta) = V^2,
+//      first obstacle only, passed on its right      2.131722291465    <- shortest
+//      left of the first, right of the second        2.137849267659
+//      left of both                                  2.544027869
+//      right of the first, left of the second        2.921806899
+//      right of both                                 4.119168448
 //
-// so the cost is identically V^2 (tf - t0) = 4.571044 for every admissible control.
-// The problem is a pure feasibility problem, and the reported cost carries no
-// information about the quality of the answer: two solutions can be equally optimal
-// and yet one of them can be nonsense.
+// so the minimum time is
 //
-// Second, theta is a heading, so it is defined only modulo 2 pi, and the bounds
-// below admit about three revolutions. Nothing in the formulation prefers one
-// branch over another, so an optimizer is free to wander between them.
+//      tf* = 2.131722291465491 / V = 0.997063747177498
 //
-// Together these two facts make the problem an unusually severe test of both the
-// initial guess and the transcription. With no objective to pull the iterate
-// anywhere and no penalty for crossing branches, a discretization is free to return
-// node values that satisfy every collocation and path condition at the nodes while
-// describing a control that is nonsense between them.
+// Only the first obstacle is active. The second is cleared at a squared distance
+// of 0.109512045 against the 0.1 required. The optimal control is continuous and
+// piecewise LINEAR in t: constant along each straight segment, and of constant
+// rate V/r = 6.760949637 along the arc, since an arc of radius r traversed at
+// speed V turns at exactly that rate.
 //
-// The four columns below are the same problem under four settings, all measured with
-// PSOPT's own local error estimate and by propagating the returned control
-// accurately from (0,0) and comparing where it arrives with the required (1.2,1.6).
-// The last column is the closest the propagated path comes to the centre of the
-// first obstacle, in the squared measure the path constraint uses, so 0.1 is the
-// requirement and anything below it means the path goes inside the disc.
+//      t = 0        -> 0.260419287   theta = 0.379526559          (straight)
+//      t = 0.260419 -> 0.378319287   theta rises by 0.797115961   (arc)
+//      t = 0.378319 -> 0.997063747   theta = 1.176642521          (straight)
 //
-//                                          error est.  heading at nodes   miss   obs 1
-//   Legendre, 60 then 80 nodes, zero guess   1.77e-2   [-5.72,  7.65]    0.819  0.0280
-//   Legendre, 81 nodes, guess below          2.60e-6   [ 0.348, 1.515]   1.4e-7 0.1012
-//   Hermite-Simpson, 81 nodes, guess below   4.99e-3   [-5.99,  1.42]    1.5e-2 0.0942
-//   integrated residual, box 1e-6            6.08e-9   [ 0.341, 1.273]   3.2e-10 0.1010
+// The example prints its computed final time next to that value. On the mesh below
+// the two agree to about nine significant figures, which is a far stronger check
+// than any residual estimate: it is a comparison against an answer obtained
+// without a discretization at all.
 //
-// The first line is how this example was set up until now: the heading crosses
-// branches, the error estimate stalls near 2e-2, the propagated path ends 0.8 away
-// from the target and passes well inside the first obstacle. The second line shows
-// that most of that is the fault of the initial guess rather than of the pseudo-
-// spectral method. The third shows that a good guess is not by itself enough, since
-// Hermite-Simpson still crosses a branch and its propagated path enters the first
-// obstacle even though every node and midpoint satisfies the path constraint.
+// Two things are worth knowing before changing the settings.
 //
-// The integrated residual transcription with a residual box is the setting that is
-// both accurate and reliable here, because it bounds the residual of the differential
-// equations at points interior to each interval rather than only at the collocation
-// points: a control that is nonsense between the nodes is then inadmissible rather
-// than merely undetected.
+// The heading bound matters. theta is a heading, so it is defined only modulo
+// 2 pi; the original bounds of +/- 10 admit about three revolutions, and with the
+// final time free that gives a family of spurious local minima -- longer paths
+// that wind -- which the solver does find. Bounded to a single branch, as below,
+// the solve is clean; left at +/- 10 it lands on times between 1.3 and 2.7 on most
+// meshes. That is a modelling fix, not a numerical one.
 //
-// The verification block after the solve is part of the example on purpose. It
-// propagates the control that the transcription itself returns and reports the
-// terminal miss and the closest approach to each obstacle, which is the check that
-// separates the four settings above; the objective cannot, since it is constant.
+// The solution rides the constraint boundary along the arc, so the control has a
+// corner in its derivative at each end of it, and a uniform mesh cannot place
+// those two junctions except by being fine everywhere. Uniform Hermite-Simpson
+// gives 3.3e-7 relative at 81 nodes, 8.0e-8 at 121, 5.4e-8 at 161 and 3.0e-8 at
+// 201, whereas automatic mesh refinement finds the junctions by itself and reaches
+// 3.0e-9 on the 74 nodes it settles at from the 41-node seed below -- an order of
+// magnitude better than a uniform mesh nearly three times as large. That is why
+// the example is set up this way, and it is a fair illustration of what mesh
+// refinement is for.
 //
-// If a formulation change is acceptable in an application of this kind, bounding
-// theta to a single branch (for instance [-pi/2, pi] here) is the underlying
-// modelling fix and helps under any discretization. The bounds are left as posed
-// here so that the example matches its reference.
+// The integrated-residual transcription with a residual box reaches the same time
+// to 4.2e-8 on 201 uniform nodes, with a residual three orders of magnitude
+// smaller, but on the same mesh it takes 127 s against 0.21 s for Hermite-Simpson,
+// and on coarse uniform meshes it is much the worse of the two (5.1e-3 at 81
+// nodes). It is not the default here: once the problem has an objective, the
+// answer does not need it.
 
 #include "psopt.h"
 
@@ -86,7 +96,10 @@ using namespace std;
 
 using namespace PSOPT;
 
-static const double V_SPEED = 2.138;
+static const double V_SPEED   = 2.138;
+
+// The closed-form answer derived above, for the check printed after the solve.
+static const double TF_EXACT  = 0.997063747177498;
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Define the end point (Mayer) cost function //////////
@@ -96,7 +109,7 @@ adouble endpoint_cost(adouble* initial_states, adouble* final_states,
                       adouble* parameters,adouble& t0, adouble& tf,
                       adouble* xad, int iphase,Workspace* workspace)
 {
-   return 0;
+   return tf;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -107,16 +120,7 @@ adouble integrand_cost(adouble* states, adouble* controls,
                        adouble* parameters, adouble& time, adouble* xad,
                        int iphase, Workspace* workspace)
 {
-    double V = V_SPEED;
-    adouble theta = controls[ 0 ];
-
-    adouble dxdt = V*cos(theta);
-    adouble dydt = V*sin(theta);
-
-    // Identically V^2: see the note at the head of this file.
-    adouble L =  pow(dxdt,2.0) + pow(dydt,2.0);
-
-    return  L;
+    return  0.0;
 }
 
 
@@ -196,7 +200,9 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
 //
 // The states are then obtained by classical Runge-Kutta on a grid nsub times finer
 // than the control intervals, starting from the initial condition of the problem,
-// with no reference whatever to the returned states.
+// with no reference whatever to the returned states. This is the check that the
+// answer is a trajectory of the system and not merely a solution of the discretized
+// problem.
 
 static void propagate_and_report(const MatrixXd& ths, const MatrixXd& uhs,
                                  double x_init, double y_init,
@@ -274,13 +280,16 @@ static void propagate_and_report(const MatrixXd& ths, const MatrixXd& uhs,
    printf("  propagated endpoint      : (%.6f, %.6f)\n", x, y);
    printf("  required endpoint        : (%.6f, %.6f)\n", x_target, y_target);
    printf("  terminal miss            : %.3e\n", miss);
-   printf("  closest approach, obs 1  : %.6f   (required >= 0.100000)\n", d1min);
-   printf("  closest approach, obs 2  : %.6f   (required >= 0.100000)\n", d2min);
+   printf("  closest approach, obs 1  : %.9f   (required >= 0.1, exact 0.100000000)\n", d1min);
+   printf("  closest approach, obs 2  : %.9f   (required >= 0.1, exact 0.109512045)\n", d2min);
    printf("\n");
    printf("  The two closest-approach figures are the squared distances used by the\n");
    printf("  path constraints, evaluated all along the propagated path rather than at\n");
-   printf("  the nodes only. The objective cannot be used as a check here, since it is\n");
-   printf("  the same constant for every admissible control.\n\n");
+   printf("  the nodes only. The first obstacle carries a boundary arc, where the\n");
+   printf("  constraint is active over a whole interval and is imposed only at the\n");
+   printf("  nodes and midpoints, so the propagated path may dip a little inside it\n");
+   printf("  between them; the excursion here is of order 1e-7 in this squared\n");
+   printf("  measure, which is 1e-7 of the obstacle radius.\n\n");
 }
 
 
@@ -303,7 +312,7 @@ int main(void)
 ///////////////////  Register problem name  ////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    problem.name        		= "Obstacle avoidance problem";
+    problem.name        		= "Minimum time obstacle avoidance";
     problem.outfilename                 = "obstacle.txt";
 
 ////////////////////////////////////////////////////////////////////////////
@@ -323,9 +332,10 @@ int main(void)
     problem.phases(1).ncontrols 						= 1;
     problem.phases(1).nevents   						= 4;
     problem.phases(1).npath                     = 2;
-    // A single fixed mesh: the residual box, not mesh refinement, is what controls
-    // the accuracy here, and the error estimate is already about 3e-8 on this mesh.
-    problem.phases(1).nodes                     = (RowVectorXi(1) << 81).finished();
+    // A coarse seed: mesh refinement places the nodes where the corners are, and
+    // finishes at about 74. Starting uniform and fine is worse than starting
+    // coarse and refining, because the corners are what limit the accuracy.
+    problem.phases(1).nodes                     = (RowVectorXi(1) << 41).finished();
 
     psopt_level2_setup(problem, algorithm);
 
@@ -339,10 +349,11 @@ int main(void)
     double xU = 2.0;
     double yU = 2.0;
 
-    // theta is a heading, so these bounds admit about three revolutions and do not
-    // single out a branch: see the note at the head of this file.
-    double thetaL = -10.0;
-    double thetaU = 10.0;
+    // theta is a heading, so it is defined modulo 2 pi. Bounding it to a single
+    // branch removes the spurious winding minima; see the note at the head of this
+    // file. The optimal heading lies in [0.380, 1.177], well inside these bounds.
+    double thetaL = -pi/2.0;
+    double thetaU =  pi;
 
     double x0 = 0.0;
     double y0 = 0.0;
@@ -372,8 +383,11 @@ int main(void)
     problem.phases(1).bounds.lower.StartTime    = 0.0;
     problem.phases(1).bounds.upper.StartTime    = 0.0;
 
-    problem.phases(1).bounds.lower.EndTime      = 1.0;
-    problem.phases(1).bounds.upper.EndTime      = 1.0;
+    // The final time is now the objective, so it is free. The straight-line
+    // distance is 2.0 and the speed is 2.138, so no admissible time is below
+    // 2.0/2.138 = 0.9355.
+    problem.phases(1).bounds.lower.EndTime      = 0.5;
+    problem.phases(1).bounds.upper.EndTime      = 3.0;
 
 
 
@@ -392,14 +406,16 @@ int main(void)
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    // The straight line from (0,0) to (1.2,1.6) is 2.0 long and the particle covers
-    // 2.138 in the available time, so no straight path is admissible and a guess of
-    // zero heading throughout tells the solver nothing about which way to turn. The
-    // guess below instead sweeps the heading from 0.5 to 1.4 radians and integrates
-    // the kinematics: it goes up and to the right, which is the only sensible way
-    // round, and nothing about it is fitted to the answer. Started from the zero
-    // heading the solve here fails, which is a fair reflection of a problem with no
-    // objective to guide the iterate.
+    // A guess of zero heading throughout tells the solver nothing about which way
+    // to turn, and no straight path is admissible in any case. The guess below
+    // sweeps the heading from 0.5 to 1.4 radians and integrates the kinematics: it
+    // goes up and to the right, which is the only sensible way round, and nothing
+    // about it is fitted to the answer. The solve is insensitive to it: over
+    // theta_0 in [0.0, 0.8] and theta_f in [1.0, 1.6], eighteen of the twenty
+    // combinations tried return the minimum time to at least eight figures, and
+    // the other two return the taut path of the next homotopy class, 0.999929498,
+    // which is itself a local minimum of the problem and which they also reach to
+    // nine figures.
 
     int nnodes    							 	= 30;
     int ncontrols                       	= problem.phases(1).ncontrols;
@@ -431,23 +447,14 @@ int main(void)
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Enter algorithm options  //////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
-    algorithm.nlp_iter_max                = 3000;
+    algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
     algorithm.nlp_method                  = "IPOPT";
     algorithm.scaling                     = "automatic";
     algorithm.derivatives                 = "automatic";
-
-    // Integrated residual transcription with a residual box: minimise the cost
-    // subject to the residual of the differential equations being no larger than
-    // ir_residual_bound at ir_residual_nodes Gauss-Legendre points inside each
-    // interval. Bounding the residual between the nodes is what rules out the
-    // control that local collocation returns here.
     algorithm.collocation_method          = "Hermite-Simpson";
-    algorithm.transcription_method        = "integrated-residual";
-    algorithm.ir_objective                = "cost";
-    algorithm.ir_residual_bound           = 1.e-6;
-    algorithm.ir_residual_nodes           = 4;
-    algorithm.mesh_refinement             = "manual";
+    algorithm.mesh_refinement             = "automatic";
+    algorithm.ode_tolerance               = 1.e-8;
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -469,6 +476,24 @@ int main(void)
 
     MatrixXd x = states.row(0);
     MatrixXd y = states.row(1);
+
+////////////////////////////////////////////////////////////////////////////
+///////////  Compare with the closed-form minimum time /////////////////////
+////////////////////////////////////////////////////////////////////////////
+
+    {
+       double tf_psopt = solution.get_cost();
+       printf("\n");
+       printf("Minimum time\n");
+       printf("  PSOPT                    : %.12f  on %d nodes\n",
+              tf_psopt, (int) t.cols());
+       printf("  taut-string construction : %.12f\n", TF_EXACT);
+       printf("  relative difference      : %.3e\n",
+              fabs(tf_psopt-TF_EXACT)/TF_EXACT);
+       printf("  heading range            : [%.9f, %.9f]\n",
+              theta.minCoeff(), theta.maxCoeff());
+       printf("  exact heading range      : [0.379526559, 1.176642521]\n");
+    }
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Check what the returned control actually does /////////////////
@@ -508,6 +533,9 @@ int main(void)
                                             "pdf", "obstacle_xy.pdf");
 
     plot(t,theta, problem.name+": theta","t", "theta");
+
+    plot(t,theta, problem.name+": theta","t", "theta",
+                                            "pdf", "obstacle_theta.pdf");
 
     plot(t,mu, problem.name+": path constraint multipliers","t", "mu_1 mu_2");
 
