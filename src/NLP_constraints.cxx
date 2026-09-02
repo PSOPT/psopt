@@ -181,6 +181,19 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
    int path_offset = phase_offset+nstates*(norder+1)+nevents;
 
+   // Path constraints folded into the integrated residual (ir_include_path) are not
+   // imposed pointwise: NLP_bounds frees their rows to +/- infinity. Their midpoint rows
+   // are therefore left at zero below, so that a problem which folds a path constraint
+   // presents exactly the Jacobian it did before those rows were filled at all. Writing an
+   // inert row would buy nothing and would move the automatic constraint scaling.
+   std::vector<bool> ir_folded( npath > 0 ? npath : 1, false );
+   if ( ir_algebraic_rows(*problem, *algorithm, i) > 0 ) {
+       std::vector<int>    fidx;
+       std::vector<double> ftgt;
+       ir_algebraic_index(*problem, i, fidx, ftgt);
+       for (size_t a2 = 0; a2 < fidx.size(); a2++) ir_folded[ fidx[a2] ] = true;
+   }
+
    get_parameters(parameters, xad, iphase, workspace );
 
    get_times(&t0, &tf, xad, iphase, workspace);
@@ -399,6 +412,7 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                     for (j=0; j<npath; j++)
                     {
                         l = path_bar_offset + (k)*npath + j;
+                        if ( ir_folded[j] ) { gad[l] = 0.0; continue; }
                         gad[l] = path_bar[j];
                         if ( algorithm->scaling=="user" ) {
                             gad[l] *= path_scaling(j);
