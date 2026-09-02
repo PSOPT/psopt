@@ -179,7 +179,7 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
              x0.block(x_phase_offset+offset2, 0, nparam , 1)=elemProduct(solution.parameters[i],param_scaling);
         }
 
-       if (need_midpoint_controls(*workspace->algorithm, workspace)) {
+       if (midpoint_control_vars(*workspace->algorithm, workspace)) {
 	  for (k=0; k<norder; k++) {  // EIGEN_UPDATE
             if (ncontrols>0) {
 
@@ -345,7 +345,7 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
            x0.block(x_phase_offset+offset2, 0, nparam, 1 ) = elemProduct(prev_param[i], param_scaling);
         }
 
-        if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
+        if ( midpoint_control_vars(*workspace->algorithm, workspace) ) {
 
 	  for (k=0; k<norder; k++) { // EIGEN_UPDATE
              if(ncontrols>0) {

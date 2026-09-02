@@ -385,7 +385,7 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
  // estimate drives mesh refinement, the artefact is not merely cosmetic: it refines
  // where there is nothing to refine and refuses to stop. Interpolate on the interval
  // containing `time` instead, using that interval's midpoint control.
- if ( need_midpoint_controls(algorithm, workspace) && norder >= 1 ) {
+ if ( midpoint_control_vars(algorithm, workspace) && norder >= 1 ) {
      int    nstates   = problem.phase[i].nstates;
      int    ncontrols = problem.phase[i].ncontrols;
      int    nparam    = problem.phase[i].nparameters;

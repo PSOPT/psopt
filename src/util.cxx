@@ -499,6 +499,32 @@ bool need_midpoint_controls(Alg& algorithm, Workspace* workspace)
 }
 
 
+// The Hermite-Simpson midpoint control variables exist because Simpson's rule needs a
+// control at the midpoint of every interval and because the cubic-Hermite forms of both
+// the collocation and the integrated-residual transcriptions carry the control as the
+// quadratic through node, midpoint and node. Under the Nie-Kerrigan local representation
+// they carry nothing: the control on an element is the degree-d Lagrange polynomial
+// through that element's own d+1 node values, and the midpoint variable is no part of it.
+//
+// Every reader of that block has been given a Nie-Kerrigan branch -- the residual and the
+// cost quadrature never read it, the error estimator and get_interpolated_control were
+// corrected in step 113, the midpoint path-constraint rows are formed from the element
+// polynomial (step 120), and integrate() and Sol::get_hs_controls_in_phase in step 125 --
+// so under that representation the variables became dead columns of the Jacobian: no
+// objective gradient, no constraint row, no accessor. That is ncontrols*norder of them,
+// a sixth to a third of the decision vector on the problems to hand. They are therefore
+// not allocated at all.
+//
+// This is a change to the decision-vector layout, and it is confined to
+// ir_local_order >= 2. psopt_main rejects a mesh whose interval count is not divisible by
+// ir_local_order before any of this is used, so the predicate does not depend on the mesh
+// and the layout cannot change between mesh-refinement iterations of one solve.
+bool midpoint_control_vars(Alg& algorithm, Workspace* workspace)
+{
+    return need_midpoint_controls(algorithm, workspace) && !ir_local_basis_active(algorithm);
+}
+
+
 
 #define MTR(a,i,j,n)  (a)[ (j)*(n) + (i) ]
 
@@ -603,10 +629,11 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
             if ( need_midpoint_controls(algorithm, workspace) && ncontrols > 0 && norder > 0 ) {
                 int nhs        = 2*norder + 1;
                 int bar_offset = (nstates+ncontrols)*(norder+1) + nparam;
+                // The variable block is absent under the Nie-Kerrigan representation, so
+                // the midpoint entries are computed from the element polynomial instead.
+                // This is the same predicate the layout uses, so the two cannot disagree.
                 const int  d_nk     = algorithm.ir_local_order;
-                const bool nk_local = ir_local_basis_active(algorithm)
-                                      && norder >= d_nk && (norder % d_nk) == 0
-                                      && workspace->ir_lgl01.rows() == d_nk+1;
+                const bool nk_local = !midpoint_control_vars(algorithm, workspace);
                 (solution.controls_hs[i]).resize(ncontrols, nhs);
                 (solution.nodes_hs[i]).resize(1, nhs);
                 for (k = 0; k < norder+1; k++) {

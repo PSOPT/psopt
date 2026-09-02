@@ -100,7 +100,7 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
 
         offset1 = (nstates+ncontrols)*(norder+1) + nparam;
 
-        if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
+        if ( midpoint_control_vars(*workspace->algorithm, workspace) ) {
 	   for (k=0; k<norder; k++) { // EIGEN_UPDATE: K index shifted by -1
                 if (ncontrols>0) {
 

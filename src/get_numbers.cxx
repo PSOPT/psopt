@@ -70,7 +70,7 @@ int get_number_nlp_vars(Prob& problem, Workspace* workspace)
         int    nparam    = problem.phase[i].nparameters;
    	int    nodes     = problem.phase[i].current_number_of_intervals;
       	nlp_vars += (ncontrols+nstates)*(nodes+1)+nparam+2;
-        if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
+        if ( midpoint_control_vars(*workspace->algorithm, workspace) ) {
             nlp_vars += (ncontrols)*(nodes);
         }
         if ( workspace->algorithm->collocation_method == "Gauss" ) {
@@ -295,7 +295,7 @@ int get_nvars_phase_i(Prob& problem, int i, Workspace* workspace)
 
 	int nvars_phase_i = (nstates+ncontrols)*(norder+1)+nparam;
 
-        if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
+        if ( midpoint_control_vars(*workspace->algorithm, workspace) ) {
                     nvars_phase_i += ncontrols*norder;
         }
 

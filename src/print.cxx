@@ -1108,7 +1108,7 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 
 	}
 
-        if (need_midpoint_controls(*workspace->algorithm, workspace)) {
+        if (midpoint_control_vars(*workspace->algorithm, workspace)) {
 
 		for (k=0; k<norder; k++) { // EIGEN_UPDATE
 

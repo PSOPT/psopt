@@ -75,6 +75,16 @@ void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Wo
 
         int offset = (nstates+ncontrols)*(norder+1)+nparam;
 
+        // The midpoint control variables are not part of the decision vector under the
+        // Nie-Kerrigan local representation, where the slot this would read belongs to the
+        // parameters or to t0. Nothing calls this routine there -- the residual, the cost
+        // quadrature, the midpoint path rows, the estimator, integrate() and the control
+        // accessor all have their own branch -- and if something ever does, it should say
+        // so rather than return whatever is in the next slot.
+        if ( !midpoint_control_vars(*workspace->algorithm, workspace) )
+            error_message("get_controls_bar called with no midpoint control variables in the "
+                          "decision vector; see midpoint_control_vars in util.cxx ");
+
         for(j=0;j<ncontrols;j++) {
              controls_bar[j] =  xad[iphase_offset+offset+(k)*ncontrols+j]/control_scaling(j);
         }

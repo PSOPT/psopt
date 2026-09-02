@@ -1619,6 +1619,14 @@ void product_ad(adouble* Apr,adouble* Bpr, int na, int ma, int nb, int mb, adoub
 
 bool need_midpoint_controls(Alg& algorithm, Workspace* workspace);
 
+// Whether the Hermite-Simpson midpoint CONTROL VARIABLES are part of the decision
+// vector. They are, except under the Nie-Kerrigan local representation, where nothing
+// reads them: see the definition in util.cxx. Every site that sizes, bounds, guesses,
+// prints or reads that block must use this predicate; the midpoint PATH-CONSTRAINT rows
+// are a separate question and keep need_midpoint_controls, since they are filled from
+// the element polynomial and are meaningful under both representations.
+bool midpoint_control_vars(Alg& algorithm, Workspace* workspace);
+
 void inverse_ad(const AutoDiffMatrix& minput, AutoDiffMatrix* minv);
 
 void product_ad(const AutoDiffMatrix& A,const AutoDiffMatrix& B, AutoDiffMatrix* AB);
