@@ -87,6 +87,42 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 
 	}
 
+	else if ( workspace->algorithm->ir_local_order >= 2
+	          && norder >= workspace->algorithm->ir_local_order
+	          && (norder % workspace->algorithm->ir_local_order) == 0 ) {
+
+		  // Nie-Kerrigan local representation: the same per-element Lobatto quadrature
+		  // that phase_running_cost uses for the objective, and for the same reason. The
+		  // state and control on an element are degree-d polynomials through that
+		  // element's own d+1 nodes, and the Hermite-Simpson midpoint of the branch below
+		  // -- the cubic Hermite state and the midpoint control VARIABLE -- belongs to a
+		  // different representation. The midpoint control is not read by anything in this
+		  // transcription, so integrating against it returned the integral of a trajectory
+		  // the solver never chose: on the test problem min int u^2 with xdot = u over
+		  // [0,1] from 0 to 1, whose answer is 1, this routine returned about a half,
+		  // because the midpoint control variables sit wherever the initial guess left
+		  // them. The snodes within element e are that element's d+1 LGL nodes; the rule
+		  // is exact to degree 2d-1 and so matched to the representation.
+		  int d = workspace->algorithm->ir_local_order;
+		  int M = norder / d;
+		  MatrixXd& wl = workspace->ir_lgl_w;         // d+1 LGL weights on [-1,1], sum 2
+		  for (int e=0; e<M; e++) {
+		      int base = e*d;
+		      adouble te0 = convert_to_original_time_ad( (workspace->snodes[i])(base),   t0, tf );
+		      adouble te1 = convert_to_original_time_ad( (workspace->snodes[i])(base+d), t0, tf );
+		      adouble he  = te1 - te0;
+		      for (int r=0; r<=d; r++) {
+		          int gk = base + r;
+		          get_controls(controls, xad, iphase, gk, workspace);
+		          get_states(states,     xad, iphase, gk, workspace);
+		          adouble tnode = convert_to_original_time_ad( (workspace->snodes[i])(gk), t0, tf );
+		          retval += (he/2.0) * wl(r)
+		                    * (*integrand)(states,controls,parameters,tnode,xad,iphase, workspace);
+		      }
+		  }
+
+	}
+
 	else {
 
 

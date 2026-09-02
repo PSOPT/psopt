@@ -603,15 +603,42 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
             if ( need_midpoint_controls(algorithm, workspace) && ncontrols > 0 && norder > 0 ) {
                 int nhs        = 2*norder + 1;
                 int bar_offset = (nstates+ncontrols)*(norder+1) + nparam;
+                const int  d_nk     = algorithm.ir_local_order;
+                const bool nk_local = ir_local_basis_active(algorithm)
+                                      && norder >= d_nk && (norder % d_nk) == 0
+                                      && workspace->ir_lgl01.rows() == d_nk+1;
                 (solution.controls_hs[i]).resize(ncontrols, nhs);
                 (solution.nodes_hs[i]).resize(1, nhs);
                 for (k = 0; k < norder+1; k++) {
                     (solution.controls_hs[i]).col(2*k) = (solution.controls[i]).col(k);
                     (solution.nodes_hs[i])(0,2*k)      = (solution.nodes[i])(0,k);
                     if (k < norder) {
-                        (solution.controls_hs[i]).col(2*k+1) =
-                            elemDivision( x.block(iphase_offset+bar_offset+(k)*ncontrols, 0,
-                                                  ncontrols, 1), control_scaling );
+                        if ( nk_local ) {
+                            // Nie-Kerrigan: the control on an element is the degree-d
+                            // Lagrange polynomial through the element's own d+1 node
+                            // values, and the midpoint control VARIABLE is no part of it
+                            // -- nothing in the transcription reads it. Reporting that
+                            // variable here would hand the caller a control the solver
+                            // never used, which is exactly the mistake this accessor was
+                            // added to prevent. The value reported is the representation's
+                            // own control at the midpoint of the interval.
+                            int    e = k / d_nk, r = k % d_nk, np = d_nk + 1;
+                            double sm = 0.5*( workspace->ir_lgl01(r) + workspace->ir_lgl01(r+1) );
+                            MatrixXd um = MatrixXd::Zero(ncontrols,1);
+                            for (int q = 0; q < np; q++) {
+                                double Lq = 1.0;
+                                for (int r2 = 0; r2 < np; r2++) if (r2 != q)
+                                    Lq *= (sm - workspace->ir_lgl01(r2))
+                                          /(workspace->ir_lgl01(q) - workspace->ir_lgl01(r2));
+                                um += Lq*(solution.controls[i]).col(e*d_nk+q);
+                            }
+                            (solution.controls_hs[i]).col(2*k+1) = um;
+                        }
+                        else {
+                            (solution.controls_hs[i]).col(2*k+1) =
+                                elemDivision( x.block(iphase_offset+bar_offset+(k)*ncontrols, 0,
+                                                      ncontrols, 1), control_scaling );
+                        }
                         (solution.nodes_hs[i])(0,2*k+1) =
                             0.5*( (solution.nodes[i])(0,k) + (solution.nodes[i])(0,k+1) );
                     }
