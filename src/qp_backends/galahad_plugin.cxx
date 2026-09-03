@@ -72,6 +72,12 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
     if (p == NULL || s == NULL || p->abi_version != PSOPT_QP_ABI_VERSION)
         return s->status;
 
+    // A quadratic programming solver cannot impose a Euclidean trust region: the ball is
+    // a second-order cone and this backend has no cones. Refusing is required of it --
+    // solving the subproblem without the region would return an unrestricted step as
+    // though it were a restricted one. See psopt_qp_plugin.h.
+    if (p->trust_radius < PSOPT_QP_INFINITY) return s->status;
+
     const int n = p->n, m = p->m;
 
     // GALAHAD requires m > 0; a subproblem with no general constraints is a bound

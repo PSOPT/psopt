@@ -412,7 +412,7 @@ TEST(SQPSolver, GalahadPluginSolvesAndUsesTheRightDualSign)
     const double ub[2]  = { PSOPT_QP_INFINITY,  PSOPT_QP_INFINITY};
 
     psopt_qp_problem q;
-    q.abi_version = PSOPT_QP_ABI_VERSION;
+    psopt_qp_problem_init(&q);
     q.n = 2; q.m = 1;
     q.H_p = H_p; q.H_i = H_i; q.H_x = H_x; q.H_dense = NULL;
     q.g = g;
@@ -459,7 +459,7 @@ TEST(SQPSolver, PiqpPluginSolvesAndUsesTheRightDualSign)
     const double ub[2]  = { PSOPT_QP_INFINITY,  PSOPT_QP_INFINITY};
 
     psopt_qp_problem q;
-    q.abi_version = PSOPT_QP_ABI_VERSION;
+    psopt_qp_problem_init(&q);
     q.n = 2; q.m = 1;
     q.H_p = H_p; q.H_i = H_i; q.H_x = H_x; q.H_dense = NULL;
     q.g = g;
@@ -524,7 +524,7 @@ TEST(SQPSolver, ClarabelPluginSolvesAndUsesTheRightDualSign)
     const double ub[2]  = { PSOPT_QP_INFINITY,  PSOPT_QP_INFINITY};
 
     psopt_qp_problem q;
-    q.abi_version = PSOPT_QP_ABI_VERSION;
+    psopt_qp_problem_init(&q);
     q.n = 2; q.m = 1;
     q.H_p = H_p; q.H_i = H_i; q.H_x = H_x; q.H_dense = NULL;
     q.g = g;
@@ -563,7 +563,119 @@ TEST(SQPSolver, ClarabelPluginSolvesAndUsesTheRightDualSign)
     EXPECT_NEAR(d2[1] + g2[1] + lambda2[0] - z2[1], 0.0, 1.0e-5);
 }
 
+// The Euclidean trust region, on a subproblem whose answer is known in closed form.
+//
+//   min 1/2 d'd - 3 d1 - 4 d2   s.t.  ||d||_2 <= 1
+//
+// The unconstrained minimiser is (3,4), of length 5, so the region is active and the
+// answer is the point of the unit circle in that direction: (0.6, 0.8), exactly. The
+// same problem under a box of half-width 1 answers (1,1), of length sqrt(2) -- so this
+// test would fail if the region were quietly being imposed componentwise, which is the
+// mistake it exists to catch.
+TEST(SQPSolver, ClarabelImposesTheEuclideanTrustRegion)
+{
+    const long long H_p[3] = {0, 1, 2};
+    const long long H_i[2] = {0, 1};
+    const double    H_x[2] = {1.0, 1.0};
+    const double    g[2]   = {-3.0, -4.0};
+    const double    lb[2]  = {-PSOPT_QP_INFINITY, -PSOPT_QP_INFINITY};
+    const double    ub[2]  = { PSOPT_QP_INFINITY,  PSOPT_QP_INFINITY};
+
+    psopt_qp_problem q;
+    psopt_qp_problem_init(&q);
+    q.n = 2; q.m = 0;
+    q.H_p = H_p; q.H_i = H_i; q.H_x = H_x;
+    q.g = g; q.lb = lb; q.ub = ub;
+    q.tolerance = 1.0e-10; q.max_iter = 200;
+    q.trust_radius = 1.0; q.trust_dim = 2;
+
+    double d[2] = {0,0}, lambda[1] = {0}, z[2] = {0,0};
+    psopt_qp_solution r;
+    r.d = d; r.lambda = lambda; r.z = z; r.iterations = 0; r.status = -1;
+
+    std::string message;
+    ASSERT_TRUE(psopt_qp_plugin_solve("Clarabel", &q, &r, message)) << message;
+    ASSERT_EQ(r.status, PSOPT_QP_SOLVED);
+
+    EXPECT_NEAR(d[0], 0.6, 1.0e-6);
+    EXPECT_NEAR(d[1], 0.8, 1.0e-6);
+    EXPECT_NEAR(sqrt(d[0]*d[0] + d[1]*d[1]), 1.0, 1.0e-6);
+
+    // The region's own multiplier is not reported as a bound multiplier. Were it added
+    // to z, the stationarity residual below would vanish and the SQP would read a step
+    // held back by the region as an optimal one.
+    EXPECT_NEAR(z[0], 0.0, 1.0e-9);
+    EXPECT_NEAR(z[1], 0.0, 1.0e-9);
+
+    // Widen the region past the unconstrained minimiser and it stops binding.
+    q.trust_radius = 10.0;
+    r.status = -1;
+    ASSERT_TRUE(psopt_qp_plugin_solve("Clarabel", &q, &r, message)) << message;
+    ASSERT_EQ(r.status, PSOPT_QP_SOLVED);
+    EXPECT_NEAR(d[0], 3.0, 1.0e-5);
+    EXPECT_NEAR(d[1], 4.0, 1.0e-5);
+
+    // A region over the leading variable only leaves the other one free.
+    q.trust_radius = 1.0; q.trust_dim = 1;
+    r.status = -1;
+    ASSERT_TRUE(psopt_qp_plugin_solve("Clarabel", &q, &r, message)) << message;
+    ASSERT_EQ(r.status, PSOPT_QP_SOLVED);
+    EXPECT_NEAR(d[0], 1.0, 1.0e-5);
+    EXPECT_NEAR(d[1], 4.0, 1.0e-5);
+}
+
 #endif // USE_CLARABEL
+
+// A backend with no cones must refuse a subproblem carrying a Euclidean trust region
+// rather than solve the one it can see and return the step as though it were restricted.
+// This is the contract of psopt_qp_plugin.h and the reason the ABI version was raised;
+// it is pinned here on whichever non-conic backend this build has.
+TEST(SQPSolver, ANonConicBackendRefusesAEuclideanTrustRegion)
+{
+    const char* backend = NULL;
+#if defined(USE_PIQP)
+    backend = "PIQP";
+#elif defined(USE_GALAHAD)
+    backend = "GALAHAD";
+#elif defined(USE_OSQP)
+    backend = "OSQP";
+#elif defined(USE_PROXQP)
+    backend = "ProxQP";
+#elif defined(USE_QPALM)
+    backend = "QPALM";
+#endif
+    if (backend == NULL) GTEST_SKIP() << "no non-conic backend in this build";
+
+    const long long H_p[3] = {0, 1, 2};
+    const long long H_i[2] = {0, 1};
+    const double    H_x[2] = {1.0, 1.0};
+    const double    g[2]   = {-3.0, -4.0};
+    const double    lb[2]  = {-1.0e3, -1.0e3};
+    const double    ub[2]  = { 1.0e3,  1.0e3};
+
+    psopt_qp_problem q;
+    psopt_qp_problem_init(&q);
+    q.n = 2; q.m = 0;
+    q.H_p = H_p; q.H_i = H_i; q.H_x = H_x;
+    q.g = g; q.lb = lb; q.ub = ub;
+    q.tolerance = 1.0e-10; q.max_iter = 200;
+
+    double d[2] = {0,0}, lambda[1] = {0}, z[2] = {0,0};
+    psopt_qp_solution r;
+    r.d = d; r.lambda = lambda; r.z = z; r.iterations = 0; r.status = -1;
+
+    std::string message;
+
+    // Without a region it solves this perfectly well, so a refusal below is about the
+    // region and not about the problem.
+    ASSERT_TRUE(psopt_qp_plugin_solve(backend, &q, &r, message)) << message;
+    EXPECT_NE(r.status, PSOPT_QP_FAILED);
+
+    q.trust_radius = 1.0; q.trust_dim = 2;
+    r.status = -1;
+    psopt_qp_plugin_solve(backend, &q, &r, message);
+    EXPECT_EQ(r.status, PSOPT_QP_FAILED) << backend << " did not refuse a trust region it cannot impose";
+}
 
 // A plugin that cannot be found must be reported as such, at once and in words, rather
 // than surfacing as a failed subproblem partway through a solve.

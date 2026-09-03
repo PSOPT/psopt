@@ -66,7 +66,7 @@ extern "C" {
 
 /*  Bumped when the structures below change in a way an existing plugin would not
  *  survive. PSOPT refuses to load a plugin that reports a different version. */
-#define PSOPT_QP_ABI_VERSION 1
+#define PSOPT_QP_ABI_VERSION 2
 
 /*  Status codes returned in psopt_qp_solution.status. An approximate solution is not a
  *  failure: the SQP's line search is the judge of whether a step is any good, and
@@ -78,7 +78,8 @@ extern "C" {
 
 /*  The subproblem
  *
- *      min  1/2 d' H d + g' d     s.t.  lbA <= A d <= ubA,   lb <= d <= ub
+ *      min  1/2 d' H d + g' d     s.t.  lbA <= A d <= ubA,   lb <= d <= ub,
+ *                                       || d[0 .. trust_dim) ||_2 <= trust_radius
  *
  *  with H symmetric, given either sparsely, in compressed columns with both triangles
  *  stored, or densely; exactly one of the two is provided. A is m by n in compressed
@@ -86,6 +87,26 @@ extern "C" {
  *
  *  Index arrays are 64-bit signed, which is what every sparse library here uses at the
  *  sizes PSOPT reaches, and avoids the plugin having to guess.
+ *
+ *  The last constraint is the one addition of ABI version 2, and it is what takes the
+ *  subproblem out of quadratic programming: a Euclidean ball is a second-order cone, so
+ *  a backend that can honour it is one that solves conic programmes and not only
+ *  quadratic ones. It is present because PSOPT's trust region has an alternative
+ *  formulation -- algorithm.trust_region = "l2" -- whose motivation is that the usual
+ *  one, a box on the step, permits a Euclidean step of length Delta*sqrt(n) and so
+ *  loosens as the mesh is refined, which is the wrong way round.
+ *
+ *  trust_radius is PSOPT_QP_INFINITY, or beyond, when there is no such constraint, and
+ *  that is the only case a backend is obliged to handle. A backend that cannot impose a
+ *  finite radius MUST return PSOPT_QP_FAILED immediately rather than solve the problem
+ *  without it: a step limited by nothing, returned as though it were limited, is the
+ *  kind of confidently wrong answer this interface exists to make impossible. The SQP
+ *  recognises that refusal, when it comes on the first subproblem of a run, and reports
+ *  it as the configuration error it is rather than as a numerical failure.
+ *
+ *  trust_dim is the number of leading variables the ball constrains, which is n for the
+ *  ordinary subproblem and less than n for the elastic relaxation, whose trailing
+ *  variables are slacks and are no part of the step.
  */
 #define PSOPT_QP_INFINITY 1.0e20
 
@@ -117,7 +138,35 @@ typedef struct {
     double           tolerance;    /* the NLP tolerance the SQP is working to */
     int              max_iter;     /* per-subproblem iteration budget         */
     int              nonconvex;    /* non-zero if H may be indefinite         */
+
+    /* ABI 2. The Euclidean trust region, described above. PSOPT_QP_INFINITY or beyond
+     * means there is none; a finite value a backend cannot impose is PSOPT_QP_FAILED. */
+    double           trust_radius;
+    int              trust_dim;    /* leading variables the ball constrains   */
 } psopt_qp_problem;
+
+/*  Fill a problem with the defaults that mean "nothing unusual asked for", so that a
+ *  caller who adds a field to this structure and forgets to set it gets the absence of
+ *  the feature rather than whatever was on the stack. That is not a hypothetical: the
+ *  trust region above is a double, and an uninitialised one is finite about as often as
+ *  not, which would have a conic backend impose a region of some arbitrary radius and
+ *  every other backend refuse the subproblem outright. Call this first, then set what
+ *  the subproblem actually is. */
+static inline void psopt_qp_problem_init(psopt_qp_problem* q)
+{
+    if (q == 0) return;
+    q->abi_version = PSOPT_QP_ABI_VERSION;
+    q->n = 0; q->m = 0;
+    q->H_p = 0; q->H_i = 0; q->H_x = 0; q->H_dense = 0;
+    q->g = 0;
+    q->A_p = 0; q->A_i = 0; q->A_x = 0;
+    q->lbA = 0; q->ubA = 0; q->lb = 0; q->ub = 0;
+    q->tolerance = 1.0e-8;
+    q->max_iter  = 1000;
+    q->nonconvex = 0;
+    q->trust_radius = PSOPT_QP_INFINITY;
+    q->trust_dim    = 0;
+}
 
 /*  The answer, in PSOPT's sign convention: grad f + A' lambda - z = 0. Backends whose
  *  own convention differs -- GALAHAD's duals carry the opposite sign, ProxQP's and

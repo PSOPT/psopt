@@ -366,6 +366,10 @@ struct QpProblem {
     const double*    g  = NULL;
     const SparseCsc* A  = NULL;      // mc by nv, absent when mc == 0
     const double    *lbA = NULL, *ubA = NULL, *lbd = NULL, *ubd = NULL;
+    // The Euclidean trust region, when that is the one in use: || d[0..tr_dim) || <= tr.
+    // Infinite means there is none, which is the box case and every case before ABI 2.
+    double           tr     = PSOPT_QP_INFINITY;
+    int              tr_dim = 0;
 };
 
 // The result, in PSOPT's conventions: grad f + A' lambda - z = 0.
@@ -401,7 +405,7 @@ static bool solve_qp_plugin(const string& backend, const QpProblem& p,
     out.ok = false;
 
     psopt_qp_problem q;
-    q.abi_version = PSOPT_QP_ABI_VERSION;
+    psopt_qp_problem_init(&q);
     q.n = p.nv; q.m = p.mc;
 
     q.H_p = q.H_i = NULL; q.H_x = NULL; q.H_dense = NULL;
@@ -421,6 +425,8 @@ static bool solve_qp_plugin(const string& backend, const QpProblem& p,
     q.tolerance = tol;
     q.max_iter  = max_iter;
     q.nonconvex = nonconvex ? 1 : 0;
+    q.trust_radius = p.tr;
+    q.trust_dim    = (p.tr_dim > 0) ? p.tr_dim : p.nv;
 
     psopt_qp_solution r;
     r.d = &out.d[0]; r.lambda = &out.lambda[0]; r.z = &out.z[0];
@@ -1079,6 +1085,23 @@ int SQP_interface(Alg&         algorithm,
     // are 17 and 18, and what the reduction buys elsewhere is kept -- launch goes from
     // 42 iterations and 195 seconds to 26 and 126, and manutec from 103
     // iterations and 106 seconds to 13 and 15.
+    //
+    // The shape of the region is algorithm.trust_region. The box above is what the two
+    // lines below express, and it is a bound on the widest component of the step rather
+    // than on the step: it admits every d with ||d||_2 up to Delta*sqrt(n), so on the
+    // 2136-variable mesh of examples/terrain a radius of 0.3 permits a Euclidean step of
+    // nearly 14, and the finer the mesh the less the same Delta restricts. That is the
+    // wrong way round -- refinement is meant to make the model more trustworthy locally,
+    // not the region larger -- and it is also not the region for which the convergence
+    // theory of trust-region methods is stated.
+    //
+    // "l2" asks for ||d||_2 <= Delta instead. A Euclidean ball is a second-order cone, so
+    // the subproblem stops being a quadratic programme, and only a backend that solves
+    // conic programmes can take it; the rest refuse rather than drop it. It does not
+    // remove the need to convexify -- writing 1/2 d'Hd as a cone constraint needs H
+    // positive semidefinite in the first place -- so the shift ladder below is unchanged.
+    // What it changes is the geometry of the restriction, and its mesh-independence.
+    const bool   l2_region = exact_hessian && (algorithm.trust_region == "l2");
     const double Delta_0   = 0.3;
     const double Delta_min = 1.0e-10;
     const double Delta_max = 1.0e4;
@@ -1182,6 +1205,7 @@ int SQP_interface(Alg&         algorithm,
     int    n_corrections  = 0;
     int    n_shifts       = 0;        // convexifications of the exact Hessian
     int    n_convexify    = 0;        // extra shifts a backend's refusal asked for
+    bool   any_qp_ok      = false;    // has any subproblem been solved at all
     int    n_shrinks      = 0;        // reductions of the trust region
     // The first subproblem is solved with the multipliers still at zero, so the
     // Hessian of the Lagrangian it is built from carries no information about the
@@ -1375,9 +1399,12 @@ int SQP_interface(Alg&         algorithm,
         for (int j = 0; j < n; j++) {
             lo_true[j] = ((*xlb)(j) <= -psopt_inf) ? -qp_inf : (*xlb)(j) - x(j);
             hi_true[j] = ((*xub)(j) >=  psopt_inf) ?  qp_inf : (*xub)(j) - x(j);
-            lbd[j]     = max(lo_true[j], -Delta);   // Delta is infinite unless the Hessian
-            ubd[j]     = min(hi_true[j],  Delta);   // is exact; both regions contain d = 0
+            // Under the Euclidean region the bounds are the problem's own: the region is
+            // carried to the backend as a cone and not folded into them.
+            lbd[j]     = l2_region ? lo_true[j] : max(lo_true[j], -Delta);
+            ubd[j]     = l2_region ? hi_true[j] : min(hi_true[j],  Delta);
         }
+        const double tr_radius = l2_region ? Delta : PSOPT_QP_INFINITY;
 
         // Whether the subproblem was solved, and at what cost. These were a qpOASES
         // return code and its working-set counter, which the plugin path reported in for
@@ -1521,6 +1548,7 @@ int SQP_interface(Alg&         algorithm,
             qpp.lbA = (m > 0) ? &lbA[0] : NULL;
             qpp.ubA = (m > 0) ? &ubA[0] : NULL;
             qpp.lbd = &lbd[0];        qpp.ubd = &ubd[0];
+            qpp.tr  = tr_radius;      qpp.tr_dim = n;
 
             QpSolution qs;
             string why;
@@ -1571,6 +1599,24 @@ int SQP_interface(Alg&         algorithm,
             }
             if (status == 2) break;
             if (qs.ok && n_convexify > 0) tau = delta_used;  // carry what worked
+
+            // A backend with no cones refuses a Euclidean trust region outright, as
+            // psopt_qp_plugin.h requires of it. That is a configuration error rather than
+            // a numerical one, and it is worth separating: otherwise the run reports a
+            // subproblem it could not solve, goes to a restoration that cannot help
+            // either because it carries the same region, and the actual reason -- that
+            // this backend cannot express the region it was asked for -- appears nowhere.
+            if (l2_region && !qs.ok && !any_qp_ok) {
+                status  = 2;
+                message = "algorithm.trust_region = \"l2\" asks for a Euclidean trust "
+                          "region, which is a second-order cone. The backend \""
+                        + algorithm.qp_solver + "\" solves quadratic programmes only, and "
+                          "has refused the subproblem rather than drop the region. Use a "
+                          "conic backend (algorithm.qp_solver = \"Clarabel\") or the box "
+                          "region (algorithm.trust_region = \"box\").";
+                break;
+            }
+            if (qs.ok) any_qp_ok = true;
 
             qp_ok    = qs.ok;
             qp_iters = qs.iterations;
@@ -1749,6 +1795,8 @@ int SQP_interface(Alg&         algorithm,
                 qpp.A   = &Ae;
                 qpp.lbA = &lbA[0]; qpp.ubA = &ubA[0];
                 qpp.lbd = &lbe[0]; qpp.ubd = &ube[0];
+                // The region restricts the step, not the slacks that follow it.
+                qpp.tr  = tr_radius; qpp.tr_dim = n;
 
                 QpSolution qs;
                 string why;
@@ -1831,6 +1879,13 @@ int SQP_interface(Alg&         algorithm,
         // gradient and reports a convergence that has not happened. On examples/brac1
         // that produced a feasible point, declared optimal, whose objective was 2.8 per
         // cent above the answer.
+        // Under the Euclidean region the test below is vacuous, and correctly so: the
+        // bounds handed to the backend are the problem's own, so every multiplier
+        // returned for one is a multiplier of the problem. The region's own multiplier is
+        // the one attached to the cone, and the plugin does not report it -- so a step
+        // held back by the region leaves that much of the gradient unaccounted for in the
+        // dual residual, and the SQP does not declare optimality there. That is the same
+        // end the zeroing below reaches for the box, by a less delicate route.
         for (int j = 0; j < n; j++) {
             const bool tr_binds = (lbd[j] > lo_true[j]) || (ubd[j] < hi_true[j]);
             zbnd(j) = (tr_binds && fabs(d(j)) >= 0.999*Delta) ? 0.0 : ysol[j];
@@ -2035,6 +2090,7 @@ int SQP_interface(Alg&         algorithm,
                 qpp.g   = &gf(0);         qpp.A   = &Jm;
                 qpp.lbA = &lbS[0];        qpp.ubA = &ubS[0];
                 qpp.lbd = &lbd[0];        qpp.ubd = &ubd[0];
+                qpp.tr  = tr_radius;      qpp.tr_dim = n;
 
                 QpSolution qs;
                 string why;
@@ -2123,8 +2179,18 @@ int SQP_interface(Alg&         algorithm,
         // model is trusted too far, and one that stopped short of the boundary was not
         // constrained by it in the first place.
         if (exact_hessian) {
+            // Measured in the norm the region is stated in, or the expansion test asks
+            // whether a step reached a boundary it was never near: on a fine mesh the
+            // Euclidean length of a step is many times its widest component.
             double dinf = 0.0;
-            for (int j = 0; j < n; j++) dinf = max(dinf, fabs(d(j)));
+            if (l2_region) {
+                double s2 = 0.0;
+                for (int j = 0; j < n; j++) s2 += d(j)*d(j);
+                dinf = sqrt(s2);
+            }
+            else {
+                for (int j = 0; j < n; j++) dinf = max(dinf, fabs(d(j)));
+            }
             if (alpha >= 1.0 && dinf >= 0.9*Delta) Delta = min(2.0*Delta, Delta_max);
             else if (alpha < 0.25)                 Delta = max(Delta_min, 0.5*Delta);
         }

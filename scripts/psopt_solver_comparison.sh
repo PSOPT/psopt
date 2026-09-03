@@ -39,6 +39,7 @@ LIMIT=1800          # seconds per example per solver
 ONLY=""
 SKIP=""
 QP="GALAHAD"        # which QP backend the SQP runs use; it matters more than expected
+TRUST_REGION=""     # "box" or "l2"; empty leaves the build's default alone
 FIXED_MESH=0        # compare on each example's initial mesh, with refinement off
  
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
@@ -57,6 +58,10 @@ Options:
   --only LIST    comma-separated example names, for a quick trial run
   --skip LIST    comma-separated example names to leave out (e.g. unpublished work)
   --qp NAME      QP backend for the SQP runs (default GALAHAD; try PIQP, OSQP, Clarabel)
+  --trust-region SHAPE
+                 shape of the SQP's trust region: "box" (the default) or "l2". The
+                 Euclidean region is a second-order cone, so it needs a conic backend --
+                 --qp Clarabel -- and every other backend refuses it outright.
   --fixed-mesh   turn mesh refinement off, so that both solvers answer the same
                  discretized problem. Without this the objective column is not a
                  controlled comparison: each solver's answer steers its own next mesh.
@@ -77,6 +82,7 @@ while [ $# -gt 0 ]; do
         --only)  ONLY="$2"; shift 2 ;;
         --skip)  SKIP="$2"; shift 2 ;;
         --qp)    QP="$2";   shift 2 ;;
+        --trust-region) TRUST_REGION="$2"; shift 2 ;;
         --fixed-mesh) FIXED_MESH=1; shift ;;
         --help|-h) usage ;;
         *) die "unknown option '$1' (try --help)" ;;
@@ -196,6 +202,7 @@ fi
 probe_log=$(mktemp)
 ( cd "$BUILD/examples/$PROBE" && env OMP_CANCELLATION=TRUE OMP_PROC_BIND=TRUE \
     PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER="$QP" \
+    ${TRUST_REGION:+PSOPT_TRUST_REGION="$TRUST_REGION"} \
     "$TIMEOUT" 300 "./$PROBE" > "$probe_log" 2>&1 ) || true
  
 if ! grep -q "^SQP (" "$probe_log"; then
@@ -284,6 +291,7 @@ run_one() {
  
     if [ "$solver" = "SQP" ]; then
         env_args="PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER=$QP"
+        [ -n "$TRUST_REGION" ] && env_args="$env_args PSOPT_TRUST_REGION=$TRUST_REGION"
     else
         env_args="PSOPT_NLP_METHOD=IPOPT"
     fi

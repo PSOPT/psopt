@@ -289,6 +289,23 @@ struct alg_str {
   // run that established it.
   int       qp_iter_max;
 
+  // The shape of the trust region the exact-Hessian SQP puts on its step. Ignored unless
+  // nlp_method is "SQP" and hessian is "exact"; the quasi-Newton model needs no region.
+  //
+  // "box" (the default) restricts every component, |d_j| <= Delta, which costs nothing
+  // because it is expressed in the subproblem's variable bounds and every QP backend
+  // takes it. Its weakness is that it is not a bound on the step, only on its widest
+  // component: it permits ||d||_2 as large as Delta*sqrt(n), so the same Delta is a
+  // looser restriction the finer the mesh, which is the opposite of what refinement
+  // wants. It is also not the region the convergence theory of trust-region methods is
+  // stated for.
+  //
+  // "l2" restricts the step itself, ||d||_2 <= Delta. A Euclidean ball is a second-order
+  // cone, so the subproblem is no longer a quadratic programme and only a backend that
+  // solves conic programmes can take it; of those built here that is Clarabel. Every
+  // other backend refuses such a subproblem rather than silently dropping the region.
+  string    trust_region;
+
   // What the relaxation costs, per unit of infeasibility. "weights" (default) prices it
   // above the merit function's penalty weights, which is where it has always been taken
   // from. "multipliers" prices it above the multipliers as well, which is the classical

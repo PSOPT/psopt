@@ -30,6 +30,14 @@
 //  arbitrary point on the central path, and that one is passed on as approximate. That
 //  distinction was measured rather than assumed: refusing the almost-solved verdict too
 //  costs catmix outright and takes moon from 33 SQP iterations to 57.
+//
+//  Clarabel is also the one backend built here that solves conic programmes rather than
+//  only quadratic ones, and so the one that can take PSOPT's Euclidean trust region --
+//  algorithm.trust_region = "l2" -- which is a second-order cone and is not expressible in
+//  a quadratic programme at all. Every other plugin refuses such a subproblem. The cone
+//  does not relieve Clarabel of needing P positive semidefinite, so the SQP's shift ladder
+//  is unchanged by it: what the region changes is the shape of the restriction on the
+//  step, not the convexity of the model.
 
 #include "psopt_qp_plugin.h"
 
@@ -89,6 +97,20 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
     const int n = p->n, m = p->m;
     if (n <= 0) return s->status;
 
+    // ---- the Euclidean trust region, if one was asked for -------------------------------
+    // ||d[0..k)||_2 <= Delta is a second-order cone of dimension k+1, and Clarabel is the
+    // one backend built here that has such cones. In Clarabel's form the cone variable is
+    // s = b - A x, so a block whose rows are b = (Delta, 0, ..., 0) and A = (0'; -I_k)
+    // gives s = (Delta, d_0, ..., d_{k-1}), and s in the second-order cone says exactly
+    // Delta >= ||d[0..k)||_2. The block goes last, after the orthant, because Clarabel
+    // reads the cones in the order their rows appear.
+    const bool   has_tr = (p->trust_radius < PSOPT_QP_INFINITY);
+    const int    ktr    = has_tr ? ((p->trust_dim > 0 && p->trust_dim <= n) ? p->trust_dim : n) : 0;
+    const double Rtr    = has_tr ? p->trust_radius : 0.0;
+    // A region of zero or negative radius admits only d = 0, which is not a step; the SQP
+    // never asks for one, and a backend should not be the place that discovers it did.
+    if (has_tr && !(Rtr > 0.0)) return s->status;
+
     // ---- the row layout ---------------------------------------------------------------
     // The zero cone first, then the nonnegative orthant, because Clarabel takes the cones
     // in the order the rows appear.
@@ -113,8 +135,10 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
         if (p->ub[j] <  PSOPT_QP_INFINITY) bup_of[(size_t) j] = row++;
         if (p->lb[j] > -PSOPT_QP_INFINITY) blo_of[(size_t) j] = row++;
     }
+    const int nnneg   = row - neq;
+    const int tr_row0 = row;                 // first row of the cone block, if any
+    if (has_tr) row += ktr + 1;
     const int nrows = row;
-    const int nnneg = nrows - neq;
 
     // ---- P, its upper triangle ---------------------------------------------------------
     // Clarabel takes the whole symmetric matrix and reduces it itself; handing over the
@@ -164,6 +188,11 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
             if (blo_of[(size_t) j] >= 0)
                 cols[(size_t) j].push_back(std::make_pair(blo_of[(size_t) j], -1.0));
         }
+        // The cone block: its leading row has no coefficients at all, since s_0 is the
+        // constant radius, and the k that follow carry -I.
+        if (has_tr)
+            for (int j = 0; j < ktr; j++)
+                cols[(size_t) j].push_back(std::make_pair(tr_row0 + 1 + j, -1.0));
         compress(nrows, n, cols, A);
     }
 
@@ -178,6 +207,7 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
         if (bup_of[(size_t) j] >= 0) b[(size_t) bup_of[(size_t) j]] =  p->ub[j];
         if (blo_of[(size_t) j] >= 0) b[(size_t) blo_of[(size_t) j]] = -p->lb[j];
     }
+    if (has_tr) b[(size_t) tr_row0] = Rtr;      // the rest of the block is zero already
 
     std::vector<double> q((size_t) n);
     for (int j = 0; j < n; j++) q[(size_t) j] = p->g[j];
@@ -200,6 +230,12 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
         ClarabelSupportedConeT c;
         c.tag = ClarabelNonnegativeConeT_Tag;
         c.nonnegative_cone_t = (uintptr_t) nnneg;
+        cones.push_back(c);
+    }
+    if (has_tr) {
+        ClarabelSupportedConeT c;
+        c.tag = ClarabelSecondOrderConeT_Tag;
+        c.second_order_cone_t = (uintptr_t) (ktr + 1);
         cones.push_back(c);
     }
     if (cones.empty()) return s->status;     // an unconstrained subproblem is not one
@@ -239,6 +275,12 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
                 s->lambda[i] = zu - zl;
             }
         }
+        // The bound multipliers, and only those. The cone block's own multiplier is not
+        // reported and must not be: it is the price of the trust region, an artefact of
+        // the current radius rather than of the problem, and adding it here would cancel
+        // part of the gradient in the SQP's dual residual and report a convergence that
+        // has not happened. Leaving it out is what makes a step held back by the region
+        // show up as a step that is not yet optimal, which is what it is.
         for (int j = 0; j < n; j++) {
             const double zu = (bup_of[(size_t) j] >= 0) ? sol.z[bup_of[(size_t) j]] : 0.0;
             const double zl = (blo_of[(size_t) j] >= 0) ? sol.z[blo_of[(size_t) j]] : 0.0;

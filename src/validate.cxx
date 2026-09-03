@@ -120,6 +120,19 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     // else is used as given, and a handful of iterations is not a budget.
     if (algorithm.qp_iter_max != 0 && algorithm.qp_iter_max < 10)
        error_message("algorithm.qp_iter_max is too small; it must be at least 10, or 0 for the automatic budget ");
+    if (algorithm.trust_region != "box" && algorithm.trust_region != "l2")
+       error_message("Incorrect algorithm.trust_region option specified. Valid options are \"box\" and \"l2\" ");
+    // The trust region exists to make an indefinite model usable. The quasi-Newton model
+    // is built positive definite and is given no region at all, so asking for a Euclidean
+    // one there asks for nothing; said here rather than left to be inferred from a run
+    // that behaves exactly as it did before.
+    if (algorithm.trust_region == "l2" && algorithm.nlp_method == "SQP"
+                                       && algorithm.hessian != "exact") {
+       snprintf(workspace->text,sizeof(workspace->text),
+                "\n*** Warning: algorithm.trust_region = \"l2\" applies only to hessian = \"exact\"; "
+                "the quasi-Newton model is given no trust region");
+       psopt_print(workspace,workspace->text);
+    }
     if (algorithm.sqp_strategy != "M" && algorithm.sqp_strategy != "FM"
                                      && algorithm.sqp_strategy != "F")
        error_message("Incorrect algorithm.sqp_strategy option specified. Valid options are \"M\", \"FM\" and \"F\" ");
