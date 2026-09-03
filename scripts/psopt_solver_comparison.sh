@@ -40,6 +40,8 @@ ONLY=""
 SKIP=""
 QP="GALAHAD"        # which QP backend the SQP runs use; it matters more than expected
 TRUST_REGION=""     # "box" or "l2"; empty leaves the build's default alone
+SOLVERS="IPOPT SQP" # which of the two to run; SQP alone halves a sweep that is
+                    # comparing two SQP configurations against each other
 FIXED_MESH=0        # compare on each example's initial mesh, with refinement off
  
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
@@ -58,6 +60,10 @@ Options:
   --only LIST    comma-separated example names, for a quick trial run
   --skip LIST    comma-separated example names to leave out (e.g. unpublished work)
   --qp NAME      QP backend for the SQP runs (default GALAHAD; try PIQP, OSQP, Clarabel)
+  --sqp-only     run only the SQP, not IPOPT. When the question is which of two SQP
+                 configurations is better -- two backends, or a box against a Euclidean
+                 trust region -- the IPOPT column is identical in both runs and costs
+                 half the sweep to produce twice.
   --trust-region SHAPE
                  shape of the SQP's trust region: "box" (the default) or "l2". The
                  Euclidean region is a second-order cone, so it needs a conic backend --
@@ -83,6 +89,7 @@ while [ $# -gt 0 ]; do
         --skip)  SKIP="$2"; shift 2 ;;
         --qp)    QP="$2";   shift 2 ;;
         --trust-region) TRUST_REGION="$2"; shift 2 ;;
+        --sqp-only) SOLVERS="SQP"; shift ;;
         --fixed-mesh) FIXED_MESH=1; shift ;;
         --help|-h) usage ;;
         *) die "unknown option '$1' (try --help)" ;;
@@ -347,8 +354,7 @@ run_one() {
 }
  
 for e in $EXAMPLES; do
-    run_one "$e" IPOPT
-    run_one "$e" SQP
+    for sv in $SOLVERS; do run_one "$e" "$sv"; done
 done
  
 # ---------------------------------------------------------------------------------
