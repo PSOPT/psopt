@@ -77,7 +77,7 @@ void linkages(adouble* l, adouble* xad, Workspace* w) { }
 }
 
 static bool solve_di(const std::string& method, int nodes, MatrixXd& lam, MatrixXd& tt,
-                     MatrixXd& uu, double& J)
+                     MatrixXd& uu, double& J, const std::string& scaling = "automatic")
 {
     Alg algorithm; Sol solution; Prob problem;
     problem.name        = "minimum-energy double integrator";
@@ -116,7 +116,7 @@ static bool solve_di(const std::string& method, int nodes, MatrixXd& lam, Matrix
     problem.phases(1).guess.time             = linspace(0.0, 1.0, nodes);
 
     algorithm.nlp_method         = "IPOPT";
-    algorithm.scaling            = "automatic";
+    algorithm.scaling            = scaling;
     algorithm.derivatives        = "automatic";
     algorithm.nlp_tolerance      = 1.0e-10;
     algorithm.nlp_iter_max       = 500;
@@ -296,5 +296,31 @@ TEST(Costates, LocalAndPseudospectralAgreeOnALinearAdjoint)
     for (int k = 0; k < lam.cols(); k++) {
         EXPECT_NEAR(lam(0,k), -12.0, 1.0e-4) << "lambda1 at t = " << tt(0,k);
         EXPECT_NEAR(lam(1,k), 12.0*tt(0,k) - 6.0, 1.0e-4) << "lambda2 at t = " << tt(0,k);
+    }
+}
+
+
+// algorithm.scaling = "user", which with no factors set is unit scaling.
+//
+// This is a memory test before it is a numerical one. The t0 <= tf row of each phase is
+// written at index phase_offset + ncons_phase_i - 1, and under user scaling its scale
+// factor was stored at phase_offset + ncons_phase_i: one past. On the last phase that is
+// one element past the end of constraint_scaling, which is sized nlp_ncons, so selecting
+// a documented option corrupted the heap on a plain single-phase problem -- an abort here,
+// a segmentation fault on older builds. On any earlier phase it silently set the FIRST row
+// of the next phase to the previous phase's time scaling.
+//
+// What it asserts afterwards is worth having on its own: the costate PSOPT reports should
+// not depend on how the constraints were scaled, since the recovery undoes the scaling it
+// applied. Unit scaling and automatic scaling must therefore agree with the closed form,
+// and they do.
+TEST(Costates, UserScalingIsUnitScalingAndRecoversTheSameCostate)
+{
+    MatrixXd lam, tt, uu;  double J = 0.0;
+    ASSERT_TRUE(costate_test::solve_di("Legendre", 40, lam, tt, uu, J, "user"));
+    EXPECT_NEAR(J, 6.0, 1.0e-6);
+    for (int k = 0; k < lam.cols(); k++) {
+        EXPECT_NEAR(lam(0,k), -12.0, 1.0e-3) << "lambda1 at t = " << tt(0,k);
+        EXPECT_NEAR(lam(1,k), 12.0*tt(0,k) - 6.0, 1.0e-3) << "lambda2 at t = " << tt(0,k);
     }
 }

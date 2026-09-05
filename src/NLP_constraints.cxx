@@ -622,7 +622,13 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
 	   if ( algorithm->scaling=="user" ) {
 //	         gad[ phase_offset + ncons_phase_i-1] *= time_scaling;
-            constraint_scaling( phase_offset + ncons_phase_i )= time_scaling;
+            // The row is written at phase_offset + ncons_phase_i - 1 and its scale factor
+            // must go in the same slot. Without the -1 this wrote one element past the end
+            // of constraint_scaling on the last phase -- the vector is sized nlp_ncons and
+            // this is its last row -- which is a heap overwrite, and on any earlier phase it
+            // silently set the FIRST row of the next phase to this phase's time scaling.
+            // algorithm.scaling = "user" therefore aborted on a plain single-phase problem.
+            constraint_scaling( phase_offset + ncons_phase_i - 1 )= time_scaling;
         }
 
         phase_offset += ncons_phase_i;
