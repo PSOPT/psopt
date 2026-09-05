@@ -40,6 +40,7 @@ ONLY=""
 SKIP=""
 QP="GALAHAD"        # which QP backend the SQP runs use; it matters more than expected
 TRUST_REGION=""     # "box" or "l2"; empty leaves the build's default alone
+TRUST_RADIUS=""     # the region's initial radius; empty leaves the built-in 0.3 alone
 SOLVERS="IPOPT SQP" # which of the two to run; SQP alone halves a sweep that is
                     # comparing two SQP configurations against each other
 FIXED_MESH=0        # compare on each example's initial mesh, with refinement off
@@ -64,6 +65,9 @@ Options:
                  configurations is better -- two backends, or a box against a Euclidean
                  trust region -- the IPOPT column is identical in both runs and costs
                  half the sweep to produce twice.
+  --radius R     initial trust-region radius (default 0.3). 0.3 was measured against the
+                 box, where it bounds one component of the step; under --trust-region l2
+                 it bounds the whole step and is a much tighter start on a fine mesh.
   --trust-region SHAPE
                  shape of the SQP's trust region: "box" (the default) or "l2". The
                  Euclidean region is a second-order cone, so it needs a conic backend --
@@ -89,6 +93,7 @@ while [ $# -gt 0 ]; do
         --skip)  SKIP="$2"; shift 2 ;;
         --qp)    QP="$2";   shift 2 ;;
         --trust-region) TRUST_REGION="$2"; shift 2 ;;
+        --radius) TRUST_RADIUS="$2"; shift 2 ;;
         --sqp-only) SOLVERS="SQP"; shift ;;
         --fixed-mesh) FIXED_MESH=1; shift ;;
         --help|-h) usage ;;
@@ -210,6 +215,7 @@ probe_log=$(mktemp)
 ( cd "$BUILD/examples/$PROBE" && env OMP_CANCELLATION=TRUE OMP_PROC_BIND=TRUE \
     PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER="$QP" \
     ${TRUST_REGION:+PSOPT_TRUST_REGION="$TRUST_REGION"} \
+    ${TRUST_RADIUS:+PSOPT_TRUST_REGION_RADIUS="$TRUST_RADIUS"} \
     "$TIMEOUT" 300 "./$PROBE" > "$probe_log" 2>&1 ) || true
  
 if ! grep -q "^SQP (" "$probe_log"; then
@@ -299,6 +305,7 @@ run_one() {
     if [ "$solver" = "SQP" ]; then
         env_args="PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER=$QP"
         [ -n "$TRUST_REGION" ] && env_args="$env_args PSOPT_TRUST_REGION=$TRUST_REGION"
+        [ -n "$TRUST_RADIUS" ] && env_args="$env_args PSOPT_TRUST_REGION_RADIUS=$TRUST_RADIUS"
     else
         env_args="PSOPT_NLP_METHOD=IPOPT"
     fi
