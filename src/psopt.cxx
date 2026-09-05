@@ -885,7 +885,14 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 		  workspace->prev_costates[i]      = solution.dual.costates[i];
 
-    	  t0 = (solution.nodes[i])(1);
+    	  // The phase's own start and end. t0 read the *second* node rather than the
+	     // first, which made (tf-t0) short by exactly one interval and scaled every
+	     // local-collocation costate below by (M-1)/M on a mesh of M intervals. The
+	     // error vanishes as the mesh refines, which is why it survived: on the
+	     // 39-interval mesh of tests/test_costates.cpp it is 2.6 per cent, and by 300
+	     // intervals it is a third of one per cent. The pseudospectral branches divide
+	     // by the quadrature weights instead and were never affected.
+    	  t0 = (solution.nodes[i])(0);
 
 	     tf = (solution.nodes[i])(0, solution.nodes[i].cols()-1); 
 
