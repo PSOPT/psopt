@@ -76,7 +76,7 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
     // a second-order cone and this backend has no cones. Refusing is required of it --
     // solving the subproblem without the region would return an unrestricted step as
     // though it were a restricted one. See psopt_qp_plugin.h.
-    if (p->trust_radius < PSOPT_QP_INFINITY) return s->status;
+    if (p->trust_radius < PSOPT_QP_INFINITY) { s->status = PSOPT_QP_UNSUPPORTED; return s->status; }
 
     const int n = p->n, m = p->m;
 

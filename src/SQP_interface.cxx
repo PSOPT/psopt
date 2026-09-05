@@ -378,6 +378,8 @@ struct QpSolution {
     int            iterations = 0;
     bool           ok = false;
     bool           relaxed = false;   // the constraints could not be met and were relaxed
+    bool           unsupported = false; // the backend cannot express what was asked of it,
+                                        // and no shift or relaxation will change that
     bool           approximate = false; // stopped at its iteration limit; d is not a
                                         // solution of the subproblem, only a point on
                                         // the way to one
@@ -436,6 +438,7 @@ static bool solve_qp_plugin(const string& backend, const QpProblem& p,
 
     out.iterations  = r.iterations;
     out.approximate = (r.status == PSOPT_QP_APPROXIMATE);
+    out.unsupported = (r.status == PSOPT_QP_UNSUPPORTED);
     // An approximate step is still usable -- refusing it outright would stall runs that
     // recover perfectly well from one -- but the caller is told, so that a run of them
     // can be reacted to rather than accumulated silently.
@@ -1205,7 +1208,6 @@ int SQP_interface(Alg&         algorithm,
     int    n_corrections  = 0;
     int    n_shifts       = 0;        // convexifications of the exact Hessian
     int    n_convexify    = 0;        // extra shifts a backend's refusal asked for
-    bool   any_qp_ok      = false;    // has any subproblem been solved at all
     int    n_shrinks      = 0;        // reductions of the trust region
     // The first subproblem is solved with the multipliers still at zero, so the
     // Hessian of the Lagrangian it is built from carries no information about the
@@ -1600,13 +1602,18 @@ int SQP_interface(Alg&         algorithm,
             if (status == 2) break;
             if (qs.ok && n_convexify > 0) tau = delta_used;  // carry what worked
 
-            // A backend with no cones refuses a Euclidean trust region outright, as
-            // psopt_qp_plugin.h requires of it. That is a configuration error rather than
-            // a numerical one, and it is worth separating: otherwise the run reports a
-            // subproblem it could not solve, goes to a restoration that cannot help
-            // either because it carries the same region, and the actual reason -- that
-            // this backend cannot express the region it was asked for -- appears nowhere.
-            if (l2_region && !qs.ok && !any_qp_ok) {
+            // A backend with no cones refuses a Euclidean trust region outright, and says
+            // so with its own status: no shift and no relaxation will make it take one, so
+            // this is a configuration error and is reported as one rather than as a
+            // subproblem that happened not to solve.
+            //
+            // It must be that status and not merely a failure on the first iteration. The
+            // first version of this test read any early failure under an l2 region as a
+            // backend without cones, and examples/low_thrust -- whose first subproblem
+            // Clarabel declines for want of convexity, and which then solves in 49
+            // iterations through the restoration -- was stopped at zero with a message
+            // advising the user to switch to the backend they were already using.
+            if (qs.unsupported) {
                 status  = 2;
                 message = "algorithm.trust_region = \"l2\" asks for a Euclidean trust "
                           "region, which is a second-order cone. The backend \""
@@ -1616,7 +1623,6 @@ int SQP_interface(Alg&         algorithm,
                           "region (algorithm.trust_region = \"box\").";
                 break;
             }
-            if (qs.ok) any_qp_ok = true;
 
             qp_ok    = qs.ok;
             qp_iters = qs.iterations;

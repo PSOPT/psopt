@@ -75,6 +75,7 @@ extern "C" {
 #define PSOPT_QP_SOLVED       0   /* solved to the requested tolerance          */
 #define PSOPT_QP_APPROXIMATE  1   /* iteration limit reached; step is usable    */
 #define PSOPT_QP_FAILED       2   /* no usable step                             */
+#define PSOPT_QP_UNSUPPORTED  3   /* the request is one this backend cannot express */
 
 /*  The subproblem
  *
@@ -98,11 +99,20 @@ extern "C" {
  *
  *  trust_radius is PSOPT_QP_INFINITY, or beyond, when there is no such constraint, and
  *  that is the only case a backend is obliged to handle. A backend that cannot impose a
- *  finite radius MUST return PSOPT_QP_FAILED immediately rather than solve the problem
- *  without it: a step limited by nothing, returned as though it were limited, is the
- *  kind of confidently wrong answer this interface exists to make impossible. The SQP
- *  recognises that refusal, when it comes on the first subproblem of a run, and reports
- *  it as the configuration error it is rather than as a numerical failure.
+ *  finite radius MUST return PSOPT_QP_UNSUPPORTED immediately rather than solve the
+ *  problem without it: a step limited by nothing, returned as though it were limited, is
+ *  the kind of confidently wrong answer this interface exists to make impossible.
+ *
+ *  UNSUPPORTED and FAILED are different answers and the distinction earns its keep. The
+ *  first says the backend will never take this subproblem however it is shifted or
+ *  relaxed, which is a configuration error and is reported as one, naming the option and
+ *  the way out. The second says this attempt did not work, which the SQP already knows
+ *  how to answer -- raise the shift, or relax the constraints, and ask again. Collapsing
+ *  the two, as the first version of this interface did, cost examples/low_thrust: a
+ *  Clarabel subproblem that failed for want of convexity on the first iteration was read
+ *  as Clarabel being unable to impose a cone, the run was stopped with a message telling
+ *  the user to switch to the backend they were already using, and a problem that solves
+ *  in 49 iterations through the restoration reported failure at zero.
  *
  *  trust_dim is the number of leading variables the ball constrains, which is n for the
  *  ordinary subproblem and less than n for the elastic relaxation, whose trailing

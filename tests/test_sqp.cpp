@@ -671,10 +671,14 @@ TEST(SQPSolver, ANonConicBackendRefusesAEuclideanTrustRegion)
     ASSERT_TRUE(psopt_qp_plugin_solve(backend, &q, &r, message)) << message;
     EXPECT_NE(r.status, PSOPT_QP_FAILED);
 
+    // UNSUPPORTED and not FAILED: the SQP answers a failure by raising the shift or
+    // relaxing the constraints and asking again, and neither will ever make a backend
+    // without cones take a cone. Reported as a plain failure, this cost examples/low_thrust
+    // a solve -- see psopt_qp_plugin.h.
     q.trust_radius = 1.0; q.trust_dim = 2;
     r.status = -1;
     psopt_qp_plugin_solve(backend, &q, &r, message);
-    EXPECT_EQ(r.status, PSOPT_QP_FAILED) << backend << " did not refuse a trust region it cannot impose";
+    EXPECT_EQ(r.status, PSOPT_QP_UNSUPPORTED) << backend << " did not refuse a trust region it cannot impose";
 }
 
 // A plugin that cannot be found must be reported as such, at once and in words, rather
