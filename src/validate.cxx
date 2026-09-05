@@ -120,6 +120,8 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     // else is used as given, and a handful of iterations is not a budget.
     if (algorithm.qp_iter_max != 0 && algorithm.qp_iter_max < 10)
        error_message("algorithm.qp_iter_max is too small; it must be at least 10, or 0 for the automatic budget ");
+    if (algorithm.trust_region_radius < 0.0)
+       error_message("algorithm.trust_region_radius must be positive, or 0 for the default ");
     if (algorithm.trust_region != "box" && algorithm.trust_region != "l2")
        error_message("Incorrect algorithm.trust_region option specified. Valid options are \"box\" and \"l2\" ");
     // The trust region exists to make an indefinite model usable. The quasi-Newton model

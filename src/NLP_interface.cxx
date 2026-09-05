@@ -101,6 +101,7 @@ static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspa
     psopt_env_override("PSOPT_ELASTIC_PENALTY",  algorithm.elastic_penalty, workspace);
     psopt_env_override("PSOPT_SQP_STRATEGY",     algorithm.sqp_strategy,    workspace);
     psopt_env_override("PSOPT_TRUST_REGION",     algorithm.trust_region,    workspace);
+    psopt_env_override_double("PSOPT_TRUST_REGION_RADIUS", algorithm.trust_region_radius, workspace);
     psopt_env_override_int("PSOPT_QP_ITER_MAX",  algorithm.qp_iter_max,     workspace);
     // Asking for a tolerance the solver cannot reach is how the acceptable-level
     // termination is exercised deliberately rather than waited for.

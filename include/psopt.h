@@ -306,6 +306,16 @@ struct alg_str {
   // other backend refuses such a subproblem rather than silently dropping the region.
   string    trust_region;
 
+  // The trust region's initial radius. Zero, the default, asks for the built-in value,
+  // which is 0.3 and was measured for the box -- where it bounds a component of the step.
+  // Under trust_region = "l2" the same number bounds the whole step, and since the ball
+  // of radius Delta sits inside the box of the same radius by a factor that grows like
+  // sqrt(n), 0.3 is a far tighter start on a fine mesh than it is on a coarse one. It is
+  // exposed so that the question can be asked rather than assumed: the four examples the
+  // Euclidean region loses are all refined-mesh runs, which is what too small a starting
+  // radius would look like.
+  double    trust_region_radius;
+
   // What the relaxation costs, per unit of infeasibility. "weights" (default) prices it
   // above the merit function's penalty weights, which is where it has always been taken
   // from. "multipliers" prices it above the multipliers as well, which is the classical

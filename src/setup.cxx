@@ -169,6 +169,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.qp_solver                   = "GALAHAD";
   algorithm.qp_iter_max                 = 0;      // 0 = scale it with the subproblem
   algorithm.trust_region                = "box";  // "l2" needs a conic backend
+  algorithm.trust_region_radius         = 0.0;    // 0 = the built-in default
   algorithm.sqp_strategy                = "FM";
   algorithm.qp_restoration              = "elastic";
   algorithm.elastic_penalty             = "weights";

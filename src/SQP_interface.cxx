@@ -1105,7 +1105,8 @@ int SQP_interface(Alg&         algorithm,
     // positive semidefinite in the first place -- so the shift ladder below is unchanged.
     // What it changes is the geometry of the restriction, and its mesh-independence.
     const bool   l2_region = exact_hessian && (algorithm.trust_region == "l2");
-    const double Delta_0   = 0.3;
+    const double Delta_0   = (algorithm.trust_region_radius > 0.0)
+                             ? algorithm.trust_region_radius : 0.3;
     const double Delta_min = 1.0e-10;
     const double Delta_max = 1.0e4;
     double       Delta     = exact_hessian ? Delta_0 : qp_inf;
