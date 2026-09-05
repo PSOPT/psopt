@@ -1019,23 +1019,139 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
    	  // pi-weight + 1/sqrt(1-t^2) map blew up at the ends, has been removed.)
 
     	  if ( algorithm.collocation_method == "Legendre" ) {
-                // Smooth the costates, as they can be noisy in the case of standard Legendre or Chebyshev collocation.
-                // (see Farhroo and Ross "Costate estimation by a Legendre Pseudospectral Method", Journal of Guidance
-                //    Control and Dynamics, 2001).
+                // ------------------------------------------------------------------
+                // Smoothing the LGL costate.
+                //
+                // The covector map lambda_k = nu_k/w_k leaves the Legendre costate with a
+                // node-to-node alternating component -- a genuine and well known defect of
+                // the Lobatto schemes, not of this implementation -- and a filter is the
+                // usual remedy (Fahroo and Ross, "Costate estimation by a Legendre
+                // pseudospectral method", J. Guidance, Control and Dynamics 24(2), 2001).
+                // On the linear tangent steering problem at 40 nodes the raw costate
+                // oscillates about the true value with an amplitude of 1.7 at the centre of
+                // the mesh, growing to 5.5 near the ends, and the two endpoint values are
+                // out by 13.7 on a costate whose true value is the constant -38.70.
+                //
+                // The filter used to be the fixed stencil (1/4, 1/2, 1/4) at the interior
+                // nodes and a plain average of the last two values at each end. Both parts
+                // were wrong, in different ways, and the two had to be repaired together.
+                //
+                // The interior stencil reproduces a linear function only on a UNIFORM grid,
+                // and the LGL nodes are not uniform. So a linearly-varying costate came back
+                // multiplied by a factor short of one -- 0.9729 on 10 nodes, 0.9935 on 20,
+                // the same factor at every interior node -- while a constant costate came
+                // back exact. On the minimum-energy double integrator of examples/mineng_di,
+                // whose adjoint lambda_2 = 12t - 6 the raw map returns to nine figures and
+                // which LGL solves exactly, that put the reported costate out by 1.4e-2 at
+                // 40 nodes and drove PSOPT's own stationarity residual dH/du to the same
+                // 1.4e-2 on a problem it had solved to machine precision. The error falls
+                // like 1/N^2, so it read as discretization error and survived.
+                //
+                // The endpoint average is the natural way to kill an alternating mode at a
+                // boundary -- averaging two successive extremes of the oscillation does
+                // exactly that -- but it returns the value at the MIDPOINT of the first two
+                // nodes rather than at the endpoint, which for a non-constant costate is
+                // simply the wrong place. It also feeds the worst value in the vector, the
+                // endpoint itself, straight back into its neighbour.
+                //
+                // What replaces them keeps both intentions and drops both errors. Every
+                // stencil below has weights that sum to one, have their centroid at the node
+                // being computed (so a linear costate passes through untouched) and satisfy
+                // w_left - w_centre + w_right = 0 (so a constant-amplitude alternating mode
+                // is annihilated exactly, as the old interior stencil also did).
+                //
+                //   interior, 2 <= k <= M-2: the three-point filter on the node's own
+                //     neighbours. Writing h- and h+ for the intervals either side,
+                //         a = (1/2) h+/(h- + h+),  c = (1/2) h-/(h- + h+),  centre = 1/2.
+                //     Only the ratio of the two intervals enters, so this is the same filter
+                //     read in physical time or in tau, and on a uniform grid a = c = 1/4 and
+                //     it is the old stencil exactly.
+                //
+                //   k = 1 and k = M-1: the same three conditions on a one-sided stencil
+                //     drawn from interior nodes only, which for target t* on (t_a,t_b,t_c) is
+                //         w_b = 1/2,  w_a = [t* - (t_b+t_c)/2]/(t_a - t_c),  w_c = 1/2 - w_a.
+                //
+                //   k = 0 and k = M: linear extrapolation from the two repaired neighbours.
+                //
+                // The endpoint value therefore never enters any stencil, its own included.
+                // That is the point: it is the least trustworthy entry in the vector and the
+                // old filter spread it inward instead of replacing it.
+                //
+                // Measured against the closed form, 40 nodes, old filter -> this one:
+                //
+                //   double integrator   lambda_2  1.4e-02 -> 1.4e-09    dH/du 1.4e-02 -> 1.8e-07
+                //   linear tangent      lambda_3  4.09    -> 1.45       lambda_4 3.43 -> 1.23
+                //                       lambda_2  0.62    -> 0.22       lambda_1 5.5e-5 -> 1.9e-5
+                //
+                // Better on every costate of both problems. It does not make the Legendre
+                // costate competitive with Radau or Gauss, and nothing applied after the fact
+                // could; see the discussion in the book's direct collocation chapter.
+                // ------------------------------------------------------------------
+
+                if (norder >= 4) {
 
                 pint.resize(nstates,norder+1);
 
-                pint.block(0,0,nstates,1) = (solution.dual.costates[i].block(0,0,nstates,1) + solution.dual.costates[i].block(0,1,nstates,1))/2.0;
-
-                for (k=1;k< norder;k++) {  // EIGEN_UPDATE: k index shifted by -1
-
-                pint.block(0,k,nstates,1) = (0.25*solution.dual.costates[i].block(0,k-1,nstates,1) + 0.5*solution.dual.costates[i].block(0,k,nstates,1) + 0.25*solution.dual.costates[i].block(0,k+1,nstates,1) )/1.0;
+                // interior: the node's own two neighbours
+                for (k=1;k<norder;k++) {
+                    const double hm = (solution.nodes[i])(k)   - (solution.nodes[i])(k-1);
+                    const double hp = (solution.nodes[i])(k+1) - (solution.nodes[i])(k);
+                    if (hm + hp <= 0.0) {   // coincident nodes: pass the value through
+                        pint.block(0,k,nstates,1) = solution.dual.costates[i].block(0,k,nstates,1);
+                        continue;
+                    }
+                    const double a = 0.5*hp/(hm+hp);
+                    const double c = 0.5*hm/(hm+hp);
+                    pint.block(0,k,nstates,1) =
+                          a*solution.dual.costates[i].block(0,k-1,nstates,1)
+                        + (1.0-a-c)*solution.dual.costates[i].block(0,k,nstates,1)
+                        + c*solution.dual.costates[i].block(0,k+1,nstates,1);
                 }
 
+                // k = 1 and k = M-1, recomputed one-sided so that the endpoint value is not
+                // used. w_a = [t* - (t_b+t_c)/2]/(t_a - t_c) with t* the node itself.
+                {
+                    const double ta=(solution.nodes[i])(1), tb=(solution.nodes[i])(2), tc=(solution.nodes[i])(3);
+                    if (ta != tc) {
+                        const double wa = (ta - 0.5*(tb+tc))/(ta-tc), wc = 0.5-wa;
+                        pint.block(0,1,nstates,1) =
+                              wa*solution.dual.costates[i].block(0,1,nstates,1)
+                            + 0.5*solution.dual.costates[i].block(0,2,nstates,1)
+                            + wc*solution.dual.costates[i].block(0,3,nstates,1);
+                    }
+                }
+                {
+                    const double ta=(solution.nodes[i])(norder-1), tb=(solution.nodes[i])(norder-2), tc=(solution.nodes[i])(norder-3);
+                    if (ta != tc) {
+                        const double wa = (ta - 0.5*(tb+tc))/(ta-tc), wc = 0.5-wa;
+                        pint.block(0,norder-1,nstates,1) =
+                              wa*solution.dual.costates[i].block(0,norder-1,nstates,1)
+                            + 0.5*solution.dual.costates[i].block(0,norder-2,nstates,1)
+                            + wc*solution.dual.costates[i].block(0,norder-3,nstates,1);
+                    }
+                }
 
-                pint.block(0,norder,nstates,1) = (solution.dual.costates[i].block(0,norder-1,nstates,1) + solution.dual.costates[i].block(0,norder,nstates,1))/2.0;
+                // the two endpoints, from the repaired neighbours
+                {
+                    const double t0e=(solution.nodes[i])(0), t1=(solution.nodes[i])(1), t2=(solution.nodes[i])(2);
+                    if (t2 != t1)
+                        pint.block(0,0,nstates,1) = pint.block(0,1,nstates,1)
+                            + ((t0e-t1)/(t2-t1))*(pint.block(0,2,nstates,1) - pint.block(0,1,nstates,1));
+                    else
+                        pint.block(0,0,nstates,1) = solution.dual.costates[i].block(0,0,nstates,1);
+                }
+                {
+                    const double tNe=(solution.nodes[i])(norder), u1=(solution.nodes[i])(norder-1), u2=(solution.nodes[i])(norder-2);
+                    if (u2 != u1)
+                        pint.block(0,norder,nstates,1) = pint.block(0,norder-1,nstates,1)
+                            + ((tNe-u1)/(u2-u1))*(pint.block(0,norder-2,nstates,1) - pint.block(0,norder-1,nstates,1));
+                    else
+                        pint.block(0,norder,nstates,1) = solution.dual.costates[i].block(0,norder,nstates,1);
+                }
 
                 solution.dual.costates[i] = pint;
+
+                }   // norder >= 4; below that there is no oscillation to filter
 
          }
 

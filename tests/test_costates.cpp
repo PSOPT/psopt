@@ -48,6 +48,90 @@ void events(adouble* e, adouble* i0, adouble* xf, adouble* p, adouble& t0, adoub
             adouble* xad, int iphase, Workspace* w) { e[0] = i0[0]; e[1] = xf[0]; }
 void linkages(adouble* l, adouble* xad, Workspace* w) { }
 
+// ---------------------------------------------------------------------------
+// A second problem, for the Legendre smoothing filter: the minimum-energy
+// rest-to-rest double integrator of examples/mineng_di,
+//
+//     minimize  J = int_0^1 (1/2) u^2 dt   s.t.  xdot1 = x2, xdot2 = u,
+//                   (x1,x2)(0) = (0,0),  (x1,x2)(1) = (1,0),
+//
+// whose adjoint is lambda1 = -12 and lambda2 = 12t - 6 -- one constant, one
+// linear. That is the point of it. The LGL covector map returns both to nine
+// figures, and the smoothing filter applied afterwards used the fixed stencil
+// (1/4, 1/2, 1/4), which reproduces a linear function only on a uniform grid.
+// On the non-uniform LGL nodes it scaled lambda2 by 0.9935 at 20 nodes while
+// leaving the constant lambda1 alone, an error falling like 1/N^2 that reads as
+// discretization error until one notices the states and the cost are exact.
+// ---------------------------------------------------------------------------
+namespace di {
+adouble endpoint_cost(adouble* i0, adouble* xf, adouble* p, adouble& t0, adouble& tf,
+                      adouble* xad, int iphase, Workspace* w) { return 0.0; }
+adouble integrand_cost(adouble* s, adouble* u, adouble* p, adouble& t,
+                       adouble* xad, int iphase, Workspace* w) { return 0.5*u[0]*u[0]; }
+void dae(adouble* d, adouble* path, adouble* st, adouble* u, adouble* p,
+         adouble& t, adouble* xad, int iphase, Workspace* w) { d[0] = st[1]; d[1] = u[0]; }
+void events(adouble* e, adouble* i0, adouble* xf, adouble* p, adouble& t0, adouble& tf,
+            adouble* xad, int iphase, Workspace* w)
+{ e[0] = i0[0]; e[1] = i0[1]; e[2] = xf[0]; e[3] = xf[1]; }
+void linkages(adouble* l, adouble* xad, Workspace* w) { }
+}
+
+static bool solve_di(const std::string& method, int nodes, MatrixXd& lam, MatrixXd& tt,
+                     MatrixXd& uu, double& J)
+{
+    Alg algorithm; Sol solution; Prob problem;
+    problem.name        = "minimum-energy double integrator";
+    problem.outfilename = "test_costates_di.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = 2;
+    problem.phases(1).ncontrols = 1;
+    problem.phases(1).nevents   = 4;
+    problem.phases(1).npath     = 0;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    problem.phases(1).bounds.lower.states   << -5.0, -5.0;
+    problem.phases(1).bounds.upper.states   <<  5.0,  5.0;
+    problem.phases(1).bounds.lower.controls << -50.0;
+    problem.phases(1).bounds.upper.controls <<  50.0;
+    problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0;
+    problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0;
+    problem.phases(1).bounds.lower.StartTime = 0.0;
+    problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0;
+    problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &di::integrand_cost;
+    problem.endpoint_cost  = &di::endpoint_cost;
+    problem.dae            = &di::dae;
+    problem.events         = &di::events;
+    problem.linkages       = &di::linkages;
+
+    problem.phases(1).guess.states           = zeros(2, nodes);
+    problem.phases(1).guess.states.row(0)    = linspace(0.0, 1.0, nodes);
+    problem.phases(1).guess.controls         = zeros(1, nodes);
+    problem.phases(1).guess.time             = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method         = "IPOPT";
+    algorithm.scaling            = "automatic";
+    algorithm.derivatives        = "automatic";
+    algorithm.nlp_tolerance      = 1.0e-10;
+    algorithm.nlp_iter_max       = 500;
+    algorithm.collocation_method = method;
+    algorithm.mesh_refinement    = "manual";
+    algorithm.print_level        = 0;
+
+    if (psopt(solution, problem, algorithm) != 0) return false;
+    lam = solution.get_dual_costates_in_phase(1);
+    tt  = solution.get_time_in_phase(1);
+    uu  = solution.get_controls_in_phase(1);
+    J   = solution.cost;
+    return true;
+}
+
 // Solve on `nodes` nodes with the given collocation method and return the costate
 // and the time it belongs to, in `lam` and `tt`.
 static bool solve(const std::string& method, int nodes, MatrixXd& lam, MatrixXd& tt)
@@ -160,4 +244,57 @@ TEST(Costates, SignMatchesTheHamiltonianConvention)
     ASSERT_TRUE(costate_test::solve("Legendre", 40, lam, tt));
     EXPECT_GT(lam(0,0), 0.0) << "the initial costate should be positive on this problem";
     EXPECT_NEAR(lam(0,0), costate_test::exact_costate(0.0), 5.0e-3);
+}
+
+
+// The Legendre smoothing filter, against an adjoint that is exactly linear.
+//
+// The LGL scheme solves this problem exactly -- the states are polynomials of degree
+// at most three and the cost integrand a quadratic, both inside what 20 nodes
+// represent and integrate without error -- so any error left in the reported costate
+// is the covector map's or the filter's, and nothing else's. That is what makes the
+// tolerance below meaningful at 1e-6 on a costate of size 12.
+//
+// The fixed (1/4, 1/2, 1/4) stencil this replaces returns lambda2 short by a factor
+// 0.9935 at 20 nodes -- an error of 5.8e-2, four orders outside the tolerance -- while
+// returning the constant lambda1 exactly, which is the signature of a filter that is
+// inconsistent on a non-uniform grid rather than of a discretization error.
+TEST(Costates, LegendreSmoothingPreservesALinearAdjoint)
+{
+    MatrixXd lam, tt, uu;  double J = 0.0;
+    ASSERT_TRUE(costate_test::solve_di("Legendre", 20, lam, tt, uu, J));
+    ASSERT_EQ(lam.rows(), 2);
+    ASSERT_GT(lam.cols(), 10);
+
+    // The discretization really is exact here; if this fails the rest means nothing.
+    EXPECT_NEAR(J, 6.0, 1.0e-8) << "the LGL solution of this problem is exact";
+
+    for (int k = 0; k < lam.cols(); k++) {
+        const double t = tt(0,k);
+        EXPECT_NEAR(lam(0,k), -12.0, 1.0e-4)
+            << "lambda1 at t = " << t << " (constant adjoint)";
+        EXPECT_NEAR(lam(1,k), 12.0*t - 6.0, 1.0e-4)
+            << "lambda2 at t = " << t << " (linear adjoint): a uniform shortfall here is"
+               " the smoothing filter, not the covector map";
+    }
+
+    // dH/du = u + lambda2 = 0. Stated separately because it is the condition a user
+    // checks, and it is the one the filter used to break on every Legendre run.
+    for (int k = 0; k < lam.cols(); k++)
+        EXPECT_NEAR(uu(0,k) + lam(1,k), 0.0, 1.0e-4)
+            << "stationarity dH/du at t = " << tt(0,k);
+}
+
+// The same problem under Hermite-Simpson, where the filter does not apply: the local
+// branch has to agree with the pseudospectral one on a problem both solve exactly, or
+// one of the two mappings is wrong.
+TEST(Costates, LocalAndPseudospectralAgreeOnALinearAdjoint)
+{
+    MatrixXd lam, tt, uu;  double J = 0.0;
+    ASSERT_TRUE(costate_test::solve_di("Hermite-Simpson", 20, lam, tt, uu, J));
+    EXPECT_NEAR(J, 6.0, 1.0e-8);
+    for (int k = 0; k < lam.cols(); k++) {
+        EXPECT_NEAR(lam(0,k), -12.0, 1.0e-4) << "lambda1 at t = " << tt(0,k);
+        EXPECT_NEAR(lam(1,k), 12.0*tt(0,k) - 6.0, 1.0e-4) << "lambda2 at t = " << tt(0,k);
+    }
 }
