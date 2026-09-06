@@ -181,7 +181,18 @@ TwoTailed_T_table <<
 200.,	 	1.286,	1.652,	1.972,	2.345,	2.601,
 300.,	 	1.284,	1.650,	1.968,	2.339,	2.592,
 500.,	 	1.283,	1.648,	1.965,	2.334,	2.586,
-Infinity,	  	1.282,	1.645,	1.960, 	2.326,	2.576;
+0.0,	  	1.282,	1.645,	1.960, 	2.326,	2.576;
+// The last row is the limit of infinitely many degrees of freedom, and it is
+// written as 0 because the interpolation below is done in 1/ndf, not in ndf.
+//
+// It used to read `Infinity`, which is not a number here: with
+// `using namespace Eigen` in scope that resolves to Eigen::Infinity, the enum
+// constant -1 that names the L-infinity norm. The abscissa column therefore
+// ended in -1, the interpolation took the segment running from 500 down to -1
+// as the bracketing one for every query, and this function returned about 1.96
+// for EVERY number of degrees of freedom -- 12.706 for one degree of freedom,
+// reported as 1.9600. Every confidence interval PSOPT has ever produced was
+// scaled by that number.
 
 
     MatrixXd pointx;
@@ -211,10 +222,39 @@ Infinity,	  	1.282,	1.645,	1.960, 	2.326,	2.576;
 
     long npoints = pointy.rows();
 
-    pointx = pointx.transpose().eval();
-    pointy = pointy.transpose().eval();
+    // Interpolate in 1/ndf rather than in ndf. For large samples the quantile
+    // behaves like z + z(1+z^2)/(4 ndf), so it is very nearly linear in 1/ndf
+    // and strongly nonlinear in ndf; interpolating in ndf between the rows for
+    // 500 and infinity would return the value at 500 for every practical
+    // sample size. In 1/ndf the last row of the table sits at the abscissa 0,
+    // which is what it means, and needs no invented large number.
+    //
+    // The table is written with ndf increasing, so 1/ndf decreases down the
+    // column and the two vectors are reversed to give the increasing abscissa
+    // that linear_interpolation expects.
+    MatrixXd ux(1, npoints), uy(1, npoints);
+    for (long i = 0; i < npoints; i++) {
+        long j = npoints - 1 - i;
+        ux(0,i) = ( pointx(j,0) > 0.0 ) ? 1.0/pointx(j,0) : 0.0;
+        uy(0,i) = pointy(j,0);
+    }
 
-    linear_interpolation(y, (double) ndf, pointx, pointy, (int) npoints);
+    // Guard against a table that is not ordered: linear_interpolation assumes
+    // an increasing abscissa and says nothing at all if it does not get one,
+    // which is how the defect described above survived for so long.
+    for (long i = 1; i < npoints; i++) {
+        if ( ux(0,i) <= ux(0,i-1) ) {
+            error_message("\n inverse_twotailed_t_cdf(): the degrees-of-freedom "
+                          "column of the t table is not increasing");
+        }
+    }
+
+    if ( ndf < 1 ) ndf = 1;
+    double u = 1.0/(double) ndf;
+    if ( u >= ux(0,npoints-1) ) return uy(0,npoints-1);   // ndf = 1
+    if ( u <= ux(0,0) )         return uy(0,0);           // ndf -> infinity
+
+    linear_interpolation(y, u, ux, uy, (int) npoints);
 
     return y(0,0);
 

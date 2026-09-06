@@ -181,7 +181,13 @@ TEST(ParameterStatistics, CatalyticCrackingConfidenceLimits)
     for (int i = 0; i < 3; i++) {
         double half = 0.5*(hi(i) - lo(i));
         EXPECT_GT(half, 0.0) << "parameter " << i;
-        EXPECT_NEAR(half, half_ref[i], 0.06) << "parameter " << i;   // within ~10 per cent
+        // Tightened from 0.06 once inverse_twotailed_t_cdf() was fixed. At the
+        // old tolerance -- chosen to absorb the transcription error of the 80
+        // node mesh -- these half-widths passed while being three per cent too
+        // small, because the t quantile that multiplies them was 1.9604 instead
+        // of 2.023. A tolerance wide enough for one error is wide enough for
+        // another, and the half-widths agree with the reference to four figures.
+        EXPECT_NEAR(half, half_ref[i], 0.005) << "parameter " << i;
         EXPECT_LT(lo(i), p(i));
         EXPECT_GT(hi(i), p(i));
     }
