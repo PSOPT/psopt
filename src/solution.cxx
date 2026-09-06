@@ -77,8 +77,26 @@ static MatrixXd psopt_empty_result;
 // Accessor wrapper over the shared policy: returns NULL if the accessor may proceed, or
 // the persistent empty sentinel to hand back in the fail-soft case (fail-fast does not
 // return).
-static MatrixXd* psopt_accessor_guard(const char* accessor, const Sol& solution)
+static MatrixXd* psopt_accessor_guard(const char* accessor, const Sol& solution,
+                                      const void* array)
 {
+   // The array this accessor is about to index. On a Sol that has not been
+   // through psopt() it is still NULL, and error_flag is zero because nothing
+   // has gone wrong yet, so the check below is not covered by the one that
+   // follows it: reading such a solution used to dereference the null pointer
+   // and take the process down with no message at all. The check is per array
+   // rather than on the solution as a whole, because a caller may legitimately
+   // populate part of a Sol by hand -- the integer-control reconstruction tests
+   // fill controls and nodes and nothing else.
+   if (array == NULL) {
+      if (PSOPT_extras::PrintLevel())
+         fprintf(stderr,
+            "\n**** ====> PSOPT: %s was called on a solution that has not been "
+            "through psopt(), or whose solve did not fill that field. <====\n",
+            accessor);
+      return &psopt_empty_result;
+   }
+
    if (psopt_solution_failed(accessor, solution)) return &psopt_empty_result;
    return NULL;
 }
@@ -88,7 +106,7 @@ MatrixXd& Sol::get_states_in_phase(int iphase)
 {
   //   if (iphase <1 || iphase > workspace->problem->nphases)
   //        error_message("incorrect phase index in Prob::phases()");
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_states_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_states_in_phase", *this, states)) return *e;
      return states[iphase-1];
 }
 
@@ -96,7 +114,7 @@ MatrixXd& Sol::get_parameters_in_phase(int iphase)
 {
   //   if (iphase <1 || iphase > workspace->problem->nphases)
   //        error_message("incorrect phase index in Prob::phases()");
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_parameters_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_parameters_in_phase", *this, parameters)) return *e;
      return parameters[iphase-1];
 }
 
@@ -104,7 +122,7 @@ MatrixXd& Sol::get_parameters_in_phase(int iphase)
 
 MatrixXd& Sol::get_controls_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_controls_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_controls_in_phase", *this, controls)) return *e;
      if (iphase <1 || iphase > problem->nphases) {
           error_message("incorrect phase index in Sol::get_controls_in_phase()");
      }
@@ -113,7 +131,7 @@ MatrixXd& Sol::get_controls_in_phase(int iphase)
 
 MatrixXd& Sol::get_time_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_time_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_time_in_phase", *this, nodes)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_time_in_phase()");
      return nodes[iphase-1];
@@ -139,7 +157,7 @@ MatrixXd& Sol::get_time_in_phase(int iphase)
 
 MatrixXd& Sol::get_hs_controls_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_hs_controls_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_hs_controls_in_phase", *this, controls_hs)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_hs_controls_in_phase()");
      if (controls_hs == NULL) return psopt_empty_result;
@@ -148,7 +166,7 @@ MatrixXd& Sol::get_hs_controls_in_phase(int iphase)
 
 MatrixXd& Sol::get_hs_time_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_hs_time_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_hs_time_in_phase", *this, nodes_hs)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_hs_time_in_phase()");
      if (nodes_hs == NULL) return psopt_empty_result;
@@ -157,7 +175,7 @@ MatrixXd& Sol::get_hs_time_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_costates_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_costates_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_costates_in_phase", *this, dual.costates)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_costates_in_phase()");
      return dual.costates[iphase-1];
@@ -169,7 +187,7 @@ MatrixXd& Sol::get_dual_costates_in_phase(int iphase)
 // every other collocation method, where the last stored node IS the terminal point.
 MatrixXd& Sol::get_terminal_state_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_terminal_state_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_terminal_state_in_phase", *this, terminal_states)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_terminal_state_in_phase()");
      return terminal_states[iphase-1];
@@ -177,7 +195,7 @@ MatrixXd& Sol::get_terminal_state_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_terminal_costate_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_terminal_costate_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_terminal_costate_in_phase", *this, dual.terminal_costates)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_terminal_costate_in_phase()");
      return dual.terminal_costates[iphase-1];
@@ -185,7 +203,7 @@ MatrixXd& Sol::get_dual_terminal_costate_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_hamiltonian_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_hamiltonian_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_hamiltonian_in_phase", *this, dual.Hamiltonian)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_hamiltonian_in_phase()");
      return dual.Hamiltonian[iphase-1];
@@ -193,7 +211,7 @@ MatrixXd& Sol::get_dual_hamiltonian_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_path_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_path_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_path_in_phase", *this, dual.path)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_path_in_phase()");
      return dual.path[iphase-1];
@@ -201,7 +219,7 @@ MatrixXd& Sol::get_dual_path_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_events_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_events_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_events_in_phase", *this, dual.events)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_dual_events_in_phase()");
      return dual.events[iphase-1];
@@ -209,13 +227,13 @@ MatrixXd& Sol::get_dual_events_in_phase(int iphase)
 
 MatrixXd& Sol::get_dual_linkages()
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_linkages", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_linkages", *this, dual.linkages)) return *e;
      return *dual.linkages;
 }
 
 MatrixXd& Sol::get_relative_local_error_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_relative_local_error_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_relative_local_error_in_phase", *this, relative_errors)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Prob::phases()");
      return relative_errors[iphase-1];
@@ -223,7 +241,7 @@ MatrixXd& Sol::get_relative_local_error_in_phase(int iphase)
 
 MatrixXd& Sol::get_smoothness_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_smoothness_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_smoothness_in_phase", *this, smoothness)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_smoothness_in_phase()");
      return smoothness[iphase-1];
@@ -231,7 +249,7 @@ MatrixXd& Sol::get_smoothness_in_phase(int iphase)
 
 MatrixXd& Sol::get_stationarity_residual_in_phase(int iphase)
 {
-     if (MatrixXd* e = psopt_accessor_guard("Sol::get_stationarity_residual_in_phase", *this)) return *e;
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_stationarity_residual_in_phase", *this, stationarity_residual)) return *e;
      if (iphase <1 || iphase > problem->nphases)
           error_message("incorrect phase index in Sol::get_stationarity_residual_in_phase()");
      return stationarity_residual[iphase-1];

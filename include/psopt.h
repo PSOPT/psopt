@@ -1640,6 +1640,19 @@ void  auto_phase_bounds(Prob& problem);
 
 void  auto_phase_guess(Prob& problem,MatrixXd& controls, MatrixXd& states, MatrixXd& param, MatrixXd& time);
 
+//! Copies a solution into the initial guess of a problem, phase by phase, so
+//  that the next solve starts where the last one finished. This is continuation
+//  across a sequence of related problems -- a parameter scan, a profile
+//  likelihood, a homotopy in a bound or a penalty weight -- and it is what stops
+//  isolated points of such a sequence converging to a different local solution
+//  and putting structure into the resulting curve that the problem does not
+//  have. The guess is interpolated onto the next mesh, so the node counts need
+//  not agree.
+//    \param problem is a Prob structure whose guess is to be overwritten
+//    \param solution is a Sol structure returned by a previous call to psopt()
+//    \sa examples/cracking, which uses it to trace a profile likelihood
+void  set_guess_from_solution(Prob& problem, Sol& solution);
+
 void auto_link_multiple(adouble* linkages, adouble* xad,int nphases, Workspace* workspace);
 
 void auto_link2_multiple(adouble* linkages, adouble* xad,int nphases, Workspace* workspace);

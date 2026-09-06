@@ -134,27 +134,16 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
 }
 
 
+
 ////////////////////////////////////////////////////////////////////////////
-///////////////////  One estimation run  ///////////////////////////////////
+///////////////////  Problem setup, done once  /////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-struct Fit {
-   double   J;              // optimal sum of squared residuals
-   double   theta[3];       // estimated parameters
-   double   lo[3], hi[3];   // 95 per cent Wald limits, when available
-   double   sigma_hat;      // estimated residual standard deviation
-   long     dof;            // number of fitted quantities n_f
-   long     ns;             // number of scalar observations N_s
-   bool     stats_ok;
-   bool     solved;
-   MatrixXd x, t;           // trajectory: printed, plotted, and used to warm start
-};
+// Everything that does not change from one solve to the next. The profile
+// below then changes exactly two numbers per point -- the lower and the upper
+// bound of the parameter being profiled -- and calls psopt() again.
 
-// fixed_index < 0 estimates all three parameters; otherwise parameter
-// fixed_index is held at fixed_value by setting its bounds equal. If warm is
-// not null, its trajectory and parameters are used as the initial guess.
-Fit solve_cracking(int fixed_index, double fixed_value, int print_level,
-                   const Fit* warm = 0)
+void setup_cracking(Prob& problem, Alg& algorithm)
 {
    MatrixXd y1meas(1,21), y2meas(1,21), tmeas(1,21);
    // Measured values of y1
@@ -168,16 +157,6 @@ Fit solve_cracking(int fixed_index, double fixed_value, int print_level,
    // Sampling instants
    tmeas  <<  0.0,0.025,0.05,0.075,0.1,0.125,0.15,0.175,0.2,0.225,0.25, \
               0.3,0.35,0.4,0.45,0.5,0.55,0.65,0.75,0.85,0.95;
-
-
-
-////////////////////////////////////////////////////////////////////////////
-///////////////////  Declare key structures ////////////////////////////////
-////////////////////////////////////////////////////////////////////////////
-
-    Alg  algorithm;
-    Sol  solution;
-    Prob problem;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Register problem name  ////////////////////////////////
@@ -245,13 +224,6 @@ Fit solve_cracking(int fixed_index, double fixed_value, int print_level,
     problem.phases(1).bounds.upper.parameters(1) = 20.0;
     problem.phases(1).bounds.upper.parameters(2) = 20.0;
 
-    // Fixing a parameter for a profile likelihood needs nothing special: equal
-    // bounds remove it from the estimation without changing anything else.
-    if ( fixed_index >= 0 ) {
-        problem.phases(1).bounds.lower.parameters(fixed_index) = fixed_value;
-        problem.phases(1).bounds.upper.parameters(fixed_index) = fixed_value;
-    }
-
 
     problem.phases(1).bounds.lower.events(0) = 1.0;
     problem.phases(1).bounds.upper.events(0) = 1.0;
@@ -277,31 +249,15 @@ Fit solve_cracking(int fixed_index, double fixed_value, int print_level,
 ///////////////////  Define & register initial guess ///////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    if ( warm != 0 && warm->x.cols() > 1 ) {
-        // Continuation: start from the solution at the previous grid point.
-        // Without this the profile below shows spurious bumps -- points at
-        // which the NLP stopped at a local minimum rather than at the
-        // constrained optimum -- and they are indistinguishable, on the plot,
-        // from real structure in the likelihood.
-        problem.phases(1).guess.states = warm->x;
-        problem.phases(1).guess.time   = warm->t;
-        MatrixXd pg(3,1);
-        for (int i = 0; i < 3; i++) pg(i,0) = warm->theta[i];
-        if ( fixed_index >= 0 ) pg(fixed_index,0) = fixed_value;
-        problem.phases(1).guess.parameters = pg;
-    }
-    else {
-        MatrixXd state_guess(2, 40);
+    MatrixXd state_guess(2, 40);
 
-        state_guess.row(0) =  linspace(1.0,0.069, 40);
-        state_guess.row(1) =  linspace(0.30,0.01,  40);
+    state_guess.row(0) =  linspace(1.0,0.069, 40);
+    state_guess.row(1) =  linspace(0.30,0.01,  40);
 
-        problem.phases(1).guess.states         = state_guess;
-        problem.phases(1).guess.time           = linspace(0.0, 0.95, 40);
-        problem.phases(1).guess.parameters     = zeros(3,1);
-        if ( fixed_index >= 0 )
-            problem.phases(1).guess.parameters(fixed_index,0) = fixed_value;
-    }
+
+    problem.phases(1).guess.states         = state_guess;
+    problem.phases(1).guess.time           = linspace(0.0, 0.95, 40);
+    problem.phases(1).guess.parameters     = zeros(3,1);
 
 
 ////////////////////////////////////////////////////////////////////////////
@@ -315,24 +271,29 @@ Fit solve_cracking(int fixed_index, double fixed_value, int print_level,
     algorithm.parameter_statistics        = "yes";
     algorithm.nlp_iter_max                = 1000;
     algorithm.nlp_tolerance               = 1.e-6;
+}
 
-    algorithm.print_level                 = print_level;
-
-////////////////////////////////////////////////////////////////////////////
-///////////////////  Now call PSOPT to solve the problem   //////////////////
-////////////////////////////////////////////////////////////////////////////
-
-    int status = psopt(solution, problem, algorithm);
 
 ////////////////////////////////////////////////////////////////////////////
-///////////  Extract relevant variables from solution structure   //////////
+///////////////////  What one solve reports  ///////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
+struct Fit {
+   double   J;              // optimal sum of squared residuals
+   double   theta[3];       // estimated parameters
+   double   lo[3], hi[3];   // 95 per cent Wald limits, when available
+   double   sigma_hat;      // estimated residual standard deviation
+   long     dof;            // number of fitted quantities n_f
+   long     ns;             // number of scalar observations N_s
+   bool     stats_ok;
+   bool     solved;
+};
+
+Fit read_fit(Sol& solution, int status)
+{
     Fit fit;
     fit.solved = ( status == 0 && solution.error_flag == 0 );
     fit.J      = solution.cost;
-    fit.x      = solution.get_states_in_phase(1);
-    fit.t      = solution.get_time_in_phase(1);
 
     MatrixXd p = solution.get_parameters_in_phase(1);
     for (int i = 0; i < 3; i++) fit.theta[i] = p(i,0);
@@ -347,6 +308,20 @@ Fit solve_cracking(int fixed_index, double fixed_value, int print_level,
         fit.hi[i] = fit.stats_ok ? solution.parameter_confidence_high(i,0) : 0.0;
     }
     return fit;
+}
+
+// Fix a parameter, or release it. Fixing needs no special support: equal bounds
+// remove it from the estimation and leave everything else untouched.
+void fix_parameter(Prob& problem, int k, double value)
+{
+    problem.phases(1).bounds.lower.parameters(k) = value;
+    problem.phases(1).bounds.upper.parameters(k) = value;
+}
+
+void release_parameter(Prob& problem, int k)
+{
+    problem.phases(1).bounds.lower.parameters(k) =  0.0;
+    problem.phases(1).bounds.upper.parameters(k) = 20.0;
 }
 
 
@@ -370,15 +345,24 @@ int main(int argc, char* argv[])
 
     const bool profiling = (index > 0);
 
-    // The nominal fit: all three parameters estimated.
-    Fit nom = solve_cracking(-1, 0.0, profiling ? 0 : 1);
+    Alg  algorithm;
+    Prob problem;
+    setup_cracking(problem, algorithm);
+    algorithm.print_level = profiling ? 0 : 1;
+
+    // The unconstrained fit, with all three parameters estimated. Its solution
+    // is kept in its own Sol for the whole run, because it is the starting
+    // point of both halves of the profile below.
+    Sol nominal;
+    Fit nom = read_fit(nominal, psopt(nominal, problem, algorithm));
 
     printf("\n Estimated parameters\n");
     for (int i = 0; i < 3; i++) printf("   theta%d = %12.6f\n", i+1, nom.theta[i]);
 
     if (!profiling) {
         // Exactly the behaviour this example has always had.
-        MatrixXd x = nom.x, t = nom.t;
+        MatrixXd x = nominal.get_states_in_phase(1);
+        MatrixXd t = nominal.get_time_in_phase(1);
         Save(x,"x.dat");
         Save(t,"t.dat");
         plot(t,x,"Catalytic cracking of gas oil", "time (s)", "states", "y1 y2");
@@ -408,6 +392,42 @@ int main(int argc, char* argv[])
     else
         printf("   Wald 95%% interval  : not available\n");
 
+    MatrixXd grid(1, ngrid), ratio(1, ngrid);
+    vector<Fit> fits(ngrid);
+    for (int j = 0; j < ngrid; j++) grid(0,j) = lo + (hi - lo)*j/(double)(ngrid - 1);
+
+    // The grid point nearest the unconstrained estimate, from which the profile
+    // is traced outwards in both directions.
+    int jstart = 0;
+    for (int j = 1; j < ngrid; j++)
+        if (fabs(grid(0,j) - nom.theta[k]) < fabs(grid(0,jstart) - nom.theta[k]))
+            jstart = j;
+
+    // The profile is traced by CONTINUATION: each solve starts from the
+    // solution of the one before it, and each half starts from the
+    // unconstrained fit. Solving every point from the same cold guess instead
+    // does not fail -- it converges, reports success, and occasionally returns
+    // a different local minimum, which appears on a plot of the profile as
+    // structure in the likelihood that is not there. Two of seventeen points
+    // did exactly that on the y1-only run below, on a profile that is
+    // otherwise flat to two parts in 100,000.
+    Sol solution;
+
+    set_guess_from_solution(problem, nominal);
+    for (int j = jstart; j < ngrid; j++) {
+        fix_parameter(problem, k, grid(0,j));
+        fits[j] = read_fit(solution, psopt(solution, problem, algorithm));
+        set_guess_from_solution(problem, solution);
+    }
+
+    set_guess_from_solution(problem, nominal);
+    for (int j = jstart - 1; j >= 0; j--) {
+        fix_parameter(problem, k, grid(0,j));
+        fits[j] = read_fit(solution, psopt(solution, problem, algorithm));
+        set_guess_from_solution(problem, solution);
+    }
+    release_parameter(problem, k);
+
     char fname[64];
     if (NOBSERVED == 2)
         snprintf(fname, sizeof fname, "cracking_profile_theta%d.dat", index);
@@ -422,28 +442,6 @@ int main(int argc, char* argv[])
 
     printf("\n%12s %18s %12s %10s %10s %10s\n",
            "theta", "J", "J/J*", "theta1", "theta2", "theta3");
-
-    // The profile is traced by continuation, outwards in both directions from
-    // the grid point nearest the unconstrained estimate, each solve starting
-    // from the one before it. Solving each point from the same cold guess
-    // instead leaves occasional points at a local minimum, which appear on the
-    // plot as bumps in the likelihood that are not there.
-    MatrixXd grid(1, ngrid), ratio(1, ngrid);
-    vector<Fit> fits(ngrid);
-    vector<double> Js(ngrid);
-    for (int j = 0; j < ngrid; j++) grid(0,j) = lo + (hi - lo)*j/(double)(ngrid - 1);
-
-    int jstart = 0;
-    for (int j = 1; j < ngrid; j++)
-        if (fabs(grid(0,j) - nom.theta[k]) < fabs(grid(0,jstart) - nom.theta[k]))
-            jstart = j;
-
-    fits[jstart] = solve_cracking(k, grid(0,jstart), 0, &nom);
-    for (int j = jstart+1; j < ngrid; j++)
-        fits[j] = solve_cracking(k, grid(0,j), 0, &fits[j-1]);
-    for (int j = jstart-1; j >= 0; j--)
-        fits[j] = solve_cracking(k, grid(0,j), 0, &fits[j+1]);
-
     for (int j = 0; j < ngrid; j++) {
         const Fit& f = fits[j];
         ratio(0,j) = f.J/nom.J;

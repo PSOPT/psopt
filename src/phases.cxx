@@ -330,6 +330,61 @@ void  auto_phase_bounds(Prob& problem)
 }
 
 
+// Copy a solution into the initial guess of a problem, phase by phase, so that
+// the next solve starts where the last one finished.
+//
+// This is continuation, and it is what makes a SEQUENCE of related solves --- a
+// parameter scan, a profile likelihood, a homotopy in a constraint bound or a
+// penalty weight --- behave as one calculation rather than as many independent
+// ones. PSOPT already does exactly this internally between mesh refinement
+// iterations, which is one reason a refinement sequence is more robust than a
+// single solve on the fine mesh; there was no way for a user to do it across
+// problems without writing the copy by hand.
+//
+// The failure it prevents is not a failure to converge. Started from a common
+// cold guess, most points of a scan reach the same solution branch and a few do
+// not: they converge, report success, and return a different local minimum. On
+// a plot those points are indistinguishable from real structure in whatever is
+// being scanned. Building the profile likelihood of examples/cracking, two of
+// seventeen points did this on a profile that is otherwise flat to two parts in
+// 100,000, returning objective ratios of 1.10 and 2.15.
+//
+// The guess is interpolated onto the mesh of the next solve, so the two need not
+// have the same number of nodes. Phases with no controls or no static parameters
+// are handled; a phase whose solution is empty is left alone, so that a partial
+// solution does not overwrite a guess the user has supplied.
+void  set_guess_from_solution(Prob& problem, Sol& solution)
+{
+    // A Sol that has not been through psopt() carries nothing. Returning
+    // quietly, rather than going through the accessors, leaves the guess the
+    // user supplied in place: a helper whose whole job is to copy what is there
+    // should not stop the program because there is nothing there yet.
+    if ( solution.states == NULL || solution.nodes == NULL ) return;
+
+    for (int i = 1; i <= problem.nphases; i++) {
+
+        MatrixXd& x = solution.get_states_in_phase(i);
+        MatrixXd& t = solution.get_time_in_phase(i);
+
+        if ( x.cols() < 2 || t.cols() < 2 ) continue;   // nothing usable here
+
+        problem.phases(i).guess.states = x;
+        problem.phases(i).guess.time   = t;
+
+        if ( problem.phases(i).ncontrols > 0 ) {
+            MatrixXd& u = solution.get_controls_in_phase(i);
+            if ( u.cols() == x.cols() ) problem.phases(i).guess.controls = u;
+        }
+
+        if ( problem.phases(i).nparameters > 0 ) {
+            MatrixXd& p = solution.get_parameters_in_phase(i);
+            if ( p.rows() == problem.phases(i).nparameters )
+                problem.phases(i).guess.parameters = p;
+        }
+    }
+}
+
+
 void  auto_phase_guess(Prob& problem, MatrixXd& controls, MatrixXd& states, MatrixXd& param, MatrixXd& time)
 {
         int i,j;
