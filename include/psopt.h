@@ -822,6 +822,7 @@ public:
       integrated_cost = NULL;
       xad = NULL;
       mesh_stats = NULL;
+      terminal_states = NULL;
       // Safe defaults so the accessor guard is well-defined even on a Sol that has
       // not yet been through psopt(): no error recorded, fail-fast policy.
       error_flag = 0;
@@ -842,6 +843,7 @@ public:
       if (this->endpoint_cost) delete [] this->endpoint_cost;
       if (this->integrated_cost) delete [] this->integrated_cost;
       if (this->mesh_stats) delete [] this->mesh_stats;
+      if (this->terminal_states) delete [] this->terminal_states;
    }
    // A Sol owns raw arrays sized by the phase count (and mesh_stats by the number
    // of mesh-refinement iterations, which needs the Alg and is not recoverable
@@ -854,6 +856,12 @@ public:
    sol_str(const sol_str&)            = delete;
    sol_str& operator=(const sol_str&) = delete;
    MatrixXd *states;
+
+   // Gauss: x(+1), the non-collocated terminal state. It is a genuine NLP variable --
+   // the events are imposed on it -- but it lives outside the norder+1 stored nodes,
+   // so it is captured here and appended to the reported trajectory once the mesh loop
+   // is done. Empty for every other collocation method.
+   MatrixXd *terminal_states;
 
    MatrixXd *controls;
    MatrixXd *nodes;
@@ -927,6 +935,7 @@ public:
    MatrixXd& get_hs_time_in_phase(int iphase);
    MatrixXd& get_parameters_in_phase(int iphase);
    MatrixXd& get_dual_costates_in_phase(int iphase);
+   MatrixXd& get_terminal_state_in_phase(int iphase);
    MatrixXd& get_dual_terminal_costate_in_phase(int iphase);
    MatrixXd& get_dual_hamiltonian_in_phase(int iphase);
    MatrixXd& get_dual_path_in_phase(int iphase);
@@ -1250,6 +1259,7 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad, adouble t0, a
 void get_gauss_terminal_states(adouble* states, adouble* xad, int iphase, Workspace* workspace);
 
 void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& algorithm, Workspace* workspace);
+void append_gauss_terminal_point(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
 
 double ff( MatrixXd& x );
 

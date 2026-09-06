@@ -231,6 +231,164 @@ static void recover_costates_adjoint(Prob& problem, Alg& algorithm, Sol& solutio
 
 
 
+// ---------------------------------------------------------------------------------
+// Gauss: put the terminal point into the reported solution.
+//
+// The Gauss (Legendre-Gauss) scheme collocates strictly interior points. PSOPT stores
+// norder+1 nodes per phase -- the initial breakpoint plus the norder Gauss points --
+// and x(+1) is an appended NLP variable, which is where the event constraints are
+// correctly imposed. It was not, however, in anything the solution accessors returned,
+// so get_states_in_phase, get_controls_in_phase and get_time_in_phase handed back a
+// trajectory that stopped at the last Gauss node.
+//
+// That is a long way short. The largest Legendre-Gauss node on 40 points is
+// tau = 0.99814738, so on the linear tangent steering problem of the book the reported
+// trajectory ended 0.39 s and 3 km early and its last state read y = 407.999044,
+// vx = 7.653981, vy = 4.919e-3 against required terminal values of 408, 7.66 and 0.
+// That looks exactly like a converged-to-the-wrong-answer failure and is nothing of the
+// kind: solution.cost agreed with the Radau run to eight decimals, and integrating the
+// returned control on to tf reproduced the Radau endpoint. On a three-interval hp mesh
+// it is worse -- the last stored node sits at tau = 0.98809 -- because the final
+// interval carries fewer Gauss points.
+//
+// Radau has the same non-collocated terminal point and does report it, so the two
+// siblings disagreed inside one library. This is also the same species as the Gauss
+// breakpoint controls, which used to be reported as the barrier's artefact rather than
+// as the control the dynamics saw.
+//
+// The terminal point is appended here, after the mesh loop, so that nothing which
+// drives the solve can see the wider arrays: the hot start, the mesh refinement, the
+// error estimate and the costate recovery have all finished with them, and
+// workspace->prev_states and its siblings keep the unaugmented copies. Every array
+// that solution_diagnostics pairs with the trajectory is widened together with it, or
+// its column loops would run off the end of the ones left behind.
+//
+// The values are exact where an exact value exists. The state is the NLP variable; the
+// costate is lambda(+1), already recovered as dual.terminal_costates. The control at
+// tau = +1 is not a variable -- it enters no defect -- so it is the Lagrange interpolant
+// of the last interval's own collocation controls, which is what the dynamics saw and
+// the same construction used for the breakpoints. The path multiplier is extrapolated
+// linearly, as the Lobatto endpoints already are, since no path constraint is imposed
+// there either.
+// ---------------------------------------------------------------------------------
+void append_gauss_terminal_point(Prob& problem, Alg& algorithm, Sol& solution,
+                                 Workspace* workspace)
+{
+    if ( algorithm.collocation_method != "Gauss" ) return;
+    if ( solution.terminal_states == NULL )        return;
+
+    for (int i = 0; i < problem.nphases; i++) {
+
+        const int  nstates   = problem.phase[i].nstates;
+        const int  ncontrols = problem.phase[i].ncontrols;
+        const int  npath     = problem.phase[i].npath;
+        const int  norder    = problem.phase[i].current_number_of_intervals;
+        const long M         = solution.nodes[i].cols();
+
+        if ( M < 2 ) continue;
+        if ( solution.terminal_states[i].rows() != nstates ) continue;   // never captured
+
+        const double tf = (*workspace->prev_tf)(i);
+        const double t_last = solution.nodes[i](0, M-1);
+        // Nothing to do if the terminal point is already the last stored node, which is
+        // how a second call -- or a scheme that stores it -- is recognised.
+        if ( t_last >= tf - 1.0e-13*(1.0 + std::fabs(tf)) ) continue;
+
+        // ---- the last interval, whose interpolant carries tau = +1 ----
+        const MatrixXd& sn = workspace->snodes[i];
+        const int K  = hp_mesh_active(problem.phase[i]) ? hp_num_intervals(problem.phase[i]) : 1;
+        int s = 0, nj = norder;
+        for (int j = 0; j < K; j++) {
+            nj = hp_mesh_active(problem.phase[i]) ? hp_interval_order(problem.phase[i], j) : norder;
+            if ( j == K-1 ) break;
+            s += nj + 1;
+        }
+        const bool interp_ok = ( nj >= 1 && s + nj <= norder && sn.size() >= norder+1 );
+
+        // ---- nodes ----
+        { MatrixXd tmp(1, M+1); tmp.leftCols(M) = solution.nodes[i]; tmp(0,M) = tf;
+          solution.nodes[i] = tmp; }
+
+        // ---- states ----
+        { MatrixXd tmp(nstates, M+1); tmp.leftCols(M) = solution.states[i];
+          tmp.col(M) = solution.terminal_states[i];
+          solution.states[i] = tmp; }
+
+        // ---- controls: the last interval's Lagrange interpolant at tau = +1 ----
+        if ( ncontrols > 0 ) {
+            MatrixXd tmp(ncontrols, M+1); tmp.leftCols(M) = solution.controls[i];
+            for (int l = 0; l < ncontrols; l++) {
+                double val = (solution.controls[i])(l, M-1);      // fallback: hold
+                if ( interp_ok ) {
+                    val = 0.0;
+                    for (int m = s+1; m <= s+nj; m++) {
+                        double wL = 1.0;
+                        for (int q = s+1; q <= s+nj; q++) if (q != m) wL *= (1.0 - sn(q))/(sn(m) - sn(q));
+                        val += wL*(solution.controls[i])(l, m);
+                    }
+                }
+                tmp(l, M) = val;
+            }
+            solution.controls[i] = tmp;
+        }
+
+        // ---- costates: lambda(+1), already recovered ----
+        if ( solution.dual.costates != NULL && solution.dual.costates[i].cols() == M ) {
+            MatrixXd tmp(nstates, M+1); tmp.leftCols(M) = solution.dual.costates[i];
+            if ( solution.dual.terminal_costates != NULL
+                 && solution.dual.terminal_costates[i].rows() == nstates )
+                tmp.col(M) = solution.dual.terminal_costates[i];
+            else
+                tmp.col(M) = solution.dual.costates[i].col(M-1);
+            solution.dual.costates[i] = tmp;
+        }
+
+        // ---- the running cost and the Hamiltonian at the terminal point ----
+        {
+            std::vector<adouble> st(std::max(nstates,1)), ct(std::max(ncontrols,1)),
+                                 pa(std::max(problem.phase[i].nparameters,1)),
+                                 de(std::max(nstates,1)), pth(std::max(npath,1));
+            for (int l = 0; l < nstates;   l++) st[l] = (solution.states[i])(l, M);
+            for (int c = 0; c < ncontrols; c++) ct[c] = (solution.controls[i])(c, M);
+            for (int l = 0; l < problem.phase[i].nparameters; l++)
+                pa[l] = (solution.parameters[i])(l);
+            adouble tm = tf;
+            double L = (problem.integrand_cost)
+                ? problem.integrand_cost(&st[0], &ct[0], &pa[0], tm, solution.xad, i+1, workspace).value()
+                : 0.0;
+            problem.dae(&de[0], &pth[0], &st[0], &ct[0], &pa[0], tm, solution.xad, i+1, workspace);
+
+            if ( solution.integrand_cost != NULL && solution.integrand_cost[i].cols() == M ) {
+                MatrixXd tmp(1, M+1); tmp.leftCols(M) = solution.integrand_cost[i];
+                tmp(0,M) = L; solution.integrand_cost[i] = tmp;
+            }
+            if ( solution.dual.Hamiltonian != NULL && solution.dual.Hamiltonian[i].cols() == M ) {
+                double H = L;
+                for (int j = 0; j < nstates; j++)
+                    H += (solution.dual.costates[i])(j, M) * de[j].value();
+                MatrixXd tmp(1, M+1); tmp.leftCols(M) = solution.dual.Hamiltonian[i];
+                tmp(0,M) = H; solution.dual.Hamiltonian[i] = tmp;
+            }
+        }
+
+        // ---- path multipliers: no constraint is imposed at tau = +1, so extrapolate ----
+        if ( npath > 0 && solution.dual.path != NULL && solution.dual.path[i].cols() == M ) {
+            MatrixXd tmp(npath, M+1); tmp.leftCols(M) = solution.dual.path[i];
+            const double d = solution.nodes[i](0,M-1) - solution.nodes[i](0,M-2);
+            const double w = ( d > 0.0 ) ? (tf - solution.nodes[i](0,M-1))/d : 0.0;
+            tmp.col(M) = solution.dual.path[i].col(M-1)
+                       + w*( solution.dual.path[i].col(M-1) - solution.dual.path[i].col(M-2) );
+            solution.dual.path[i] = tmp;
+        }
+
+        // ---- stationarity residual: written by solution_diagnostics over every column ----
+        if ( solution.stationarity_residual != NULL && ncontrols > 0 )
+            (solution.stationarity_residual[i]).resize(ncontrols, M+1);
+    }
+}
+
+
+
 
 
 int psopt(Sol& solution, Prob& problem, Alg& algorithm)
@@ -1521,6 +1679,10 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 
   } // End of mesh refinement iterations loop
+
+  // Before anything reports the solution, and after everything that drives the solve has
+  // finished reading the unaugmented arrays.
+  append_gauss_terminal_point(problem, algorithm, solution, workspace);
 
   solution.cpu_time = PSOPT_extras::toc();
 

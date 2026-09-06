@@ -163,6 +163,18 @@ MatrixXd& Sol::get_dual_costates_in_phase(int iphase)
      return dual.costates[iphase-1];
 }
 
+// Gauss: the non-collocated terminal state x(+1). Since the terminal point is appended
+// to the reported trajectory this is also solution.states[i].col(last), and the accessor
+// exists so that a caller can ask for it without knowing which method was used. Empty for
+// every other collocation method, where the last stored node IS the terminal point.
+MatrixXd& Sol::get_terminal_state_in_phase(int iphase)
+{
+     if (MatrixXd* e = psopt_accessor_guard("Sol::get_terminal_state_in_phase", *this)) return *e;
+     if (iphase <1 || iphase > problem->nphases)
+          error_message("incorrect phase index in Sol::get_terminal_state_in_phase()");
+     return terminal_states[iphase-1];
+}
+
 MatrixXd& Sol::get_dual_terminal_costate_in_phase(int iphase)
 {
      if (MatrixXd* e = psopt_accessor_guard("Sol::get_dual_terminal_costate_in_phase", *this)) return *e;
@@ -232,6 +244,7 @@ void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace
    int i;
 
    solution.states      = new MatrixXd[nphases];           
+   solution.terminal_states = new MatrixXd[nphases];       
    solution.controls    = new MatrixXd[nphases];           
    solution.nodes       = new MatrixXd[nphases];           
    solution.integrand_cost= new MatrixXd[nphases];         
@@ -304,6 +317,9 @@ void resize_solution(Sol& solution, Prob& problem, Alg& algorithm)
         int npath         = problem.phase[i].npath;
 
   	(solution.states[i]).resize( nstates, current_number_of_intervals+1);
+        // Gauss only; left empty (0 x 0) for every other method, which is how
+        // append_gauss_terminal_point and the accessor tell the two apart.
+        if (solution.terminal_states) (solution.terminal_states[i]).resize(0,0);
    	(solution.controls[i]).resize(ncontrols, current_number_of_intervals+1);
    	(solution.nodes[i]).resize(1, current_number_of_intervals+1);
    	(solution.integrand_cost[i]).resize(1, current_number_of_intervals+1);

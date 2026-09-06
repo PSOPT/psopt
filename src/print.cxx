@@ -728,7 +728,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
     fprintf(outfile,"\n*****************************************  PHASE %i GRID POINTS (TIME) ***********************************", i);
 
-      for (k=0; k< problem.phases(i).current_number_of_intervals+1;k++) { // EIGEN_UPDATE
+      for (k=0; k< solution.nodes[i-1].cols();k++) { // EIGEN_UPDATE
 
 	    fprintf(outfile,"\n%e", solution.nodes[i-1](k));
 
@@ -741,7 +741,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
     fprintf(outfile,"\n*****************************************  PHASE %i CONTROLS *******************************************", i);
 
-      for (k=0; k< problem.phases(i).current_number_of_intervals+1;k++) { // EIGEN_UPDATE
+      for (k=0; k< solution.nodes[i-1].cols();k++) { // EIGEN_UPDATE
 	  fprintf(outfile,"\n");
 	  for(j=0;j<problem.phases(i).ncontrols;j++) {
 	    fprintf(outfile,"%e\t", solution.controls[i-1](j,k));
@@ -756,7 +756,7 @@ void print_solution_summary(Prob& problem, Alg& algorithm, Sol& solution, Worksp
 
     fprintf(outfile,"\n*****************************************  PHASE %i STATES *******************************************", i);
 
-      for (k=0; k< problem.phases(i).current_number_of_intervals+1;k++) {  // EIGEN_UPDATE
+      for (k=0; k< solution.nodes[i-1].cols();k++) {  // EIGEN_UPDATE
 	  fprintf(outfile,"\n");
 	  for(j=0;j<problem.phases(i).nstates;j++) {
 	    fprintf(outfile,"%e\t", solution.states[i-1](j,k));

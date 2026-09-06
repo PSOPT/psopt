@@ -619,6 +619,20 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
   	   (solution.nodes[i])(0,k)          =  convert_to_original_time( (workspace->snodes[i])(k), t0, tf );
 	}
 
+        // Gauss collocates strictly interior points, so x(+1) is an appended NLP variable
+        // rather than a stored node -- the events are imposed on it (see
+        // get_gauss_terminal_states) but the loop above cannot reach it. Capture it here,
+        // where the decision vector and the scalings are in scope;
+        // append_gauss_terminal_point puts it into the reported trajectory once the mesh
+        // loop has finished with the unaugmented arrays.
+        if ( algorithm.collocation_method == "Gauss" && solution.terminal_states != NULL ) {
+            int xf_offset = (nstates+ncontrols)*(norder+1) + nparam;
+            (solution.terminal_states[i]).resize(nstates,1);
+            for (int j=0;j<nstates;j++)
+                (solution.terminal_states[i])(j,0) =
+                    x(iphase_offset + xf_offset + j)/state_scaling(j);
+        }
+
         // The complete Hermite-Simpson control history: the midpoint controls, which live
         // in their own block after the parameters, interleaved with the node controls into
         // one strictly increasing sequence for Sol::get_hs_controls_in_phase. The node
