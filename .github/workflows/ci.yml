@@ -32,7 +32,7 @@ jobs:
         build_type: [Release]    # add Debug if desired
 
     env:
-      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch,manutec,cracking,delay1,geodesic,climb"
+      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch,manutec,cracking,delay1,geodesic,climb,mineng_di"
       # One reference cost per example, in the same order, compared with a relative
       # tolerance of 1e-3 by .github/scripts/run_examples.py. "none" marks a run-only
       # example: it must still build and converge, but its cost is not checked.
@@ -49,6 +49,26 @@ jobs:
       #                  exactly outside PSOPT to give 2.52572
       #   geodesic       an equality path constraint; the exact geodesic on this
       #                  spheroid is 5549.6819 km by Karney's algorithm
+      #   mineng_di      the minimum-energy double integrator. Its reference is not a
+      #                  measured number at all: the problem has a closed-form solution,
+      #                  u* = 6 - 12t with J* = 6 exactly, and the transcription is exact
+      #                  on it -- the states are cubic, the control linear and the cost
+      #                  integrand quadratic, all inside what a Legendre interpolant on
+      #                  40 nodes represents and Gauss-Lobatto quadrature integrates
+      #                  without error. Every other entry in this list is a value some
+      #                  earlier build produced and a later one has to reproduce; this
+      #                  one is a value arithmetic produces, so a departure from it is
+      #                  unambiguously a defect and not a change of mesh. It runs in a
+      #                  third of a second.
+      #
+      #                  The example itself checks a great deal more than its cost --
+      #                  both costates against l1* = -12 and l2* = 12t - 6, the
+      #                  stationarity residual dH/du and the constancy of the
+      #                  Hamiltonian -- and prints all of it. None of that is checked
+      #                  here, because this script reads only the solver summary; it is
+      #                  checked by the Costates and GaussTerminal tests that ctest runs
+      #                  a few steps above, on the same problem.
+      #
       #   climb          1D and 2D interpolation from look-up tables inside the
       #                  dynamics, with automatic differentiation. The interval
       #                  selection in the library's spline routines has to be
@@ -92,7 +112,7 @@ jobs:
       # reference is moved with it. The other nine are re-measured and unchanged;
       # the Hermite-Simpson cost-quadrature correction of the same day touches none
       # of them, since none has a running cost that is nonlinear in the state.
-      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,5.228971e-03,2.525738e+00,5.549682e+03,3.210142e+02"
+      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,5.228971e-03,2.525738e+00,5.549682e+03,3.210142e+02,6.000000e+00"
 
     steps:
       - uses: actions/checkout@v5
