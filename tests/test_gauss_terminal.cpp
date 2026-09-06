@@ -44,7 +44,7 @@ void events(adouble* e, adouble* i0, adouble* xf, adouble* p, adouble& t0, adoub
 void linkages(adouble* l, adouble* xad, Workspace* w) { }
 
 struct Result {
-    MatrixXd x, u, t, lam, terminal;
+    MatrixXd x, u, t, lam, terminal, H;
     double   J = 0.0;
     bool     ok = false;
 };
@@ -110,6 +110,7 @@ static Result solve(const std::string& method, int nodes, bool hp = false)
     r.t        = solution.get_time_in_phase(1);
     r.lam      = solution.get_dual_costates_in_phase(1);
     r.terminal = solution.get_terminal_state_in_phase(1);
+    r.H        = solution.get_dual_hamiltonian_in_phase(1);
     r.J        = solution.cost;
     r.ok       = true;
     return r;
@@ -193,4 +194,60 @@ TEST(GaussTerminal, GaussAndRadauAgreeOnWhatTheTrajectoryCovers)
     const auto dr = d;
     EXPECT_EQ(dr.terminal.size(), 0)
         << "get_terminal_state_in_phase is empty when the last stored node IS the terminal";
+}
+
+
+// The Hamiltonian at each Gauss interval's left breakpoint.
+//
+// H = L + lambda^T f is formed from solution.integrand_cost, and that array is filled
+// by the objective evaluation from the raw NLP controls. At a Gauss breakpoint the
+// control is a variable that appears in no defect and no quadrature weight, so the
+// barrier alone decides it and it comes back at the midpoint of its bounds. The
+// reported control is corrected for that -- it is replaced by the interval's own
+// interpolant -- but the running cost was left holding the artefact's value, because
+// ff_num re-evaluates the objective from the decision vector immediately afterwards.
+//
+// This problem is autonomous with a fixed final time, so H is constant, and its exact
+// value is -18. The control is bounded in [-50,50], so the artefact is 0 and the
+// running cost u^2/2 with it: the breakpoint reported H = -36 while every other node
+// reported -18, and a Hamiltonian that is constant, and is, read as though it were not.
+//
+// The tolerance is 1e-6 against a defect of 18.
+TEST(GaussTerminal, HamiltonianIsConstantIncludingAtTheBreakpoints)
+{
+    const auto r = gauss_terminal_test::solve("Gauss", 40);
+    ASSERT_TRUE(r.ok);
+    const long M = r.t.cols();
+    ASSERT_EQ(r.H.cols(), M) << "the Hamiltonian must span the same nodes as the trajectory";
+
+    for (long k = 0; k < M; k++)
+        EXPECT_NEAR(r.H(0,k), -18.0, 1.0e-6)
+            << "H at t = " << r.t(0,k) << " (node " << k << " of " << M << ")";
+}
+
+// The same on a three-interval hp mesh, where there are three breakpoints rather than
+// one and each carries its own artefact.
+TEST(GaussTerminal, HamiltonianIsConstantOnAnHpMesh)
+{
+    const auto r = gauss_terminal_test::solve("Gauss", 28, /*hp=*/true);
+    ASSERT_TRUE(r.ok);
+    const long M = r.t.cols();
+    ASSERT_EQ(r.H.cols(), M);
+
+    for (long k = 0; k < M; k++)
+        EXPECT_NEAR(r.H(0,k), -18.0, 1.0e-6)
+            << "H at t = " << r.t(0,k) << " (node " << k << " of " << M << ")";
+}
+
+// The schemes that collocate their first node never had the problem, and must not
+// acquire one.
+TEST(GaussTerminal, HamiltonianIsConstantUnderTheOtherSchemes)
+{
+    for (const std::string m : { std::string("Legendre"), std::string("Radau"),
+                                 std::string("Hermite-Simpson") }) {
+        const auto r = gauss_terminal_test::solve(m, 40);
+        ASSERT_TRUE(r.ok) << m;
+        for (long k = 0; k < r.t.cols(); k++)
+            EXPECT_NEAR(r.H(0,k), -18.0, 1.0e-5) << m << " at t = " << r.t(0,k);
+    }
 }

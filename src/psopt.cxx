@@ -1012,6 +1012,48 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     solution.cost = ff_num(x0, workspace)/problem.scale.objective;
 
+    // Gauss: the running cost at each interval's left breakpoint has to be recomputed,
+    // for the same reason the control there had to be. The loop above replaced the
+    // barrier's artefact with the interval's own interpolant, but ff_num immediately
+    // re-evaluates the objective from the decision vector and puts the artefact's value
+    // straight back into solution.integrand_cost -- which is the array the Hamiltonian is
+    // built from, so H at every Gauss breakpoint was L(u_artefact) + lambda.f rather than
+    // L(u) + lambda.f. On examples/mineng_di, whose control is bounded in [-50,50] so the
+    // unconstrained variable comes back at 0 and the running cost u^2/2 with it, that made
+    // the reported H(t_0) = -36 against a true -18: a Hamiltonian that is supposed to be
+    // constant, and is, reading as though it were not.
+    //
+    // Only the breakpoints are touched, and only in the reported array. The objective is
+    // solution.integrated_cost, which NLP_objective forms from the quadrature sum and not
+    // from this array, and the Gauss weight at a breakpoint is zero in any case, so no cost
+    // and no derivative moves.
+    if ( algorithm.collocation_method == "Gauss" ) {
+        for(int ip=0; ip<nphases; ip++) {
+            if ( problem.phase[ip].zero_cost_integrand || problem.integrand_cost == NULL ) continue;
+            const int nstates   = problem.phase[ip].nstates;
+            const int ncontrols = problem.phase[ip].ncontrols;
+            const int nparam    = problem.phase[ip].nparameters;
+            const int norder    = problem.phase[ip].current_number_of_intervals;
+            if ( solution.integrand_cost[ip].cols() < norder+1 ) continue;
+            const int K = hp_mesh_active(problem.phase[ip]) ? hp_num_intervals(problem.phase[ip]) : 1;
+            std::vector<adouble> st(std::max(nstates,1)), ct(std::max(ncontrols,1)),
+                                 pa(std::max(nparam,1));
+            for (int l=0; l<nparam; l++) pa[l] = (solution.parameters[ip])(l);
+            int sidx = 0;
+            for (int j=0; j<K; j++) {
+                const int nj = hp_mesh_active(problem.phase[ip])
+                               ? hp_interval_order(problem.phase[ip], j) : norder;
+                if ( nj < 1 || sidx > norder ) break;
+                for (int l=0; l<nstates;   l++) st[l] = (solution.states[ip])(l, sidx);
+                for (int c=0; c<ncontrols; c++) ct[c] = (solution.controls[ip])(c, sidx);
+                adouble tb = (solution.nodes[ip])(0, sidx);
+                (solution.integrand_cost[ip])(0, sidx) =
+                    problem.integrand_cost(&st[0], &ct[0], &pa[0], tb, solution.xad, ip+1, workspace).value();
+                sidx += nj + 1;
+            }
+        }
+    }
+
     snprintf(workspace->text,sizeof(workspace->text),"\nReturned (unscaled) cost function value: %e", solution.cost);
     psopt_print(workspace,workspace->text);
     x_phase_offset   = 0;
