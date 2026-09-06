@@ -1218,19 +1218,33 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
    	  // the legacy near-endpoint linear-extrapolation workaround, needed only when the old
    	  // pi-weight + 1/sqrt(1-t^2) map blew up at the ends, has been removed.)
 
-    	  if ( algorithm.collocation_method == "Legendre" ) {
+    	  if ( algorithm.collocation_method == "Legendre"
+    	       || algorithm.collocation_method == "Chebyshev" ) {
                 // ------------------------------------------------------------------
-                // Smoothing the LGL costate.
+                // Smoothing the Lobatto costate, LGL and CGL alike.
                 //
-                // The covector map lambda_k = nu_k/w_k leaves the Legendre costate with a
-                // node-to-node alternating component -- a genuine and well known defect of
-                // the Lobatto schemes, not of this implementation -- and a filter is the
-                // usual remedy (Fahroo and Ross, "Costate estimation by a Legendre
+                // The covector map lambda_k = nu_k/w_k leaves the costate of a Lobatto
+                // scheme with a node-to-node alternating component -- a genuine and well
+                // known defect of those schemes, not of this implementation -- and a filter
+                // is the usual remedy (Fahroo and Ross, "Costate estimation by a Legendre
                 // pseudospectral method", J. Guidance, Control and Dynamics 24(2), 2001).
                 // On the linear tangent steering problem at 40 nodes the raw costate
                 // oscillates about the true value with an amplitude of 1.7 at the centre of
                 // the mesh, growing to 5.5 near the ends, and the two endpoint values are
                 // out by 13.7 on a costate whose true value is the constant -38.70.
+                //
+                // Chebyshev was left out of this for no reason anyone recorded, and it has
+                // the same defect in the same shape: on examples/mineng_di, whose adjoint
+                // lambda_1 is the constant -12 and which CGL solves exactly, the error at
+                // 40 nodes alternates in sign at every node, is smallest at the centre of
+                // the mesh and largest at the two ends, reaching 4.0e-6. Applying this
+                // filter to it is a uniform improvement wherever it has been measured --
+                // a factor of ten on both costates of mineng_di at 10, 20, 40 and 80 nodes,
+                // three to ten on a three-interval hp mesh, and 10.3 on the linear tangent
+                // steering costates at each of six initial guesses, never once worse.
+                // examples/launch is the only shipped example that uses CGL and its
+                // objective and mesh history are unchanged, as they must be: the costates
+                // are computed after the solve and are not fed back.
                 //
                 // The filter used to be the fixed stencil (1/4, 1/2, 1/4) at the interior
                 // nodes and a plain average of the last two values at each end. Both parts

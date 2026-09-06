@@ -324,3 +324,34 @@ TEST(Costates, UserScalingIsUnitScalingAndRecoversTheSameCostate)
         EXPECT_NEAR(lam(1,k), 12.0*tt(0,k) - 6.0, 1.0e-3) << "lambda2 at t = " << tt(0,k);
     }
 }
+
+
+// The Chebyshev costate carries the same node-to-node alternating mode as the
+// Legendre one -- both are Lobatto schemes -- and until now PSOPT smoothed only the
+// Legendre. On this problem CGL is exact, lambda1 is the constant -12 and lambda2 is
+// linear, so the whole of the reported costate error is the covector map's and the
+// filter's, and the unsmoothed error alternates in sign at every node, smallest at the
+// centre of the mesh and largest at the two ends: 4.0e-6 at 40 nodes, which is what
+// this test's tolerance is set against. Smoothed it is 3.9e-7.
+//
+// The tolerance is 1e-6 on a costate of size 12. It fails on the unsmoothed map by a
+// factor of four, which is a narrower margin than this file's other tests carry, and
+// deliberately so: the point is not that CGL is inaccurate -- 4e-6 is not -- but that
+// it was carrying a defect its sibling had had corrected, and a test that only trips
+// on something gross would not have said so.
+TEST(Costates, ChebyshevGetsTheSameSmoothingAsLegendre)
+{
+    MatrixXd lam, tt, uu;  double J = 0.0;
+    ASSERT_TRUE(costate_test::solve_di("Chebyshev", 40, lam, tt, uu, J));
+    EXPECT_NEAR(J, 6.0, 1.0e-8) << "the CGL solution of this problem is exact";
+
+    for (int k = 0; k < lam.cols(); k++) {
+        EXPECT_NEAR(lam(0,k), -12.0, 1.0e-6)
+            << "lambda1 at t = " << tt(0,k) << " (constant adjoint)";
+        EXPECT_NEAR(lam(1,k), 12.0*tt(0,k) - 6.0, 1.0e-6)
+            << "lambda2 at t = " << tt(0,k) << " (linear adjoint)";
+    }
+    for (int k = 0; k < lam.cols(); k++)
+        EXPECT_NEAR(uu(0,k) + lam(1,k), 0.0, 1.0e-5)
+            << "stationarity dH/du at t = " << tt(0,k);
+}
