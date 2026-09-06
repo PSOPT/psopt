@@ -62,14 +62,22 @@
 ////////     E1 = int (Fm v + L_e) dt        (from the powertrain side)
 ////////     E2 = int (L_v + L_e) dt         (from the dissipation side)
 ////////
-//////// They differ by the change in kinetic energy, which is zero here. So
-//////// |E1 - E2| at the end is a check on the whole transcription that needs
-//////// no reference solution and no closed form. It is what a user has on a
-//////// problem nobody has solved before.
+//////// They differ by the change in kinetic energy at EVERY instant, and the
+//////// largest discrepancy over the mesh is a check on the whole transcription
+//////// that needs no reference solution and no closed form. It is what a user
+//////// has on a problem nobody has solved before.
 ////////
-//////// Usage:   ecodriving [w] [L0] [nodes]
+//////// Note the word "mesh". At t = T the two integrals agree to machine
+//////// precision whatever the mesh, because the periodicity condition makes
+//////// both sides zero and the transcription enforces that exactly. The
+//////// endpoint is therefore not a check at all; it reports success on any
+//////// discretisation whatever. A conservation law evaluated where the
+//////// boundary conditions already force agreement measures nothing.
+////////
+//////// Usage:   ecodriving [w] [L0] [nodes] [collocation_method]
 ////////          ecodriving pareto [nodes]
 ////////          ecodriving corner [nodes]
+////////          ecodriving eq28   [nodes]
 ////////
 ////////     w        energy weight in [0,1] (default 0)
 ////////     L0       normalising constant in kW (default 6)
@@ -662,10 +670,19 @@ static void report_one(const Run& r)
 
 // A tag that identifies a run by its weight, so that no run of the scan can
 // write over the file of another, or over the single run's.
+//
+// The weight is written as three digits rather than as a decimal -- _w050 and
+// not _w0.5 -- because PSOPT builds the name of its mesh statistics file by
+// cutting the output file name at the first dot, so "ecodriving_w0.5.txt" and
+// "ecodriving_w0.txt" produce the same mesh statistics file and the later run
+// silently replaces the earlier one. That is the same hazard the naming scheme
+// exists to prevent, arriving through a different door: it is not enough for a
+// name to be distinct, it must still be distinct after everything downstream
+// has finished trimming it.
 static string weight_tag(double w)
 {
     char buf[32];
-    snprintf(buf, sizeof buf, "_w%g", w);
+    snprintf(buf, sizeof buf, "_w%03d", (int) lround(w*100.0));
     return string(buf);
 }
 
@@ -702,6 +719,23 @@ static int run_pareto(int nnodes, double L0)
         setup(prob2, alg2, nnodes);
         alg2.print_level = 0;
         cold[k] = run_one(prob2, alg2, sol2, ws[k], L0, "_cold", false);
+    }
+
+    // The frontier itself, in a form a plotting script can read.
+    FILE* fd = fopen("ecodriving_pareto.dat", "w");
+    if (fd) {
+        fprintf(fd, "# w  lambda  mean_speed_kmh  energy_kWh_per_km  "
+                    "floor_kWh_per_km  time_s  cold_mean_kmh  cold_energy\n");
+        for (int k = 0; k < nw; k++) {
+            if (!runs[k].ok) continue;
+            const double lam = (ws[k] < 1.0) ? ws[k]/((1.0-ws[k])*L0) : -1.0;
+            fprintf(fd, "%g  %.6e  %.6e  %.6e  %.6e  %.6e  %.6e  %.6e\n",
+                    ws[k], lam, runs[k].vmean, runs[k].energy,
+                    energy_floor(runs[k].vmean, false), runs[k].T,
+                    cold[k].ok ? cold[k].vmean  : 0.0,
+                    cold[k].ok ? cold[k].energy : 0.0);
+        }
+        fclose(fd);
     }
 
     FILE* fp = fopen("ecodriving_pareto.txt", "w");
