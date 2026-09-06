@@ -264,7 +264,19 @@ void linkages( adouble* linkages, adouble* xad, Workspace* workspace)
 ///////////////////  Define the main routine ///////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-int main(void)
+// Usage:  launch [scaling]
+//
+//     scaling = "automatic" (default) uses PSOPT's automatic scaling, which is
+//               what this example has always done and what its published answer
+//               was obtained with.
+//     scaling = "unit"      solves the NLP in raw SI units, by supplying user
+//               scale factors of one everywhere. The states of this problem run
+//               from order 1 to order 1e7, so this is a deliberately badly
+//               scaled formulation of a well posed problem, and it is here so
+//               that the two can be compared on identical data. It converges,
+//               and its answer is the same, but it takes far more iterations
+//               and leaves a larger discretization error.
+int main(int argc, char* argv[])
 {
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Declare key structures ////////////////////////////////
@@ -654,6 +666,36 @@ int main(void)
     algorithm.derivatives                 	= "automatic";
     algorithm.nlp_iter_max                	= 1000;
     algorithm.collocation_method             = "Chebyshev";
+
+    // Unit user scaling, for the comparison described above the main routine.
+    // Every scale factor is one, so the NLP is posed in the physical units of
+    // the model: positions of order 1e7 m alongside a path constraint of order
+    // 1e0 and a mass of order 1e5 kg.
+    {
+        const std::string scaling_mode = (argc > 1) ? argv[1] : "automatic";
+        if (scaling_mode == "unit") {
+            algorithm.scaling = "user";
+            for (int ip = 1; ip <= 4; ip++) {
+                problem.phases(ip).scale.states   = ones(7,1);
+                problem.phases(ip).scale.controls = ones(3,1);
+                problem.phases(ip).scale.defects  = ones(7,1);
+                problem.phases(ip).scale.path     = ones(1,1);
+                problem.phases(ip).scale.time     = 1.0;
+            }
+            problem.phases(1).scale.events = ones(7,1);
+            problem.phases(4).scale.events = ones(problem.phases(4).nevents,1);
+            problem.scale.linkages  = ones(24,1);
+            problem.scale.objective = 1.0;
+            problem.name        = "Multiphase vehicle launch (unit scaling)";
+            problem.outfilename = "launch_unit_scaling.txt";
+            printf("\n launch: solving in raw SI units (algorithm.scaling = "
+                   "\"user\", all scale factors 1).\n\n");
+        }
+        else if (scaling_mode != "automatic") {
+            printf("usage: %s [automatic|unit]\n", argv[0]);
+            return 1;
+        }
+    }
 //    algorithm.mesh_refinement              = "automatic";
 //    algorithm.ode_tolerance		 	         = 1.e-5;
 

@@ -32,7 +32,7 @@ jobs:
         build_type: [Release]    # add Debug if desired
 
     env:
-      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch,manutec,cracking,delay1,geodesic,climb,mineng_di"
+      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch,manutec,cracking,delay1,geodesic,climb,mineng_di,lts_costates"
       # One reference cost per example, in the same order, compared with a relative
       # tolerance of 1e-3 by .github/scripts/run_examples.py. "none" marks a run-only
       # example: it must still build and converge, but its cost is not checked.
@@ -41,7 +41,7 @@ jobs:
       # varies with the platform RNG) even though the estimated parameter correctly
       # recovers pi.
       #
-      # The last three cover ground the first six do not, and each has a value verified
+      # The last four cover ground the first six do not, and each has a value verified
       # outside PSOPT:
       #   cracking       parameter estimation, with the initial conditions of the
       #                  published problem; COPS reference 5.23659e-03
@@ -81,6 +81,17 @@ jobs:
       #                  question and no longer does: it comes from
       #                  include/us76.h, which has no interval to select.
       #
+      #   lts_costates   linear tangent steering, whose minimum time is fixed by the
+      #                  analytical solution of Bryson and Ho rather than by any run:
+      #                  solving y(tf) = 408 km and vx(tf) = 7.66 km/s for the initial
+      #                  steering angle and the final time under the linear tangent law
+      #                  gives tf = 419.58841 s, which an independent quadrature
+      #                  confirms to nine figures. The example also checks its own
+      #                  costates against the closed-form adjoint and prints the
+      #                  errors, which is the reason it is here: it is the only entry
+      #                  whose ADJOINT is verified, and the covector mapping has been
+      #                  wrong four separate times without any objective moving.
+      #
       # examples/delay_history is deliberately not in this list: it runs with
       # print_level 0, so it writes no solver summary for this script to parse, and
       # the same problem is covered exactly by the DelayedVariables tests that ctest
@@ -112,7 +123,7 @@ jobs:
       # reference is moved with it. The other nine are re-measured and unchanged;
       # the Hermite-Simpson cost-quadrature correction of the same day touches none
       # of them, since none has a running cost that is nonlinear in the state.
-      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,5.228971e-03,2.525738e+00,5.549682e+03,3.210142e+02,6.000000e+00"
+      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,5.228971e-03,2.525738e+00,5.549682e+03,3.210142e+02,6.000000e+00,4.195884e+02"
 
     steps:
       - uses: actions/checkout@v5
