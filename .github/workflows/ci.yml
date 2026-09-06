@@ -32,7 +32,7 @@ jobs:
         build_type: [Release]    # add Debug if desired
 
     env:
-      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch,manutec,cracking,delay1,geodesic,climb,mineng_di,lts_costates"
+      EXAMPLES:  "twoburn,low_thrust,zpm,shuttle_reentry,launch,manutec,cracking,delay1,geodesic,climb,mineng_di,lts_costates,ecodriving"
       # One reference cost per example, in the same order, compared with a relative
       # tolerance of 1e-3 by .github/scripts/run_examples.py. "none" marks a run-only
       # example: it must still build and converge, but its cost is not checked.
@@ -92,6 +92,20 @@ jobs:
       #                  whose ADJOINT is verified, and the covector mapping has been
       #                  wrong four separate times without any objective moving.
       #
+      #   ecodriving     an electric vehicle driven through a corner, trading energy
+      #                  against a model of what a human driver wants. The default run
+      #                  is the naturalistic end of that trade, w = 0, whose cost moves
+      #                  by 2.4e-4 relative between 40 and 100 nodes -- inside the 1e-3
+      #                  tolerance, but with less margin than the other entries, so a
+      #                  failure here should be read as a question rather than as an
+      #                  accusation. The example's own checks are the stronger ones and
+      #                  it prints them: it integrates the same energy along two paths
+      #                  that agree only if the dynamics hold, it reports whether the
+      #                  relaxed braking-bias inequality was active where the motor was
+      #                  not saturated, and at w = 1 it reproduces a minimum-energy
+      #                  cruise speed that can be computed by minimising a function of
+      #                  one variable by hand.
+      #
       # examples/delay_history is deliberately not in this list: it runs with
       # print_level 0, so it writes no solver summary for this script to parse, and
       # the same problem is covered exactly by the DelayedVariables tests that ctest
@@ -123,7 +137,7 @@ jobs:
       # reference is moved with it. The other nine are re-measured and unchanged;
       # the Hermite-Simpson cost-quadrature correction of the same day touches none
       # of them, since none has a running cost that is nonlinear in the state.
-      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,5.228971e-03,2.525738e+00,5.549682e+03,3.210142e+02,6.000000e+00,4.195884e+02"
+      REF_COSTS: "-2.367249e-01,-2.203380e-01,6.680110e+06,-3.414119e+01,-7.529661e+03,2.040420e+01,5.228971e-03,2.525738e+00,5.549682e+03,3.210142e+02,6.000000e+00,4.195884e+02,3.205220e+01"
 
     steps:
       - uses: actions/checkout@v5
