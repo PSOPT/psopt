@@ -67,6 +67,10 @@ void linkages(adouble* linkages, adouble* xad, Workspace* w) { }
 // step and so counts its iterations.
 static int last_nlp_iterations = 0;
 
+// Added to solution.nlp_return_code when solve_lq reports it as a failure, so that a
+// non-zero flag in the assertions below says which of the two channels it came from.
+static const int nlp_failure_offset = 1000;
+
 // GALAHAD's default linear solver requires OMP_CANCELLATION and OMP_PROC_BIND to be
 // TRUE in the environment, and cannot be made to work without them from inside the
 // process: the OpenMP runtime reads them when it first initialises, long before a
@@ -86,6 +90,19 @@ bool galahad_environment_ok()
 // and GALAHAD additionally needs OMP_CANCELLATION set before the process started. So the
 // default is whichever backend this binary was built with, preferring one that carries
 // no such condition, and tests that rely on it skip when there is none.
+//
+// Every backend the build system knows about is listed. An earlier version of this chain
+// stopped at OSQP and fell through to GALAHAD, which was right while those were the only
+// backends; PIQP and Clarabel were added afterwards and the chain was not extended, so a
+// build carrying only those two named a backend it had not built. The five tests below
+// then skipped in the ordinary ctest pass -- galahad_environment_ok() is false there --
+// and *failed* in the second pass, which sets exactly the two variables that function
+// asks about: the subproblems were declined for want of a plugin, the SQP stopped at
+// iteration zero, and the objective came back as the cost of the guess. The failure was
+// reported against GALAHAD's name on a build with no GALAHAD in it.
+//
+// The fallback is therefore compiled in only when GALAHAD is, and a build with no backend
+// at all now says so instead of naming one.
 const char* default_backend()
 {
 #if   defined(USE_PROXQP)
@@ -94,17 +111,26 @@ const char* default_backend()
     return "QPALM";
 #elif defined(USE_OSQP)
     return "OSQP";
-#else
+#elif defined(USE_PIQP)
+    return "PIQP";
+#elif defined(USE_CLARABEL)
+    return "Clarabel";
+#elif defined(USE_GALAHAD)
     return "GALAHAD";
+#else
+    return "";
 #endif
 }
 
 bool default_backend_usable()
 {
-#if defined(USE_PROXQP) || defined(USE_QPALM) || defined(USE_OSQP)
+#if defined(USE_PROXQP) || defined(USE_QPALM) || defined(USE_OSQP) \
+ || defined(USE_PIQP)   || defined(USE_CLARABEL)
     return true;
-#else
+#elif defined(USE_GALAHAD)
     return galahad_environment_ok();
+#else
+    return false;
 #endif
 }
 
@@ -162,7 +188,20 @@ static double solve_lq(const std::string& nlp_method, double u_bound, int& error
 
     psopt(solution, problem, algorithm);
 
-    error_flag = solution.error_flag;
+    // What the caller is told about the run. solution.error_flag reports a set-up failure
+    // or a thrown exception, and is zero when the NLP itself stopped without converging:
+    // psopt() reports that separately, through solution.nlp_return_code, and
+    // integer_parameters.cxx says as much where it has to ask the same question. A test
+    // that looks only at error_flag therefore accepts a run that took no steps at all,
+    // and did: with the default backend naming a plugin this build did not carry, every
+    // subproblem was declined, the SQP stopped at iteration zero, error_flag was 0, and
+    // the tests below failed on a value comparison that told the reader nothing about
+    // why. Both are reported here, offset so the two sources stay distinguishable in the
+    // message. Code 1 is IPOPT's "solved to acceptable level" and is not a failure.
+    const int nlp = solution.nlp_return_code;
+    error_flag = (solution.error_flag != 0)     ? solution.error_flag
+               : (nlp == 0 || nlp == 1)         ? 0
+                                                : nlp_failure_offset + nlp;
     last_nlp_iterations = solution.mesh_stats ? solution.mesh_stats[0].n_jacobian_evals : 0;
     return solution.cost;
 }
@@ -187,8 +226,9 @@ TEST(SQPSolver, LinearQuadraticAgainstClosedForm)
     // process was started with OMP_CANCELLATION set, so the test would be measuring the
     // environment rather than the solver. CTest's second pass sets it and covers this.
     if (!sqp_test::default_backend_usable())
-        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
-                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+        GTEST_SKIP() << "no QP backend this build can use without a condition on the "
+                        "environment: either none was built, or the only one is GALAHAD "
+                        "and OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE are not set";
 
     int flag = -1;
     const double J = sqp_test::solve_lq("SQP", 10.0, flag);
@@ -210,8 +250,9 @@ TEST(SQPSolver, AgreesWithIpoptWithAnActiveControlBound)
     // process was started with OMP_CANCELLATION set, so the test would be measuring the
     // environment rather than the solver. CTest's second pass sets it and covers this.
     if (!sqp_test::default_backend_usable())
-        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
-                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+        GTEST_SKIP() << "no QP backend this build can use without a condition on the "
+                        "environment: either none was built, or the only one is GALAHAD "
+                        "and OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE are not set";
 
     int flag_ipopt = -1, flag_sqp = -1;
 
@@ -238,8 +279,9 @@ TEST(SQPSolver, ExactHessianReachesTheClosedForm)
     // process was started with OMP_CANCELLATION set, so the test would be measuring the
     // environment rather than the solver. CTest's second pass sets it and covers this.
     if (!sqp_test::default_backend_usable())
-        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
-                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+        GTEST_SKIP() << "no QP backend this build can use without a condition on the "
+                        "environment: either none was built, or the only one is GALAHAD "
+                        "and OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE are not set";
 
     int flag = -1;
     const double J = sqp_test::solve_lq("SQP", 10.0, flag, "exact");
@@ -257,8 +299,9 @@ TEST(SQPSolver, ExactHessianAgreesWithIpoptWithAnActiveControlBound)
     // process was started with OMP_CANCELLATION set, so the test would be measuring the
     // environment rather than the solver. CTest's second pass sets it and covers this.
     if (!sqp_test::default_backend_usable())
-        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
-                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+        GTEST_SKIP() << "no QP backend this build can use without a condition on the "
+                        "environment: either none was built, or the only one is GALAHAD "
+                        "and OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE are not set";
 
     int flag_ipopt = -1, flag_sqp = -1;
 
@@ -284,8 +327,9 @@ TEST(SQPSolver, ExactHessianCostsFewerIterationsThanBfgs)
     // process was started with OMP_CANCELLATION set, so the test would be measuring the
     // environment rather than the solver. CTest's second pass sets it and covers this.
     if (!sqp_test::default_backend_usable())
-        GTEST_SKIP() << "the default QP backend is GALAHAD, which needs "
-                        "OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE in the environment";
+        GTEST_SKIP() << "no QP backend this build can use without a condition on the "
+                        "environment: either none was built, or the only one is GALAHAD "
+                        "and OMP_CANCELLATION=TRUE and OMP_PROC_BIND=TRUE are not set";
 
     int flag = -1;
     (void) sqp_test::solve_lq("SQP", 0.4, flag, "limited-memory");
@@ -688,6 +732,51 @@ TEST(SQPSolver, AMissingPluginIsReportedClearly)
     std::string message;
     EXPECT_FALSE(psopt_qp_plugin_available("NoSuchBackend", message));
     EXPECT_NE(message.find("could not load"), std::string::npos) << message;
+}
+
+// The same thing one level up, through a whole solve rather than through the loader.
+//
+// algorithm.qp_solver is checked against a list of names in validate.cxx, and every name
+// on that list is accepted whether or not this build carries the backend behind it. The
+// absence is discovered at the first subproblem, which is declined; the SQP stops at
+// iteration zero and reports status 2 in solution.nlp_return_code. But solution.error_flag
+// stays at zero, because nothing was thrown and the set-up was sound -- so a caller
+// looking only at error_flag is told the run succeeded, and is handed the cost of its own
+// initial guess. That is what happened above when the default-backend chain named a
+// backend this build had not been given, and it stayed hidden because the tests read
+// error_flag alone.
+//
+// So: name a backend on validate.cxx's list that this build does not carry, and require
+// the run to be reported as a failure and to be nowhere near the answer.
+TEST(SQPSolver, ABackendThisBuildDoesNotCarryIsReportedAsAFailedRun)
+{
+    // The first name on validate.cxx's list that this build did not compile in.
+    const char* absent = NULL;
+#if !defined(USE_GALAHAD)
+    absent = "GALAHAD";
+#elif !defined(USE_PROXQP)
+    absent = "ProxQP";
+#elif !defined(USE_QPALM)
+    absent = "QPALM";
+#elif !defined(USE_OSQP)
+    absent = "OSQP";
+#elif !defined(USE_PIQP)
+    absent = "PIQP";
+#elif !defined(USE_CLARABEL)
+    absent = "Clarabel";
+#endif
+    if (absent == NULL) GTEST_SKIP() << "this build carries every backend";
+
+    int flag = -1;
+    const double J = sqp_test::solve_lq("SQP", 10.0, flag, "limited-memory", absent);
+
+    // 1002: solve_lq's offset plus SQP status 2, the code for a subproblem that could not
+    // be solved -- which is how the absence arrives, at the first subproblem.
+    EXPECT_EQ(flag, sqp_test::nlp_failure_offset + 2)
+        << "a run through the absent backend \"" << absent
+        << "\" was reported as flag " << flag;
+    EXPECT_FALSE(std::fabs(J - 0.775240441234) < 1.0e-9)
+        << "the absent backend \"" << absent << "\" appears to have solved the problem";
 }
 
 #else
