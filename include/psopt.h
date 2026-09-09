@@ -19,7 +19,7 @@ Address:   University of Portsmouth
            School of Electrical and Mechanical Engineering
            Portsmouth PO1 3DJ
            United Kingdom
-e-mail:    v.m.becerra@ieee.org
+e-mail:    vmbecerra@vmb1.com
 **********************************************************************************************/
 #ifndef PSOPT_H
 #define PSOPT_H
@@ -84,7 +84,7 @@ _CRTIMP  int * __cdecl errno(void) { static int i=0; return &i; };
 using std::unique_ptr;
 
 
-#include "psopt_ad_backend.hpp"   // AD backend select (default ADOL-C) -- step 2a
+#include "psopt_ad_backend.hpp"   // AD backend select (default CppAD) -- step 2a
 #include "psopt_ad_driver.hpp"    // record + sparse Jac/Hess interface -- step 2b
 
 
@@ -1173,7 +1173,7 @@ public:
    MatrixXd   zL_previous;
    MatrixXd   zU_previous;
 
-// tape tags to be used by ADOL_C
+// AD tape handles (the tag field is the identifier the taped backend uses)
 
   psopt_ad::ADHandle ad_f, ad_g, ad_hess, ad_fg, ad_gc;  // tags promoted to AD handles (step 2b)
   void *user_data;

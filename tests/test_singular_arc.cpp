@@ -93,9 +93,8 @@ TEST(MaximumPrinciple, SingularArcDoubleIntegrator)
     algorithm.nlp_iter_max       = 1000;
     algorithm.nlp_tolerance      = 1.e-6;
 
-    psopt(solution, problem, algorithm);
-
-    ASSERT_EQ(solution.error_flag, false) << "PSOPT failed to solve the singular-arc problem";
+    ASSERT_EQ(psopt(solution, problem, algorithm), 0)
+        << "PSOPT failed to solve the singular-arc problem";
 
     DMatrix x = solution.get_states_in_phase(1);
     DMatrix u = solution.get_controls_in_phase(1);

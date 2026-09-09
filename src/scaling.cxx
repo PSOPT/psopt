@@ -24,7 +24,7 @@ Address:   University of Portsmouth
            School of Electrical and Mechanical Engineering
            Portsmouth PO1 3DJ
            United Kingdom
-e-mail:    v.m.becerra@ieee.org
+e-mail:    vmbecerra@vmb1.com
 
 **********************************************************************************************/
 

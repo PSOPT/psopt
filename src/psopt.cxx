@@ -25,7 +25,7 @@ Address:   University of Portsmouth
            School of Electrical and Mechanical Engineering
            Portsmouth PO1 3DJ
            United Kingdom
-e-mail:    v.m.becerra@ieee.org
+e-mail:    vmbecerra@vmb1.com
 
 **********************************************************************************************/
 
@@ -456,7 +456,7 @@ string build_date= workspace->text;
 
 string license_notice=  "\n * Copyright (C) 2010-2025  Victor M. Becerra.                                 *\n *                                                                             *\n * This library is free software; you can redistribute it and/or               *\n * modify it under the terms of the GNU Lesser General Public License          *\n * as published by the Free Software Foundation;  version 2.1.                 *\n * This library is distributed in the hope that it will be useful,             *\n * but WITHOUT ANY WARRANTY; without even the implied warranty of              *\n * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU           *\n * Lesser General Public License for more details.                             *\n * You should have received a copy of the GNU Lesser General Public            *\n * License along with this library;                                            *\n * If not please visit http://www.gnu.org/licenses                             *\n *                                                                             *";
 
-string contact_notice=  "\n * The author can be contacted at his email address:    v.m.becerra@ieee.org   *\n *                                                                             *\n *******************************************************************************\n\n";
+string contact_notice=  "\n * The author can be contacted at his email address:    vmbecerra@vmb1.com   *\n *                                                                             *\n *******************************************************************************\n\n";
 
 
   PSOPT_extras::tic();

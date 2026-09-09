@@ -149,9 +149,7 @@ TEST(ParameterStatistics, CatalyticCrackingConfidenceLimits)
     algorithm.parameter_statistics = "yes";
     algorithm.print_level          = 0;
 
-    psopt(solution, problem, algorithm);
-
-    ASSERT_EQ(solution.error_flag, 0);
+    ASSERT_EQ(psopt(solution, problem, algorithm), 0);
     ASSERT_TRUE(solution.parameter_statistics_ok);
 
     // The estimates themselves, against the independent least-squares solution.

@@ -45,7 +45,7 @@ static void solve_di(Sol& solution, void (*ev)(adouble*,adouble*,adouble*,adoubl
     problem.phases(1).guess.time = linspace(0.0,1.0,N);
     algorithm.nlp_method="IPOPT"; algorithm.scaling="automatic"; algorithm.derivatives="automatic";
     algorithm.collocation_method="Legendre"; algorithm.nlp_iter_max=1000; algorithm.nlp_tolerance=1.e-6;
-    psopt(solution, problem, algorithm);
+    ASSERT_EQ(psopt(solution, problem, algorithm), 0);
 }
 
 // ---- (1) fixed endpoints (Ch 3):  (0,0)->(1,0),  u=6-12t,  J*=6 ------------

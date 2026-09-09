@@ -108,9 +108,8 @@ TEST(MaximumPrinciple, MinTimeDoubleIntegrator)
     algorithm.nlp_iter_max       = 1000;
     algorithm.nlp_tolerance      = 1.e-6;
 
-    psopt(solution, problem, algorithm);
-
-    ASSERT_EQ(solution.error_flag, false) << "PSOPT failed to solve the min-time problem";
+    ASSERT_EQ(psopt(solution, problem, algorithm), 0)
+        << "PSOPT failed to solve the min-time problem";
 
     DMatrix x1s = solution.get_states_in_phase(1),  x2s = solution.get_states_in_phase(2);
     DMatrix u1s = solution.get_controls_in_phase(1), u2s = solution.get_controls_in_phase(2);

@@ -186,7 +186,11 @@ static double solve_lq(const std::string& nlp_method, double u_bound, int& error
     algorithm.collocation_method = "Legendre";
     algorithm.print_level        = 0;
 
-    psopt(solution, problem, algorithm);
+    // Deliberately discarded here, and the only discard in this file. Every other
+    // caller asserts on the status; this one must not, because two of the tests below
+    // exist precisely to watch a solve fail -- the absent-backend test wants the run to
+    // come back unsuccessful, and reads how it failed out of the two channels below.
+    (void) psopt(solution, problem, algorithm);
 
     // What the caller is told about the run. solution.error_flag reports a set-up failure
     // or a thrown exception, and is zero when the NLP itself stopped without converging:

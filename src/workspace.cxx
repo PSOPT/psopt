@@ -24,7 +24,7 @@ Address:   University of Portsmouth
            School of Electrical and Mechanical Engineering
            Portsmouth PO1 3DJ
            United Kingdom
-e-mail:    v.m.becerra@ieee.org
+e-mail:    vmbecerra@vmb1.com
 
 **********************************************************************************************/
 
@@ -388,7 +388,7 @@ void initialize_workspace_vars(Prob& problem, Alg& algorithm, Sol& solution, Wor
 
   workspace->auto_linked_flag = false;
 
-// Initialise tape tags to be used by ADOL_C
+// Initialise the AD tape tags
 
   workspace->ad_f.tag    = 1;
   workspace->ad_g.tag    = 2;

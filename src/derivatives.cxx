@@ -24,7 +24,7 @@ Address:   University of Portsmouth
            School of Electrical and Mechanical Engineering
            Portsmouth PO1 3DJ
            United Kingdom
-e-mail:    v.m.becerra@ieee.org
+e-mail:    vmbecerra@vmb1.com
 
 **********************************************************************************************/
 
@@ -618,7 +618,7 @@ void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), M
 
        clip_vector_given_bounds( xp, xlb, xub);
 
-       // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
+       // Compute the full Jacobian through the AD backend:  J = G(x)+ A
 	    { psopt_ad::SparseTriplet Jg = psopt_ad::ad_sparse_jacobian(workspace->ad_fg, &xp(0), /*reuse=*/true);
 	      workspace->iGfun2.assign(Jg.row.begin(), Jg.row.end()); workspace->jGvar2.assign(Jg.col.begin(), Jg.col.end());
 	      workspace->G2.assign(Jg.val.begin(), Jg.val.end()); }
@@ -626,7 +626,7 @@ void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), M
        xp = x + 0.05*x.cwiseAbs() + s*ones(nvars,1);
        clip_vector_given_bounds( xp, xlb, xub);
 
-       // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
+       // Compute the full Jacobian through the AD backend:  J = G(x)+ A
 
 	    { psopt_ad::SparseTriplet Jg = psopt_ad::ad_sparse_jacobian(workspace->ad_fg, &xp(0), /*reuse=*/true);
 	      workspace->G3.assign(Jg.val.begin(), Jg.val.end()); }
@@ -634,7 +634,7 @@ void DetectJacobianSparsityAD(void fun(MatrixXd& x, MatrixXd* f, Workspace* ), M
        xp = x - 0.06*x.cwiseAbs() - 0.95*s*ones(nvars,1);
 
        clip_vector_given_bounds( xp, xlb, xub);
-       // Compute the full Jacobian using ADOL-C:  J = G(x)+ A
+       // Compute the full Jacobian through the AD backend:  J = G(x)+ A
 
 	    { psopt_ad::SparseTriplet Jg = psopt_ad::ad_sparse_jacobian(workspace->ad_fg, &xp(0), /*reuse=*/true);
 	      workspace->G4.assign(Jg.val.begin(), Jg.val.end()); }

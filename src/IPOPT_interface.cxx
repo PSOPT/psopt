@@ -24,7 +24,7 @@ Address:   University of Portsmouth
            School of Electrical and Mechanical Engineering
            Portsmouth PO1 3DJ
            United Kingdom
-e-mail:    v.m.becerra@ieee.org
+e-mail:    vmbecerra@vmb1.com
 
 **********************************************************************************************/
 
@@ -666,7 +666,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 
      snprintf(workspace->text,sizeof(workspace->text),"\nJacobian sparsity detected numerically:");
      psopt_print(workspace,workspace->text);
-     snprintf(workspace->text,sizeof(workspace->text),"\n*** %i nonzero elements out of %.0f [ratio=%f]", nnz, (double)n*(double)m, jsratio );
+     snprintf(workspace->text,sizeof(workspace->text),"\n*** %i nonzero elements out of %.0f [density=%f]", nnz, (double)n*(double)m, jsratio );
      psopt_print(workspace,workspace->text);
      snprintf(workspace->text,sizeof(workspace->text),"\n*** %i nonzero elements are constant", nnzA );
      psopt_print(workspace,workspace->text);
@@ -690,7 +690,8 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 		workspace->iGrow[i] = J.row[i];
 	}
 
-        snprintf(workspace->text,sizeof(workspace->text),"\nJacobian sparsity detected using ADOLC:");
+        snprintf(workspace->text,sizeof(workspace->text),
+                 "\nJacobian sparsity detected using %s:", PSOPT_AD_NAME);
         psopt_print(workspace,workspace->text);
 
         jsratio = (double) ((double)  nnz/((double)n*(double)m));
@@ -700,7 +701,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
            error_message(workspace->text);
         }
 
-        snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %.0f [ratio=%f]\n", nnz, (double)n*(double)m, jsratio);
+        snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %.0f [density=%f]\n", nnz, (double)n*(double)m, jsratio);
         psopt_print(workspace,workspace->text);
 
   } // end if (autoderiv)
@@ -731,7 +732,8 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 		workspace->hess_jc[i] = Hs.col[i];
 	}
 
-       snprintf(workspace->text,sizeof(workspace->text),"\nHessian sparsity detected using ADOLC:");
+       snprintf(workspace->text,sizeof(workspace->text),
+                "\nHessian sparsity detected using %s:", PSOPT_AD_NAME);
        psopt_print(workspace,workspace->text);
        double hsratio = (double) ((double)  nnz_hess/((double)n*(double)n));
        if (hsratio > workspace->algorithm->hess_sparsity_ratio) {
@@ -739,7 +741,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
             error_message(workspace->text);
        }
 
-       snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %.0f [ratio = %f] \n", nnz_hess, (double)n*(double)n, hsratio );
+       snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %.0f [density=%f]\n", nnz_hess, (double)n*(double)n, hsratio );
        psopt_print(workspace,workspace->text);
 
        nnz_h_lag = nnz_hess;
@@ -769,7 +771,7 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
      snprintf(workspace->text,sizeof(workspace->text),"\nHessian sparsity built numerically from the Jacobian pattern:");
      psopt_print(workspace,workspace->text);
      double hsratio = (double) ((double) nnz_hess/((double)n*(double)n));
-     snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %.0f [ratio = %f] \n", nnz_hess, (double)n*(double)n, hsratio );
+     snprintf(workspace->text,sizeof(workspace->text),"\n%i nonzero elements out of %.0f [density=%f]\n", nnz_hess, (double)n*(double)n, hsratio );
      psopt_print(workspace,workspace->text);
 
      nnz_h_lag = nnz_hess;

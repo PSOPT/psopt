@@ -272,9 +272,7 @@ TEST(Interpolation, SplineSelectionSurvivesTaping)
     algorithm.collocation_method = "trapezoidal";
     algorithm.print_level        = 0;
 
-    psopt(solution, problem, algorithm);
-
-    ASSERT_EQ(solution.error_flag, 0);
+    ASSERT_EQ(psopt(solution, problem, algorithm), 0);
 
     MatrixXd x = solution.get_states_in_phase(1);
     double xf  = x(0, x.cols()-1);
