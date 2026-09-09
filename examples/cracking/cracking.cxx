@@ -329,6 +329,20 @@ void release_parameter(Prob& problem, int k)
 ///////////////////  Define the main routine ///////////////////////////////
 ////////////////////////////////////////////////////////////////////////////
 
+// What distinguishes one profile run's files from another's, and all of them from the
+// nominal fit's. There are two profile runs in the book's regeneration -- theta3 against
+// both observed states and theta3 against y1 alone -- so a single "profile" suffix would
+// have them overwrite each other, which is the hazard examples/ecodriving met from the
+// other direction when _w0.5 and _w0 collided after PSOPT trimmed the name at its first
+// dot. These carry no dot before the extension.
+// Writes into the caller's buffer rather than returning a pointer to a static one, so
+// that two uses in the same expression cannot quietly become the same string.
+static void profile_tag(char* tag, size_t n, int index, int nobserved)
+{
+    if (nobserved == 2) snprintf(tag, n, "_theta%d", index);
+    else                snprintf(tag, n, "_theta%d_y%d", index, nobserved);
+}
+
 int main(int argc, char* argv[])
 {
     int    index = (argc > 1) ? atoi(argv[1]) : 0;      // 0 means: no profile
@@ -349,6 +363,31 @@ int main(int argc, char* argv[])
     Prob problem;
     setup_cracking(problem, algorithm);
     algorithm.print_level = profiling ? 0 : 1;
+
+    // A profiling run must not write where the nominal fit writes. Every solve of the
+    // profile -- and there are ngrid of them, plus the nominal one above -- reopens
+    // problem.outfilename and the psopt_solution_<stem>.txt that PSOPT derives from it,
+    // and with print_level 0 it leaves them empty. So an invocation of this example in
+    // profile mode used to truncate cracking.txt and psopt_solution_cracking.txt to
+    // nothing, destroying the fit's own summary -- which is the only file carrying the
+    // parameter confidence limits, and so the reproducer for the book's table of them.
+    // The book's regeneration runs the fit and then two profiles, in that order, and the
+    // copy afterwards therefore found an empty file, declined to copy it (rightly: the
+    // guard exists to keep empty files out), and left the previous one in place. It had
+    // been stale for two days and through three regenerations that all reported success.
+    //
+    // This is the same rule examples/lts_costates learned in patch 145 and
+    // examples/ecodriving in patch 147: a sweep must not write where the nominal run
+    // writes. The profile is a sweep. It has its own names now.
+    if (profiling) {
+        char tag[32], outname[64], probname[96];
+        profile_tag(tag, sizeof tag, index, NOBSERVED);
+        snprintf(outname,  sizeof outname,  "cracking_profile%s.txt", tag);
+        snprintf(probname, sizeof probname,
+                 "Catalytic cracking of gas oil (profile likelihood%s)", tag);
+        problem.outfilename = outname;
+        problem.name        = probname;
+    }
 
     // The unconstrained fit, with all three parameters estimated. Its solution
     // is kept in its own Sol for the whole run, because it is the starting
@@ -428,12 +467,9 @@ int main(int argc, char* argv[])
     }
     release_parameter(problem, k);
 
-    char fname[64];
-    if (NOBSERVED == 2)
-        snprintf(fname, sizeof fname, "cracking_profile_theta%d.dat", index);
-    else
-        snprintf(fname, sizeof fname, "cracking_profile_theta%d_y%d.dat",
-                 index, NOBSERVED);
+    char dtag[32], fname[64];
+    profile_tag(dtag, sizeof dtag, index, NOBSERVED);
+    snprintf(fname, sizeof fname, "cracking_profile%s.dat", dtag);
     FILE* fh = fopen(fname, "w");
     fprintf(fh, "# profile likelihood, catalytic cracking of gas oil\n");
     fprintf(fh, "# nobserved = %d, J* = %.10g, threshold J/J* = %.10g\n",
