@@ -1223,10 +1223,27 @@ void getIndexGroups( IGroup* igroup, int nrows, int ncols, int nnz, int* iArow, 
 void deleteIndexGroups(IGroup* igroup, int ncols );
 
 // psopt() is total: it always returns, reporting any failure through
-// solution.error_flag (with solution.error_msg). It is marked [[nodiscard]] so a
-// caller who silently ignores that status gets a compiler warning; this is a
-// nudge only - discarding the result with (void)psopt(...) remains valid, and the
-// examples (built without -Werror) are unaffected.
+// solution.error_flag (with solution.error_msg), and the value it returns *is*
+// solution.error_flag, so testing both says the same thing twice.
+//
+// It is marked [[nodiscard]] because a caller who ignores the status goes on to
+// call the Sol accessors on a solution that was never computed. That is caught --
+// psopt_solution_failed() prints a diagnostic and, under the default
+// algorithm.on_error = "fail-fast", stops the process -- but it is caught one step
+// too late, at whichever accessor happens to be first, rather than where the
+// failure is known.
+//
+// The reason for the failure has already been printed by then: error_message()
+// writes the diagnostic to the output stream before it throws, and
+// solution.error_msg is that same text. So a caller has nothing to add, and the
+// idiom every example in this distribution uses is simply
+//
+//     if (psopt(solution, problem, algorithm) != 0) return 1;
+//
+// or exit(EXIT_FAILURE) where the call is not in main(). Discarding the result
+// with (void)psopt(...) remains valid for a caller who really does mean to carry
+// on regardless; examples/cracking is the case that does, recording per-solve
+// status across a profile-likelihood sweep in which individual points may fail.
 [[nodiscard]] int psopt(Sol& solution, Prob& problem, Alg& algorithm);
 
 void psopt_level2_setup(Prob& problem, Alg& algorithm);

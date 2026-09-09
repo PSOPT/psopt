@@ -66,7 +66,7 @@ int main(void)
     algorithm.mesh_refinement = "manual"; algorithm.nlp_iter_max = 1000;
     algorithm.nlp_tolerance = 1.e-9;
 
-    psopt(solution, problem, algorithm);
+    if (psopt(solution, problem, algorithm) != 0) return 1;
 
     MatrixXd x = solution.get_states_in_phase(1);
     MatrixXd u = solution.get_controls_in_phase(1);

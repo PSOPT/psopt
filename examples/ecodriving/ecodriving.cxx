@@ -544,7 +544,7 @@ static Run run_one(Prob& problem, Alg& algorithm, Sol& solution,
     problem.outfilename = "ecodriving" + tag + ".txt";
 
     Run r; r.ok = false; r.w = w; r.L0 = L0;
-    if (psopt(solution, problem, algorithm) != 0 || solution.error_flag) {
+    if (psopt(solution, problem, algorithm) != 0) {
         printf("\n ecodriving: the solve did not succeed at w = %g: %s\n",
                w, solution.error_msg.c_str());
         return r;

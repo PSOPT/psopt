@@ -146,7 +146,7 @@ static Row solve_x1(int nodes, const std::string& trans, const std::string& ir_o
     if (res_nodes  > 0)  algorithm.ir_residual_nodes = res_nodes;
     if (bound     >= 0)  algorithm.ir_residual_bound = bound;
 
-    psopt(solution, problem, algorithm);
+    if (psopt(solution, problem, algorithm) != 0) exit(EXIT_FAILURE);
 
     Row r; r.J = solution.get_cost(); r.ey = 0.0; r.eu = 0.0; r.rle = -1.0;
     MatrixXd t = solution.get_time_in_phase(1);

@@ -172,7 +172,7 @@ static double solve_declaration(int nnodes)
     problem.phases(1).guess.controls = cg;
     problem.phases(1).guess.time     = tg;
 
-    psopt(solution, problem, algorithm);
+    if (psopt(solution, problem, algorithm) != 0) exit(EXIT_FAILURE);
     DMatrix x = solution.get_states_in_phase(1);
     return x(2, x.cols() - 1);
 }
@@ -216,7 +216,7 @@ static double solve_manual(int nnodes)
     problem.phases(1).guess.controls = cg;
     problem.phases(1).guess.time     = tg;
 
-    psopt(solution, problem, algorithm);
+    if (psopt(solution, problem, algorithm) != 0) exit(EXIT_FAILURE);
     DMatrix x = solution.get_states_in_phase(1);
     return x(2, x.cols() - 1);
 }

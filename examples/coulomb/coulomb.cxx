@@ -257,7 +257,7 @@ int main(void)
 ///////////////////  Now call PSOPT to solve the problem   //////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    psopt(solution, problem, algorithm);
+    if (psopt(solution, problem, algorithm) != 0) return 1;
 
     if (solution.error_flag) exit(0);
 

@@ -299,7 +299,7 @@ static Run run_one(const string& method, int nnodes, double guess_scale,
     algorithm.nlp_iter_max       = 1000;
     algorithm.nlp_tolerance      = 1.e-8;
 
-    if (psopt(solution, problem, algorithm) != 0 || solution.error_flag) {
+    if (psopt(solution, problem, algorithm) != 0) {
         printf("\n lts_costates: the solve did not succeed (%s, guess scale %g)"
                ": %s\n", method.c_str(), guess_scale,
                solution.error_msg.c_str());

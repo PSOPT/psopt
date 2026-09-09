@@ -254,8 +254,7 @@ int main(int argc, char** argv)
     algorithm.mr_max_iterations  = 5;
     algorithm.ode_tolerance      = 1.e-5;
 
-    int rc = psopt(solution, problem, algorithm);
-    if (rc != 0) printf("psopt returned %d\n", rc);
+    if (psopt(solution, problem, algorithm) != 0) return 1;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Results                                ////////////////

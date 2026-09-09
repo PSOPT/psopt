@@ -196,7 +196,7 @@ static void run_case(bool use_history, double& x1f, double& x2f)
     algorithm.collocation_method          = "Hermite-Simpson";
     algorithm.print_level                 = 0;
 
-    psopt(solution, problem, algorithm);
+    if (psopt(solution, problem, algorithm) != 0) exit(EXIT_FAILURE);
 
     MatrixXd x = solution.get_states_in_phase(1);
     x1f = x(0, x.cols()-1);

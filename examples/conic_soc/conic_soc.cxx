@@ -93,7 +93,7 @@ int main(void)
     algorithm.nlp_tolerance      = 1.e-6;
     algorithm.mesh_refinement    = "automatic";
 
-    psopt(solution, problem, algorithm);
+    if (psopt(solution, problem, algorithm) != 0) return 1;
 
     DMatrix x = solution.get_states_in_phase(1);
     DMatrix u = solution.get_controls_in_phase(1);

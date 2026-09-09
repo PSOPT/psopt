@@ -149,7 +149,7 @@ int main(int argc, char** argv)
     // what the costate error would be reporting.
     algorithm.nlp_tolerance      = 1.e-10;
 
-    if ( psopt(solution, problem, algorithm) != 0 || solution.error_flag ) {
+    if ( psopt(solution, problem, algorithm) != 0 ) {
         printf("\nThe problem was not solved: %s\n", solution.error_msg.c_str());
         return 1;
     }

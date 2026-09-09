@@ -264,9 +264,7 @@ int main(void)
     algorithm.mesh_refinement      = "automatic";
     algorithm.mr_max_iterations    = 7;
 
-    int psopt_status = psopt(solution, problem, algorithm);
-    if (psopt_status != 0)
-        printf("\nPSOPT returned a non-zero status (%d).\n", psopt_status);
+    if (psopt(solution, problem, algorithm) != 0) return 1;
 
     DMatrix x = solution.get_states_in_phase(1);
     DMatrix u = solution.get_controls_in_phase(1);   // weights layout: 2 x N

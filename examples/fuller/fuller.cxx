@@ -182,7 +182,7 @@ static Row solve_fuller(int nodes, const std::string& trans,
         }
     }
 
-    psopt(solution, problem, algorithm);
+    if (psopt(solution, problem, algorithm) != 0) exit(EXIT_FAILURE);
 
     DMatrix x = solution.get_states_in_phase(1);
     DMatrix u = solution.get_controls_in_phase(1);
@@ -227,7 +227,7 @@ static void warmstart(int nodes, DMatrix& x, DMatrix& u, DMatrix& t)
     algorithm.derivatives = "automatic"; algorithm.nlp_iter_max = 5000;
     algorithm.nlp_tolerance = 1.0e-7; algorithm.collocation_method = "Hermite-Simpson";
     algorithm.print_level = 0;
-    psopt(solution, problem, algorithm);
+    if (psopt(solution, problem, algorithm) != 0) exit(EXIT_FAILURE);
     x = solution.get_states_in_phase(1);
     u = solution.get_controls_in_phase(1);
     t = solution.get_time_in_phase(1);

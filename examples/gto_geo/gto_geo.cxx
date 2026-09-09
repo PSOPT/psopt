@@ -968,8 +968,7 @@ int main(int argc, char** argv)
 ///////////////////  Now call PSOPT to solve the problem   /////////////////
 ////////////////////////////////////////////////////////////////////////////
 
-    int rc = psopt(solution, problem, algorithm);
-    if (rc != 0) printf("psopt returned %d\n", rc);
+    if (psopt(solution, problem, algorithm) != 0) return 1;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////  Extract relevant variables from solution structure   //////////

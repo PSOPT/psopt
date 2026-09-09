@@ -563,8 +563,7 @@ int main(int argc, char** argv)
     // are two different questions -- is this a trajectory, and is this the best
     // one -- and only the first is what a propagation check answers.
 
-    int rc = psopt(solution, problem, algorithm);
-    if (rc != 0) printf("psopt returned %d\n", rc);
+    if (psopt(solution, problem, algorithm) != 0) return 1;
 
 ////////////////////////////////////////////////////////////////////////////
 ///////////////////  Results                                ////////////////
