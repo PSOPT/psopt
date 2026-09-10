@@ -130,11 +130,34 @@ int main(int argc, char* argv[])
 // d must divide the number of intervals: 32 intervals admit d = 2, 4, 8, 16.
 //
 // The last argument is worth a word, because it is the pitfall this example was found to
-// expose. The residual box binds only where the quadrature rule samples the residual. At
-// d = 4 and delta = 1e-6 the reported maximum relative local error is 9.7e-2 with m = 4,
-// 7.9e-4 with m = 5, and 1.5e-8 -- the box itself -- from m = 6 = d+2 upward: with too few
-// points the element polynomial simply oscillates between them and the certificate is
-// worthless. PSOPT now refuses m < d+2 for that reason.
+// expose. The residual box binds only where the quadrature rule samples the residual. With
+// d = 4, delta = 1e-6 and the constraint OUT of the residual -- `./dae_i3 4 1e-6 out` -- the
+// reported maximum relative local error is 9.7e-2 with m = 4, 7.9e-4 with m = 5, and 1.5e-8,
+// the box itself, from m = 6 = d+2 upward: with too few points the element polynomial simply
+// oscillates between them and the certificate is worthless. PSOPT now refuses m < d+2 for
+// that reason, so the first two of those three figures can no longer be reproduced here.
+//
+// "out" in that sentence is not incidental, and the default is "in". With the constraint
+// folded into the residual, d = 4 at delta = 1e-6 does not converge at m = 6, 7, 8, 10 or
+// 12, and nor does delta = 1e-8: the box cannot be met by a pendulum of admissible length,
+// and the solve says so rather than walking to the degenerate zero-length branch that the
+// parameter bound below excludes.
+// That is the sharper form of the chapter's remark that folding the algebraic equation in
+// makes the box harder to satisfy, and it is deliberate. A reader who runs `./dae_i3 4 1e-6`
+// and sees a failure is seeing this and not a defect.
+//
+// The nine configurations the book's table rests on, all on 33 nodes, all reproduced on
+// 10 September 2026:
+//
+//     ./dae_i3                    L = 1.0000000   J = 2.688318e-18   eps = 8.8e-9   solved
+//     ./dae_i3 2 1e-4 in          J = 19.03620    eps = 1.2e-6                      solved
+//     ./dae_i3 2 1e-6 in          J = 19.15846    eps = 1.2e-8                      solved
+//     ./dae_i3 2 1e-4 out         J = 19.04108    eps = 1.1e-6                      solved
+//     ./dae_i3 2 1e-6 out         J = 19.16081    eps = 1.2e-8                      solved
+//     ./dae_i3 4 1e-4 in          J =  9.83490    eps = 1.1e-6                      solved
+//     ./dae_i3 4 1e-6 in          stops at the parameter bound, local infeasibility
+//     ./dae_i3 4 1e-8 in          stops at the parameter bound, restoration failed
+//     ./dae_i3 4 1e-6 out         J = 19.04013    eps = 1.5e-8                      solved
     int    ir_d     = (argc > 1) ? atoi(argv[1]) : 0;
     double ir_delta = (argc > 2) ? atof(argv[2]) : 1.0e-6;
     bool   alg_in   = (argc > 3) ? (std::string(argv[3]) != "out") : true;

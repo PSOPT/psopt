@@ -120,9 +120,19 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        // state has d+1 coefficients per component and its residual xdot-f is of higher degree
        // still, so a rule with too few points leaves the residual free to oscillate between
        // them: the box is then satisfied to its stated tolerance while the true error is orders
-       // of magnitude larger. Measured on examples/dae_i3 at d=4 and delta=1e-6, the maximum
-       // relative local error is 9.7e-2 with m=4, 7.9e-4 with m=5 and 1.5e-8 -- the box itself --
-       // from m=6 onward. Hence m >= d+2, which the former m >= d did not give.
+       // of magnitude larger. Measured on examples/dae_i3 at d=4, delta=1e-6, and with the
+       // holonomic constraint left as a pointwise path constraint rather than folded into the
+       // residual -- that is, `./dae_i3 4 1e-6 out` -- the maximum relative local error is
+       // 9.7e-2 with m=4, 7.9e-4 with m=5 and 1.5e-8, the box itself, from m=6 onward. Hence
+       // m >= d+2, which the former m >= d did not give.
+       //
+       // The configuration is named because it matters, and because leaving it out has already
+       // sent one reader looking for a regression that was not there. Folded in, the same d and
+       // delta do not converge at m = 6, 7, 8, 10 or 12: the box cannot be met by a pendulum of
+       // admissible length, which is a property of that problem rather than of m and is recorded
+       // in the example. And the two figures below the rule can no longer be obtained through this
+       // interface, since the rule refuses them; they are the measurement the rule exists
+       // because of, not one a reader can repeat.
        if (algorithm.ir_residual_nodes < algorithm.ir_local_order + 2)
           error_message("ir_residual_nodes must be >= ir_local_order+2, so that the residual box "
                         "samples the element residual densely enough to constrain it between the "
