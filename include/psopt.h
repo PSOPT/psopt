@@ -1568,6 +1568,14 @@ bool useAutomaticDifferentiation(Alg& algorithm);
 
 void gg_ad( adouble* xad, adouble* gad, Workspace* workspace );
 
+void check_constraint_coverage( MatrixXd& x, int ncons, Workspace* workspace );
+
+// The two halves of that check, exposed so that the discrimination it rests on can be
+// tested without building a Workspace: the value written into every constraint row before
+// the evaluation, and the test applied to each row afterwards.
+double psopt_constraint_poison_value(void);
+bool   psopt_constraint_row_unwritten(double value);
+
 double ff_num(MatrixXd& x, Workspace* workspace);
 
 void gg_num( MatrixXd& x, MatrixXd* g, Workspace* workspace );

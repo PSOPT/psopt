@@ -873,6 +873,13 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     snprintf(workspace->text,sizeof(workspace->text),"\n");
     psopt_print(workspace,workspace->text);
 
+    // Once per mesh iteration, before the NLP sees the problem: does anything in gg_ad
+    // write every row that get_ncons_phase_i counted? Three defects have been exactly this
+    // disagreement, and none of them announced itself, because the constraint buffer is
+    // zero-filled and zero is a plausible constraint value. One extra constraint evaluation
+    // per mesh; see the note above check_constraint_coverage in NLP_constraints.cxx.
+    check_constraint_coverage( x0, nlp_ncons, workspace );
+
     workspace->enable_nlp_counters = true;
 
     chronometer_tic(workspace);

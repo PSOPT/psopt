@@ -38,6 +38,150 @@ using namespace std;
 
 
 
+// ---------------------------------------------------------------------------------------
+// A constraint row that is counted but never written.
+//
+// get_ncons_phase_i and gg_ad are two independent statements of the same layout, and they
+// have disagreed three times. get_ncons_phase_i once promised 160 rows -- the midpoint path
+// rows of the integrated-residual transcription -- that gg_ad never filled; the Gauss
+// terminal point was missing from every reported trajectory for the same reason; and the
+// user-scaling branch wrote one element past the scaling vector. None of the three
+// announced itself, because workspace->gad is zero-filled and zero is a perfectly plausible
+// value for a constraint. An equality row nobody writes is enforced as 0 = 0, an inequality
+// row nobody writes is satisfied by whatever bounds admit zero, and the solve converges,
+// reports success, and answers a problem that was not the one posed. Two of the three were
+// found by a discrepancy in a printed number months later, and the third by a reader.
+//
+// The check below is one constraint evaluation per mesh iteration into a buffer poisoned
+// beforehand, and it asks the only question that matters: did anything write here?
+//
+// It is not conditional on an option. A guard that has to be switched on is a guard that is
+// switched on after the defect it would have caught has been found some other way.
+// ---------------------------------------------------------------------------------------
+
+// Large enough that no scaling factor can bring it back among plausible constraint values:
+// multiplied by anything above 1e-200 it stays past 1e100, and an overflow to infinity is
+// caught by the same magnitude test. Negative so that a row read before the poison is
+// applied is not mistaken for one written after it.
+static const double constraint_poison = -9.87654321e+305;
+
+double psopt_constraint_poison_value(void)
+{
+    return constraint_poison;
+}
+
+// Exactly the poison, or something the poison could have become. The automatic and user
+// scaling passes multiply every row by its scale factor, so an unwritten row arrives here
+// as poison times that factor: still past 1e100 for any factor above 1e-200, and infinite
+// if the product overflowed. psopt_inf is 1e19, so nothing PSOPT treats as a finite
+// constraint value comes near the threshold. NaN is deliberately not caught here; it is a
+// different fault and is reported differently.
+bool psopt_constraint_row_unwritten(double v)
+{
+    return v == constraint_poison || (v == v && fabs(v) > 1.0e100);
+}
+
+// Which phase a constraint index falls in, and how far into it, so that the diagnostic
+// names a place in the problem rather than an index into an array. Returns false for the
+// blocks that follow the phases -- linkages, the Mayer cost equalities, the residual box --
+// which are described by the caller instead.
+static bool locate_constraint_row(int row, Prob& problem, Workspace* workspace,
+                                  int& phase, int& offset_in_phase, int& rows_in_phase)
+{
+    int base = 0;
+    for (int i = 0; i < problem.nphases; i++) {
+        const int n = get_ncons_phase_i(problem, i, workspace);
+        if (row < base + n) {
+            phase           = i + 1;      // phases are numbered from one everywhere else
+            offset_in_phase = row - base;
+            rows_in_phase   = n;
+            return true;
+        }
+        base += n;
+    }
+    return false;
+}
+
+void check_constraint_coverage( MatrixXd& x, int ncons, Workspace* workspace )
+{
+    if (ncons <= 0) return;
+
+    Prob*    problem = workspace->problem;
+    adouble* xad     = workspace->xad.get();
+    adouble* gad     = workspace->gad.get();
+
+    int j;
+
+    for (j = 0; j < workspace->nvars; j++) xad[j] = x(j);
+    for (j = 0; j < ncons;            j++) gad[j] = constraint_poison;
+
+    // gg_ad counts itself when the counters are on. This evaluation is not one the NLP
+    // asked for, and the mesh statistics the book prints would otherwise gain one per mesh
+    // iteration -- a guard that changes a reported number is a guard that has to be
+    // explained every time the number is read.
+    const bool counters = workspace->enable_nlp_counters;
+    workspace->enable_nlp_counters = false;
+    gg_ad(xad, gad, workspace);
+    workspace->enable_nlp_counters = counters;
+
+    int unwritten = 0, first = -1, last = -1;
+    int not_a_number = 0, first_nan = -1;
+    for (j = 0; j < ncons; j++) {
+        const double v = gad[j].value();
+        if (v != v) {
+            if (not_a_number++ == 0) first_nan = j;
+        }
+        else if (psopt_constraint_row_unwritten(v)) {
+            if (unwritten++ == 0) first = j;
+            last = j;
+        }
+    }
+
+    // A constraint that evaluates to NaN is a different fault with the same consequence:
+    // the NLP is handed a row it cannot use. It is reported and not treated as fatal,
+    // because unlike an unwritten row it can come from the user's model at a bad initial
+    // guess rather than from a disagreement inside PSOPT.
+    if (not_a_number > 0) {
+        snprintf(workspace->text, sizeof(workspace->text),
+                 "\n*** Warning: %d of %d constraint rows evaluate to NaN at the initial "
+                 "point of this mesh, the first at row %d. The NLP cannot use them.",
+                 not_a_number, ncons, first_nan);
+        psopt_print(workspace, workspace->text);
+    }
+
+    if (unwritten == 0) return;
+
+    int phase = 0, offset_in_phase = 0, rows_in_phase = 0;
+    char where[256];
+    if (locate_constraint_row(first, *problem, workspace, phase, offset_in_phase, rows_in_phase)) {
+        snprintf(where, sizeof where,
+                 "row %d is in phase %d, at offset %d of that phase's %d rows",
+                 first, phase, offset_in_phase, rows_in_phase);
+    }
+    else {
+        int after_phases = 0;
+        for (int i = 0; i < problem->nphases; i++)
+            after_phases += get_ncons_phase_i(*problem, i, workspace);
+        snprintf(where, sizeof where,
+                 "row %d is past the phase blocks, at offset %d of the linkage, cost-equality "
+                 "and residual-box rows that follow them",
+                 first, first - after_phases);
+    }
+
+    char m[1024];
+    snprintf(m, sizeof m,
+             "%d of %d NLP constraint rows (first %d, last %d) were left exactly as the "
+             "poison this check wrote before evaluating them, so nothing in gg_ad writes "
+             "them: %s. The row count and the row assignments are two statements of one "
+             "layout and they disagree. A row nobody writes is not an unconstrained row -- "
+             "it is enforced against whatever bounds NLP_bounds gave it, and since the "
+             "buffer is ordinarily zero-filled it is enforced as zero. This is a defect in "
+             "PSOPT and not in the problem; please report it.",
+             unwritten, ncons, first, last, where);
+    error_message(m);
+}
+
+
 void gg_num( MatrixXd& x, MatrixXd* g, Workspace*  workspace )
 {
    // This function implements the NLP inequality  constraints for numerical differentiation
