@@ -58,6 +58,50 @@ void get_controls(adouble* controls, adouble* xad, int iphase, int k, Workspace*
 
 }
 
+// The control of element e at its local node p (0..d) under the Nie-Kerrigan basis.
+//
+// Elements no longer share their end controls. The stored nodal control at a shared node is
+// the LEFT element's right-hand value, so every element but the first reads its own left-hand
+// value out of the block of duplicates that ir_extra_control_vars sizes. That block sits where
+// the Hermite-Simpson midpoint controls would sit, which this basis does not allocate, and
+// where the Gauss terminal state would sit, which cannot arise: the integrated-residual
+// transcription requires Hermite-Simpson.
+//
+// Any reader of an element's control has to come through here. Reading get_controls(e*d)
+// directly gives the neighbour's value at every interior element boundary.
+void get_element_controls(adouble* controls, adouble* xad, int iphase, int e, int p, Workspace* workspace)
+{
+        const int i = iphase-1;
+        Prob& problem = *workspace->problem;
+        const int d = workspace->algorithm->ir_local_order;
+
+        if ( p != 0 || e == 0 ) {
+            get_controls(controls, xad, iphase, e*d + p, workspace);
+            return;
+        }
+
+        MatrixXd& control_scaling = problem.phase[i].scale.controls;
+
+        const int ncontrols = problem.phase[i].ncontrols;
+        const int nstates   = problem.phase[i].nstates;
+        const int norder    = problem.phase[i].current_number_of_intervals;
+        const int nparam    = problem.phase[i].nparameters;
+
+        // No duplicates were allocated -- a mesh this basis does not apply to, or no controls
+        // at all -- so the shared node is all there is.
+        if ( ir_extra_control_vars(norder, ncontrols, *workspace->algorithm) == 0 ) {
+            get_controls(controls, xad, iphase, e*d, workspace);
+            return;
+        }
+
+        const int iphase_offset = get_iphase_offset(problem, iphase, workspace);
+        const int base = (nstates+ncontrols)*(norder+1) + nparam;
+
+        for (int j=0; j<ncontrols; j++) {
+            controls[j] = xad[iphase_offset + base + (e-1)*ncontrols + j]/control_scaling(j);
+        }
+}
+
 void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Workspace* workspace)
 {
    int i = iphase-1;
@@ -76,8 +120,10 @@ void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Wo
         int offset = (nstates+ncontrols)*(norder+1)+nparam;
 
         // The midpoint control variables are not part of the decision vector under the
-        // Nie-Kerrigan local representation, where the slot this would read belongs to the
-        // parameters or to t0. Nothing calls this routine there -- the residual, the cost
+        // Nie-Kerrigan local representation, where this slot belongs to that basis's
+        // element-boundary controls instead -- so reading it here would not even fail
+        // loudly, it would return a control belonging to a different element. Nothing calls
+        // this routine there -- the residual, the cost
         // quadrature, the midpoint path rows, the estimator, integrate() and the control
         // accessor all have their own branch -- and if something ever does, it should say
         // so rather than return whatever is in the next slot.

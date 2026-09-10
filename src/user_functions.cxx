@@ -338,6 +338,18 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
      double tq = time.value();
      int    e  = 0;
      while ( e < M-1 && tq > time_array[(e+1)*d].value() ) e++;
+     // Elements do not share their end controls. get_individual_control_trajectory reports
+     // the stored nodal value, which at a shared node belongs to the element on the LEFT, so
+     // the element about to be interpolated on needs its own left-hand value put in place.
+     // single_control_traj is per-call scratch, so writing into it costs nothing and affects
+     // nobody. The control is discontinuous at an element boundary; a request exactly at one
+     // is answered from the element the search selected, which is the element to the right of
+     // every interior boundary.
+     if ( e > 0 && problem.phase[i].ncontrols > 0 ) {
+         adouble* ubuf = workspace->controls[i].get();
+         get_element_controls( ubuf, xad, iphase, e, 0, workspace );
+         single_control_traj[e*d] = ubuf[control_index];
+     }
      lagrange_interpolation_ad( interp_control, time, time_array+e*d,
                                 single_control_traj+e*d, d+1, workspace );
      return;

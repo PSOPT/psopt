@@ -176,7 +176,9 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
                 get_states(xbuf, xad, iphase, base+r, workspace);
                 for (int j=0;j<nstates;j++) X[r*nstates+j] = xbuf[j];
                 if (ncontrols>0) {
-                    get_controls(ubuf, xad, iphase, base+r, workspace);
+                    // The element's OWN control, not the node's: at a shared node the stored
+                    // value belongs to the element on the left. See get_element_controls.
+                    get_element_controls(ubuf, xad, iphase, e, r, workspace);
                     for (int c=0;c<ncontrols;c++) U[r*ncontrols+c] = ubuf[c];
                 }
             }
@@ -356,7 +358,7 @@ adouble phase_running_cost(int i, int iphase, adouble* xad, adouble t0, adouble 
 		      adouble he  = te1 - te0;
 		      for (int r=0; r<=d; r++) {
 		          int gk = base + r;
-		          get_controls(controls, xad, iphase, gk, workspace);
+		          get_element_controls(controls, xad, iphase, e, r, workspace);
 		          get_states(states,     xad, iphase, gk, workspace);
 		          adouble tnode = convert_to_original_time_ad( (workspace->snodes[i])(gk), t0, tf );
 		          integrand_cost = problem.integrand_cost(states,controls,parameters,tnode,xad,iphase,workspace);

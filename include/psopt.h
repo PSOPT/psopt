@@ -410,6 +410,21 @@ struct alg_str {
                                      // (endpoints shared, C0), so increasing the order drives the
                                      // integrated residual genuinely small (p-refinement); 0 (default)
                                      // keeps the fixed cubic-Hermite integrated-residual representation
+  bool      ir_element_local_controls;
+                                     // Nie-Kerrigan only. true (default): each element carries its own
+                                     // control at its left end, so the control may jump between
+                                     // elements. false: neighbouring elements share the control at the
+                                     // node between them, which makes it continuous. Sharing looks
+                                     // harmless and is not: the residual box annihilates one polynomial
+                                     // degree per link of a chain of integrators, so at d = 2 it leaves
+                                     // the control constant on each element, and a continuous
+                                     // piecewise-constant function is a single constant -- the solve
+                                     // then converges to the best chained-constant control rather than
+                                     // to the right one. Set it false only when what PSOPT is carrying
+                                     // as a control is not a control: the algebraic variable of a DAE
+                                     // is a function of the state and is continuous, and giving it a
+                                     // jump at every element boundary is a modelling error, not a
+                                     // freedom. examples/dae_i3 is the case in point.
   string    hessian;
   string    defect_scaling;
   string    diff_matrix;
@@ -1434,6 +1449,34 @@ inline bool ir_local_basis_active(Alg& algorithm)
            && algorithm.ir_local_order >= 2;
 }
 
+// The Nie-Kerrigan basis gives each element its own control at its left end.
+//
+// The element's control is the degree-d Lagrange polynomial through its d+1 node values, and
+// neighbouring elements used to share their end nodes. That sharing made the control
+// continuous, which is a property nobody asked for -- a state must be C0 because it is a
+// state, a control need not be -- and it was not free. The residual box drives x' - f to zero
+// at every sample point on an element, and for a chain of integrators that annihilates one
+// polynomial degree per link: at d = 2 it leaves the control constant on each element, and a
+// continuous piecewise-constant function is a single constant. The answer then converged to
+// the best chained-constant control instead of the true one, and refining the mesh lengthened
+// the chain rather than helping. On the minimum-energy double integrator, whose answer is
+// J* = 6 with u* = 6 - 12t, 21 to 161 nodes gave 7.143, 7.508, 7.744, 7.868, heading for the
+// 8 that a two-level step costs.
+//
+// So element 0 keeps the phase's first nodal control and every later element carries a
+// duplicate of its left-hand value. A shared node's stored control is the LEFT element's
+// right-hand value; the right element reads its duplicate. That is ncontrols*(M-1) extra
+// variables, and they occupy the slot the Hermite-Simpson midpoint controls would have taken,
+// which this basis does not allocate.
+inline int ir_extra_control_vars(int norder, int ncontrols, Alg& algorithm)
+{
+    if ( !ir_local_basis_active(algorithm) ) return 0;
+    if ( !algorithm.ir_element_local_controls ) return 0;
+    const int d = algorithm.ir_local_order;
+    if ( d < 2 || ncontrols <= 0 || norder < d || (norder % d) != 0 ) return 0;
+    return ncontrols * ( norder/d - 1 );
+}
+
 // Number of path constraints of a phase that are declared as equalities, and which are
 // therefore folded into the integrated residual when algorithm.ir_include_path == "auto".
 // Returns 0 for any other transcription method or setting, so that call sites can add it
@@ -1500,6 +1543,13 @@ void get_initial_states(adouble* states, adouble* xad, int i, Workspace* workspa
 void get_final_states(adouble* states, adouble* xad, int i, Workspace* workspace);
 
 void get_controls(adouble* controls, adouble* xad, int i, int k, Workspace* workspace);
+
+// The control of element e at its local node p (0..d) under the Nie-Kerrigan basis. Every
+// reader of an element's control has to go through this rather than through get_controls,
+// because at a shared node the two adjoining elements no longer hold the same value: the
+// stored nodal control is the left element's, and the right element carries its own. See
+// ir_extra_control_vars.
+void get_element_controls(adouble* controls, adouble* xad, int iphase, int e, int p, Workspace* workspace);
 
 void get_final_controls(adouble* controls, adouble* xad, int i, Workspace* workspace);
 

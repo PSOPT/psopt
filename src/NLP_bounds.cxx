@@ -113,6 +113,18 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
 	   }
         }
 
+        // The Nie-Kerrigan element-boundary controls take the control bounds, being controls.
+        // They occupy the same slot as the midpoint controls above, which this basis does not
+        // allocate, so exactly one of the two blocks is ever present.
+        {
+            const int nextra = ir_extra_control_vars(norder, ncontrols, algorithm);
+            const int nelem  = (ncontrols > 0) ? nextra/ncontrols : 0;   // M-1, or none
+            for (int q = 0; q < nelem; q++) {
+                xlb.block(x_phase_offset+offset1+q*ncontrols,0,ncontrols,1) = elemProduct((problem.phase[i].bounds.lower.controls),control_scaling);
+                xub.block(x_phase_offset+offset1+q*ncontrols,0,ncontrols,1) = elemProduct((problem.phase[i].bounds.upper.controls),control_scaling);
+            }
+        }
+
         // Gauss: appended terminal-state variable takes the state bounds.
         if ( algorithm.collocation_method == "Gauss" ) {
             int xf_off = (nstates+ncontrols)*(norder+1) + nparam;

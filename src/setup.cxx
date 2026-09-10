@@ -182,6 +182,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.ir_dair                     = false;
   algorithm.ir_dair_delta_factor        = 1.0;
   algorithm.ir_local_order              = 0;
+  algorithm.ir_element_local_controls   = true;
   algorithm.ir_residual_scaling         = "state";
   algorithm.objective_form              = "as-posed";
   algorithm.ir_include_path             = "auto";

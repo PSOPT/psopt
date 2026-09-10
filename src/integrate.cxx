@@ -113,7 +113,7 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 		      adouble he  = te1 - te0;
 		      for (int r=0; r<=d; r++) {
 		          int gk = base + r;
-		          get_controls(controls, xad, iphase, gk, workspace);
+		          get_element_controls(controls, xad, iphase, e, r, workspace);
 		          get_states(states,     xad, iphase, gk, workspace);
 		          adouble tnode = convert_to_original_time_ad( (workspace->snodes[i])(gk), t0, tf );
 		          retval += (he/2.0) * wl(r)

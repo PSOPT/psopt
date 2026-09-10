@@ -482,7 +482,7 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
                      get_states( sbuf, xad, iphase, base+r, workspace );
                      for (int j=0;j<nstates;j++) Xe[r*nstates+j] = sbuf[j].value();
                      if (ncontrols_ph>0) {
-                          get_controls( ubuf, xad, iphase, base+r, workspace );
+                          get_element_controls( ubuf, xad, iphase, e, r, workspace );
                           for (int c=0;c<ncontrols_ph;c++) Ue[r*ncontrols_ph+c] = ubuf[c].value();
                      }
                 }

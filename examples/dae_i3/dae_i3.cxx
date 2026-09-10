@@ -302,6 +302,15 @@ int main(int argc, char* argv[])
         algorithm.transcription_method = "integrated-residual";
         algorithm.ir_objective         = "cost";
         algorithm.ir_local_order       = ir_d;
+        // What this problem carries as a control is LAMBDA, the multiplier of the holonomic
+        // constraint: an algebraic variable of the DAE, determined by the state and therefore
+        // continuous. The Nie-Kerrigan basis gives each element its own control at its left
+        // end by default, because a control may jump and sharing it silently annihilates a
+        // polynomial degree; an algebraic variable may not jump, and giving it that freedom
+        // here costs the solve -- at d = 2 IPOPT stops without converging and the maximum
+        // relative local error goes from 1.2e-8 to 9.2e-5. So this phase asks for the shared
+        // control, which is what its variable actually is.
+        algorithm.ir_element_local_controls = false;
         algorithm.ir_residual_bound    = ir_delta;
         algorithm.ir_residual_nodes    = (ir_m > 0) ? ir_m : (ir_d + 2);
         algorithm.ir_include_path      = alg_in ? "auto" : "none";

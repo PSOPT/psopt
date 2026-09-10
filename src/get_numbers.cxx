@@ -73,6 +73,10 @@ int get_number_nlp_vars(Prob& problem, Workspace* workspace)
         if ( midpoint_control_vars(*workspace->algorithm, workspace) ) {
             nlp_vars += (ncontrols)*(nodes);
         }
+        // The Nie-Kerrigan element-boundary controls take the slot the midpoint controls
+        // would have, and the two are mutually exclusive: that basis allocates no midpoint
+        // controls. See ir_extra_control_vars.
+        nlp_vars += ir_extra_control_vars(nodes, ncontrols, *workspace->algorithm);
         if ( workspace->algorithm->collocation_method == "Gauss" ) {
             nlp_vars += nstates;   // appended terminal-state variable (before t0,tf)
         }
@@ -298,6 +302,10 @@ int get_nvars_phase_i(Prob& problem, int i, Workspace* workspace)
         if ( midpoint_control_vars(*workspace->algorithm, workspace) ) {
                     nvars_phase_i += ncontrols*norder;
         }
+
+        // The Nie-Kerrigan element-boundary controls; see ir_extra_control_vars. They share
+        // the midpoint controls' slot, and that basis allocates no midpoint controls.
+        nvars_phase_i += ir_extra_control_vars(norder, ncontrols, *workspace->algorithm);
 
         if ( workspace->algorithm->collocation_method == "Gauss" ) {
                     nvars_phase_i += nstates;   // appended terminal-state variable (before t0,tf)

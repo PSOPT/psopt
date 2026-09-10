@@ -528,7 +528,7 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                             get_states(states_next, xad, iphase, e*d_ir+p, workspace);
                             for (j=0;j<nstates;j++) states_bar[j] += L[p]*states_next[j];
                             if (nctrls>0) {
-                                get_controls(controls_next, xad, iphase, e*d_ir+p, workspace);
+                                get_element_controls(controls_next, xad, iphase, e, p, workspace);
                                 for (j=0;j<nctrls;j++) controls_bar[j] += L[p]*controls_next[j];
                             }
                         }

@@ -259,51 +259,30 @@ TEST(IntegratedResidualPath, AnEqualityAndAnInequalityPathConstraintTogether)
 
 
 // --------------------------------------------------------------------------
-// ir_local_order = 2 does not converge, and this test records what it should do.
+// ir_local_order = 2 is covered by tests/test_ir_local_order.cpp.
 //
-// It is disabled because it fails, and it fails for a reason that is not about
-// path constraints at all -- it was found here only because this is the first
-// test to run the Nie-Kerrigan representation against a problem whose optimal
-// control is not constant.
+// Writing this file turned up a defect that had nothing to do with path
+// constraints: the Nie-Kerrigan elements shared their end controls, which made
+// the control continuous, and at d = 2 the residual box leaves the control
+// constant on each element -- so a continuous piecewise-constant control is one
+// constant, and refining the mesh lengthened the chain instead of helping. It
+// was found here only because this was the first test to run that
+// representation against a problem whose optimal control is not constant. The
+// remedy and the tests for it live in the file named after it.
 //
-// On an element of local order d the state is degree d, so its derivative is
-// degree d-1. The residual box requires |x' - f| <= delta at every sample point
-// on the element, and for a chain of integrators f carries the next state, of
-// degree d, and then the control, also of degree d. Each link of the chain
-// therefore annihilates one degree: with d = 2 the control is driven to a
-// constant on each element, and because elements share their end nodes the
-// control is continuous, so those constants are chained into one. Refining the
-// mesh adds elements to the chain and does not help.
-//
-// Measured on this problem at ir_residual_bound = 1e-8, against J* = 4:
-//
-//     nodes   21      41      81      161
-//     J       4.031   4.300   4.352   4.428      and u bottoms out at -4.5, not -6
-//
-// and on the minimum-energy double integrator of tests/test_simple_constraints,
-// which has no path constraint at all and the exact answer J* = 6 with the
-// linear control u* = 6 - 12t:
-//
-//     nodes   21      41      81      161
-//     J       7.143   7.508   7.744   7.868      and u bottoms out at -4, not -6
-//
-// where 8 and u = +/-4 are exactly the best piecewise-constant control for that
-// problem, which is what the argument above predicts.
-//
-// Orders 0, 3, 4 and 5 all reach the right answer on both problems. See
-// claude/ir-local-order-two-finding.md in the book repository.
+// What belongs here is that the constraint machinery works at d = 2 as well.
 // --------------------------------------------------------------------------
 
-TEST(IntegratedResidualPath, DISABLED_LocalOrderTwoConvergesToTheRightAnswer)
+TEST(IntegratedResidualPath, AnInequalityPathConstraintIsImposedAtLocalOrderTwo)
 {
-    const irpath::Run coarse = irpath::solve(2, 41,  4, irpath::LIMIT);
+    const irpath::Run coarse = irpath::solve(2,  41, 4, irpath::LIMIT);
     const irpath::Run fine   = irpath::solve(2, 161, 4, irpath::LIMIT);
     ASSERT_EQ(coarse.flag, 0) << coarse.message;
     ASSERT_EQ(fine.flag,   0) << fine.message;
 
+    EXPECT_LE(fine.max_path, irpath::LIMIT + 1.0e-6);
     EXPECT_NEAR(fine.cost, irpath::J_CONSTRAINED, 5.0e-3);
-    EXPECT_NEAR(fine.umin, -6.0, 0.05);
     EXPECT_LT(std::fabs(fine.cost   - irpath::J_CONSTRAINED),
               std::fabs(coarse.cost - irpath::J_CONSTRAINED))
-        << "refining the mesh moved the answer further from the exact one";
+        << "refining the mesh moved the answer away from the exact one";
 }

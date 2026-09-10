@@ -189,6 +189,19 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
 	  }
        }
 
+       // Nie-Kerrigan element-boundary controls: element e >= 1 starts from the guess at the
+       // node it starts at, which is the value it would have had when the two were one
+       // variable. A guess that is continuous is the right place to start from; only the
+       // solve is free to break it.
+       {
+           const int nextra = ir_extra_control_vars(norder, ncontrols, *workspace->algorithm);
+           const int d      = workspace->algorithm->ir_local_order;
+           for (int e = 1; e <= nextra/((ncontrols>0)?ncontrols:1); e++) {
+               x0.block( x_phase_offset+offset2+nparam+(e-1)*ncontrols, 0, ncontrols, 1)
+                   = elemProduct((solution.controls[i]).col(e*d), control_scaling);
+           }
+       }
+
        if ( workspace->algorithm->collocation_method == "Gauss" ) {
             // Gauss appended terminal-state variable: guess = terminal stored-state guess.
             x0.block(x_phase_offset+offset2+nparam, 0, nstates, 1) = elemProduct((solution.states[i]).col(norder), state_scaling);
@@ -354,6 +367,19 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
              }
 	  }
    }
+
+        // Nie-Kerrigan element-boundary controls, as in nlp_guess: start each element from the
+        // interpolated control at the node it starts at. The previous mesh's discontinuity is
+        // not carried across, because the reported control trajectory does not record it and
+        // because a new mesh puts the element boundaries somewhere else.
+        {
+            const int nextra = ir_extra_control_vars(norder, ncontrols, *workspace->algorithm);
+            const int d      = workspace->algorithm->ir_local_order;
+            for (int e = 1; e <= nextra/((ncontrols>0)?ncontrols:1); e++) {
+                x0.block(x_phase_offset+offset2+nparam+(e-1)*ncontrols,0,ncontrols,1)
+                    = elemProduct( (solution.controls[i]).col(e*d), control_scaling);
+            }
+        }
 
 	x0(x_phase_offset+ nvars_phase_i-2) = prev_t0(i)*time_scaling;
 	x0(x_phase_offset+ nvars_phase_i-1) = prev_tf(i)*time_scaling;
