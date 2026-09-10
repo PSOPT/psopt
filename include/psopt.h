@@ -36,6 +36,41 @@ namespace PSOPT {
     constexpr double inf    = std::numeric_limits<double>::infinity();
     const double pi         = 4.0*atan(1.0);
 
+    // The magnitude at or beyond which a bound is absent rather than large.
+    //
+    // Every bound PSOPT accepts is two-sided, and a one-sided constraint is written by
+    // putting the unused side out of reach. How far out of reach is a convention, and it
+    // has to be one convention: a bound the transcription reads as infinite and the NLP
+    // solver reads as finite is a different problem to each of them.
+    //
+    // The number is Ipopt's. Its nlp_lower_bound_inf and nlp_upper_bound_inf default to
+    // -1e19 and +1e19 and it treats anything at or past them as infinite, so a model
+    // written for Ipopt -- which is every model in examples/ -- says "no bound" by writing
+    // 1.0e19. PSOPT adopts the same number so that the same model means the same problem
+    // whichever solver is asked for it.
+    constexpr double bound_inf = 1.0e19;
+
+    inline bool no_lower_bound(double lo) { return lo <= -bound_inf; }
+    inline bool no_upper_bound(double up) { return up >=  bound_inf; }
+
+    // A bound, scaled -- and an absent bound left absent.
+    //
+    // Scaling multiplies every bound by a factor between 1e-7 and 1e7, and the sentinel is
+    // a number like any other to a multiplication: a lower bound written -1e19 comes out
+    // of the automatic constraint scaling at -3.3e+18 and is then a *finite* bound of
+    // three million million million. Nothing downstream can tell it from one the user
+    // meant, and every solver reached through a subproblem is wrecked by it.
+    //
+    // The absent bound becomes an IEEE infinity rather than the sentinel, so that it stays
+    // absent under any further scaling. NLP_bounds already writes -inf and +inf for the
+    // rows the integrated-residual algebraic fold removes, so this is the value the rest of
+    // PSOPT already reads there.
+    inline double scaled_lower_bound(double lo, double sc)
+    { return no_lower_bound(lo) ? -inf : lo*sc; }
+
+    inline double scaled_upper_bound(double up, double sc)
+    { return no_upper_bound(up) ?  inf : up*sc; }
+
 }
 
 

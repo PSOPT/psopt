@@ -205,8 +205,8 @@ static int DetectHessianSparsityNumerical(int n, int m,
             double xp = xi + pAmp[p] * std::max(1.0, std::fabs(xi))
                              * (1.0 + 0.5 * std::sin(pFrq[p] * (double) i + pPhs[p]));
             const double lo = xlb(i), hi = xub(i);
-            if (lo > -1.0e19 && xp < lo) xp = lo;
-            if (hi <  1.0e19 && xp > hi) xp = hi;
+            if (!PSOPT::no_lower_bound(lo) && xp < lo) xp = lo;
+            if (!PSOPT::no_upper_bound(hi) && xp > hi) xp = hi;
             X(i) = xp;
         }
         for (int k = 0; k < m; k++)
@@ -581,8 +581,8 @@ static int DetectObjectiveHessianPattern(int n, int m, int nele_hess, Workspace*
             double xp = xi + pAmp[p] * std::max(1.0, std::fabs(xi))
                              * (1.0 + 0.5 * std::sin(pFrq[p] * (double) i + pPhs[p]));
             const double lo = xlb(i), hi = xub(i);
-            if (lo > -1.0e19 && xp < lo) xp = lo;
-            if (hi <  1.0e19 && xp > hi) xp = hi;
+            if (!PSOPT::no_lower_bound(lo) && xp < lo) xp = lo;
+            if (!PSOPT::no_upper_bound(hi) && xp > hi) xp = hi;
             X(i) = xp;
         }
         ProbeHessianPattern(X, zero.data(), 1.0, m, keys, n, maxAbsE, gmax, fmax, workspace);

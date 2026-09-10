@@ -63,10 +63,26 @@ using namespace std;
 typedef int    sparse_int_t;
 typedef double real_t;
 
-// The value at or beyond which a bound is treated as absent. It is the number PSOPT
-// already uses for an absent bound, and the same one the removed solver's own infinity
-// carried, so nothing about how a free variable is recognised has changed.
+// The value handed to a QP backend to say that a bound is absent. It is the plugin ABI's
+// own infinity, PSOPT_QP_INFINITY, and every backend recognises it as meaning no bound.
 static const double qp_inf = 1.0e20;
+
+// The value at or beyond which a bound *arriving from the problem* is absent. That is a
+// different question from the one above and had been answered with the same number, which
+// was wrong by a factor of ten: PSOPT's convention is Ipopt's 1e19, recorded in
+// PSOPT::bound_inf, and the five shipped examples that write a one-sided path constraint
+// -- chance_constraint, chance_covariance, conic_sdp, conic_soc and path_window -- all
+// write -1.0e19 for its absent side, as a model written for Ipopt does.
+//
+// Read at 1e20 those five bounds are finite, and a finite bound of 1e19 is passed through
+// to the subproblem as a constraint row with a right-hand side of 1e19. Nothing downstream
+// survives that. Clarabel returns "dual infeasible" from the very first subproblem, after
+// one iteration and with an objective of NaN, on a model whose Hessian is the identity and
+// which therefore cannot be unbounded; and the feasibility phase's row scaling, which
+// divides each row by the larger of its two bounds, divides that row by 1e19 and deletes
+// it. All five examples stopped at iteration zero, under both trust regions and every
+// backend, and had done since the SQP was written.
+static const double psopt_inf = PSOPT::bound_inf;
 
 namespace {
 
@@ -783,7 +799,6 @@ static int feasible_point_phase(MatrixXd& x, int m,
 {
     const int    n         = (int) x.rows();
     const int    nr        = n + m;                 // the relaxed subproblem's size
-    const double psopt_inf = 1.0e20;
     const double rho       = 1.0e4;                 // Betts's 10^6, tempered; see above
 
     if (m <= 0) return 0;
@@ -1392,9 +1407,7 @@ int SQP_interface(Alg&         algorithm,
         // ---- the quadratic programming subproblem -------------------------------
         //   min  1/2 d' B d + grad_f' d
         //   s.t. g_l - g <= J d <= g_u - g,      xlb - x <= d <= xub - x
-        // PSOPT writes an absent constraint bound as +/- 1.0e20 (see NLP_bounds.cxx);
-        // Anything at or beyond qp_inf is treated as an absent bound.
-        const double psopt_inf = 1.0e20;
+        // An absent bound is anything at or past PSOPT::bound_inf; see psopt_inf above.
         for (int i = 0; i < m; i++) {
             lbA[i] = (gl[i] <= -psopt_inf) ? -qp_inf : gl[i] - gval(i);
             ubA[i] = (gu[i] >=  psopt_inf) ?  qp_inf : gu[i] - gval(i);

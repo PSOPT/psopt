@@ -36,6 +36,28 @@ e-mail:    vmbecerra@vmb1.com
 using namespace std;
 
 
+// The elementwise forms of PSOPT::scaled_lower_bound and PSOPT::scaled_upper_bound, which
+// is what every bound in this file needs: elemProduct multiplies the sentinel along with
+// everything else and turns "no bound" into a finite one. See psopt.h.
+static MatrixXd scaled_lower(const MatrixXd& lo, const MatrixXd& sc)
+{
+    MatrixXd out(lo.rows(), lo.cols());
+    for (int r = 0; r < lo.rows(); r++)
+        for (int c = 0; c < lo.cols(); c++)
+            out(r,c) = PSOPT::scaled_lower_bound(lo(r,c), sc(r,c));
+    return out;
+}
+
+static MatrixXd scaled_upper(const MatrixXd& up, const MatrixXd& sc)
+{
+    MatrixXd out(up.rows(), up.cols());
+    for (int r = 0; r < up.rows(); r++)
+        for (int c = 0; c < up.cols(); c++)
+            out(r,c) = PSOPT::scaled_upper_bound(up(r,c), sc(r,c));
+    return out;
+}
+
+
 
 void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algorithm, Workspace* workspace)
 {
@@ -70,18 +92,18 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
 	for (k=0; k<norder+1; k++) {   // EIGEN_UPDATE: k index shifted by -1.
                 if (ncontrols>0) {
 
-	              xlb.block(x_phase_offset+k*ncontrols, 0, ncontrols, 1 ) = elemProduct((problem.phase[i].bounds.lower.controls),control_scaling);
+	              xlb.block(x_phase_offset+k*ncontrols, 0, ncontrols, 1 ) = scaled_lower((problem.phase[i].bounds.lower.controls),control_scaling);
                 }
 
-		xlb.block(x_phase_offset+(k)*nstates+offset1,0, nstates, 1) = elemProduct((problem.phase[i].bounds.lower.states),state_scaling);
+		xlb.block(x_phase_offset+(k)*nstates+offset1,0, nstates, 1) = scaled_lower((problem.phase[i].bounds.lower.states),state_scaling);
 
                 if (ncontrols>0) {
 
-		     xub.block(x_phase_offset+(k)*ncontrols,0, ncontrols, 1) = elemProduct((problem.phase[i].bounds.upper.controls),control_scaling);
+		     xub.block(x_phase_offset+(k)*ncontrols,0, ncontrols, 1) = scaled_upper((problem.phase[i].bounds.upper.controls),control_scaling);
 
                 }
 
-        xub.block(x_phase_offset+(k)*nstates+offset1,0, nstates, 1)=elemProduct((problem.phase[i].bounds.upper.states),state_scaling);
+        xub.block(x_phase_offset+(k)*nstates+offset1,0, nstates, 1)=scaled_upper((problem.phase[i].bounds.upper.states),state_scaling);
 
 	}
 
@@ -90,11 +112,11 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
         if (nparam>=1) {
 
 
-             xlb.block(x_phase_offset+offset2,0,nparam,1)= elemProduct((problem.phase[i].bounds.lower.parameters),param_scaling);
+             xlb.block(x_phase_offset+offset2,0,nparam,1)= scaled_lower((problem.phase[i].bounds.lower.parameters),param_scaling);
 
 
 
-             xub.block(x_phase_offset+offset2,0,nparam,1)= elemProduct((problem.phase[i].bounds.upper.parameters),param_scaling);
+             xub.block(x_phase_offset+offset2,0,nparam,1)= scaled_upper((problem.phase[i].bounds.upper.parameters),param_scaling);
 
         }
 
@@ -104,10 +126,10 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
 	   for (k=0; k<norder; k++) { // EIGEN_UPDATE: K index shifted by -1
                 if (ncontrols>0) {
 
-		          xlb.block(x_phase_offset+offset1+(k)*ncontrols,0,ncontrols,1) = elemProduct((problem.phase[i].bounds.lower.controls),control_scaling);
+		          xlb.block(x_phase_offset+offset1+(k)*ncontrols,0,ncontrols,1) = scaled_lower((problem.phase[i].bounds.lower.controls),control_scaling);
 
 
-                  xub.block(x_phase_offset+offset1+(k)*ncontrols,0,ncontrols,1) = elemProduct((problem.phase[i].bounds.upper.controls),control_scaling);
+                  xub.block(x_phase_offset+offset1+(k)*ncontrols,0,ncontrols,1) = scaled_upper((problem.phase[i].bounds.upper.controls),control_scaling);
 
                 }
 	   }
@@ -120,23 +142,23 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
             const int nextra = ir_extra_control_vars(norder, ncontrols, algorithm);
             const int nelem  = (ncontrols > 0) ? nextra/ncontrols : 0;   // M-1, or none
             for (int q = 0; q < nelem; q++) {
-                xlb.block(x_phase_offset+offset1+q*ncontrols,0,ncontrols,1) = elemProduct((problem.phase[i].bounds.lower.controls),control_scaling);
-                xub.block(x_phase_offset+offset1+q*ncontrols,0,ncontrols,1) = elemProduct((problem.phase[i].bounds.upper.controls),control_scaling);
+                xlb.block(x_phase_offset+offset1+q*ncontrols,0,ncontrols,1) = scaled_lower((problem.phase[i].bounds.lower.controls),control_scaling);
+                xub.block(x_phase_offset+offset1+q*ncontrols,0,ncontrols,1) = scaled_upper((problem.phase[i].bounds.upper.controls),control_scaling);
             }
         }
 
         // Gauss: appended terminal-state variable takes the state bounds.
         if ( algorithm.collocation_method == "Gauss" ) {
             int xf_off = (nstates+ncontrols)*(norder+1) + nparam;
-            xlb.block(x_phase_offset+xf_off,0,nstates,1) = elemProduct((problem.phase[i].bounds.lower.states),state_scaling);
-            xub.block(x_phase_offset+xf_off,0,nstates,1) = elemProduct((problem.phase[i].bounds.upper.states),state_scaling);
+            xlb.block(x_phase_offset+xf_off,0,nstates,1) = scaled_lower((problem.phase[i].bounds.lower.states),state_scaling);
+            xub.block(x_phase_offset+xf_off,0,nstates,1) = scaled_upper((problem.phase[i].bounds.upper.states),state_scaling);
         }
 
-	xlb(x_phase_offset+nvars_phase_i-2)   = problem.phase[i].bounds.lower.StartTime*time_scaling; //EIGEN_UPDATE
-	xub(x_phase_offset+nvars_phase_i-2)   = problem.phase[i].bounds.upper.StartTime*time_scaling; //EIGEN_UPDATE
+	xlb(x_phase_offset+nvars_phase_i-2)   = PSOPT::scaled_lower_bound(problem.phase[i].bounds.lower.StartTime, time_scaling); //EIGEN_UPDATE
+	xub(x_phase_offset+nvars_phase_i-2)   = PSOPT::scaled_upper_bound(problem.phase[i].bounds.upper.StartTime, time_scaling); //EIGEN_UPDATE
 
-	xlb(x_phase_offset+nvars_phase_i-1) = problem.phase[i].bounds.lower.EndTime*time_scaling;  //EIGEN_UPDATE
-	xub(x_phase_offset+nvars_phase_i-1) = problem.phase[i].bounds.upper.EndTime*time_scaling;  //EIGEN_UPDATE
+	xlb(x_phase_offset+nvars_phase_i-1) = PSOPT::scaled_lower_bound(problem.phase[i].bounds.lower.EndTime, time_scaling);  //EIGEN_UPDATE
+	xub(x_phase_offset+nvars_phase_i-1) = PSOPT::scaled_upper_bound(problem.phase[i].bounds.upper.EndTime, time_scaling);  //EIGEN_UPDATE
 
         x_phase_offset += nvars_phase_i;
 
@@ -209,8 +231,8 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
  		else
 			event_sc = constraint_scaling(j);
 
-		g_l[j] = (problem->phase[i].bounds.lower.events)(k)*event_sc;
-		g_u[j] = (problem->phase[i].bounds.upper.events)(k)*event_sc;
+		g_l[j] = PSOPT::scaled_lower_bound((problem->phase[i].bounds.lower.events)(k), event_sc);
+		g_u[j] = PSOPT::scaled_upper_bound((problem->phase[i].bounds.upper.events)(k), event_sc);
 	}
 
 	offset = offset + nevents;
@@ -240,8 +262,8 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 		    else
 		       path_sc = constraint_scaling(j);
 
-		    g_l[j] = (problem->phase[i].bounds.lower.path)(k)*path_sc;
-		    g_u[j] = (problem->phase[i].bounds.upper.path)(k)*path_sc;
+		    g_l[j] = PSOPT::scaled_lower_bound((problem->phase[i].bounds.lower.path)(k), path_sc);
+		    g_u[j] = PSOPT::scaled_upper_bound((problem->phase[i].bounds.upper.path)(k), path_sc);
 		}
 	}
 
@@ -259,8 +281,8 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 		    		else
 		       			path_sc = constraint_scaling(j);
 
-		    		g_l[j] = (problem->phase[i].bounds.lower.path)(k)*path_sc;
-		    		g_u[j] = (problem->phase[i].bounds.upper.path)(k)*path_sc;
+		    		g_l[j] = PSOPT::scaled_lower_bound((problem->phase[i].bounds.lower.path)(k), path_sc);
+		    		g_u[j] = PSOPT::scaled_upper_bound((problem->phase[i].bounds.upper.path)(k), path_sc);
 			}
 		}
 	}
