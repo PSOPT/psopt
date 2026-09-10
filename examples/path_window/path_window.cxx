@@ -9,8 +9,26 @@
 ////////              ~1 inside [ta,tb] and ~0 outside, relaxing the   ////
 ////////              constraint away from the window.                 ////
 //////// Problem:     double integrator move (pos 0->1, vel 0->0),     ////
-////////              minimum control energy, with pos <= 0.35 ONLY    ////
-////////              during t in [0.4, 0.6] (a transient keep-under). ////
+////////              minimum control energy, with vel <= 1.30 ONLY    ////
+////////              during t in [0.35, 0.65] (a transient speed cap).////
+//////////////////////////////////////////////////////////////////////////
+//////// Note on the Hessian: this example asks for the exact one, and  ////
+////////              it is not a preference. Once t0 and tf are fixed  ////
+////////              the gate is a constant at each node, so the       ////
+////////              problem is a convex quadratic programme -- and    ////
+////////              Ipopt's limited-memory Hessian nevertheless       ////
+////////              stalls on it, with the objective fixed to eight   ////
+////////              figures, steps of 1e-10, the barrier parameter at ////
+////////              its floor and a dual residual oscillating between ////
+////////              1.2e-06 and 4.1e-06 against a tolerance of 1e-06. ////
+////////              It stops with "Restoration Failed" at a point     ////
+////////              whose constraint violation is 1e-13, holding the  ////
+////////              right answer. With the exact Hessian the same run ////
+////////              takes 6 iterations and ends at 2.0e-12. The gate  ////
+////////              is a sigmoid of width 4/s = 0.02 on a mesh whose  ////
+////////              spacing there is about 0.05, which is what makes  ////
+////////              the curvature worth having: at s = 20 the         ////
+////////              limited-memory run converges too.                 ////
 //////////////////////////////////////////////////////////////////////////
 
 #include "psopt.h"
@@ -92,6 +110,7 @@ int main(void)
     algorithm.nlp_method         = "IPOPT";
     algorithm.scaling            = "automatic";
     algorithm.derivatives        = "automatic";
+    algorithm.hessian            = "exact";   // see the note at the top of this file
     algorithm.collocation_method = "Legendre";
     algorithm.nlp_iter_max       = 1000;
     algorithm.nlp_tolerance      = 1.e-6;
