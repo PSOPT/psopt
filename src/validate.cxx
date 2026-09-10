@@ -35,6 +35,38 @@ e-mail:    vmbecerra@vmb1.com
 using namespace std;
 
 
+#ifdef USE_SQP
+// Implemented in qp_plugin_loader.cxx, and declared here as SQP_interface.cxx declares
+// it: every QP backend lives in a plugin opened at run time, so whether this build can
+// use one is a question for the loader and not for the compiler.
+bool psopt_qp_plugin_available(const std::string& backend, std::string& message);
+#endif
+
+// The QP backends PSOPT knows how to name. One list, used both to check the option and
+// to say what a build can actually load. The names were written out twice before -- once
+// in the test and once in the message that reports it -- which is the arrangement that
+// lets the two drift apart, and a list written twice is a list that will.
+static const char* const qp_backend_names[] =
+    { "GALAHAD", "ProxQP", "QPALM", "OSQP", "PIQP", "Clarabel", NULL };
+
+static bool is_known_qp_backend(const string& name)
+{
+    for (const char* const* b = qp_backend_names; *b != NULL; ++b)
+        if (name == *b) return true;
+    return false;
+}
+
+static string qp_backend_name_list()
+{
+    string s;
+    for (const char* const* b = qp_backend_names; *b != NULL; ++b) {
+        if (!s.empty()) s += (b[1] == NULL) ? " and " : ", ";
+        s += string("\"") + *b + "\"";
+    }
+    return s;
+}
+
+
 void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 {
     int i;
@@ -110,12 +142,39 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("Incorrect derivatives option specified. Valid options are \"automatic\" and \"numerical\" ");
     if (algorithm.hessian != "exact" && algorithm.hessian!="limited-memory" && algorithm.hessian!="numerical")
        error_message("Incorrect algorithm.hessian option specified. Valid options are \"limited-memory\", \"exact\" and \"numerical\" ");
-    if (algorithm.qp_solver != "GALAHAD" && algorithm.qp_solver != "ProxQP"
-                                        && algorithm.qp_solver != "QPALM"
-                                        && algorithm.qp_solver != "OSQP"
-                                        && algorithm.qp_solver != "PIQP"
-                                        && algorithm.qp_solver != "Clarabel")
-       error_message("Incorrect algorithm.qp_solver option specified. Valid options are \"GALAHAD\", \"ProxQP\", \"QPALM\", \"OSQP\", \"PIQP\" and \"Clarabel\" ");
+    if (!is_known_qp_backend(algorithm.qp_solver))
+       error_message(("Incorrect algorithm.qp_solver option specified. Valid options are "
+                      + qp_backend_name_list() + " ").c_str());
+#ifdef USE_SQP
+    // A name on that list is not a backend this build can load. Every backend is a
+    // plugin opened at run time, so the two questions are independent and only the
+    // second one matters to a solve. Asked here, the absence is a set-up failure with
+    // the missing name in it and a list of what this build does carry. Left to the
+    // first subproblem -- which is where it was discovered until now -- it is a
+    // subproblem the SQP declines: the solver stops at iteration zero and reports
+    // status 2 through solution.nlp_return_code, while solution.error_flag stays at
+    // zero, because nothing was thrown and the set-up really was sound. A caller
+    // reading error_flag alone is then told the run succeeded and is handed back the
+    // cost of its own initial guess. The comment on psopt_qp_plugin_available has said
+    // since it was written that validate() asks this question; until now it did not.
+    if (algorithm.nlp_method == "SQP") {
+       string why;
+       if (!psopt_qp_plugin_available(algorithm.qp_solver, why)) {
+          string carried;
+          for (const char* const* b = qp_backend_names; *b != NULL; ++b) {
+             string ignored;
+             if (psopt_qp_plugin_available(*b, ignored)) {
+                if (!carried.empty()) carried += ", ";
+                carried += *b;
+             }
+          }
+          error_message(("algorithm.qp_solver = \"" + algorithm.qp_solver + "\" is a valid "
+                         "name, but this build cannot load that backend: " + why
+                       + " This build can load: "
+                       + (carried.empty() ? string("no QP backend at all") : carried) + ". ").c_str());
+       }
+    }
+#endif
     // Zero asks for the automatic budget, which scales with the subproblem; anything
     // else is used as given, and a handful of iterations is not a budget.
     if (algorithm.qp_iter_max != 0 && algorithm.qp_iter_max < 10)

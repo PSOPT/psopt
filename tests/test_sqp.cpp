@@ -67,6 +67,11 @@ void linkages(adouble* linkages, adouble* xad, Workspace* w) { }
 // step and so counts its iterations.
 static int last_nlp_iterations = 0;
 
+// The diagnostic of the last solve, empty unless it failed. A test that requires a run to
+// be refused should be able to say what it was refused for; a bare flag cannot distinguish
+// the refusal it asked for from any other set-up failure.
+static std::string last_error_msg;
+
 // Added to solution.nlp_return_code when solve_lq reports it as a failure, so that a
 // non-zero flag in the assertions below says which of the two channels it came from.
 static const int nlp_failure_offset = 1000;
@@ -207,6 +212,7 @@ static double solve_lq(const std::string& nlp_method, double u_bound, int& error
                : (nlp == 0 || nlp == 1)         ? 0
                                                 : nlp_failure_offset + nlp;
     last_nlp_iterations = solution.mesh_stats ? solution.mesh_stats[0].n_jacobian_evals : 0;
+    last_error_msg      = solution.error_msg;
     return solution.cost;
 }
 
@@ -740,47 +746,52 @@ TEST(SQPSolver, AMissingPluginIsReportedClearly)
 
 // The same thing one level up, through a whole solve rather than through the loader.
 //
-// algorithm.qp_solver is checked against a list of names in validate.cxx, and every name
-// on that list is accepted whether or not this build carries the backend behind it. The
-// absence is discovered at the first subproblem, which is declined; the SQP stops at
-// iteration zero and reports status 2 in solution.nlp_return_code. But solution.error_flag
-// stays at zero, because nothing was thrown and the set-up was sound -- so a caller
-// looking only at error_flag is told the run succeeded, and is handed the cost of its own
-// initial guess. That is what happened above when the default-backend chain named a
-// backend this build had not been given, and it stayed hidden because the tests read
-// error_flag alone.
+// algorithm.qp_solver is checked against a list of names in validate.cxx, and until that
+// check was joined by one that asks the loader, every name on the list was accepted
+// whether or not the build could load the backend behind it. The absence was discovered
+// at the first subproblem, which was declined; the SQP stopped at iteration zero and
+// reported status 2 in solution.nlp_return_code. But solution.error_flag stayed at zero,
+// because nothing was thrown and the set-up really was sound -- so a caller looking only
+// at error_flag was told the run succeeded, and was handed the cost of its own initial
+// guess. That is what happened when the default-backend chain named a backend this build
+// had not been given, and it stayed hidden because the tests read error_flag alone.
 //
-// So: name a backend on validate.cxx's list that this build does not carry, and require
-// the run to be reported as a failure and to be nowhere near the answer.
-TEST(SQPSolver, ABackendThisBuildDoesNotCarryIsReportedAsAFailedRun)
+// So: name a backend on validate.cxx's list that this build cannot load, and require the
+// run to be refused at set-up rather than at the first subproblem -- reported through
+// error_flag, with the name of the backend in the diagnostic.
+TEST(SQPSolver, ABackendThisBuildCannotLoadIsRefusedAtSetUp)
 {
-    // The first name on validate.cxx's list that this build did not compile in.
+    // Asked of the loader rather than of the preprocessor. Whether a backend can be used
+    // is a run-time question -- the backends are plugins -- and it is the question
+    // validate.cxx now asks, so it is the one the test has to ask to be testing the same
+    // thing. A build can define USE_PIQP and still fail to open the plugin.
+    static const char* const names[] =
+        { "GALAHAD", "ProxQP", "QPALM", "OSQP", "PIQP", "Clarabel", NULL };
     const char* absent = NULL;
-#if !defined(USE_GALAHAD)
-    absent = "GALAHAD";
-#elif !defined(USE_PROXQP)
-    absent = "ProxQP";
-#elif !defined(USE_QPALM)
-    absent = "QPALM";
-#elif !defined(USE_OSQP)
-    absent = "OSQP";
-#elif !defined(USE_PIQP)
-    absent = "PIQP";
-#elif !defined(USE_CLARABEL)
-    absent = "Clarabel";
-#endif
-    if (absent == NULL) GTEST_SKIP() << "this build carries every backend";
+    for (const char* const* b = names; *b != NULL && absent == NULL; ++b) {
+        std::string ignored;
+        if (!psopt_qp_plugin_available(*b, ignored)) absent = *b;
+    }
+    if (absent == NULL) GTEST_SKIP() << "this build can load every backend on the list";
 
     int flag = -1;
     const double J = sqp_test::solve_lq("SQP", 10.0, flag, "limited-memory", absent);
 
-    // 1002: solve_lq's offset plus SQP status 2, the code for a subproblem that could not
-    // be solved -- which is how the absence arrives, at the first subproblem.
-    EXPECT_EQ(flag, sqp_test::nlp_failure_offset + 2)
-        << "a run through the absent backend \"" << absent
-        << "\" was reported as flag " << flag;
+    // A set-up failure, not an NLP failure: 1 rather than solve_lq's offset plus a status.
+    // The distinction is the point of the change -- the run is now refused before any
+    // subproblem is formed.
+    EXPECT_EQ(flag, 1)
+        << "a run naming the unloadable backend \"" << absent
+        << "\" was reported as flag " << flag
+        << ", so it was not refused at set-up";
+    EXPECT_NE(sqp_test::last_error_msg.find(absent), std::string::npos)
+        << "the diagnostic does not name the backend that was refused: "
+        << sqp_test::last_error_msg;
+    EXPECT_NE(sqp_test::last_error_msg.find("cannot load"), std::string::npos)
+        << "the diagnostic does not say the backend could not be loaded: "
+        << sqp_test::last_error_msg;
     EXPECT_FALSE(std::fabs(J - 0.775240441234) < 1.0e-9)
-        << "the absent backend \"" << absent << "\" appears to have solved the problem";
+        << "the unloadable backend \"" << absent << "\" appears to have solved the problem";
 }
 
 #else
