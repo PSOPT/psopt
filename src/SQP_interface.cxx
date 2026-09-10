@@ -399,7 +399,19 @@ struct QpSolution {
     bool           approximate = false; // stopped at its iteration limit; d is not a
                                         // solution of the subproblem, only a point on
                                         // the way to one
+    int            status = PSOPT_QP_FAILED;   // exactly what the backend said
 };
+
+// The backend's verdict, in words, for a subproblem it did not solve. A backend that
+// does not distinguish them says only FAILED, and then there is nothing to add.
+static const char* qp_verdict(int status)
+{
+    switch (status) {
+        case PSOPT_QP_INFEASIBLE: return "its constraints are inconsistent";
+        case PSOPT_QP_UNBOUNDED:  return "it has no minimum";
+        default:                  return NULL;
+    }
+}
 
 
 // Solve a subproblem through a plugin backend. The conversion is only a matter of
@@ -453,6 +465,7 @@ static bool solve_qp_plugin(const string& backend, const QpProblem& p,
     if (!psopt_qp_plugin_solve(backend, &q, &r, message)) return false;
 
     out.iterations  = r.iterations;
+    out.status      = r.status;
     out.approximate = (r.status == PSOPT_QP_APPROXIMATE);
     out.unsupported = (r.status == PSOPT_QP_UNSUPPORTED);
     // An approximate step is still usable -- refusing it outright would stall runs that
@@ -1430,6 +1443,11 @@ int SQP_interface(Alg&         algorithm,
         bool   elastic = false;
         double rho_elastic = 0.0;
 
+        // What the backend said about each of the two subproblems, kept so that a run
+        // that stops here can report the verdict instead of guessing at a cause.
+        int    sub_status   = PSOPT_QP_FAILED;
+        int    relax_status = PSOPT_QP_FAILED;
+
         // The shift the convexification below settled on, and the ceiling it may be
         // raised to. Both are needed after the subproblem has been attempted, because
         // a backend that requires a convex model can decline one this shift has not
@@ -1638,8 +1656,9 @@ int SQP_interface(Alg&         algorithm,
                 break;
             }
 
-            qp_ok    = qs.ok;
-            qp_iters = qs.iterations;
+            qp_ok      = qs.ok;
+            qp_iters   = qs.iterations;
+            sub_status = qs.status;
             if (qs.approximate) { qp_capped_run++; n_qp_capped++; }
             else                  qp_capped_run = 0;
             if (qs.ok) {
@@ -1840,8 +1859,9 @@ int SQP_interface(Alg&         algorithm,
                 }
                 if (qs.ok && delta_e > tau) tau = delta_e;   // carry what worked
 
-                rve_ok    = qs.ok;
-                rve_iters = qs.iterations;
+                rve_ok       = qs.ok;
+                rve_iters    = qs.iterations;
+                relax_status = qs.status;
                 if (qs.ok) {
                     for (int k = 0; k < ne; k++) ze[k]    = qs.d[(size_t) k];
                     for (int k = 0; k < ne; k++) ye[k]    = qs.z[(size_t) k];
@@ -1866,18 +1886,46 @@ int SQP_interface(Alg&         algorithm,
 
         if (!qp_ok) {
             status  = 2;
-            // Naming the alternative is worth the words. The most common reason a
-            // backend refuses both the subproblem and its relaxation is that it
-            // requires a convex model and the shift, raised to its ceiling above, has
-            // not produced one it will accept; an active-set method built for
-            // indefinite curvature has no such requirement and takes the model as it
-            // stands.
-            message = "The quadratic programming subproblem could not be solved, "
-                      "and neither could its elastic relaxation";
-            if (algorithm.qp_solver != "GALAHAD")
-                message += ". A backend that declines a subproblem as non-convex is "
-                           "refusing a model that is positive definite only on the null "
-                           "space of the Jacobian, which is all an SQP needs; "
+            const bool relaxed_too = (m > 0);
+            message = relaxed_too
+                    ? "The quadratic programming subproblem could not be solved, and "
+                      "neither could its elastic relaxation"
+                    : "The quadratic programming subproblem could not be solved";
+
+            // What the backend actually reported, where it reported anything. This used
+            // to assert a cause -- that the backend was refusing a model indefinite off
+            // the null space of the Jacobian -- and print it as a diagnosis. Sometimes
+            // that was right. On the five examples that wrote a path bound of -1.0e19 it
+            // was not: Clarabel was reporting the *subproblem* unbounded, from a model
+            // whose Hessian was the identity, because a constraint row had a right-hand
+            // side of 1e19 in it. An assertion that is right most of the time and printed
+            // as a finding is worse than a report, because it is believed.
+            //
+            // The elastic relaxation is feasible by construction -- at v = w = 0 it is the
+            // original subproblem, and every row can be met by paying for a slack -- so a
+            // backend calling *that* infeasible is saying something about the data it was
+            // given and not about the problem being solved.
+            const char* vsub = qp_verdict(sub_status);
+            const char* vrel = relaxed_too ? qp_verdict(relax_status) : NULL;
+            if (vsub != NULL || vrel != NULL) {
+                message += ". " + algorithm.qp_solver + " reports";
+                if (vsub != NULL) message += string(" of the subproblem that ") + vsub;
+                if (vsub != NULL && vrel != NULL) message += ", and";
+                if (vrel != NULL) message += string(" of the relaxation that ") + vrel;
+                if (vrel != NULL && relax_status == PSOPT_QP_INFEASIBLE)
+                    message += " -- which cannot be, since the relaxation is feasible at "
+                               "a step of zero, so the subproblem data is the thing to "
+                               "look at";
+            }
+
+            // And the alternative, which is worth naming whenever the reason might be
+            // convexity: an SQP subproblem needs a Hessian positive definite only on the
+            // null space of the Jacobian, and an active-set method built for indefinite
+            // curvature takes such a model as it stands where a method that factorises
+            // its KKT matrix once will not.
+            if (algorithm.qp_solver != "GALAHAD" && vsub == NULL && vrel == NULL)
+                message += ". If the model is the reason, an SQP needs a Hessian positive "
+                           "definite only on the null space of the Jacobian, and "
                            "algorithm.qp_solver = \"GALAHAD\" accepts one";
             break;
         }

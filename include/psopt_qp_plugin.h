@@ -76,6 +76,22 @@ extern "C" {
 #define PSOPT_QP_APPROXIMATE  1   /* iteration limit reached; step is usable    */
 #define PSOPT_QP_FAILED       2   /* no usable step                             */
 #define PSOPT_QP_UNSUPPORTED  3   /* the request is one this backend cannot express */
+#define PSOPT_QP_INFEASIBLE   4   /* the backend proved the constraints inconsistent */
+#define PSOPT_QP_UNBOUNDED    5   /* the backend proved the objective unbounded below */
+
+/*  The last two are refinements of FAILED and are optional: a backend whose solver does
+ *  not distinguish them returns PSOPT_QP_FAILED, which is what every backend did before
+ *  they existed, and the SQP answers a subproblem it cannot solve in the same way
+ *  whichever of the three it is told. They exist so that the SQP can say what it was
+ *  told instead of guessing. The guess it used to make was that a backend refusing a
+ *  subproblem was refusing it for want of convexity, and that guess was printed as a
+ *  diagnosis; on the five examples that write a path bound of -1.0e19 the true report
+ *  was "dual infeasible", from a model whose Hessian was the identity, and the printed
+ *  diagnosis sent the reader looking in the wrong place.
+ *
+ *  Adding values to this list does not change the structures, so it is not an ABI break
+ *  in either direction: a plugin built before they existed never returns them, and one
+ *  that does return them is read by an older PSOPT as "not solved", which is right. */
 
 /*  The subproblem
  *

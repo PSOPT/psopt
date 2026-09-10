@@ -212,7 +212,14 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
     // refused subproblem.
     const bool solved = (status == piqp::Status::PIQP_SOLVED);
 
-    if (!solved) return s->status;
+    if (!solved) {
+        // PIQP's certificates, where it has one. An interior-point method proves an
+        // infeasible or an unbounded subproblem rather than merely failing on it, and
+        // the SQP is better told which than left to guess; see psopt_qp_plugin.h.
+        if      (status == piqp::Status::PIQP_PRIMAL_INFEASIBLE) s->status = PSOPT_QP_INFEASIBLE;
+        else if (status == piqp::Status::PIQP_DUAL_INFEASIBLE)   s->status = PSOPT_QP_UNBOUNDED;
+        return s->status;
+    }
 
     for (int j = 0; j < n; j++) s->d[j] = solver.result().x((Eigen::Index) j);
 

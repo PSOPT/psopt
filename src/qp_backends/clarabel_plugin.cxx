@@ -289,6 +289,21 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
 
         s->status = solved ? PSOPT_QP_SOLVED : PSOPT_QP_APPROXIMATE;
     }
+    else {
+        // What Clarabel concluded, where it concluded anything. A primal-dual
+        // interior-point method detects an infeasible or an unbounded problem as
+        // certificates rather than as a failure to converge, and the two are worth
+        // passing on: they say something about the subproblem the SQP built, where an
+        // iteration limit or a numerical breakdown says only that this attempt did not
+        // work. "Almost" is the same verdict at Clarabel's reduced tolerances.
+        switch (sol.status) {
+            case ClarabelPrimalInfeasible:
+            case ClarabelAlmostPrimalInfeasible: s->status = PSOPT_QP_INFEASIBLE; break;
+            case ClarabelDualInfeasible:
+            case ClarabelAlmostDualInfeasible:   s->status = PSOPT_QP_UNBOUNDED;  break;
+            default:                             s->status = PSOPT_QP_FAILED;     break;
+        }
+    }
 
     clarabel_DefaultSolver_free(solver);
     return s->status;
