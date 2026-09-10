@@ -95,7 +95,6 @@ static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspa
 {
     psopt_env_override("PSOPT_NLP_METHOD",       algorithm.nlp_method,      workspace);
     psopt_env_override("PSOPT_DERIVATIVES",      algorithm.derivatives,     workspace);
-    psopt_env_override("PSOPT_HESSIAN",          algorithm.hessian,         workspace);
     psopt_env_override("PSOPT_QP_SOLVER",        algorithm.qp_solver,       workspace);
     psopt_env_override("PSOPT_QP_RESTORATION",   algorithm.qp_restoration,  workspace);
     psopt_env_override("PSOPT_ELASTIC_PENALTY",  algorithm.elastic_penalty, workspace);
@@ -108,18 +107,23 @@ static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspa
     psopt_env_override_double("PSOPT_NLP_TOLERANCE", algorithm.nlp_tolerance, workspace);
     psopt_env_override_int("PSOPT_NLP_ITER_MAX",  algorithm.nlp_iter_max,    workspace);
 
-    // The Hessian setting is read again through the workspace further down, so it has to
-    // be carried across as well; the others are taken from this Alg.
-    if (getenv("PSOPT_HESSIAN") && workspace->algorithm)
-        workspace->algorithm->hessian = algorithm.hessian;
 }
-// Applied before the mesh loop rather than with the rest, and it has to be. The others
-// are read once per NLP solve, which is where they are applied; mesh_refinement is read
-// by psopt_main *before* the first solve, to fix how many mesh iterations the loop will
-// run. Applied at the same point as the others it changes the option after that bound
-// has been taken, and a manual mesh with one node entry is then indexed a second time --
-// out of range, an unchecked Eigen read, a node count of -1 and a bad_alloc from the
-// workspace resize. That is how this was found.
+// The overrides that have to be applied before the Workspace is built, because the
+// Workspace is sized from them. The rest are read once per NLP solve, which is where they
+// are applied.
+//
+// The name of this function used to say "mesh", which is how the same mistake was made
+// three times: mesh_refinement first, then scaling, then the Hessian. Each was written
+// into the per-solve function alongside the options that genuinely belong there, and each
+// arrived after the allocation it was supposed to govern. It is not a category of option
+// anyone remembers; it is a property of when the Workspace is made, so the function is
+// named for that.
+//
+// mesh_refinement is read by psopt_main *before* the first solve, to fix how many mesh
+// iterations the loop will run. Applied at the same point as the others it changes the
+// option after that bound has been taken, and a manual mesh with one node entry is then
+// indexed a second time -- out of range, an unchecked Eigen read, a node count of -1 and a
+// bad_alloc from the workspace resize. That is how this was found.
 //
 // Turning mesh refinement off is what makes a comparison of two NLP solvers a controlled
 // one: with it on, each solver's answer steers its own next mesh, so after the first
@@ -131,8 +135,24 @@ static void psopt_apply_environment_overrides(Alg& algorithm, Workspace* workspa
 // node schedule under "manual" than under "automatic" -- so an override applied after the
 // allocation leaves every array in the Workspace sized for the mesh schedule that was NOT
 // used. Writing past them is silent on glibc and traps on macOS; see the note in psopt.cxx.
-void psopt_apply_mesh_environment_override(Alg& algorithm)
+void psopt_apply_pre_workspace_environment_overrides(Alg& algorithm)
 {
+    // algorithm.hessian decides whether the Workspace allocates hess_ir, hess_jc and
+    // lambda_d at all; when it does not they are NULL. Overridden later, at the NLP
+    // interface, "exact" reached get_nlp_info with those pointers still NULL and the
+    // Hessian sparsity pattern was written straight through them. Every example in the
+    // set segfaulted under PSOPT_HESSIAN=exact with algorithm.nlp_method = "IPOPT",
+    // between the Jacobian sparsity line and the Hessian one. The SQP was unaffected and
+    // its sweeps stand: it builds its own triplet from the AD backend and never touches
+    // those buffers.
+    const char* h = getenv("PSOPT_HESSIAN");
+    if (h != NULL && algorithm.hessian != h) {
+        if (algorithm.print_level)
+            fprintf(stderr, ">>> PSOPT_HESSIAN overrides the algorithm setting in the "
+                            "source: \"%s\" -> \"%s\"\n", algorithm.hessian.c_str(), h);
+        algorithm.hessian = h;
+    }
+
     const char* v = getenv("PSOPT_MESH_REFINEMENT");
     if (v != NULL && algorithm.mesh_refinement != v) {
         if (algorithm.print_level)

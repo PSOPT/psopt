@@ -727,6 +727,17 @@ bool IPOPT_PSOPT::get_nlp_info(Index& n, Index& m, Index& nnz_jac_g,
 	psopt_ad::SparseTriplet Hs = psopt_ad::ad_sparse_hessian(workspace->ad_hess, x, /*reuse=*/false);
 	nnz_hess = Hs.nnz();
 	psopt_grow_hessian_buffers(workspace, nnz_hess);   // size buffers to the detected Hessian nnz
+
+	// The Workspace allocates these only when algorithm.hessian asked for a Hessian at
+	// the time it was built. If it did not, they are NULL, psopt_grow_hessian_buffers
+	// declines to grow what is not in use, and the loop below writes the pattern through
+	// a null pointer. Reached only if algorithm.hessian is changed after the Workspace
+	// exists, which is a fault in PSOPT and not in the problem, so it says so.
+	if (workspace->hess_ir == NULL || workspace->hess_jc == NULL) {
+	    error_message("the exact Hessian was asked for after the workspace was built "
+	                  "without one; set algorithm.hessian before calling psopt()");
+	}
+
 	for (i=0; i< nnz_hess; i++) {
 		workspace->hess_ir[i] = Hs.row[i];
 		workspace->hess_jc[i] = Hs.col[i];

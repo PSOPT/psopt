@@ -420,7 +420,7 @@ int psopt(Sol& solution, Prob& problem, Alg& algorithm)
         // against an automatic ceiling of 76, and its fifth mesh wrote off the end of
         // workspace->states_traj. glibc absorbs that silently; macOS traps on it, which is
         // how it was found -- IPOPT exiting 133 (SIGTRAP) on the fifth mesh with no message.
-        psopt_apply_mesh_environment_override(algorithm);
+        psopt_apply_pre_workspace_environment_overrides(algorithm);
 #endif
 
         unique_ptr<Workspace> workspace_up{ new Workspace{problem, algorithm, solution} };
