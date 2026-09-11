@@ -1279,8 +1279,10 @@ int SQP_interface(Alg&         algorithm,
     double last_viol = 0.0, last_dual = 0.0;
 
     // Whether a stop that is not convergence should be reported as an acceptable answer
-    // instead. Written as a lambda so that the three places that can stop early ask the
-    // same question in the same words.
+    // instead. Written as a macro so that the four places that can stop early ask the
+    // same question in the same words: the QP budget exhausted at the smallest region,
+    // the iterates cycling, the iteration limit, and a line search that cannot decrease
+    // the merit function.
     const char* acceptable_message =
         "Optimal solution found to acceptable tolerance: the iterates stopped improving "
         "with the constraints satisfied and the dual error within a hundred times the "
@@ -2229,6 +2231,26 @@ int SQP_interface(Alg&         algorithm,
             // the quadratic model is not usable here. With a quasi-Newton model that
             // can be a model gone stale, so it is reset and the point tried once more.
             if (exact_hessian || B.isApprox(MatrixXd::Identity(n,n))) {
+                // This is the fourth way the loop can stop without converging, and it
+                // deserves the same question as the other three. A line search that
+                // cannot decrease the merit function at a point that is feasible and
+                // all but stationary is not a failure to solve the problem: it is what
+                // coming to rest looks like from the inside, and the note above the
+                // definition of acceptable_tol makes exactly that argument for the
+                // iteration limit. It had been asked in three places and not here, and
+                // the comment there said "the three places that can stop early" when
+                // there were four.
+                //
+                // Measured on the linear-quadratic problem of tests/test_sqp.cpp with an
+                // active control bound, at a tolerance of 1e-8: the run stops here with a
+                // maximum violation of 5.9e-14 and a dual error of 1.43e-07 -- inside the
+                // hundredfold band, on an objective correct to eight figures -- and was
+                // reported as a failure.
+                if (PSOPT_SQP_ACCEPTABLE(last_viol, last_dual)) {
+                    status  = 0;
+                    message = acceptable_message;
+                    break;
+                }
                 status  = 3;
                 message = "The line search failed to decrease the merit function";
                 break;
@@ -2426,8 +2448,8 @@ int SQP_interface(Alg&         algorithm,
         }
     }
 
-    // The iteration limit is the third way to stop without converging, and it deserves
-    // the same question as the other two: a run that has spent its budget at a feasible
+    // The iteration limit is the last of the four ways to stop without converging, and it
+    // deserves the same question as the others: a run that has spent its budget at a feasible
     // point whose dual error is within a hundredfold of the tolerance has an answer, and
     // saying so is more useful than reporting the budget.
     if (status == 1 && PSOPT_SQP_ACCEPTABLE(last_viol, last_dual)) {
