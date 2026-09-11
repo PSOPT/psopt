@@ -38,7 +38,8 @@ e-mail:    vmbecerra@vmb1.com
 //
 //   level 1 : per-interval discretization-error localisation + a per-state spectral smoothness
 //             indicator (this increment, D1); costate-structure summary (D2a).
-//   level 2 : additionally the Hamiltonian-constancy and stationarity (dH/du) residuals (D2b).
+//   level 2 : additionally the Hamiltonian-constancy and stationarity (dH/du) residuals (D2b),
+//             and the rank and conditioning of the constraint Jacobian at the final iterate (D3).
 //
 // A note on the smoothness indicator: hp_refine.cxx contains its own legendre_decay_rate used to
 // drive mesh refinement. We deliberately keep a private copy here (diag_legendre_decay_rate)
@@ -49,6 +50,7 @@ e-mail:    vmbecerra@vmb1.com
 // single robust "is this state's trajectory globally smooth?" read per state.
 
 #include "psopt.h"
+#include <Eigen/SVD>
 #include <cmath>
 #include <vector>
 #include <algorithm>
@@ -119,6 +121,129 @@ static double diag_legendre_decay_rate(const VectorXd& xi, const VectorXd& vals,
     if (!(sigma > sigma_min)) sigma = sigma_min;     // also catches NaN
     return sigma;
 }
+
+// ---------------------------------------------------------------------------------------
+// D3: the rank and conditioning of the constraint Jacobian at the final iterate.
+//
+// An NLP whose constraint Jacobian is rank-deficient has no unique set of multipliers, so
+// the dual residual grad f + J'lambda - z has no well-defined minimum and what a solver
+// reports for it is decided by its regularisation and by rounding. The symptom is a run
+// whose objective and constraint violation settle to machine precision while the dual
+// error wanders over orders of magnitude and finishes wherever it happens to be -- and,
+// because nothing else looks wrong, a user has no way to find the cause.
+//
+// examples/dae_i3 is the case this was written for. It is the pendulum in index-3 form:
+// two positions, two velocities, the holonomic constraint L^2 - x1^2 - x2^2 = 0 imposed at
+// every node, and its multiplier carried as a control. Collocated directly, its constraint
+// Jacobian is square and rank-deficient by three at every mesh from 20 nodes to 80 -- the
+// three smallest singular values at 30 nodes are 6.2e-15, 4.1e-15 and 1.8e-27 against a
+// largest of 4.0e+02 -- which is the textbook consequence of collocating an index-3 DAE
+// without reducing it: the constraint and the two hidden constraints obtained by
+// differentiating it are not independent of the dynamics. The same example under the
+// integrated-residual transcription has full column rank and a condition number of 9.1e+07.
+//
+// The check is a dense SVD and is therefore opt-in and size-limited. It is the right price
+// only for someone who is already asking why a run behaves the way it does.
+// ---------------------------------------------------------------------------------------
+static void constraint_jacobian_conditioning(Prob& problem, Alg& algorithm,
+                                             Workspace* workspace)
+{
+    char* t = workspace->text;
+    const size_t tn = sizeof(workspace->text);
+
+    const int nv = get_number_nlp_vars(problem, workspace);
+    const int nc = get_number_nlp_constraints(problem, workspace);
+    if (nv <= 0 || nc <= 0) return;
+
+    psopt_print(workspace, "\n  Constraint Jacobian at the final iterate");
+
+    // A dense SVD costs O(m n min(m,n)). Past a few million entries that is minutes rather
+    // than seconds, and a diagnostic that hangs is worse than one that declines.
+    const double entries = (double) nc * (double) nv;
+    if (entries > 4.0e6) {
+        snprintf(t, tn, "\n    %d rows by %d columns: too large for the dense factorisation this"
+                        "\n    check uses, and it is skipped. Reduce the mesh to ask the question.",
+                 nc, nv);
+        psopt_print(workspace, t);
+        return;
+    }
+
+    MatrixXd& x = *workspace->x0;          // the final iterate: both solvers write it back
+
+    psopt_ad::ad_record(workspace->ad_gc, nv, nc, &x(0),
+        [&](const adouble* xin, adouble* yout){ gg_ad(const_cast<adouble*>(xin), yout, workspace); });
+    psopt_ad::SparseTriplet Jt = psopt_ad::ad_sparse_jacobian(workspace->ad_gc, &x(0), false);
+
+    // Only the columns Ipopt keeps. A variable pinned by coincident bounds is removed from
+    // the problem (fixed_variable_treatment defaults to make_parameter), so the rank that
+    // decides whether the multipliers are unique is the rank over the rest.
+    MatrixXd& blb = *(workspace->xlb);
+    MatrixXd& bub = *(workspace->xub);
+    std::vector<int> keep;
+    for (int j = 0; j < nv; j++) if (blb(j) != bub(j)) keep.push_back(j);
+    const int nf = (int) keep.size();
+    if (nf <= 0) return;
+
+    std::vector<int> col_of((size_t) nv, -1);
+    for (int j = 0; j < nf; j++) col_of[(size_t) keep[(size_t) j]] = j;
+
+    MatrixXd J = MatrixXd::Zero(nc, nf);
+    for (int k = 0; k < Jt.nnz(); k++) {
+        const int c = col_of[(size_t) Jt.col[k]];
+        if (c >= 0) J(Jt.row[k], c) += Jt.val[k];
+    }
+
+    Eigen::BDCSVD<MatrixXd> svd(J);
+    const MatrixXd sv = svd.singularValues();
+    const int    ns   = (int) sv.rows();
+    if (ns <= 0) return;
+
+    const double smax = sv(0);
+    const double smin = sv(ns - 1);
+    // The standard numerical rank: singular values below smax * max(dim) * eps are zero.
+    const double rtol = smax * (double) std::max(nc, nf) * 2.220446049250313e-16;
+    int rank = 0;
+    for (int k = 0; k < ns; k++) if (sv(k) > rtol) rank++;
+    const int full = std::min(nc, nf);
+    const int def  = full - rank;
+
+    snprintf(t, tn, "\n    %d rows, %d free columns (%d of %d variables fixed by coincident bounds)",
+             nc, nf, nv - nf, nv);
+    psopt_print(workspace, t);
+    if (def > 0) {
+        // The gap is the evidence, so show it: the smallest singular value that counts as
+        // rank against the largest that does not. A clean separation says the deficiency is
+        // structural rather than an artefact of the tolerance.
+        const double kept    = (rank > 0)  ? sv(rank - 1) : 0.0;
+        const double dropped = (rank < ns) ? sv(rank)     : 0.0;
+        snprintf(t, tn, "\n    rank %d of a possible %d;  sigma_max %10.3e"
+                        "\n    RANK DEFICIENT BY %d, at a tolerance of %10.3e:"
+                        "\n      smallest singular value counted as rank  %10.3e"
+                        "\n      largest  singular value counted as zero  %10.3e",
+                 rank, full, smax, def, rtol, kept, dropped);
+        psopt_print(workspace, t);
+        psopt_print(workspace,
+            "\n    Read: the constraints are not independent, so the multipliers are not unique"
+            "\n          and the dual residual has no well-defined minimum. Expect the objective"
+            "\n          and the constraint violation to settle while the dual error wanders, and"
+            "\n          expect the verdict to move under perturbations that do not change the"
+            "\n          problem. The usual causes are a constraint stated twice, a boundary"
+            "\n          condition already implied by the dynamics, and a differential-algebraic"
+            "\n          system of index two or higher collocated without being index-reduced.");
+    }
+    else {
+        snprintf(t, tn, "\n    rank %d of a possible %d, which is full;  sigma_max %10.3e,"
+                        " sigma_min %10.3e, ratio %10.3e",
+                 rank, full, smax, smin, (smin > 0.0) ? smax/smin : PSOPT::inf);
+        psopt_print(workspace, t);
+        if (smin > 0.0 && smax/smin > 1.0e12)
+            psopt_print(workspace,
+                "\n    Read: full rank, but the ratio says the constraints are close to being"
+                "\n          dependent. The dual error may be limited by that rather than by"
+                "\n          anything the solver is doing.");
+    }
+}
+
 
 void solution_diagnostics(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
 {
@@ -343,6 +468,12 @@ void solution_diagnostics(Prob& problem, Alg& algorithm, Sol& solution, Workspac
                     "\n        corresponding multiplier and is expected nonzero.");
             }
         }
+        psopt_print(workspace, "\n");
+    }
+
+    // Not per phase: the Jacobian is of the whole NLP.
+    if (algorithm.diagnostic_level >= 2) {
+        constraint_jacobian_conditioning(problem, algorithm, workspace);
         psopt_print(workspace, "\n");
     }
 }

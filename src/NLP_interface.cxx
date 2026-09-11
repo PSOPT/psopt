@@ -175,6 +175,17 @@ void psopt_apply_pre_workspace_environment_overrides(Alg& algorithm)
         algorithm.scaling = sc;
     }
 
+    // The diagnostics are read after the solve, so this one has no ordering requirement of
+    // its own; it lives here because it belongs with the other study switches and because a
+    // sweep that wants the diagnostics wants them without editing sixty-odd sources.
+    const char* d = getenv("PSOPT_DIAGNOSTIC_LEVEL");
+    if (d != NULL && atoi(d) != algorithm.diagnostic_level) {
+        if (algorithm.print_level)
+            fprintf(stderr, ">>> PSOPT_DIAGNOSTIC_LEVEL overrides the algorithm setting in the "
+                            "source: %d -> %d\n", algorithm.diagnostic_level, atoi(d));
+        algorithm.diagnostic_level = atoi(d);
+    }
+
     const char* w = getenv("PSOPT_MR_SWITCH_DETECTION");
     if (w != NULL && atoi(w) != algorithm.mr_switch_detection) {
         if (algorithm.print_level)

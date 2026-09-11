@@ -17,6 +17,7 @@
 //////////////////////////////////////////////////////////////////////////
 
 #include "psopt.h"
+#include <cstdlib>
 
 using namespace std;
 
@@ -146,18 +147,67 @@ int main(int argc, char* argv[])
 // makes the box harder to satisfy, and it is deliberate. A reader who runs `./dae_i3 4 1e-6`
 // and sees a failure is seeing this and not a defect.
 //
-// The nine configurations the book's table rests on, all on 33 nodes, all reproduced on
-// 10 September 2026:
+// A second word, and the more important one: THE DEFAULT CONFIGURATION'S VERDICT IS NOT A
+// SIGNAL ABOUT ANYTHING.
 //
-//     ./dae_i3                    L = 1.0000000   J = 2.688318e-18   eps = 8.8e-9   solved
-//     ./dae_i3 2 1e-4 in          J = 19.03620    eps = 1.2e-6                      solved
-//     ./dae_i3 2 1e-6 in          J = 19.15846    eps = 1.2e-8                      solved
-//     ./dae_i3 2 1e-4 out         J = 19.04108    eps = 1.1e-6                      solved
-//     ./dae_i3 2 1e-6 out         J = 19.16081    eps = 1.2e-8                      solved
-//     ./dae_i3 4 1e-4 in          J =  9.83490    eps = 1.1e-6                      solved
-//     ./dae_i3 4 1e-6 in          stops at the parameter bound, local infeasibility
-//     ./dae_i3 4 1e-8 in          stops at the parameter bound, restoration failed
-//     ./dae_i3 4 1e-6 out         J = 19.04013    eps = 1.5e-8                      solved
+// Collocated directly, this problem's constraint Jacobian is SQUARE AND RANK-DEFICIENT BY
+// THREE, at every mesh tried from 20 nodes to 80. At 30 nodes it is 151 by 151 with rank
+// 148: the smallest singular value counted as rank is 9.8e-04 and the three below it are
+// zero to machine precision, against a largest of 4.0e+02 -- a gap of at least nine orders
+// of magnitude, so the deficiency is structural and not an artefact of a tolerance. That is
+// the textbook consequence of collocating an index-3 DAE without reducing it: the holonomic
+// constraint and the two hidden constraints obtained by differentiating it twice are not
+// independent of the dynamics. It is a property of the formulation, not of PSOPT. See it
+// for yourself with algorithm.diagnostic_level = 2, or PSOPT_DIAGNOSTIC_LEVEL=2.
+//
+// The consequence is that the multipliers are not unique, so the dual residual has no
+// well-defined minimum and what Ipopt reports for it is decided by its regularisation and
+// by rounding. The objective and the constraint violation settle to 1e-17 and 1e-14 while
+// the dual error wanders over six orders of magnitude and finishes near the tolerance. A
+// relative perturbation of 1e-12 in the initial guess changes the verdict: over nineteen
+// perturbations between -1e-9 and +1e-9 the run fails on exactly one, and which one moves
+// with any change to PSOPT at all.
+//
+// WHAT IS STABLE IS THE ANSWER. Across those same nineteen perturbations the estimated
+// pendulum length is 1.000000e+00 every time except in the failing run, where it is
+// 9.999982e-01 -- seven figures, and 1.8e-06 relative in the one case that "fails". The
+// estimate is what this example exists to produce and it is robust; the solver's verdict
+// and the eight printed figures of a least-squares residual that is numerically zero are
+// not, and should not be quoted as though they were.
+//
+// So: a reader who sees this example fail has not found a defect, and a developer who sees
+// its verdict move has not measured one. Use it to show what index-3 collocation does to a
+// well-posed estimation problem; do not use it as a regression signal.
+//
+// The integrated-residual route does not have the deficiency. Every one of the eight
+// configurations below is full column rank -- 166 of 166, against 390 rows -- with a
+// condition ratio of about 9e+07. That is a measured reason to prefer the residual
+// formulation on this problem rather than an asserted one, and it is the sharpest thing
+// this example has to say.
+//
+// The nine configurations the book's table rests on, all on 33 nodes except the first,
+// re-measured on 11 September 2026 with patch 161 applied:
+//
+//     ./dae_i3                    L = 0.9999982   J = 2.042091e-05   eps = 9.2e-9   FAILED
+//     ./dae_i3 2 1e-4 in          J = 19.03620    eps = 1.166e-6                    solved
+//     ./dae_i3 2 1e-6 in          J = 19.15846    eps = 1.164e-8                    solved
+//     ./dae_i3 2 1e-4 out         J = 19.04164    eps = 1.162e-6                    solved
+//     ./dae_i3 2 1e-6 out         J = 19.16081    eps = 1.165e-8                    solved
+//     ./dae_i3 4 1e-4 in          J =  9.83490    eps = 1.115e-6                    solved
+//     ./dae_i3 4 1e-6 in          J = 19.98338    stops at the parameter bound       FAILED
+//     ./dae_i3 4 1e-8 in          J = 19.04013    eps = 3.1e-10                     solved
+//     ./dae_i3 4 1e-6 out         J = 19.67635    eps = 2.2e-8                       FAILED
+//
+// Three of those rows moved at patch 161, which removed a redundant lower bound on the
+// t0 <= tf row, and the movement is recorded here rather than smoothed over. The first is
+// the lottery described above. The other two are `4 1e-8 in`, which went from failing at
+// 19.77259 to solving at 19.04013, and `4 1e-6 out`, which went the other way, from solving
+// at 19.04013 to failing at 19.67635. Both are full rank, so neither is the degeneracy;
+// they are the ordinary path-dependence of a nonconvex problem with several local solutions,
+// of which 19.04013, 19.67635, 19.77259 and 19.98338 are four. One row gained and one lost.
+//
+// Anyone re-measuring the book's table should run all nine. The example sweep runs only the
+// default invocation, so eight of these nine are invisible to it.
     int    ir_d     = (argc > 1) ? atoi(argv[1]) : 0;
     double ir_delta = (argc > 2) ? atof(argv[2]) : 1.0e-6;
     bool   alg_in   = (argc > 3) ? (std::string(argv[3]) != "out") : true;
