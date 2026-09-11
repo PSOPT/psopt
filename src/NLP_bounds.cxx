@@ -311,16 +311,41 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 
         lam_phase_offset += ncons_phase_i;
 
-        // Bounds for t0 <= tf constraint
+        // Bounds for the t0 <= tf constraint.
+        //
+        // The constraint is t0 - tf <= 0 and that is what g_u says. The lower bound used
+        // to be t0MIN - tfMAX, scaled, and that is not a constraint: it is the smallest
+        // value t0 - tf can take anywhere in the variable box, so the variable bounds
+        // imply it at every point the NLP can reach. It never excluded anything.
+        //
+        // What it did instead was create a degenerate active constraint. On a phase whose
+        // horizon is fixed -- which is most of them -- t0 and tf are pinned by coincident
+        // bounds, so t0 - tf equals t0MIN - tfMAX identically and the row sits *exactly*
+        // on that lower bound at every iterate. Ipopt removes fixed variables
+        // (fixed_variable_treatment defaults to make_parameter), so the row's gradient in
+        // the variables that remain is identically zero. An inequality that is always
+        // active and has no gradient is one at which LICQ fails and whose multiplier the
+        // barrier drives towards infinity, and PSOPT was handing the NLP one per phase on
+        // nearly every example in the set.
+        //
+        // What it cost is measurable, because the factor that multiplies both the row and
+        // its bound is the row's Jacobian norm and can be changed without changing the
+        // problem. On examples/dae_i3, moving that factor from 0.707 to 1.0 -- on a row
+        // whose activity cannot move, since value and bound are scaled together -- took
+        // the run from 82 iterations and "Optimal Solution Found" to 51 and "Restoration
+        // Failed". Nothing about the problem changed; only the size of the rounding
+        // residual at a constraint that should not have been there.
 
-        double diff_t0Min_tfMax= (problem->phase[i].bounds.lower.StartTime-problem->phase[i].bounds.upper.EndTime);
-        diff_t0Min_tfMax *= problem->phase[i].scale.time;
-        if (algorithm->scaling == "automatic")  {
-           diff_t0Min_tfMax *= constraint_scaling(lam_phase_offset-1);
-        }
+        // The upper bound is the constraint proper and is implied in its turn whenever
+        // the admissible ranges of t0 and tf do not overlap: if the largest t0 the
+        // variable bounds allow is already no later than the smallest tf they allow, then
+        // t0 <= tf holds everywhere in the box and the row constrains nothing at all. A
+        // fixed horizon is the extreme case of that, and so is a fixed start with a free
+        // final time bounded below. Where the two ranges do overlap the row is real and
+        // the upper bound stays.
 
-        g_l[ lam_phase_offset - 1 ] = diff_t0Min_tfMax;
-        g_u[ lam_phase_offset - 1 ] = 0.0;
+        g_l[ lam_phase_offset - 1 ] = -PSOPT::inf;
+        g_u[ lam_phase_offset - 1 ] =  0.0;
 
   }
 
