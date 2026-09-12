@@ -1060,6 +1060,9 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
         	MatrixXd& control_scaling = problem.phase[i].scale.controls;
 			MatrixXd& state_scaling   = problem.phase[i].scale.states;
 			MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
+			MatrixXd& control_shift   = problem.phase[i].scale.controls_shift;
+			MatrixXd& state_shift     = problem.phase[i].scale.states_shift;
+			MatrixXd& param_shift     = problem.phase[i].scale.parameters_shift;
 			double time_scaling      =  problem.phase[i].scale.time;
 			int norder    = problem.phase[i].current_number_of_intervals;
 			int nstates   = problem.phase[i].nstates;
@@ -1075,8 +1078,8 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 
                 for (ii=0;ii<ncontrols;ii++) {  //EIGEN_UPDATE
                         j = iphase_offset+(k)*ncontrols+ii;
-			fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tCONTROL %i NODE %i PHASE %i", j, xlb(j)/control_scaling(ii),
-				  X(j)/control_scaling(ii), xub(j)/control_scaling(ii),  control_scaling(ii), ii, k, i+1);
+			fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tCONTROL %i NODE %i PHASE %i", j, PSOPT::unscale_variable(xlb(j),control_scaling(ii),control_shift(ii)),
+				  PSOPT::unscale_variable(X(j),control_scaling(ii),control_shift(ii)), PSOPT::unscale_variable(xub(j),control_scaling(ii),control_shift(ii)),  control_scaling(ii), ii, k, i+1);
 			if ( xlb(j)-tol>X(j) || X(j)>xub(j)+tol ) fprintf(outfile," **BOUND VIOLATED");
    		        if ( (xlb(j)-tol<X(j) && X(j)<xlb(j)+tol) || (xub(j)-tol<X(j) && X(j)<xub(j)+tol) ) fprintf(outfile," **AT BOUND");
 
@@ -1089,8 +1092,8 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 
                 for (ii=0;ii<nstates;ii++) {
                         j = iphase_offset+(k)*nstates+offset1+ii;
-			fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tSTATE %i NODE %i PHASE %i", j, xlb(j)/state_scaling(ii),
-				X(j)/state_scaling(ii), xub(j)/state_scaling(ii), state_scaling(ii), ii, k, i+1);
+			fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tSTATE %i NODE %i PHASE %i", j, PSOPT::unscale_variable(xlb(j),state_scaling(ii),state_shift(ii)),
+				PSOPT::unscale_variable(X(j),state_scaling(ii),state_shift(ii)), PSOPT::unscale_variable(xub(j),state_scaling(ii),state_shift(ii)), state_scaling(ii), ii, k, i+1);
 			if ( xlb(j)-tol>X(j) || X(j)>xub(j)+tol ) fprintf(outfile," **BOUND VIOLATED");
    		        if ( (xlb(j)-tol<X(j) && X(j)<xlb(j)+tol) || (xub(j)-tol<X(j) && X(j)<xub(j)+tol) ) fprintf(outfile," **AT BOUND");
 
@@ -1101,8 +1104,8 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 
         for (ii=0;ii<nparam;ii++) {  // EIGEN_UPDATE
                         j = iphase_offset+offset2+ii;
-			fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tPARAMETER %i PHASE %i", j, xlb(j)/param_scaling(ii),
-				X(j)/param_scaling(ii), xub(j)/param_scaling(ii), param_scaling(ii), ii, i+1);
+			fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tPARAMETER %i PHASE %i", j, PSOPT::unscale_variable(xlb(j),param_scaling(ii),param_shift(ii)),
+				PSOPT::unscale_variable(X(j),param_scaling(ii),param_shift(ii)), PSOPT::unscale_variable(xub(j),param_scaling(ii),param_shift(ii)), param_scaling(ii), ii, i+1);
 			if ( xlb(j)-tol>X(j) || X(j)>xub(j)+tol ) fprintf(outfile," **BOUND VIOLATED");
    		        if ( (xlb(j)-tol<X(j) && X(j)<xlb(j)+tol) || (xub(j)-tol<X(j) && X(j)<xub(j)+tol) ) fprintf(outfile," **AT BOUND");
 
@@ -1115,7 +1118,7 @@ void print_constraint_summary(Prob& problem, Sol& solution, Workspace* workspace
 			for (ii=0;ii<ncontrols;ii++) {
 				j = iphase_offset+offset2+nparam+(k)*ncontrols+ii;
 				fprintf(outfile,"\n%i\t%e\t%e\t%e\t%e\tMIDPOINT CONTROL %i NODE %i PHASE %i", j,
-					 xlb(j)/control_scaling(ii), X(j)/control_scaling(ii), xub(j)/control_scaling(ii),
+					 PSOPT::unscale_variable(xlb(j),control_scaling(ii),control_shift(ii)), PSOPT::unscale_variable(X(j),control_scaling(ii),control_shift(ii)), PSOPT::unscale_variable(xub(j),control_scaling(ii),control_shift(ii)),
 					control_scaling(ii), ii, k, i+1);
 				if ( xlb(j)-tol>X(j) || X(j)>xub(j)+tol ) fprintf(outfile," **BOUND VIOLATED");
    		                if ( (xlb(j)-tol<X(j) && X(j)<xlb(j)+tol) || (xub(j)-tol<X(j) && X(j)<xub(j)+tol) ) fprintf(outfile," **AT BOUND");

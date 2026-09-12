@@ -50,6 +50,9 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
 	MatrixXd& control_scaling = problem.phase[i].scale.controls;
 	MatrixXd& state_scaling   = problem.phase[i].scale.states;
         MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
+        MatrixXd& control_shift   = problem.phase[i].scale.controls_shift;
+        MatrixXd& state_shift     = problem.phase[i].scale.states_shift;
+        MatrixXd& param_shift     = problem.phase[i].scale.parameters_shift;
         double&   time_scaling   = problem.phase[i].scale.time;
 
 	int norder    = problem.phase[i].current_number_of_intervals;
@@ -168,22 +171,22 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
 	for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
            if (ncontrols>0) {
 
-             x0.block(x_phase_offset+(k)*ncontrols, 0, ncontrols,1) = elemProduct((solution.controls[i]).col(k), control_scaling);
+             x0.block(x_phase_offset+(k)*ncontrols, 0, ncontrols,1) = elemProduct((solution.controls[i]).col(k) - control_shift, control_scaling);
            }
 
-           x0.block(x_phase_offset+(k)*nstates+offset1,0, nstates,1)=elemProduct((solution.states[i]).col(k), state_scaling);
+           x0.block(x_phase_offset+(k)*nstates+offset1,0, nstates,1)=elemProduct((solution.states[i]).col(k) - state_shift, state_scaling);
 	}
 
         if (nparam >= 1) {
 
-             x0.block(x_phase_offset+offset2, 0, nparam , 1)=elemProduct(solution.parameters[i],param_scaling);
+             x0.block(x_phase_offset+offset2, 0, nparam , 1)=elemProduct(solution.parameters[i] - param_shift, param_scaling);
         }
 
        if (midpoint_control_vars(*workspace->algorithm, workspace)) {
 	  for (k=0; k<norder; k++) {  // EIGEN_UPDATE
             if (ncontrols>0) {
 
-             x0.block( x_phase_offset+offset2+nparam+(k)*ncontrols, 0, ncontrols , 1) = elemProduct((solution.controls[i]).col(k), control_scaling);
+             x0.block( x_phase_offset+offset2+nparam+(k)*ncontrols, 0, ncontrols , 1) = elemProduct((solution.controls[i]).col(k) - control_shift, control_scaling);
             }
 
 	  }
@@ -198,13 +201,13 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
            const int d      = workspace->algorithm->ir_local_order;
            for (int e = 1; e <= nextra/((ncontrols>0)?ncontrols:1); e++) {
                x0.block( x_phase_offset+offset2+nparam+(e-1)*ncontrols, 0, ncontrols, 1)
-                   = elemProduct((solution.controls[i]).col(e*d), control_scaling);
+                   = elemProduct((solution.controls[i]).col(e*d) - control_shift, control_scaling);
            }
        }
 
        if ( workspace->algorithm->collocation_method == "Gauss" ) {
             // Gauss appended terminal-state variable: guess = terminal stored-state guess.
-            x0.block(x_phase_offset+offset2+nparam, 0, nstates, 1) = elemProduct((solution.states[i]).col(norder), state_scaling);
+            x0.block(x_phase_offset+offset2+nparam, 0, nstates, 1) = elemProduct((solution.states[i]).col(norder) - state_shift, state_scaling);
        }
 
         x_phase_offset += nvars_phase_i;
@@ -257,6 +260,9 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
 	MatrixXd& control_scaling = problem.phase[i].scale.controls;
 	MatrixXd& state_scaling   = problem.phase[i].scale.states;
    MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
+   MatrixXd& control_shift   = problem.phase[i].scale.controls_shift;
+   MatrixXd& state_shift     = problem.phase[i].scale.states_shift;
+   MatrixXd& param_shift     = problem.phase[i].scale.parameters_shift;
    double   time_scaling    =  problem.phase[i].scale.time;
 
 
@@ -347,15 +353,15 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
 	for (k=0; k<norder+1; k++) {  // EIGEN_UPDATE
           if(ncontrols>0) {
 
-        x0.block(x_phase_offset+(k)*ncontrols,0,ncontrols,1) = elemProduct( (solution.controls[i]).col(k), control_scaling);
+        x0.block(x_phase_offset+(k)*ncontrols,0,ncontrols,1) = elemProduct((solution.controls[i]).col(k) - control_shift, control_scaling);
           }
 
-        x0.block(x_phase_offset+(k)*nstates+offset1,0,nstates,1)=elemProduct((solution.states[i]).col(k), state_scaling);
+        x0.block(x_phase_offset+(k)*nstates+offset1,0,nstates,1)=elemProduct((solution.states[i]).col(k) - state_shift, state_scaling);
 	}
 
         if (nparam>0) {
 
-           x0.block(x_phase_offset+offset2, 0, nparam, 1 ) = elemProduct(prev_param[i], param_scaling);
+           x0.block(x_phase_offset+offset2, 0, nparam, 1 ) = elemProduct(prev_param[i] - param_shift, param_scaling);
         }
 
         if ( midpoint_control_vars(*workspace->algorithm, workspace) ) {
@@ -363,7 +369,7 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
 	  for (k=0; k<norder; k++) { // EIGEN_UPDATE
              if(ncontrols>0) {
 
-	            x0.block(x_phase_offset+offset2+nparam+(k)*ncontrols,0,ncontrols,1) =   elemProduct( (solution.controls[i]).col(k), control_scaling);
+	            x0.block(x_phase_offset+offset2+nparam+(k)*ncontrols,0,ncontrols,1) =   elemProduct((solution.controls[i]).col(k) - control_shift, control_scaling);
              }
 	  }
    }
@@ -377,7 +383,7 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
             const int d      = workspace->algorithm->ir_local_order;
             for (int e = 1; e <= nextra/((ncontrols>0)?ncontrols:1); e++) {
                 x0.block(x_phase_offset+offset2+nparam+(e-1)*ncontrols,0,ncontrols,1)
-                    = elemProduct( (solution.controls[i]).col(e*d), control_scaling);
+                    = elemProduct((solution.controls[i]).col(e*d) - control_shift, control_scaling);
             }
         }
 

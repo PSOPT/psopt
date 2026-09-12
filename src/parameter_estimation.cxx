@@ -418,6 +418,9 @@ static void get_parameter_scale_factors(MatrixXd& s, Workspace* workspace)
      s = ones( n>0 ? n : 1, 1);
      int c = 0;
      for (int i = 0; i < problem.nphases; i++) {
+         // Also a derivative weight rather than a variable map -- these factors take the
+         // covariance of the estimate back into the user's units, and a shift of the
+         // origin does not change a covariance. No shift here either.
          MatrixXd& ps = problem.phase[i].scale.parameters;
          for (int j = 0; j < problem.phase[i].nparameters; j++) {
              double f = ( ps.size() > j ) ? ps(j) : 1.0;

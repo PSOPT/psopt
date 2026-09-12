@@ -40,6 +40,7 @@ void get_controls(adouble* controls, adouble* xad, int iphase, int k, Workspace*
         int i = iphase-1;
         Prob& problem = *workspace->problem;
 	     MatrixXd& control_scaling = problem.phase[i].scale.controls;
+	     MatrixXd& control_shift   = problem.phase[i].scale.controls_shift;
 
 	     int j;
 
@@ -53,7 +54,8 @@ void get_controls(adouble* controls, adouble* xad, int iphase, int k, Workspace*
 
         for(j=0;j<ncontrols;j++) {
 
-           controls[j] =  xad[iphase_offset+(k)*ncontrols+j]/control_scaling(j);
+           controls[j] = PSOPT::unscale_variable( xad[iphase_offset+(k)*ncontrols+j],
+                                                  control_scaling(j), control_shift(j) );
         }
 
 }
@@ -81,6 +83,7 @@ void get_element_controls(adouble* controls, adouble* xad, int iphase, int e, in
         }
 
         MatrixXd& control_scaling = problem.phase[i].scale.controls;
+        MatrixXd& control_shift   = problem.phase[i].scale.controls_shift;
 
         const int ncontrols = problem.phase[i].ncontrols;
         const int nstates   = problem.phase[i].nstates;
@@ -98,7 +101,8 @@ void get_element_controls(adouble* controls, adouble* xad, int iphase, int e, in
         const int base = (nstates+ncontrols)*(norder+1) + nparam;
 
         for (int j=0; j<ncontrols; j++) {
-            controls[j] = xad[iphase_offset + base + (e-1)*ncontrols + j]/control_scaling(j);
+            controls[j] = PSOPT::unscale_variable( xad[iphase_offset + base + (e-1)*ncontrols + j],
+                                                   control_scaling(j), control_shift(j) );
         }
 }
 
@@ -107,6 +111,7 @@ void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Wo
    int i = iphase-1;
    Prob& problem = *workspace->problem;
 	MatrixXd& control_scaling = problem.phase[i].scale.controls;
+	MatrixXd& control_shift   = problem.phase[i].scale.controls_shift;
 
 	int j;
 
@@ -132,7 +137,8 @@ void get_controls_bar(adouble* controls_bar, adouble* xad, int iphase, int k, Wo
                           "decision vector; see midpoint_control_vars in util.cxx ");
 
         for(j=0;j<ncontrols;j++) {
-             controls_bar[j] =  xad[iphase_offset+offset+(k)*ncontrols+j]/control_scaling(j);
+             controls_bar[j] = PSOPT::unscale_variable( xad[iphase_offset+offset+(k)*ncontrols+j],
+                                                       control_scaling(j), control_shift(j) );
         }
 }
 
@@ -155,6 +161,7 @@ void get_states(adouble* states, adouble* xad, int iphase, int k, Workspace* wor
         int i = iphase-1;
         Prob& problem            = *workspace->problem;
 	MatrixXd& state_scaling   = problem.phase[i].scale.states;
+	MatrixXd& state_shift     = problem.phase[i].scale.states_shift;
 
 
 	int j;
@@ -168,7 +175,8 @@ void get_states(adouble* states, adouble* xad, int iphase, int k, Workspace* wor
 	int offset1   = ncontrols*(norder+1);
         // get states
         for(j=0;j<nstates;j++) {
-           states[j] =  xad[iphase_offset+offset1+(k)*nstates+j]/state_scaling(j);
+           states[j] = PSOPT::unscale_variable( xad[iphase_offset+offset1+(k)*nstates+j],
+                                                state_scaling(j), state_shift(j) );
         }
 
 }
@@ -182,6 +190,7 @@ void get_gauss_terminal_states(adouble* states, adouble* xad, int iphase, Worksp
         int i = iphase-1;
         Prob& problem = *workspace->problem;
         MatrixXd& state_scaling = problem.phase[i].scale.states;
+        MatrixXd& state_shift   = problem.phase[i].scale.states_shift;
         int iphase_offset = get_iphase_offset(problem, iphase, workspace);
         int norder    = problem.phase[i].current_number_of_intervals;
         int ncontrols = problem.phase[i].ncontrols;
@@ -189,7 +198,8 @@ void get_gauss_terminal_states(adouble* states, adouble* xad, int iphase, Worksp
         int nparam    = problem.phase[i].nparameters;
         int xf_offset = (nstates+ncontrols)*(norder+1) + nparam;
         for (int j=0;j<nstates;j++)
-            states[j] = xad[iphase_offset + xf_offset + j]/state_scaling(j);
+            states[j] = PSOPT::unscale_variable( xad[iphase_offset + xf_offset + j],
+                                                 state_scaling(j), state_shift(j) );
 }
 
 void get_final_states(adouble* states, adouble* xad, int iphase, Workspace* workspace)
@@ -226,6 +236,7 @@ void get_parameters(adouble* parameters, adouble* xad, int iphase, Workspace* wo
 
         int i = iph-1;
         MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
+        MatrixXd& param_shift     = problem.phase[i].scale.parameters_shift;
 
 
 	int j;
@@ -242,7 +253,8 @@ void get_parameters(adouble* parameters, adouble* xad, int iphase, Workspace* wo
 
         // get parameters
         for(j=0;j<nparam;j++) {
-             parameters[j] =  xad[iphase_offset+offset2+j]/param_scaling(j);
+             parameters[j] = PSOPT::unscale_variable( xad[iphase_offset+offset2+j],
+                                                     param_scaling(j), param_shift(j) );
         }
 
 }

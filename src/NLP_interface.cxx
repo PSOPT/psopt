@@ -166,7 +166,9 @@ void psopt_apply_pre_workspace_environment_overrides(Alg& algorithm)
     // NLP interface arrives after they have been fixed and does nothing at all. "user"
     // with no factors set is unit scaling, since psopt_level1_setup and psopt_level2_setup
     // initialise every factor to one, which makes a scaling study over the whole example
-    // set a sweep rather than sixty-six edited sources.
+    // set a sweep rather than sixty-six edited sources. "affine" is the third value and
+    // the reason the override earns its keep twice over: the difference between the two
+    // automatic maps is a question about the whole example set, not about one example.
     const char* sc = getenv("PSOPT_SCALING");
     if (sc != NULL && algorithm.scaling != sc) {
         if (algorithm.print_level)
