@@ -632,9 +632,6 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
 	MatrixXd& control_scaling  = problem.phase[i].scale.controls;
 	MatrixXd& state_scaling    = problem.phase[i].scale.states;
    MatrixXd& param_scaling    = problem.phase[i].scale.parameters;
-   MatrixXd& control_shift    = problem.phase[i].scale.controls_shift;
-   MatrixXd& state_shift      = problem.phase[i].scale.states_shift;
-   MatrixXd& param_shift      = problem.phase[i].scale.parameters_shift;
    double   time_scaling      = problem.phase[i].scale.time;
 
 	int k;
@@ -655,10 +652,10 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
 	for (k=0; k<norder+1; k++) {  // EIGEN_UPDATE
                 if (ncontrols>0) {
 
-          (solution.controls[i]).col(k) = elemDivision(x.block(iphase_offset+(k)*ncontrols, 0, ncontrols,1) , control_scaling) + control_shift;
+          (solution.controls[i]).col(k) = elemDivision(x.block(iphase_offset+(k)*ncontrols, 0, ncontrols,1) , control_scaling);
                 }
 
-      (solution.states[i]).col(k)   = elemDivision(x.block(iphase_offset+(k)*nstates+offset1, 0, nstates, 1), state_scaling) + state_shift;
+      (solution.states[i]).col(k)   = elemDivision(x.block(iphase_offset+(k)*nstates+offset1, 0, nstates, 1), state_scaling);
   	   (solution.nodes[i])(0,k)          =  convert_to_original_time( (workspace->snodes[i])(k), t0, tf );
 	}
 
@@ -672,8 +669,8 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
             int xf_offset = (nstates+ncontrols)*(norder+1) + nparam;
             (solution.terminal_states[i]).resize(nstates,1);
             for (int j=0;j<nstates;j++)
-                (solution.terminal_states[i])(j,0) = PSOPT::unscale_variable(
-                    x(iphase_offset + xf_offset + j), state_scaling(j), state_shift(j) );
+                (solution.terminal_states[i])(j,0) =
+                    x(iphase_offset + xf_offset + j)/state_scaling(j);
         }
 
         // The complete Hermite-Simpson control history: the midpoint controls, which live
@@ -721,7 +718,7 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
                         else {
                             (solution.controls_hs[i]).col(2*k+1) =
                                 elemDivision( x.block(iphase_offset+bar_offset+(k)*ncontrols, 0,
-                                                      ncontrols, 1), control_scaling ) + control_shift;
+                                                      ncontrols, 1), control_scaling );
                         }
                         (solution.nodes_hs[i])(0,2*k+1) =
                             0.5*( (solution.nodes[i])(0,k) + (solution.nodes[i])(0,k+1) );
@@ -734,7 +731,7 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
             }
         }
 
-        solution.parameters[i] = elemDivision( x.block(iphase_offset+offset2,0,nparam,1), param_scaling) + param_shift;
+        solution.parameters[i] = elemDivision( x.block(iphase_offset+offset2,0,nparam,1), param_scaling);
 
         iphase_offset += nvars_phase_i;
 

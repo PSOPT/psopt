@@ -45,13 +45,10 @@ void get_individual_control_trajectory(adouble *control_traj, int control_index,
     int norder    = problem.phase[i].current_number_of_intervals;
     int iphase_offset = get_iphase_offset(problem,iphase, workspace);
     MatrixXd& control_scaling = problem.phase[i].scale.controls;
-    MatrixXd& control_shift   = problem.phase[i].scale.controls_shift;
 
     for(k=0;k<norder+1;k++) { // EIGEN_UPDATE: k index shifted by -1
 
-          control_traj[k] = PSOPT::unscale_variable( xad[iphase_offset+(k)*ncontrols+control_index],
-                                                     control_scaling(control_index),
-                                                     control_shift(control_index) );
+          control_traj[k] = xad[iphase_offset+(k)*ncontrols+control_index]/control_scaling(control_index);
     }
 
 }
@@ -67,13 +64,10 @@ void get_individual_state_trajectory(adouble *state_traj, int state_index, int i
     int iphase_offset = get_iphase_offset(problem,iphase, workspace);
     int offset1   = ncontrols*(norder+1);
     MatrixXd& state_scaling = problem.phase[i].scale.states;
-    MatrixXd& state_shift   = problem.phase[i].scale.states_shift;
 
     for(k=0;k<norder+1;k++) { // EIGEN_UPDATE: k index shifted by -1
 
-          state_traj[k] = PSOPT::unscale_variable( xad[iphase_offset+offset1+(k)*nstates+state_index],
-                                                   state_scaling(state_index),
-                                                   state_shift(state_index) ); 
+          state_traj[k] = xad[iphase_offset+offset1+(k)*nstates+state_index]/state_scaling(state_index); 
     }
 
 }

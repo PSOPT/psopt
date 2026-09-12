@@ -854,9 +854,6 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
           // scale.states(k)/scale.time. Row layout is (element, quad point, state innermost),
           // hence state index = t % nstates. "none" preserves the raw-residual box.
           if ( algorithm->ir_residual_scaling == "state" ) {
-              // A derivative weight, not a variable map: the residual carries units of
-              // [x]/[t] and is scaled accordingly. No shift belongs here -- a translation
-              // of the origin leaves every derivative alone. See PSOPT::scale_variable.
               MatrixXd& sscale = problem->phase[ip].scale.states;
               MatrixXd& pscale = problem->phase[ip].scale.path;
               double    tscale = problem->phase[ip].scale.time;

@@ -38,65 +38,39 @@ using namespace std;
 using namespace Eigen;
 
 
-// The rule that turns one variable's bounds into its map onto the scaled problem.
+// The rule that turns one variable's bounds into its scale factor.
 //
 // Written once because it was written four times -- controls, states, parameters and
 // time -- in four copies that had already begun to differ only in the names of their
-// locals. Time keeps its own copy below because it has no shift: the collocation already
-// maps [t0,tf] onto a fixed interval, and moving the origin of a variable that the
-// transcription rescales for its own purposes buys nothing and would have to be undone
-// in convert_to_original_time.
+// locals. Time keeps its own copy below, because its bounds are the phase's start and end
+// times rather than one variable's box.
 //
-// "multiplicative" is PSOPT's historical rule and the default: the factor is one over
-// the largest magnitude the variable is allowed, so the scaled variable is mostly inside
-// [-1,1] and the origin does not move. "affine" puts a two-sidedly bounded variable onto
-// exactly [-1,1], which fixes the case the multiplicative rule cannot: a variable bounded
-// between 1000 and 1200 has unit magnitude under the first rule and a variation of 0.17.
-//
-// The interval is [-1,1] and not the [-1/2,1/2] of CGPOPS, and the difference is not
-// cosmetic. A box that is already symmetric about zero has nothing for a shift to fix,
-// and on [-a,a] this rule gives exactly the factor 1/a and the shift 0 that the
-// multiplicative rule gives -- so "affine" changes only the variables it has something to
-// say about. Mapping onto [-1/2,1/2] instead halves the factor on every symmetric box as
-// well, which is a rescaling of problems the option was not meant to touch: measured that
-// way over the shipped examples it cost a geometric mean of 1.09 in iterations, with the
-// regressions concentrated on problems whose boxes are symmetric.
-//
-// A variable without two finite bounds has no finite centre, so there is nothing to shift
-// to and the affine rule falls back to the multiplicative one. So does a variable whose
-// bounds coincide, which has zero width.
+// The factor is one over the largest magnitude the variable is allowed, so the scaled
+// variable is mostly inside [-1,1]. Where only one side is bounded that side sets it;
+// where neither is, it is one.
 //
 // An absent bound is recognised through PSOPT::no_lower_bound rather than by comparing
-// against an IEEE infinity. The two differ: the convention every model in examples/ uses
-// for "no bound" is 1.0e19, and a bound written that way reached the comparisons here as
-// finite, so a state declared unbounded the documented way was scaled by 1e-19. No
-// shipped example writes a variable bound that way -- the convention is used for path
-// bounds, which patch 157 dealt with -- so this is a trap rather than a live defect, but
-// it is the same trap and it is closed here.
-static void variable_map_from_bounds(double zlower, double zupper,
-                                     const std::string& mode,
-                                     double& scale, double& shift)
+// against an IEEE infinity, and the two are not the same. The convention every model in
+// examples/ uses for "no bound" is 1.0e19, and a bound written that way reached these
+// comparisons as finite, so a variable declared unbounded the documented way was scaled
+// by 1e-19. No shipped example writes a *variable* bound that way -- the convention is
+// used for path bounds, which patch 157 dealt with -- so this was a trap rather than a
+// live defect, and it is the same trap closed the same way.
+static double scale_factor_from_bounds(double zlower, double zupper)
 {
-    scale = 1.0;
-    shift = 0.0;
-
     const bool lo_absent = PSOPT::no_lower_bound(zlower);
     const bool up_absent = PSOPT::no_upper_bound(zupper);
 
-    if ( mode == "affine" && !lo_absent && !up_absent && zupper > zlower ) {
-        scale = 2.0/(zupper - zlower);
-        shift = 0.5*(zlower + zupper);
-        return;
-    }
-
     if ( !lo_absent && !up_absent ) {
         if ( zlower != 0.0 || zupper != 0.0 )
-            scale = 1.0/std::max( fabs(zlower), fabs(zupper) );
+            return 1.0/std::max( fabs(zlower), fabs(zupper) );
     }
     else if ( lo_absent && !up_absent && zupper != 0.0 )
-        scale = 1.0/fabs(zupper);
+        return 1.0/fabs(zupper);
     else if ( up_absent && !lo_absent && zlower != 0.0 )
-        scale = 1.0/fabs(zlower);
+        return 1.0/fabs(zlower);
+
+    return 1.0;
 }
 
 
@@ -122,9 +96,6 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 	MatrixXd& control_scaling = problem.phase[i].scale.controls;
 	MatrixXd& state_scaling   = problem.phase[i].scale.states;
    MatrixXd& param_scaling   = problem.phase[i].scale.parameters;
-   MatrixXd& control_shift   = problem.phase[i].scale.controls_shift;
-   MatrixXd& state_shift     = problem.phase[i].scale.states_shift;
-   MatrixXd& param_shift     = problem.phase[i].scale.parameters_shift;
 
 
 	MatrixXd PathJac(npath, nstates+ncontrols);
@@ -146,14 +117,12 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 	if ( algorithm.scaling=="automatic" || algorithm.scaling!="user" )
 	{
 	   control_scaling = ones(ncontrols,1); // EIGEN_UPDATE
-	   control_shift   = zeros(ncontrols,1);
 
 	   for(ii=0;ii<ncontrols;ii++)
 	   {
 		zlower = (problem.phase[i].bounds.lower.controls)(ii);
 		zupper = (problem.phase[i].bounds.upper.controls)(ii);
-		variable_map_from_bounds(zlower, zupper, algorithm.scaling,
-		                         control_scaling(ii), control_shift(ii));
+		control_scaling(ii) = scale_factor_from_bounds(zlower, zupper);
 	   }
 	}
 
@@ -166,14 +135,12 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 	{
 
 		state_scaling = ones(nstates,1);
-		state_shift   = zeros(nstates,1);
 
 		for(ii=0;ii<nstates;ii++) // EIGEN_UPDATE
 		{
 			zlower = (problem.phase[i].bounds.lower.states)(ii);
 			zupper = (problem.phase[i].bounds.upper.states)(ii);
-			variable_map_from_bounds(zlower, zupper, algorithm.scaling,
-			                         state_scaling(ii), state_shift(ii));
+			state_scaling(ii) = scale_factor_from_bounds(zlower, zupper);
 		}
 	}
 
@@ -184,14 +151,12 @@ void determine_scaling_factors_for_variables(Sol& solution, Prob& problem, Alg& 
 	if ( algorithm.scaling=="automatic" || algorithm.scaling!="user" )
 	{
 		param_scaling = ones(nparam,1);
-		param_shift   = zeros(nparam,1);
 
 		for(ii=0;ii<nparam;ii++)  // EIGEN_UPDATE
 		{
 			zlower = (problem.phase[i].bounds.lower.parameters)(ii);
 			zupper = (problem.phase[i].bounds.upper.parameters)(ii);
-			variable_map_from_bounds(zlower, zupper, algorithm.scaling,
-			                         param_scaling(ii), param_shift(ii));
+			param_scaling(ii) = scale_factor_from_bounds(zlower, zupper);
 		}
 	}
 

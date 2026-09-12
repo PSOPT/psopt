@@ -165,7 +165,6 @@ IntegerControlExpansionGuard::IntegerControlExpansionGuard(Prob& problem)
     saved_lower_controls_.resize(nphases + 1);
     saved_upper_controls_.resize(nphases + 1);
     saved_scale_controls_.resize(nphases + 1);
-    saved_shift_controls_.resize(nphases + 1);
     saved_lower_path_.resize(nphases + 1);
     saved_upper_path_.resize(nphases + 1);
     saved_scale_path_.resize(nphases + 1);
@@ -201,7 +200,6 @@ IntegerControlExpansionGuard::IntegerControlExpansionGuard(Prob& problem)
         saved_lower_controls_[i] = ph.bounds.lower.controls;
         saved_upper_controls_[i] = ph.bounds.upper.controls;
         saved_scale_controls_[i] = ph.scale.controls;
-        saved_shift_controls_[i] = ph.scale.controls_shift;
         saved_lower_path_[i]     = ph.bounds.lower.path;
         saved_upper_path_[i]     = ph.bounds.upper.path;
         saved_scale_path_[i]     = ph.scale.path;
@@ -226,26 +224,21 @@ IntegerControlExpansionGuard::IntegerControlExpansionGuard(Prob& problem)
         }
 
         // Control bounds/scale: drop the K integer slots, append P weight entries [0,1].
-        // The weights are already on [0,1], so they need no shift of their own; the
-        // surviving user controls keep theirs, because the map they arrived under has to
-        // be the map they are read back through.
-        MatrixXd lc(ncont_int, 1), uc(ncont_int, 1), sc(ncont_int, 1), sh(ncont_int, 1);
+        MatrixXd lc(ncont_int, 1), uc(ncont_int, 1), sc(ncont_int, 1);
         int idx = 0;
         for (int k = 0; k < nu; ++k) {
             if (is_int[k]) continue;
             lc(idx, 0) = ph.bounds.lower.controls(k, 0);
             uc(idx, 0) = ph.bounds.upper.controls(k, 0);
             sc(idx, 0) = ph.scale.controls(k, 0);
-            sh(idx, 0) = ph.scale.controls_shift(k, 0);
             ++idx;
         }
         for (int j = 0; j < P; ++j) {
-            lc(idx, 0) = 0.0; uc(idx, 0) = 1.0; sc(idx, 0) = 1.0; sh(idx, 0) = 0.0; ++idx;
+            lc(idx, 0) = 0.0; uc(idx, 0) = 1.0; sc(idx, 0) = 1.0; ++idx;
         }
         ph.bounds.lower.controls = lc;
         ph.bounds.upper.controls = uc;
         ph.scale.controls        = sc;
-        ph.scale.controls_shift  = sh;
 
         // Path bounds/scale: append SOS1 equality [1,1] (scale 1).
         MatrixXd lp(npath_int, 1), up(npath_int, 1), sp(npath_int, 1);
@@ -316,7 +309,6 @@ IntegerControlExpansionGuard::~IntegerControlExpansionGuard()
         ph.bounds.lower.controls = saved_lower_controls_[i];
         ph.bounds.upper.controls = saved_upper_controls_[i];
         ph.scale.controls        = saved_scale_controls_[i];
-        ph.scale.controls_shift  = saved_shift_controls_[i];
         ph.bounds.lower.path     = saved_lower_path_[i];
         ph.bounds.upper.path     = saved_upper_path_[i];
         ph.scale.path            = saved_scale_path_[i];

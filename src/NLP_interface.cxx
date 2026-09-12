@@ -166,9 +166,36 @@ void psopt_apply_pre_workspace_environment_overrides(Alg& algorithm)
     // NLP interface arrives after they have been fixed and does nothing at all. "user"
     // with no factors set is unit scaling, since psopt_level1_setup and psopt_level2_setup
     // initialise every factor to one, which makes a scaling study over the whole example
-    // set a sweep rather than sixty-six edited sources. "affine" is the third value and
-    // the reason the override earns its keep twice over: the difference between the two
-    // automatic maps is a question about the whole example set, not about one example.
+    // set a sweep rather than sixty-six edited sources.
+    // The solver and its QP backend, for the same reason and with the same payoff. Every
+    // SQP sweep this project has run was made by editing sources, which is why they cover
+    // the default invocation only and why re-measuring one is a chore rather than a
+    // command. Both are read before validate_user_input, so a backend name this build
+    // cannot load is refused by validate rather than surfacing at the first subproblem.
+    const char* nm = getenv("PSOPT_NLP_METHOD");
+    if (nm != NULL && algorithm.nlp_method != nm) {
+        if (algorithm.print_level)
+            fprintf(stderr, ">>> PSOPT_NLP_METHOD overrides the algorithm setting in the "
+                            "source: \"%s\" -> \"%s\"\n", algorithm.nlp_method.c_str(), nm);
+        algorithm.nlp_method = nm;
+    }
+
+    const char* qp = getenv("PSOPT_QP_SOLVER");
+    if (qp != NULL && algorithm.qp_solver != qp) {
+        if (algorithm.print_level)
+            fprintf(stderr, ">>> PSOPT_QP_SOLVER overrides the algorithm setting in the "
+                            "source: \"%s\" -> \"%s\"\n", algorithm.qp_solver.c_str(), qp);
+        algorithm.qp_solver = qp;
+    }
+
+    const char* tr = getenv("PSOPT_TRUST_REGION");
+    if (tr != NULL && algorithm.trust_region != tr) {
+        if (algorithm.print_level)
+            fprintf(stderr, ">>> PSOPT_TRUST_REGION overrides the algorithm setting in the "
+                            "source: \"%s\" -> \"%s\"\n", algorithm.trust_region.c_str(), tr);
+        algorithm.trust_region = tr;
+    }
+
     const char* sc = getenv("PSOPT_SCALING");
     if (sc != NULL && algorithm.scaling != sc) {
         if (algorithm.print_level)

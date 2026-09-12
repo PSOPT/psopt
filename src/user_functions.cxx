@@ -404,13 +404,11 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
      int    iphase_offset = get_iphase_offset(problem, iphase, workspace);
      int    bar_offset    = (nstates+ncontrols)*(norder+1)+nparam;
      MatrixXd& control_scaling = problem.phase[i].scale.controls;
-     MatrixXd& control_shift   = problem.phase[i].scale.controls_shift;
      double tq = time.value();
      int    kk = 0;
      while ( kk < norder-1 && tq > time_array[kk+1].value() ) kk++;
-     adouble ubar = PSOPT::unscale_variable(
-                        xad[iphase_offset+bar_offset+(kk)*ncontrols+control_index],
-                        control_scaling(control_index), control_shift(control_index) );
+     adouble ubar = xad[iphase_offset+bar_offset+(kk)*ncontrols+control_index]
+                    /control_scaling(control_index);
      adouble hk   = time_array[kk+1] - time_array[kk];
      adouble s    = (time - time_array[kk])/hk;
      *interp_control =   (2.0*s-1.0)*(s-1.0)*single_control_traj[kk]

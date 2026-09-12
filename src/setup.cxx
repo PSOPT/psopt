@@ -100,15 +100,6 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
 	problem.phase[i].scale.path       = ones(npath,1);
 	problem.phase[i].scale.parameters = ones(nparam,1);
 
-	// The variable map's origin. Zero is the multiplicative map PSOPT has always used,
-	// and it stays zero unless determine_scaling_factors_for_variables is asked for the
-	// affine one. Sized here for the same reason as the factors above: a user who sets
-	// algorithm.scaling = "user" writes the factors and never these, and an unsized
-	// matrix read at the first accessor is whatever was in memory.
-	problem.phase[i].scale.controls_shift   = zeros(ncontrols,1);
-	problem.phase[i].scale.states_shift     = zeros(nstates,1);
-	problem.phase[i].scale.parameters_shift = zeros(nparam,1);
-
 	problem.phase[i].bounds.upper.states.resize(nstates,1);
 	problem.phase[i].bounds.lower.states.resize(nstates,1);
 	problem.phase[i].bounds.lower.controls.resize(ncontrols,1);

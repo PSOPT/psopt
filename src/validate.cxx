@@ -77,8 +77,8 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                      "PSOPT's own SQP now fills the same place with no licence to obtain.");
     if (algorithm.collocation_method != "Legendre" && algorithm.collocation_method!="Chebyshev" && algorithm.collocation_method!="trapezoidal" && algorithm.collocation_method!="Hermite-Simpson" && algorithm.collocation_method!="Radau" && algorithm.collocation_method!="Gauss")
        error_message("Incorrect collocation method specified. Valid options are \"Legendre\" , \"Chebyshev\", \"trapezoidal\", \"Hermite-Simpson\", \"Radau\", and \"Gauss\" ");
-    if (algorithm.scaling != "automatic" && algorithm.scaling != "user" && algorithm.scaling != "affine")
-       error_message("Incorrect scaling option specified. Valid options are \"automatic\", \"affine\" and \"user\" ");
+    if (algorithm.scaling != "automatic" && algorithm.scaling!="user")
+       error_message("Incorrect scaling option specified. Valid options are \"automatic\" and \"user\" ");
     if (algorithm.transcription_method != "collocation" && algorithm.transcription_method != "integrated-residual")
        error_message("Incorrect transcription_method specified. Valid options are \"collocation\" and \"integrated-residual\" ");
     if (algorithm.transcription_method == "integrated-residual") {

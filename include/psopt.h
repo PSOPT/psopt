@@ -71,47 +71,6 @@ namespace PSOPT {
     inline double scaled_upper_bound(double up, double sc)
     { return no_upper_bound(up) ?  inf : up*sc; }
 
-    // The same, for a variable bound under the map below: a present bound moves with the
-    // origin, an absent one stays absent. These take a shift because a variable's box has
-    // to arrive at the solver in the coordinates the variable is expressed in; the path,
-    // event and defect rows use the two-argument forms above, because a constraint row is
-    // scaled and never shifted.
-    inline double scaled_lower_bound(double lo, double sc, double sh)
-    { return no_lower_bound(lo) ? -inf : (lo - sh)*sc; }
-
-    inline double scaled_upper_bound(double up, double sc, double sh)
-    { return no_upper_bound(up) ?  inf : (up - sh)*sc; }
-
-    // The variable map, and the one place it is written down.
-    //
-    //     x_scaled = (x - shift) * scale ,     x = x_scaled/scale + shift
-    //
-    // PSOPT has always scaled multiplicatively, which is the shift = 0 case, and that
-    // remains the default: with the shift zero every expression below is the division or
-    // the product it replaced, to the bit. The shift exists because a multiplicative
-    // factor alone cannot fix the thing scaling is for. A mass bounded between 1000 and
-    // 1200 kg scales by 1/1200 onto [0.833, 1.0]: the magnitude is right and the
-    // *variation* is 0.17, so the solver still has to resolve a step of 1e-3 in a
-    // variable whose value is near one. The affine map takes the same variable onto
-    // [-1, 1], where the magnitude and the variation are both order one -- and leaves a
-    // box already symmetric about zero exactly where it was.
-    //
-    // A shift is a translation, so it is invisible to every derivative: d x/d x_scaled is
-    // 1/scale either way. That is what makes this containable -- the shift belongs to the
-    // accessors that read a variable out of the decision vector and to the bounds and the
-    // guess that go the other way, and to nothing else. Where a scale factor appears as a
-    // *derivative* weight rather than as a variable map, it must stay alone; the two
-    // places that do that say so.
-    //
-    // It also passes through the transcription untouched, which is worth knowing rather
-    // than hoping: a differentiation matrix annihilates a constant, and every defect of
-    // the local schemes is a difference of two states, so the constant cancels in both.
-    inline double scale_variable(double x, double sc, double sh)
-    { return (x - sh)*sc; }
-
-    inline double unscale_variable(double xs, double sc, double sh)
-    { return xs/sc + sh; }
-
 }
 
 
@@ -166,14 +125,6 @@ using std::unique_ptr;
 
 #include <string>
 using std::string;
-
-namespace PSOPT {
-    // The same map for a taped variable. It lives here rather than beside its double
-    // counterpart because adouble is not a type until the AD backend header above has
-    // been read.
-    inline adouble unscale_variable(const adouble& xs, double sc, double sh)
-    { return xs/sc + sh; }
-}
 
 
 class TripletSparseMatrix;
@@ -644,13 +595,6 @@ struct scaling_str {
    MatrixXd  path;
    MatrixXd  events;
    double    time;
-   // The origin of the variable map, in the units of the variable: a scaled variable of
-   // zero means this value. Zero everywhere unless algorithm.scaling is "affine", and
-   // zero even then for any variable without two finite bounds, since a box with no
-   // finite centre has no origin to move to. See PSOPT::scale_variable.
-   MatrixXd  controls_shift;
-   MatrixXd  states_shift;
-   MatrixXd  parameters_shift;
 };
 
 typedef struct scaling_str Scaling;
@@ -901,7 +845,6 @@ private:
    std::vector<MatrixXd> saved_lower_controls_;
    std::vector<MatrixXd> saved_upper_controls_;
    std::vector<MatrixXd> saved_scale_controls_;
-   std::vector<MatrixXd> saved_shift_controls_;
    std::vector<MatrixXd> saved_lower_path_;
    std::vector<MatrixXd> saved_upper_path_;
    std::vector<MatrixXd> saved_scale_path_;
