@@ -167,10 +167,16 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
             ir_algebraic_index(problem, i, aidx, atarget);
         const int nalg  = (int) aidx.size();
         const double pw = workspace->algorithm->ir_path_weight;
+        // The element boundaries in normalised coordinates: stored constants under a fixed
+        // mesh, expressions in the width variables under a flexible one. Hoisted, because
+        // building a boundary means summing the widths before it.
+        std::vector<adouble> abnd(M+1);
+        ir_element_boundaries(abnd.data(), xad, iphase, workspace);
+
         for (int e=0; e<M; e++) {
             int base = e*d;                  // global index of the element's first node
-            adouble tk  = convert_to_original_time_ad( (workspace->snodes[i])(base),   t0, tf );
-            adouble tk1 = convert_to_original_time_ad( (workspace->snodes[i])(base+d), t0, tf );
+            adouble tk  = convert_to_original_time_ad( abnd[e],   t0, tf );
+            adouble tk1 = convert_to_original_time_ad( abnd[e+1], t0, tf );
             adouble he  = tk1 - tk;
             for (int r=0; r<np; r++) {
                 get_states(xbuf, xad, iphase, base+r, workspace);
@@ -351,16 +357,24 @@ adouble phase_running_cost(int i, int iphase, adouble* xad, adouble t0, adouble 
 		  int d = workspace->algorithm->ir_local_order;
 		  int M = norder / d;
 		  MatrixXd& wl = workspace->ir_lgl_w;            // d+1 LGL weights on [-1,1], sum 2
+		  MatrixXd& lgl01 = workspace->ir_lgl01;         // d+1 reference LGL nodes on [0,1]
+		  std::vector<adouble> abnd(M+1);
+		  ir_element_boundaries(abnd.data(), xad, iphase, workspace);
 		  for (int e=0; e<M; e++) {
 		      int base = e*d;
-		      adouble te0 = convert_to_original_time_ad( (workspace->snodes[i])(base),   t0, tf );
-		      adouble te1 = convert_to_original_time_ad( (workspace->snodes[i])(base+d), t0, tf );
+		      adouble te0 = convert_to_original_time_ad( abnd[e],   t0, tf );
+		      adouble te1 = convert_to_original_time_ad( abnd[e+1], t0, tf );
 		      adouble he  = te1 - te0;
+		      // The node's own normalised position. Under a fixed mesh this reproduces
+		      // snodes(gk) exactly, the reference LGL abscissae being how snodes was built;
+		      // under a flexible one it follows the element.
+		      adouble hnorm = abnd[e+1] - abnd[e];
 		      for (int r=0; r<=d; r++) {
 		          int gk = base + r;
 		          get_element_controls(controls, xad, iphase, e, r, workspace);
 		          get_states(states,     xad, iphase, gk, workspace);
-		          adouble tnode = convert_to_original_time_ad( (workspace->snodes[i])(gk), t0, tf );
+		          adouble taunode = abnd[e] + lgl01(r)*hnorm;
+		          adouble tnode = convert_to_original_time_ad( taunode, t0, tf );
 		          integrand_cost = problem.integrand_cost(states,controls,parameters,tnode,xad,iphase,workspace);
 		          (solution.integrand_cost[i])(gk) = integrand_cost.value();
 		          phase_sum_cost += (he/2.0) * wl(r) * integrand_cost;

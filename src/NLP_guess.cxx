@@ -207,6 +207,15 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
             x0.block(x_phase_offset+offset2+nparam, 0, nstates, 1) = elemProduct((solution.states[i]).col(norder), state_scaling);
        }
 
+       // The flexible mesh starts uniform, which is the mesh a fixed-mesh run would have
+       // used. Starting anywhere else would be asserting where the solution's corners are
+       // before the solve has said.
+       {
+           const int nflex = ir_flex_mesh_vars(norder, *workspace->algorithm);
+           for (int q = 0; q < nflex; q++)
+               x0(x_phase_offset + nvars_phase_i - 2 - nflex + q) = 2.0/(double) nflex;
+       }
+
         x_phase_offset += nvars_phase_i;
 
   }
@@ -379,6 +388,15 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
                 x0.block(x_phase_offset+offset2+nparam+(e-1)*ncontrols,0,ncontrols,1)
                     = elemProduct( (solution.controls[i]).col(e*d), control_scaling);
             }
+        }
+
+        // The flexible mesh, re-seeded uniform on the new mesh. Carrying the previous
+        // solve's widths across a change in the number of elements would mean mapping one
+        // partition onto another, and there is no mapping that is obviously right.
+        {
+            const int nflex = ir_flex_mesh_vars(norder, *workspace->algorithm);
+            for (int q = 0; q < nflex; q++)
+                x0(x_phase_offset + nvars_phase_i - 2 - nflex + q) = 2.0/(double) nflex;
         }
 
 	x0(x_phase_offset+ nvars_phase_i-2) = prev_t0(i)*time_scaling;

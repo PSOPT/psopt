@@ -91,6 +91,21 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     // combination is refused rather than run. algorithm.mesh_refinement = "manual" with a
     // sequence in algorithm.nodes is the supported way to refine an integrated-residual
     // discretisation today.
+    // The flexible mesh is a property of the Nie-Kerrigan element basis: the widths are the
+    // widths OF something, and without that basis a phase has no elements to move. Asking
+    // for it otherwise is a misunderstanding worth naming rather than ignoring, because
+    // ir_flex_mesh_vars would simply return zero and the option would appear to work.
+    if ( algorithm.ir_flexible_mesh && algorithm.ir_local_order < 2 )
+       error_message("algorithm.ir_flexible_mesh requires algorithm.ir_local_order >= 2: the "
+                     "flexible mesh moves the boundaries of the Nie-Kerrigan elements, and "
+                     "without that local basis the phase has no element boundaries to move ");
+
+    if ( algorithm.ir_flexible_mesh &&
+         ( algorithm.ir_min_element_fraction <= 0.0 || algorithm.ir_min_element_fraction >= 1.0 ) )
+       error_message("algorithm.ir_min_element_fraction must lie strictly between 0 and 1: it is "
+                     "the floor on an element width as a fraction of the uniform width, and an "
+                     "element free to collapse to zero width has its nodes coincident ");
+
     if ( algorithm.mesh_refinement == "automatic" && algorithm.ir_local_order >= 2 )
        error_message("algorithm.mesh_refinement = \"automatic\" is not supported with "
                      "algorithm.ir_local_order >= 2: local refinement inserts nodes that the "

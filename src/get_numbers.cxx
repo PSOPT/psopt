@@ -80,6 +80,13 @@ int get_number_nlp_vars(Prob& problem, Workspace* workspace)
         if ( workspace->algorithm->collocation_method == "Gauss" ) {
             nlp_vars += nstates;   // appended terminal-state variable (before t0,tf)
         }
+        // The flexible mesh's element widths. This is the phase layout written a THIRD
+        // time -- get_nvars_phase_i has it, get_max_number_nlp_vars has an upper bound of
+        // it, and this has the total -- and adding a block to one of the three and not the
+        // others does not fail a check anywhere. It corrupts the heap: the per-phase count
+        // decides where the bounds and the constraint rows are written, and this one
+        // decides how large the arrays written into are.
+        nlp_vars += ir_flex_mesh_vars(nodes, *workspace->algorithm);
    }
 
    // One variable per phase carrying that phase's running cost, when
@@ -105,6 +112,17 @@ int get_max_number_nlp_vars(Prob& problem, Alg& algorithm)
       	nlp_vars += (ncontrols+nstates)*(max_nodes+1)+nparam+2;
         nlp_vars += (ncontrols)*(max_nodes);
         if ( algorithm.collocation_method == "Gauss" ) nlp_vars += nstates;
+        // The flexible mesh's element widths: one per element, and an element spans
+        // ir_local_order sub-intervals.
+        //
+        // This function is the layout written a second time, as an upper bound over the
+        // whole nodes sequence, and it is what sizes workspace->xad. A block added to
+        // get_nvars_phase_i and not to this one does not fail a bound check: the tape is
+        // written past the end of xad and the heap is corrupted, which is how the first
+        // run of the flexible mesh ended -- "malloc(): invalid size" with no line number
+        // and nothing pointing at the mesh.
+        if ( algorithm.ir_flexible_mesh && algorithm.ir_local_order >= 2 )
+            nlp_vars += max_nodes/algorithm.ir_local_order + 1;
 
    }
 
@@ -164,6 +182,9 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
 
 
        nlp_ncons  += nstates*(max_nodes+1)+ (nevents) + npath*(max_nodes+1) + 1;
+       // The flexible mesh's one equality per phase; see the note in
+       // get_max_number_nlp_vars about this function being the layout written twice.
+       if ( algorithm.ir_flexible_mesh && algorithm.ir_local_order >= 2 ) nlp_ncons += 1;
 
 
        nlp_ncons += npath*(max_nodes);
@@ -311,6 +332,9 @@ int get_nvars_phase_i(Prob& problem, int i, Workspace* workspace)
                     nvars_phase_i += nstates;   // appended terminal-state variable (before t0,tf)
         }
 
+        // The flexible mesh's element widths. Immediately before t0 and tf, which stay last.
+        nvars_phase_i += ir_flex_mesh_vars(norder, *workspace->algorithm);
+
         nvars_phase_i += 2;
 
         return nvars_phase_i;
@@ -325,6 +349,10 @@ int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
         int npath     = problem.phase[i].npath;
 
         int ncons_phase_i = nstates*(norder+1) + nevents + npath*(norder+1)+1;
+
+        // The flexible mesh's one equality, sum of widths = 2. Written just before the
+        // t0 <= tf row so that row remains the phase's last.
+        ncons_phase_i += ir_flex_mesh_rows(norder, *workspace->algorithm);
 
         if ( need_midpoint_controls(*workspace->algorithm, workspace) ) {
                     ncons_phase_i += npath*norder;

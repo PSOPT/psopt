@@ -760,6 +760,23 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
             }
         }
 
+        // The flexible mesh's equality: the element widths span the normalised interval.
+        //
+        // One row, written immediately before the duration row so that row stays the phase's
+        // last and everything indexing it as ncons_phase_i-1 is undisturbed. It is an
+        // equality and it is written unscaled, because the widths are.
+        {
+            const int nflex = ir_flex_mesh_vars(norder, *algorithm);
+            if ( nflex > 0 ) {
+                const int nvars_phase_i = get_nvars_phase_i(*problem, i, workspace);
+                const int iphase_offset = get_iphase_offset(*problem, iphase, workspace);
+                const int wbase         = iphase_offset + nvars_phase_i - 2 - nflex;
+                adouble wsum = 0.0;
+                for (int q = 0; q < nflex; q++) wsum += xad[wbase+q];
+                gad[ phase_offset + ncons_phase_i - 2 ] = wsum - 2.0;
+            }
+        }
+
         // Add tf >= t0 constraint [ t0MIN-tfMAX <= t0-tf <= 0 ]
 
       gad[ phase_offset + ncons_phase_i - 1] =  (t0 - tf)*time_scaling;

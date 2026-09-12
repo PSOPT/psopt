@@ -247,6 +247,42 @@ void get_parameters(adouble* parameters, adouble* xad, int iphase, Workspace* wo
 
 }
 
+// The element boundaries in normalised [-1,1] coordinates. See ir_element_boundaries in
+// psopt.h for why the caller should hoist this out of an element loop.
+//
+// The widths carry NO scale factor. Every other variable in the decision vector is scaled
+// from its bounds, and these could be too, but they are already order 2/M by construction
+// and a factor would be one more thing that has to agree between the bounds, the guess,
+// the constraint row and this accessor. Unit scaling is stated here so that nobody has to
+// infer it from four places agreeing.
+void ir_element_boundaries(adouble* a, adouble* xad, int iphase, Workspace* workspace)
+{
+        const int i = iphase-1;
+        Prob& problem   = *workspace->problem;
+        Alg&  algorithm = *workspace->algorithm;
+
+        const int norder = problem.phase[i].current_number_of_intervals;
+        const int d      = algorithm.ir_local_order;
+        if ( d < 2 || norder < d || (norder % d) != 0 ) return;
+        const int M = norder/d;
+
+        const int nflex = ir_flex_mesh_vars(norder, algorithm);
+
+        if ( nflex == 0 ) {
+            // Fixed mesh: the boundaries are stored node positions, constants to the tape.
+            MatrixXd& sn = workspace->snodes[i];
+            for (int e=0; e<=M; e++) a[e] = sn(e*d);
+            return;
+        }
+
+        const int iphase_offset = get_iphase_offset(problem, iphase, workspace);
+        const int nvars_phase_i = get_nvars_phase_i(problem, i, workspace);
+        const int base          = iphase_offset + nvars_phase_i - 2 - nflex;
+
+        a[0] = -1.0;
+        for (int e=0; e<M; e++) a[e+1] = a[e] + xad[base+e];
+}
+
 void get_times(adouble *t0, adouble *tf, adouble* xad, int iphase, Workspace* workspace)
 {
         int i = iphase-1;

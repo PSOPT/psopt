@@ -166,6 +166,8 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   // (requires automatic derivatives). "numerical": sparse Lagrangian Hessian by finite differences,
   // usable with numerical derivatives (lets IPOPT take exact-Hessian steps instead of L-BFGS).
   algorithm.hessian                     = "limited-memory";
+  algorithm.ir_flexible_mesh            = false;
+  algorithm.ir_min_element_fraction     = 0.05;
   algorithm.qp_solver                   = "GALAHAD";
   algorithm.qp_iter_max                 = 0;      // 0 = scale it with the subproblem
   algorithm.trust_region                = "box";  // "l2" needs a conic backend

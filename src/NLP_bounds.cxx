@@ -154,6 +154,25 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
             xub.block(x_phase_offset+xf_off,0,nstates,1) = scaled_upper((problem.phase[i].bounds.upper.states),state_scaling);
         }
 
+        // The flexible mesh's element widths, on the normalised interval, unscaled. The floor
+        // is a fraction of the uniform width and is a BOUND rather than a penalty: an element
+        // that reaches zero width has its nodes coincident and its local polynomial is then
+        // fitted through a repeated point. The ceiling is the whole interval, which the sum
+        // equality makes unreachable for any element but a lone one; it is there so the
+        // variable is two-sidedly bounded rather than to bind.
+        {
+            const int nflex = ir_flex_mesh_vars(norder, algorithm);
+            if ( nflex > 0 ) {
+                const int foff   = nvars_phase_i - 2 - nflex;
+                const double hu  = 2.0/(double) nflex;                     // the uniform width
+                const double hlo = algorithm.ir_min_element_fraction * hu;
+                for (int q = 0; q < nflex; q++) {
+                    xlb(x_phase_offset+foff+q) = hlo;
+                    xub(x_phase_offset+foff+q) = 2.0;
+                }
+            }
+        }
+
 	xlb(x_phase_offset+nvars_phase_i-2)   = PSOPT::scaled_lower_bound(problem.phase[i].bounds.lower.StartTime, time_scaling); //EIGEN_UPDATE
 	xub(x_phase_offset+nvars_phase_i-2)   = PSOPT::scaled_upper_bound(problem.phase[i].bounds.upper.StartTime, time_scaling); //EIGEN_UPDATE
 
@@ -310,6 +329,16 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
         }
 
         lam_phase_offset += ncons_phase_i;
+
+        // The flexible mesh's equality: the widths span the normalised interval exactly.
+        // Written as sum(h) - 2 = 0, one row per phase, immediately before the duration row.
+        {
+            const int nflex = ir_flex_mesh_vars(problem->phase[i].current_number_of_intervals, *algorithm);
+            if ( nflex > 0 ) {
+                g_l[ lam_phase_offset - 2 ] = 0.0;
+                g_u[ lam_phase_offset - 2 ] = 0.0;
+            }
+        }
 
         // Bounds for the t0 <= tf constraint.
         //

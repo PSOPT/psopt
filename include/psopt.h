@@ -445,6 +445,21 @@ struct alg_str {
                                      // (endpoints shared, C0), so increasing the order drives the
                                      // integrated residual genuinely small (p-refinement); 0 (default)
                                      // keeps the fixed cubic-Hermite integrated-residual representation
+  bool      ir_flexible_mesh;        // Nie-Kerrigan only. The element boundaries become decision
+                                     // variables, so the optimisation can put a boundary ON a
+                                     // switching time rather than having nodes inserted around it
+                                     // (Nie & Kerrigan 2022). false (default) keeps the fixed
+                                     // uniform elements. Parameterised by the element WIDTHS on
+                                     // the normalised interval, not by the boundaries: the
+                                     // boundaries are a monotone sequence and would need an
+                                     // ordering chain, whereas positive widths summing to the
+                                     // interval length need only simple bounds and one equality,
+                                     // which is a far better thing to hand an interior-point method.
+  double    ir_min_element_fraction; // Floor on an element width, as a fraction of the uniform
+                                     // width. A width free to reach zero gives a singular local
+                                     // problem -- the element's polynomial is fitted through
+                                     // coincident nodes -- so the floor is a bound and not a
+                                     // penalty. 0.05 by default.
   bool      ir_element_local_controls;
                                      // Nie-Kerrigan only. true (default): each element carries its own
                                      // control at its left end, so the control may jump between
@@ -1512,6 +1527,44 @@ inline int ir_extra_control_vars(int norder, int ncontrols, Alg& algorithm)
     return ncontrols * ( norder/d - 1 );
 }
 
+// The flexible mesh: one width variable per element, and one equality row per phase.
+//
+// The widths live on the normalised interval [-1,1], so they sum to 2. Node e*d+r of the
+// phase sits at a_e + lgl01(r)*h_e, where a_e = -1 + sum of the widths before it, which
+// makes the element's local coordinates -- and therefore ir_Bval and ir_Bder, which are
+// built once for the reference element -- independent of where the boundaries are. That
+// is the property that makes a moving mesh cost so little here: only the physical times
+// change, and those were already adouble expressions in t0 and tf.
+//
+// The variables occupy the slot immediately before t0 and tf, which are the last two of
+// every phase, so get_times keeps indexing from nvars_phase_i-2 and every offset computed
+// through get_iphase_offset picks the block up for free.
+inline int ir_flex_mesh_vars(int norder, Alg& algorithm)
+{
+    if ( !algorithm.ir_flexible_mesh ) return 0;
+    if ( !ir_local_basis_active(algorithm) ) return 0;
+    const int d = algorithm.ir_local_order;
+    if ( d < 2 || norder < d || (norder % d) != 0 ) return 0;
+    return norder/d;                       // one width per element
+}
+
+// The single row that closes the parameterisation: sum of the widths equals 2. Written
+// immediately before the phase's t0 <= tf row, so that row stays last and everything that
+// indexes it as ncons_phase_i-1 is undisturbed.
+inline int ir_flex_mesh_rows(int norder, Alg& algorithm)
+{
+    return ir_flex_mesh_vars(norder, algorithm) > 0 ? 1 : 0;
+}
+
+// The element boundaries of a phase, in normalised [-1,1] coordinates, as the taped code
+// must see them: constants read from snodes under a fixed mesh, and expressions in the
+// width variables under a flexible one. Fills a[0..M], so the caller passes M+1 slots.
+//
+// Every taped reader of an element boundary comes through here. Hoist it out of an element
+// loop rather than calling it per element: building a_e means summing the widths before it,
+// so the per-element form is quadratic in the number of elements and this one is linear.
+void ir_element_boundaries(adouble* a, adouble* xad, int iphase, Workspace* workspace);
+
 // Number of path constraints of a phase that are declared as equalities, and which are
 // therefore folded into the integrated residual when algorithm.ir_include_path == "auto".
 // Returns 0 for any other transcription method or setting, so that call sites can add it
@@ -1564,6 +1617,7 @@ void psopt_level1_setup(Prob& problem);
 int get_max_nodes_in_all_phases(Prob& problem, Alg& algorithm);
 
 adouble convert_to_original_time_ad(double tbar,adouble& t0,adouble& tf);
+adouble convert_to_original_time_ad(const adouble& tbar,adouble& t0,adouble& tf);
 
 int get_nvars_phase_i(Prob& problem, int i, Workspace* workspace);
 

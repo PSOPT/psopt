@@ -507,6 +507,14 @@ adouble convert_to_original_time_ad(double tbar,adouble& t0,adouble& tf)
     return retval;
 }
 
+// The same map with the normalised position itself a variable, which is what a flexible
+// mesh makes it. Identical arithmetic; the overload exists because the normalised position
+// was a tape constant everywhere until the element boundaries became decision variables.
+adouble convert_to_original_time_ad(const adouble& tbar,adouble& t0,adouble& tf)
+{
+    return (tf+t0)/2.0 + (tf-t0)*(tbar/2.0);
+}
+
 
 bool use_local_collocation(Alg & algorithm)
 {
