@@ -314,6 +314,13 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
             for (int l2=0; l2<ncontrols; l2++) { g_l[pin_base+l2] = 0.0; g_u[pin_base+l2] = 0.0; }
         }
 
+        // Multiple shooting: the terminal-control pin, u_norder - u_{norder-1} = 0.
+        if ( is_multiple_shooting(*algorithm) ) {
+            int ncontrols = problem->phase[i].ncontrols;
+            int pin_base  = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+            for (int l2=0; l2<ncontrols; l2++) { g_l[pin_base+l2] = 0.0; g_u[pin_base+l2] = 0.0; }
+        }
+
         // Gauss: the K Gauss-quadrature defining constraints (one per interval) are equalities (=0).
         if ( algorithm->collocation_method == "Gauss" ) {
             int Kg = hp_mesh_active(problem->phase[i]) ? hp_num_intervals(problem->phase[i]) : 1;

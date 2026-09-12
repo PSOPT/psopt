@@ -357,7 +357,12 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
              }
    }
 
-   if ( workspace->differential_defects != "Hermite-Simpson" && workspace->differential_defects != "trapezoidal") {
+   // The differentiation matrix, for the transcriptions that have one. Multiple shooting does
+   // not: there is no polynomial through the nodes to differentiate, and D is never built for
+   // it, so asking for the product here read an unallocated matrix and crashed.
+   if ( workspace->differential_defects != "Hermite-Simpson"
+        && workspace->differential_defects != "trapezoidal"
+        && workspace->differential_defects != "multiple-shooting" ) {
 	            mtrx_mul_trans(states_traj,&D(0), derivs_traj,nstates, norder+1,norder+1,norder+1); //EIGEN_UPDATE
 	}
 
@@ -384,7 +389,44 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 		           workspace->solution->mesh_stats[  workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals++;
 	         }
 
-            if (workspace->differential_defects != "Hermite-Simpson" && workspace->differential_defects != "trapezoidal" && workspace->differential_defects != "Radau" && workspace->differential_defects != "Gauss"  ) {
+            if (workspace->differential_defects == "multiple-shooting") {
+                // The matching condition of multiple shooting, in the rows that carry the
+                // collocation defect under every other transcription:
+                //
+                //     x_{k+1} - phi( x_k, u_k, p, h_k ) = 0,
+                //
+                // where phi is the segment integrator of ms_propagate_segment. There are
+                // norder of these and norder+1 rows, so the last is zero-padded exactly as the
+                // final Hermite-Simpson, Radau and Gauss row is: the phase's terminal state is
+                // a variable constrained by the last matching condition and by the events, not
+                // by a row of its own.
+                //
+                // Note what is NOT here. The trajectory inside a segment is not a decision
+                // variable and has no defect; the integrator produces it, and the only thing
+                // the NLP sees of it is the end state. That is the whole of the difference
+                // between shooting and collocation, and it is why the matching rows are
+                // block-bidiagonal -- row k touches x_k, u_k, the parameters and the times,
+                // and x_{k+1}, and nothing else.
+                if ( k != norder ) {
+                    std::vector<adouble> xend(nstates);
+                    ms_propagate_segment(xend.data(), NULL, k, xad, iphase, t0, tf,
+                                         parameters, workspace);
+                    // x_{k+1}, read directly rather than from the loop's `states`, which holds
+                    // the state at node k.
+                    adouble* xnext = workspace->states_next[i].get();
+                    get_states(xnext, xad, iphase, k+1, workspace);
+                    for (j=0; j<nstates; j++) {
+                        l = phase_offset+(k)*nstates+j;
+                        gad[l] = xnext[j] - xend[j];
+                        if ( algorithm->scaling=="user" ) gad[l] *= deriv_scaling(j);
+                    }
+                }
+                else {
+                    for (j=0; j<nstates; j++) gad[ phase_offset+(k)*nstates+j ] = 0.0;
+                }
+            }
+
+            else if (workspace->differential_defects != "Hermite-Simpson" && workspace->differential_defects != "trapezoidal" && workspace->differential_defects != "Radau" && workspace->differential_defects != "Gauss"  ) {
                 // Differentiation matrix based defects
 
                for (j=0; j<nstates; j++) {
@@ -705,6 +747,25 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                 for (int jj=m0; jj<norder; jj++) if (jj!=m) Lwm *= (xe - sn(jj))/(sn(m)-sn(jj));
                 get_controls(controls, xad, iphase, m, workspace);
                 for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] -= Lwm*controls[l2];
+            }
+        }
+
+        // Multiple shooting: pin the terminal control to the control of the segment that ends
+        // at the terminal node. With a piecewise-constant control the last slot belongs to no
+        // segment, so nothing else determines it; see the note in get_ncons_phase_i. The row
+        // occupies the same slot Radau's terminal-control pin does.
+        if ( workspace->differential_defects == "multiple-shooting" ) {
+            int ncontrols = problem->phase[i].ncontrols;
+            int pin_base  = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+            if ( ncontrols > 0 && norder >= 1 ) {
+                adouble* u_last = workspace->controls[i].get();
+                adouble* u_prev = workspace->controls_next[i].get();
+                get_controls(u_last, xad, iphase, norder,   workspace);
+                get_controls(u_prev, xad, iphase, norder-1, workspace);
+                for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] = u_last[l2] - u_prev[l2];
+            }
+            else {
+                for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] = 0.0;
             }
         }
 

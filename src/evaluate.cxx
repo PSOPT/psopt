@@ -516,6 +516,31 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
 
            x0 = x1;  f0 = f1;
       }
+      else if ( is_multiple_shooting(*workspace->algorithm) ) {
+           // For a shooting transcription the discretisation error IS the integrator error.
+           // The matching conditions hold x_{k+1} = phi(x_k, u_k) to the NLP's tolerance, so
+           // there is no defect between the nodes to measure: the only difference between the
+           // computed trajectory and the true one is what the fixed-step scheme lost inside
+           // the segment. Interpolating the stored node states, which is what the branch
+           // below does, would be measuring the error of a polynomial nobody used.
+           //
+           // So the segment is run again at half the step and the two ends compared. For a
+           // scheme of order p the coarse error is (x_fine - x_coarse)/(2^p - 1); RK4 gives
+           // 15. That is Richardson extrapolation used as an estimate rather than as a
+           // correction, which is the standard device and costs one extra propagation per
+           // segment, once, after the solve.
+           const int nsteps = workspace->algorithm->ms_steps_per_segment;
+           std::vector<adouble> xa(nstates), xb(nstates), par_ms;
+           par_ms.resize( (problem->phase[iphase-1].nparameters > 0)
+                          ? problem->phase[iphase-1].nparameters : 1 );
+           get_parameters(par_ms.data(), xad, iphase, workspace);
+           ms_propagate_segment(xa.data(), NULL, k, xad, iphase, t0, tf, par_ms.data(),
+                                workspace, nsteps);
+           ms_propagate_segment(xb.data(), NULL, k, xad, iphase, t0, tf, par_ms.data(),
+                                workspace, 2*nsteps);
+           for (int j=0;j<nstates;j++)
+               eta_k(j) = fabs( xb[j].value() - xa[j].value() )/15.0;
+      }
       else {
            evaluate_integral_of_differential_error(eta_k,iphase,t1,t2,xad,n, workspace);
       }

@@ -191,6 +191,7 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
        // The flexible mesh's one equality per phase; see the note in
        // get_max_number_nlp_vars about this function being the layout written twice.
        if ( algorithm.ir_flexible_mesh ) nlp_ncons += 1;
+       if ( is_multiple_shooting(algorithm) ) nlp_ncons += problem.phase[i].ncontrols;
 
 
        nlp_ncons += npath*(max_nodes);
@@ -366,6 +367,16 @@ int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
 
         if ( workspace->algorithm->collocation_method == "Radau" ) {
                     ncons_phase_i += problem.phase[i].ncontrols;  // terminal-control interpolation pin
+        }
+
+        // Multiple shooting with a piecewise-constant control: the phase has norder segments
+        // and norder+1 control slots, so the last one belongs to no segment and no matching
+        // condition reads it. An unconstrained variable is a singular direction in the
+        // Hessian and a column of zeros in the Jacobian, so it is pinned to the control of
+        // the segment that ends there -- the same slot, and the same remedy, that Radau's
+        // non-collocated terminal node uses.
+        if ( is_multiple_shooting(*workspace->algorithm) ) {
+                    ncons_phase_i += problem.phase[i].ncontrols;
         }
 
         if ( workspace->algorithm->collocation_method == "Gauss" ) {

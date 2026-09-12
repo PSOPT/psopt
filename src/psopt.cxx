@@ -562,7 +562,16 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
 
 
-    if (algorithm.collocation_method=="trapezoidal") {
+    // Multiple shooting takes its own name here, ahead of the collocation dispatch, because
+    // what the defect rows hold is a matching condition and not a collocation defect. Naming
+    // it keeps every consumer of differential_defects -- need_midpoint_controls first among
+    // them, which would otherwise allocate Hermite-Simpson midpoint controls that this
+    // transcription has no use for -- out of the way without a second predicate.
+    if ( is_multiple_shooting(algorithm) ) {
+             workspace->differential_defects = "multiple-shooting";
+    }
+
+    else if (algorithm.collocation_method=="trapezoidal") {
              workspace->differential_defects = "trapezoidal";
     }
 
@@ -844,6 +853,17 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
                 else
         	    lg_nodes( problem.phase[i].current_number_of_intervals, workspace->snodes[i], workspace->w[i], workspace->D[i] );
             }
+
+    }
+
+    else if ( is_multiple_shooting(algorithm) ) {
+
+            // The segment boundaries, uniform in normalised coordinates. This is the same
+            // array, holding the same kind of thing, that every other transcription puts its
+            // node positions in -- which is what lets the reported times, the plots, the
+            // guess interpolation and the hot start work here with no change at all.
+            for (i=0; i<nphases; i++)
+                workspace->snodes[i] = linspace(-1.0, 1.0, problem.phase[i].current_number_of_intervals+1);
 
     }
 

@@ -341,7 +341,28 @@ adouble phase_running_cost(int i, int iphase, adouble* xad, adouble t0, adouble 
 
     (void) obj_restricted; (void) solution; (void) states_next;
 
-	if ( workspace->transcription_method == "integrated-residual" && algorithm.ir_objective != "cost" ) {
+	if ( is_multiple_shooting(algorithm) ) {
+	    // The running cost of a shooting phase is integrated by the segment integrator that
+	    // produces the trajectory, segment by segment, and not by a quadrature on the stored
+	    // node states. There is no trajectory between the nodes other than the one the
+	    // integrator makes, so any rule written on the node values would be integrating a
+	    // different function from the one the dynamics follow -- and the two would disagree
+	    // by more the coarser the segments, which is exactly where a shooting method is
+	    // supposed to be strong.
+	    adouble* parameters_ms = workspace->parameters[i].get();
+	    get_parameters(parameters_ms, xad, iphase, workspace);
+	    std::vector<adouble> xend(problem.phase[i].nstates);
+	    for (k=0; k<norder; k++) {
+	        adouble Lk = 0.0;
+	        ms_propagate_segment(xend.data(), &Lk, k, xad, iphase, t0, tf,
+	                             parameters_ms, workspace);
+	        phase_sum_cost += Lk;
+	        (solution.integrand_cost[i])(k) = Lk.value();
+	    }
+	    return phase_sum_cost;
+	}
+
+	else if ( workspace->transcription_method == "integrated-residual" && algorithm.ir_objective != "cost" ) {
 	    // Integrated-residual transcription, feasibility step (increment 1 / DAIR
 	    // feasibility): the whole phase objective is the integral of ||xdot - f||^2;
 	    // no user cost, no endpoint cost. (ir_objective=="cost" instead minimises the

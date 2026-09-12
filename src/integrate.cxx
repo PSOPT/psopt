@@ -212,3 +212,111 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 
 }
 
+
+
+// ===========================================================================================
+// One multiple-shooting segment, propagated.
+//
+// The scheme is classical RK4 at a fixed step, unrolled onto the same tape as the rest of the
+// problem. That choice is not a convenience. A shooting method needs the derivative of a
+// segment's end state with respect to its start state, its control, the parameters and its
+// duration, and there are only two honest ways to get one: tape a fixed-step scheme, as here,
+// or propagate sensitivities with the same steps and factorisations as the nominal trajectory,
+// which is Bock's internal numerical differentiation. What must NOT be done is to difference
+// an adaptive integrator, because that differentiates its step controller along with its
+// dynamics and returns noise. A fixed-step scheme has no controller to differentiate, so
+// taping it gives the exact derivative of the discrete map the transcription actually uses --
+// which is the derivative the NLP wants, not the derivative of the ODE.
+//
+// The running cost is accumulated by the same RK4 stages rather than by a separate quadrature
+// on the segment ends. That is state augmentation without the extra variable: the integral of
+// L along the segment obeys dJ/dt = L, so the same scheme applied to the augmented system
+// integrates it to the same order. A trapezoidal rule on the two segment ends would be second
+// order against the trajectory's fourth, and the objective the NLP minimised would not be the
+// objective the user wrote -- which is the defect that had to be fixed in the Hermite-Simpson
+// running cost, and there is no reason to reintroduce it here.
+//
+// The control is piecewise constant over the segment, so it is read once and held.
+// ===========================================================================================
+void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int iphase,
+                          adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
+                          int nsteps_override)
+{
+    Prob& problem   = *workspace->problem;
+    Alg&  algorithm = *workspace->algorithm;
+    const int i         = iphase-1;
+    const int nstates   = problem.phase[i].nstates;
+    const int ncontrols = problem.phase[i].ncontrols;
+
+    int nsteps = ( nsteps_override > 0 ) ? nsteps_override : algorithm.ms_steps_per_segment;
+    if ( nsteps < 1 ) nsteps = 1;
+
+    // Local scratch, deliberately. Every one of the workspace's per-phase buffers is live in
+    // the caller -- this is called from inside gg_ad's node loop, which is holding states,
+    // controls, derivatives and path across the call -- and borrowing one of them here would
+    // corrupt the row being written rather than fail.
+    const int npath = problem.phase[i].npath;
+    std::vector<adouble> u_( (ncontrols>0) ? ncontrols : 1 );
+    std::vector<adouble> xw_(nstates), xstg_(nstates);
+    std::vector<adouble> f1_(nstates), f2_(nstates), f3_(nstates), f4_(nstates);
+    std::vector<adouble> pscr_( (npath>0) ? npath : 1 );
+    adouble* const u     = u_.data();
+    adouble* const xw    = xw_.data();
+    adouble* const xstg  = xstg_.data();
+    adouble* const f1    = f1_.data();
+    adouble* const f2    = f2_.data();
+    adouble* const f3    = f3_.data();
+    adouble* const f4    = f4_.data();
+    adouble* const pscr  = pscr_.data();
+
+    // The segment ends. snodes holds the boundaries, so this is the same map every other
+    // transcription uses and a flexible mesh would reach it through the same accessor.
+    adouble tk  = convert_to_original_time_ad( (workspace->snodes[i])(k),   t0, tf );
+    adouble tk1 = convert_to_original_time_ad( (workspace->snodes[i])(k+1), t0, tf );
+    adouble dt  = (tk1 - tk)/((double) nsteps);
+
+    get_states(xw, xad, iphase, k, workspace);
+    if (ncontrols > 0) get_controls(u, xad, iphase, k, workspace);
+
+    const bool want_cost = ( Lint != NULL );
+    if (want_cost) *Lint = 0.0;
+
+    adouble t = tk;
+    for (int s = 0; s < nsteps; s++) {
+
+        adouble L1 = 0.0, L2 = 0.0, L3 = 0.0, L4 = 0.0;
+
+        problem.dae(f1, pscr, xw, u, parameters, t, xad, iphase, workspace);
+        if (want_cost && problem.integrand_cost)
+            L1 = problem.integrand_cost(xw, u, parameters, t, xad, iphase, workspace);
+
+        adouble th = t + dt/2.0;
+        for (int j=0;j<nstates;j++) xstg[j] = xw[j] + (dt/2.0)*f1[j];
+        problem.dae(f2, pscr, xstg, u, parameters, th, xad, iphase, workspace);
+        if (want_cost && problem.integrand_cost)
+            L2 = problem.integrand_cost(xstg, u, parameters, th, xad, iphase, workspace);
+
+        for (int j=0;j<nstates;j++) xstg[j] = xw[j] + (dt/2.0)*f2[j];
+        problem.dae(f3, pscr, xstg, u, parameters, th, xad, iphase, workspace);
+        if (want_cost && problem.integrand_cost)
+            L3 = problem.integrand_cost(xstg, u, parameters, th, xad, iphase, workspace);
+
+        adouble t1 = t + dt;
+        for (int j=0;j<nstates;j++) xstg[j] = xw[j] + dt*f3[j];
+        problem.dae(f4, pscr, xstg, u, parameters, t1, xad, iphase, workspace);
+        if (want_cost && problem.integrand_cost)
+            L4 = problem.integrand_cost(xstg, u, parameters, t1, xad, iphase, workspace);
+
+        if (workspace->enable_nlp_counters)
+            workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals += 4;
+
+        for (int j=0;j<nstates;j++)
+            xw[j] = xw[j] + (dt/6.0)*( f1[j] + 2.0*f2[j] + 2.0*f3[j] + f4[j] );
+
+        if (want_cost) *Lint = *Lint + (dt/6.0)*( L1 + 2.0*L2 + 2.0*L3 + L4 );
+
+        t = t1;
+    }
+
+    for (int j=0;j<nstates;j++) xend[j] = xw[j];
+}

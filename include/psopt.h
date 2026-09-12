@@ -386,7 +386,21 @@ struct alg_str {
   string    constraint_scaling;
   string    ps_method;
   string    collocation_method;
-  string    transcription_method;   // "collocation" (default) or "integrated-residual"
+  string    transcription_method;   // "collocation" (default), "integrated-residual" or
+                                    // "multiple-shooting"
+
+  // Multiple shooting: the number of fixed steps the segment integrator takes across one
+  // segment. The dynamics are propagated by classical RK4 recorded on the same tape as
+  // everything else, so the derivative of a segment's end state with respect to its start
+  // state, its control, the parameters and the segment duration is exact for the scheme
+  // actually used -- which is the property that makes shooting work at all, and which a
+  // finite difference across an adaptive integrator does not have.
+  //
+  // Cost: the tape grows linearly in this number, and so does the time to evaluate the
+  // constraints. Accuracy: the local error of RK4 is O(dt^5), so doubling it buys a factor
+  // of about thirty-two until round-off. The default of 10 is a starting point, not a
+  // recommendation; a stiff or fast segment needs more.
+  int       ms_steps_per_segment;
   int       ir_residual_nodes;      // Gauss-Legendre residual-quadrature points per interval
                                     // (integrated-residual transcription; default 4)
   double    ir_regularization;      // weight rho on integral(||xdot-f||^2) added to the
@@ -1609,6 +1623,19 @@ bool ir_node_taus(std::vector<adouble>& tau, adouble* xad, int iphase, Workspace
 // midpoint does not belong to, and with the flexible mesh, whose partition the Betts route
 // would discard. The legacy cubic-Hermite form on a fixed mesh keeps the Betts refinement it
 // has always used, so no run that worked before takes a different route now.
+// Is the multiple-shooting transcription in force?
+//
+// A shooting phase reuses the collocation layout exactly: current_number_of_intervals is the
+// number of SEGMENTS, snodes holds the segment boundaries in normalised coordinates, the
+// stored node states are the segment-start states with the phase's final state last, and the
+// nstates*(norder+1) rows that carry the collocation defects carry the matching conditions
+// instead. Nothing about the decision vector, the bounds, the guess or the reporting had to
+// change; only what the defect rows mean.
+inline bool is_multiple_shooting(Alg& algorithm)
+{
+    return algorithm.transcription_method == "multiple-shooting";
+}
+
 inline bool ir_element_refinement_active(Alg& algorithm)
 {
     if ( algorithm.mesh_refinement != "automatic" ) return false;
@@ -1617,6 +1644,19 @@ inline bool ir_element_refinement_active(Alg& algorithm)
 }
 
 void ir_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
+
+// Propagate one multiple-shooting segment: the end state of segment k given its start state,
+// its control and the phase's parameters, together with the integral of the user's running
+// cost over the same segment computed by the same scheme. Both the constraint tape and the
+// objective tape need this, and they are separate tapes, so it is written once and evaluated
+// twice rather than computed once and shared.
+//
+// Lint may be null when the caller does not want the running cost.
+// nsteps_override replaces algorithm.ms_steps_per_segment when positive, which is what the
+// discretisation-error estimate uses to run the same segment at half the step and compare.
+void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int iphase,
+                          adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
+                          int nsteps_override = 0);
 
 // Number of path constraints of a phase that are declared as equalities, and which are
 // therefore folded into the integrated residual when algorithm.ir_include_path == "auto".

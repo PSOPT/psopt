@@ -117,8 +117,40 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
 
     if (algorithm.scaling != "automatic" && algorithm.scaling!="user")
        error_message("Incorrect scaling option specified. Valid options are \"automatic\" and \"user\" ");
-    if (algorithm.transcription_method != "collocation" && algorithm.transcription_method != "integrated-residual")
-       error_message("Incorrect transcription_method specified. Valid options are \"collocation\" and \"integrated-residual\" ");
+    if (algorithm.transcription_method != "collocation"
+        && algorithm.transcription_method != "integrated-residual"
+        && algorithm.transcription_method != "multiple-shooting")
+       error_message("Incorrect transcription_method specified. Valid options are \"collocation\", "
+                     "\"integrated-residual\" and \"multiple-shooting\" ");
+
+    if ( is_multiple_shooting(algorithm) ) {
+       if ( algorithm.ms_steps_per_segment < 1 )
+          error_message("algorithm.ms_steps_per_segment must be at least 1: it is the number of "
+                        "fixed integrator steps taken across one shooting segment ");
+       // Every one of these belongs to a transcription that builds a trajectory out of
+       // decision variables, which this one does not: between the segment boundaries there is
+       // an integrator and nothing to refine, regularise or bound the residual of. Saying so
+       // is better than accepting the option and ignoring it.
+       if ( algorithm.ir_regularization > 0.0 )
+          error_message("algorithm.ir_regularization has no meaning with "
+                        "transcription_method = \"multiple-shooting\": there is no discretised "
+                        "residual to penalise, the segment integrator satisfies the dynamics "
+                        "exactly for the scheme it uses ");
+       if ( algorithm.ir_flexible_mesh )
+          error_message("algorithm.ir_flexible_mesh belongs to the integrated-residual "
+                        "transcription; multiple shooting has segments rather than elements ");
+       if ( algorithm.mesh_refinement == "automatic" )
+          error_message("algorithm.mesh_refinement = \"automatic\" is not yet supported with "
+                        "transcription_method = \"multiple-shooting\": where to put a segment "
+                        "boundary is a different question from where to put a node, and the "
+                        "existing drivers answer the second. Use \"manual\" with a sequence of "
+                        "segment counts in problem.phases(i).nodes ");
+       if ( algorithm.diagnostic_level > 0 )
+          error_message("algorithm.diagnostic_level > 0 is not yet supported with "
+                        "transcription_method = \"multiple-shooting\": the diagnostics read a "
+                        "collocation trajectory and a costate this transcription does not yet "
+                        "recover ");
+    }
     if (algorithm.transcription_method == "integrated-residual") {
        if (algorithm.collocation_method != "Hermite-Simpson")
           error_message("integrated-residual transcription currently requires collocation_method = \"Hermite-Simpson\" ");
