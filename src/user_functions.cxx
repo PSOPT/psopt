@@ -133,8 +133,15 @@ void get_delayed_control(adouble* delayed_control, int control_index, int iphase
 
  get_individual_control_trajectory(single_control_traj, control_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
+ // The node times, which a flexible mesh makes expressions in the element widths rather
+ // than constants. Every one of the four routines in this file that builds a time array
+ // needs them: the array is what the delay lookup compares against and what the
+ // interpolants are built on, so a stale array would interpolate the solved trajectory at
+ // the mesh it was not solved on. Empty vector => the stored mesh, unchanged.
+ std::vector<adouble> ir_tau;
+ ir_node_taus(ir_tau, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
-	time_array[k]  =  convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
+	time_array[k]  =  ir_node_time( ir_tau, k, t0, tf, workspace->snodes[i] );
  }
  // The test is taken on a taped quantity; see warn_if_initial_time_is_free.
  warn_if_initial_time_is_free(iphase, workspace);
@@ -167,7 +174,6 @@ void get_delayed_state(adouble* delayed_state, int state_index, int iphase, adou
  Alg&  algorithm=*workspace->algorithm;
  int norder = problem.phase[i].current_number_of_intervals;
  adouble t0, tf;
- double ts;
  adouble delayed_time;
  adouble* time_array = workspace->time_array_tmp.get();
  adouble* single_state_traj =  workspace->single_trajectory_tmp.get();
@@ -183,9 +189,10 @@ void get_delayed_state(adouble* delayed_state, int state_index, int iphase, adou
 
  get_individual_state_trajectory(single_state_traj, state_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
+ std::vector<adouble> ir_tau;
+ ir_node_taus(ir_tau, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
-        ts = (workspace->snodes[i])(k);
-	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
+	     time_array[k]  =  ir_node_time( ir_tau, k, t0, tf, workspace->snodes[i] );
  }
  warn_if_initial_time_is_free(iphase, workspace);
 
@@ -218,15 +225,15 @@ void get_interpolated_state(adouble* interp_state, int state_index, int iphase, 
  Alg&  algorithm=*workspace->algorithm;
  int norder = problem.phase[i].current_number_of_intervals;
  adouble t0, tf;
- double ts;
 
  adouble* time_array = workspace->time_array_tmp.get();
  adouble* single_state_traj =  workspace->single_trajectory_tmp.get();
  get_individual_state_trajectory(single_state_traj, state_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
+ std::vector<adouble> ir_tau;
+ ir_node_taus(ir_tau, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
-        ts = (workspace->snodes[i])(k);
-	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
+	     time_array[k]  =  ir_node_time( ir_tau, k, t0, tf, workspace->snodes[i] );
  }
 
  // The Nie-Kerrigan flexible-order local representation: the state of an element is the
@@ -295,15 +302,15 @@ void get_interpolated_control(adouble* interp_control, int control_index, int ip
  Alg&  algorithm = *workspace->algorithm;
  int norder = problem.phase[i].current_number_of_intervals;
  adouble t0, tf;
- double ts;
 
  adouble* time_array = workspace->time_array_tmp.get();
  adouble* single_control_traj =  workspace->single_trajectory_tmp.get();
  get_individual_control_trajectory(single_control_traj, control_index, iphase, xad, workspace);
  get_times( &t0, &tf, xad, iphase, workspace);
+ std::vector<adouble> ir_tau;
+ ir_node_taus(ir_tau, xad, iphase, workspace);
  for (k=0; k<norder+1; k++) { // EIGEN_UPDATE
-        ts = (workspace->snodes[i])(k);
-	     time_array[k]  =  convert_to_original_time_ad( ts, t0, tf );
+	     time_array[k]  =  ir_node_time( ir_tau, k, t0, tf, workspace->snodes[i] );
  }
 
  // The control representation a global pseudospectral method defines is the Lagrange

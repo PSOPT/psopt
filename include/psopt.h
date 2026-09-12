@@ -1565,6 +1565,16 @@ inline int ir_flex_mesh_rows(int norder, Alg& algorithm)
 // so the per-element form is quadratic in the number of elements and this one is linear.
 void ir_element_boundaries(adouble* a, adouble* xad, int iphase, Workspace* workspace);
 
+// The same information one node at a time, for the taped code that walks nodes rather than
+// elements: the path constraints, the user integrals, and the delay and interpolation
+// helpers. Node e*d+r sits at a_e + lgl01(r)*h_e.
+//
+// Fills tau[0..norder] and returns true when the mesh is flexible. Returns false and leaves
+// tau EMPTY when it is not -- no allocation, no tape -- so a caller that pairs it with
+// ir_node_time reads snodes exactly as it did before flexible meshes existed, and every
+// problem that does not use one presents the tape it always did.
+bool ir_node_taus(std::vector<adouble>& tau, adouble* xad, int iphase, Workspace* workspace);
+
 // Number of path constraints of a phase that are declared as equalities, and which are
 // therefore folded into the integrated residual when algorithm.ir_include_path == "auto".
 // Returns 0 for any other transcription method or setting, so that call sites can add it
@@ -1618,6 +1628,16 @@ int get_max_nodes_in_all_phases(Prob& problem, Alg& algorithm);
 
 adouble convert_to_original_time_ad(double tbar,adouble& t0,adouble& tf);
 adouble convert_to_original_time_ad(const adouble& tbar,adouble& t0,adouble& tf);
+
+// The physical time of global node k, given whatever ir_node_taus left in tau: the width
+// expression when the mesh is flexible, and the stored mesh position when it is not. The
+// two branches are the same arithmetic, so a fixed mesh answers bit for bit as it did.
+inline adouble ir_node_time(std::vector<adouble>& tau, int k, adouble& t0, adouble& tf,
+                            MatrixXd& snodes_phase)
+{
+    if ( !tau.empty() ) return convert_to_original_time_ad(tau[k], t0, tf);
+    return convert_to_original_time_ad(snodes_phase(k), t0, tf);
+}
 
 int get_nvars_phase_i(Prob& problem, int i, Workspace* workspace);
 

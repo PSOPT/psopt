@@ -106,16 +106,21 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 		  int d = workspace->algorithm->ir_local_order;
 		  int M = norder / d;
 		  MatrixXd& wl = workspace->ir_lgl_w;         // d+1 LGL weights on [-1,1], sum 2
+		  // A flexible mesh changes both the element width the rule is scaled by and the
+		  // times the integrand is sampled at; empty, and every time below is the stored
+		  // node position it always was.
+		  std::vector<adouble> ir_tau;
+		  ir_node_taus(ir_tau, xad, iphase, workspace);
 		  for (int e=0; e<M; e++) {
 		      int base = e*d;
-		      adouble te0 = convert_to_original_time_ad( (workspace->snodes[i])(base),   t0, tf );
-		      adouble te1 = convert_to_original_time_ad( (workspace->snodes[i])(base+d), t0, tf );
+		      adouble te0 = ir_node_time( ir_tau, base,   t0, tf, workspace->snodes[i] );
+		      adouble te1 = ir_node_time( ir_tau, base+d, t0, tf, workspace->snodes[i] );
 		      adouble he  = te1 - te0;
 		      for (int r=0; r<=d; r++) {
 		          int gk = base + r;
 		          get_element_controls(controls, xad, iphase, e, r, workspace);
 		          get_states(states,     xad, iphase, gk, workspace);
-		          adouble tnode = convert_to_original_time_ad( (workspace->snodes[i])(gk), t0, tf );
+		          adouble tnode = ir_node_time( ir_tau, gk, t0, tf, workspace->snodes[i] );
 		          retval += (he/2.0) * wl(r)
 		                    * (*integrand)(states,controls,parameters,tnode,xad,iphase, workspace);
 		      }

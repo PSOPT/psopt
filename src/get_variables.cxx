@@ -283,6 +283,40 @@ void ir_element_boundaries(adouble* a, adouble* xad, int iphase, Workspace* work
         for (int e=0; e<M; e++) a[e+1] = a[e] + xad[base+e];
 }
 
+// Node positions rather than element boundaries; see the declaration in psopt.h.
+//
+// The local abscissae are the reference element's, not the solved element's: local
+// coordinates are affine-invariant, which is the whole reason a moving mesh costs so little
+// here. Only the affine map a_e + lgl01(r)*h_e depends on the widths.
+bool ir_node_taus(std::vector<adouble>& tau, adouble* xad, int iphase, Workspace* workspace)
+{
+        const int i = iphase-1;
+        Prob& problem   = *workspace->problem;
+        Alg&  algorithm = *workspace->algorithm;
+
+        const int norder = problem.phase[i].current_number_of_intervals;
+        const int nflex  = ir_flex_mesh_vars(norder, algorithm);
+
+        tau.clear();
+        if ( nflex == 0 ) return false;
+
+        const int d = algorithm.ir_local_order;
+        const int M = norder/d;
+
+        std::vector<adouble> a(M+1);
+        ir_element_boundaries(a.data(), xad, iphase, workspace);
+
+        MatrixXd& lgl01 = workspace->ir_lgl01;       // d+1 reference LGL nodes on [0,1]
+        tau.resize(norder+1);
+        for (int e=0; e<M; e++) {
+            adouble he = a[e+1] - a[e];
+            for (int r=0; r<d; r++) tau[e*d + r] = a[e] + lgl01(r)*he;
+        }
+        tau[norder] = a[M];                          // the phase's right-hand end, exactly +1
+
+        return true;
+}
+
 void get_times(adouble *t0, adouble *tf, adouble* xad, int iphase, Workspace* workspace)
 {
         int i = iphase-1;

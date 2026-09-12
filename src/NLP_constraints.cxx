@@ -342,6 +342,13 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
 
    get_times(&t0, &tf, xad, iphase, workspace);
 
+   // Where the nodes are. Empty unless the mesh is flexible, in which case every node time
+   // below becomes an expression in the element widths -- which is the point: a path
+   // constraint must be imposed at the time the solved mesh puts its node at, not at the
+   // time the uniform mesh the phase started from would have put it.
+   std::vector<adouble> ir_tau;
+   ir_node_taus(ir_tau, xad, iphase, workspace);
+
 	for(k=0; k<norder+1; k++) // EIGEN_UPDATE: k index shifted by -1
    {
              get_states(states, xad, iphase, k, workspace);
@@ -371,7 +378,7 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                     final_states[j] = states[j];
             }
 
-            time = convert_to_original_time_ad( (workspace->snodes[i])(k), t0, tf );
+            time = ir_node_time( ir_tau, k, t0, tf, workspace->snodes[i] );
             problem->dae(derivatives, path, states, controls, parameters, time, xad, iphase,workspace);
 	         if (workspace->enable_nlp_counters) {
 		           workspace->solution->mesh_stats[  workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals++;
@@ -500,8 +507,12 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                     adouble* states_bar       = workspace->states_bar[i].get();
                     adouble* controls_bar     = workspace->controls_bar[i].get();
                     adouble* derivatives_bar  = workspace->derivatives_bar[i].get();
-                    adouble  time_next        = convert_to_original_time_ad( (workspace->snodes[i])(k+1), t0, tf );
+                    adouble  time_next        = ir_node_time( ir_tau, k+1, t0, tf, workspace->snodes[i] );
                     adouble  hk               = time_next-time;
+                    // The midpoint IN TIME of the sub-interval. It stays the arithmetic mean
+                    // of the two node times under a flexible mesh, because the map from local
+                    // to physical coordinates is affine on an element; what moves is where the
+                    // two node times are.
                     adouble  time_bar         = time + 0.5*hk;
                     int path_bar_offset = phase_offset+nstates*(norder+1)+nevents+npath*(norder+1);
 
