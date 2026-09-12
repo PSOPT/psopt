@@ -172,7 +172,9 @@ class Algorithm:
                  transcription_method=None, ir_residual_nodes=None, ir_regularization=None,
                  ir_objective=None, ir_residual_bound=None, ir_dair=None,
                  ir_dair_delta_factor=None, ir_local_order=None,
-                 ir_include_path=None, ir_path_weight=None, ir_residual_scaling=None):
+                 ir_include_path=None, ir_path_weight=None, ir_residual_scaling=None,
+                 ir_element_local_controls=None, ir_flexible_mesh=None,
+                 ir_min_element_fraction=None):
         self.collocation_method = collocation_method
         self.nlp_method = nlp_method
         self.derivatives = derivatives
@@ -202,6 +204,9 @@ class Algorithm:
         self.ir_include_path = ir_include_path
         self.ir_path_weight = ir_path_weight
         self.ir_residual_scaling = ir_residual_scaling
+        self.ir_element_local_controls = ir_element_local_controls
+        self.ir_flexible_mesh = ir_flexible_mesh
+        self.ir_min_element_fraction = ir_min_element_fraction
 
 
 def _col(a):
@@ -247,7 +252,9 @@ def _alg_dict(a):
                 "transcription_method", "ir_residual_nodes", "ir_regularization",
                 "ir_objective", "ir_residual_bound", "ir_dair",
                 "ir_dair_delta_factor", "ir_local_order",
-                "ir_include_path", "ir_path_weight", "ir_residual_scaling"]
+                "ir_include_path", "ir_path_weight", "ir_residual_scaling",
+                "ir_element_local_controls", "ir_flexible_mesh",
+                "ir_min_element_fraction"]
     for k in optional:
         v = getattr(a, k, None)
         if v is not None:

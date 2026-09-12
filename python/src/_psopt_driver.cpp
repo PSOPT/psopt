@@ -56,6 +56,12 @@ static void apply_algorithm(Alg& a, py::dict o) {
     D("ir_dair_delta_factor", a.ir_dair_delta_factor); I("ir_local_order", a.ir_local_order);
     S("ir_include_path", a.ir_include_path); D("ir_path_weight", a.ir_path_weight);
     S("ir_residual_scaling", a.ir_residual_scaling);
+    B("ir_element_local_controls", a.ir_element_local_controls);
+    // The flexible mesh. Reachable from Python for the same reason every other
+    // integrated-residual option is: an option the C++ interface has and the Python one
+    // does not is an option a Python user cannot discover exists.
+    B("ir_flexible_mesh", a.ir_flexible_mesh);
+    D("ir_min_element_fraction", a.ir_min_element_fraction);
 }
 
 
