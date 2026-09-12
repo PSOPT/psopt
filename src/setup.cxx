@@ -178,6 +178,8 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.collocation_method          = "Legendre";
   algorithm.transcription_method        = "collocation";
   algorithm.ms_steps_per_segment        = 10;
+  algorithm.ms_control_parameterisation = "constant";
+  algorithm.ms_path_samples             = 0;
   algorithm.ir_residual_nodes           = 4;
   algorithm.ir_regularization           = 0.0;
   algorithm.ir_objective                = "residual";

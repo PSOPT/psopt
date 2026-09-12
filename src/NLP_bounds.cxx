@@ -314,11 +314,31 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
             for (int l2=0; l2<ncontrols; l2++) { g_l[pin_base+l2] = 0.0; g_u[pin_base+l2] = 0.0; }
         }
 
-        // Multiple shooting: the terminal-control pin, u_norder - u_{norder-1} = 0.
+        // Multiple shooting: the terminal-control pin, u_norder - u_{norder-1} = 0, and then
+        // the interior path samples, which take the user's own path bounds because they are
+        // the same constraints imposed at more places.
         if ( is_multiple_shooting(*algorithm) ) {
             int ncontrols = problem->phase[i].ncontrols;
-            int pin_base  = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
-            for (int l2=0; l2<ncontrols; l2++) { g_l[pin_base+l2] = 0.0; g_u[pin_base+l2] = 0.0; }
+            int base      = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+            const int npin = ms_terminal_pin_rows(ncontrols, *algorithm);
+            for (int l2=0; l2<npin; l2++) { g_l[base+l2] = 0.0; g_u[base+l2] = 0.0; }
+            base += npin;
+            const int nsamp = algorithm->ms_path_samples;
+            if ( npath > 0 && nsamp > 0 ) {
+                for (int kk=0; kk<norder; kk++) {
+                    for (int q=0; q<nsamp; q++) {
+                        for (int j2=0; j2<npath; j2++) {
+                            const int r = base + (kk*nsamp + q)*npath + j2;
+                            const double sc = ( algorithm->scaling == "user" )
+                                              ? path_scaling(j2) : constraint_scaling(r);
+                            g_l[r] = PSOPT::scaled_lower_bound(
+                                        (problem->phase[i].bounds.lower.path)(j2), sc);
+                            g_u[r] = PSOPT::scaled_upper_bound(
+                                        (problem->phase[i].bounds.upper.path)(j2), sc);
+                        }
+                    }
+                }
+            }
         }
 
         // Gauss: the K Gauss-quadrature defining constraints (one per interval) are equalities (=0).

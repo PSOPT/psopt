@@ -401,6 +401,23 @@ struct alg_str {
   // of about thirty-two until round-off. The default of 10 is a starting point, not a
   // recommendation; a stiff or fast segment needs more.
   int       ms_steps_per_segment;
+
+  // The control's shape across a segment. "constant" (default) holds the segment's own
+  // control value; "linear" interpolates between the values at the segment's two ends, which
+  // uses every control slot, makes the reported control continuous, and converges an order
+  // faster where the optimal control is smooth. Constant is the default because it is the
+  // form in which a shooting method's control bounds are exactly the control's bounds: under
+  // the linear form the interpolant never leaves the interval spanned by its ends, which is
+  // also within the bounds, so both are safe here -- but the constant form is what makes a
+  // bang-bang answer come out as a bang-bang answer rather than as a ramp.
+  string    ms_control_parameterisation;
+
+  // Interior points per segment at which the path constraints are also enforced. Zero, the
+  // default, enforces them at the segment boundaries only, which is honest and weak: between
+  // two boundaries there is an integrator, and nothing constrains what it does there. The
+  // samples are placed at integrator step boundaries, so ms_steps_per_segment must be at
+  // least ms_path_samples + 1.
+  int       ms_path_samples;
   int       ir_residual_nodes;      // Gauss-Legendre residual-quadrature points per interval
                                     // (integrated-residual transcription; default 4)
   double    ir_regularization;      // weight rho on integral(||xdot-f||^2) added to the
@@ -1636,6 +1653,33 @@ inline bool is_multiple_shooting(Alg& algorithm)
     return algorithm.transcription_method == "multiple-shooting";
 }
 
+// Does the control ramp across a segment, or hold?
+inline bool ms_linear_controls(Alg& algorithm)
+{
+    return is_multiple_shooting(algorithm)
+           && algorithm.ms_control_parameterisation == "linear";
+}
+
+// Rows a phase spends on path constraints sampled INSIDE its segments. Zero unless multiple
+// shooting is in force with ms_path_samples > 0; the boundary rows are the ordinary
+// npath*(norder+1) block and are counted elsewhere.
+inline int ms_interior_path_rows(int norder, int npath, Alg& algorithm)
+{
+    if ( !is_multiple_shooting(algorithm) ) return 0;
+    if ( npath <= 0 || algorithm.ms_path_samples <= 0 ) return 0;
+    return npath*norder*algorithm.ms_path_samples;
+}
+
+// The terminal control belongs to no segment under a piecewise-CONSTANT parameterisation and
+// is pinned to its neighbour; under the linear one every slot is read and there is nothing to
+// pin. One row per control, or none.
+inline int ms_terminal_pin_rows(int ncontrols, Alg& algorithm)
+{
+    if ( !is_multiple_shooting(algorithm) ) return 0;
+    if ( ms_linear_controls(algorithm) )    return 0;
+    return ncontrols;
+}
+
 inline bool ir_element_refinement_active(Alg& algorithm)
 {
     if ( algorithm.mesh_refinement != "automatic" ) return false;
@@ -1654,9 +1698,14 @@ void ir_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* w
 // Lint may be null when the caller does not want the running cost.
 // nsteps_override replaces algorithm.ms_steps_per_segment when positive, which is what the
 // discretisation-error estimate uses to run the same segment at half the step and compare.
+// xsamp, usamp and tsamp, when non-null, receive the state, the control and the time at the
+// interior sample points -- ms_path_samples of them, at integrator step boundaries -- so that
+// the path constraints can be imposed where the trajectory actually goes rather than only
+// where it is a decision variable.
 void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int iphase,
                           adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
-                          int nsteps_override = 0);
+                          int nsteps_override = 0,
+                          adouble* xsamp = NULL, adouble* usamp = NULL, adouble* tsamp = NULL);
 
 // Number of path constraints of a phase that are declared as equalities, and which are
 // therefore folded into the integrated residual when algorithm.ir_include_path == "auto".

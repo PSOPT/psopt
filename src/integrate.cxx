@@ -240,7 +240,8 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 // ===========================================================================================
 void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int iphase,
                           adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
-                          int nsteps_override)
+                          int nsteps_override,
+                          adouble* xsamp, adouble* usamp, adouble* tsamp)
 {
     Prob& problem   = *workspace->problem;
     Alg&  algorithm = *workspace->algorithm;
@@ -276,21 +277,57 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     adouble dt  = (tk1 - tk)/((double) nsteps);
 
     get_states(xw, xad, iphase, k, workspace);
-    if (ncontrols > 0) get_controls(u, xad, iphase, k, workspace);
+
+    // The control across the segment. Piecewise constant reads one value and holds it;
+    // piecewise linear reads both ends and ramps between them. The ramp's coefficients are
+    // ordinary doubles -- the local coordinate of a stage is a fixed fraction of the segment,
+    // whatever the segment's physical length turns out to be -- so the linear form costs two
+    // multiplications per stage and nothing on the tape's structure.
+    const bool linear_u = ms_linear_controls(algorithm);
+    std::vector<adouble> u0_( (ncontrols>0) ? ncontrols : 1 );
+    std::vector<adouble> u1_( (ncontrols>0) ? ncontrols : 1 );
+    if (ncontrols > 0) {
+        get_controls(u0_.data(), xad, iphase, k, workspace);
+        if (linear_u) get_controls(u1_.data(), xad, iphase, k+1, workspace);
+    }
 
     const bool want_cost = ( Lint != NULL );
     if (want_cost) *Lint = 0.0;
+
+    // Where the interior samples fall, as step indices. They are placed at step boundaries so
+    // that the state at a sample is one the integrator actually produced, rather than an
+    // interpolation of states either side of it.
+    const int nsamp = ( xsamp != NULL || usamp != NULL || tsamp != NULL )
+                      ? algorithm.ms_path_samples : 0;
+    std::vector<int> sample_step(nsamp>0 ? nsamp : 1, 0);
+    for (int q = 0; q < nsamp; q++) {
+        int st = (int) ( ( (double)(q+1) * (double) nsteps )/((double)(nsamp+1)) + 0.5 );
+        if ( st < 1 )        st = 1;
+        if ( st > nsteps-1 ) st = nsteps-1;
+        sample_step[q] = st;
+    }
 
     adouble t = tk;
     for (int s = 0; s < nsteps; s++) {
 
         adouble L1 = 0.0, L2 = 0.0, L3 = 0.0, L4 = 0.0;
 
+        // Local coordinates of the four stages, in [0,1] across the segment.
+        const double sa = ((double) s)/((double) nsteps);
+        const double sm = ((double) s + 0.5)/((double) nsteps);
+        const double sb = ((double) s + 1.0)/((double) nsteps);
+
+        if (ncontrols > 0) {
+            for (int c=0;c<ncontrols;c++)
+                u[c] = linear_u ? ( (1.0-sa)*u0_[c] + sa*u1_[c] ) : u0_[c];
+        }
         problem.dae(f1, pscr, xw, u, parameters, t, xad, iphase, workspace);
         if (want_cost && problem.integrand_cost)
             L1 = problem.integrand_cost(xw, u, parameters, t, xad, iphase, workspace);
 
         adouble th = t + dt/2.0;
+        if (ncontrols > 0 && linear_u)
+            for (int c=0;c<ncontrols;c++) u[c] = (1.0-sm)*u0_[c] + sm*u1_[c];
         for (int j=0;j<nstates;j++) xstg[j] = xw[j] + (dt/2.0)*f1[j];
         problem.dae(f2, pscr, xstg, u, parameters, th, xad, iphase, workspace);
         if (want_cost && problem.integrand_cost)
@@ -302,6 +339,8 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
             L3 = problem.integrand_cost(xstg, u, parameters, th, xad, iphase, workspace);
 
         adouble t1 = t + dt;
+        if (ncontrols > 0 && linear_u)
+            for (int c=0;c<ncontrols;c++) u[c] = (1.0-sb)*u0_[c] + sb*u1_[c];
         for (int j=0;j<nstates;j++) xstg[j] = xw[j] + dt*f3[j];
         problem.dae(f4, pscr, xstg, u, parameters, t1, xad, iphase, workspace);
         if (want_cost && problem.integrand_cost)
@@ -316,6 +355,15 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
         if (want_cost) *Lint = *Lint + (dt/6.0)*( L1 + 2.0*L2 + 2.0*L3 + L4 );
 
         t = t1;
+
+        for (int q = 0; q < nsamp; q++) {
+            if ( sample_step[q] != s+1 ) continue;
+            if (xsamp) for (int j=0;j<nstates;j++) xsamp[q*nstates+j] = xw[j];
+            if (tsamp) tsamp[q] = t;
+            if (usamp && ncontrols > 0)
+                for (int c=0;c<ncontrols;c++)
+                    usamp[q*ncontrols+c] = linear_u ? ( (1.0-sb)*u0_[c] + sb*u1_[c] ) : u0_[c];
+        }
     }
 
     for (int j=0;j<nstates;j++) xend[j] = xw[j];

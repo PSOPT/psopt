@@ -131,6 +131,19 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        // decision variables, which this one does not: between the segment boundaries there is
        // an integrator and nothing to refine, regularise or bound the residual of. Saying so
        // is better than accepting the option and ignoring it.
+       if ( algorithm.ms_control_parameterisation != "constant"
+            && algorithm.ms_control_parameterisation != "linear" )
+          error_message("algorithm.ms_control_parameterisation must be \"constant\" or "
+                        "\"linear\" ");
+       if ( algorithm.ms_path_samples < 0 )
+          error_message("algorithm.ms_path_samples must be zero or positive: it is the number "
+                        "of interior points per segment at which the path constraints are also "
+                        "enforced ");
+       if ( algorithm.ms_path_samples > algorithm.ms_steps_per_segment - 1 )
+          error_message("algorithm.ms_path_samples must be at most "
+                        "algorithm.ms_steps_per_segment - 1: the samples are placed at "
+                        "integrator step boundaries, so there have to be step boundaries "
+                        "inside the segment to place them at ");
        if ( algorithm.ir_regularization > 0.0 )
           error_message("algorithm.ir_regularization has no meaning with "
                         "transcription_method = \"multiple-shooting\": there is no discretised "

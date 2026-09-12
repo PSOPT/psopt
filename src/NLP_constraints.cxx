@@ -756,16 +756,53 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
         // occupies the same slot Radau's terminal-control pin does.
         if ( workspace->differential_defects == "multiple-shooting" ) {
             int ncontrols = problem->phase[i].ncontrols;
-            int pin_base  = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
-            if ( ncontrols > 0 && norder >= 1 ) {
-                adouble* u_last = workspace->controls[i].get();
-                adouble* u_prev = workspace->controls_next[i].get();
-                get_controls(u_last, xad, iphase, norder,   workspace);
-                get_controls(u_prev, xad, iphase, norder-1, workspace);
-                for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] = u_last[l2] - u_prev[l2];
+            int base      = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
+            const int npin = ms_terminal_pin_rows(ncontrols, *algorithm);
+            if ( npin > 0 ) {
+                if ( norder >= 1 ) {
+                    adouble* u_last = workspace->controls[i].get();
+                    adouble* u_prev = workspace->controls_next[i].get();
+                    get_controls(u_last, xad, iphase, norder,   workspace);
+                    get_controls(u_prev, xad, iphase, norder-1, workspace);
+                    for (int l2=0; l2<npin; l2++) gad[base+l2] = u_last[l2] - u_prev[l2];
+                }
+                else {
+                    for (int l2=0; l2<npin; l2++) gad[base+l2] = 0.0;
+                }
             }
-            else {
-                for (int l2=0; l2<ncontrols; l2++) gad[pin_base+l2] = 0.0;
+            base += npin;
+
+            // The path constraints, imposed inside the segments. A path constraint enforced
+            // only where the trajectory happens to be a decision variable is a different
+            // constraint from the one the user wrote: between two segment boundaries there is
+            // an integrator, and nothing at all constrains what it does there. These rows ask
+            // the integrator for the states it produced at ms_path_samples of its own step
+            // boundaries and impose the user's bounds on them.
+            const int nsamp = algorithm->ms_path_samples;
+            if ( npath > 0 && nsamp > 0 ) {
+                std::vector<adouble> xend_s(nstates), xs(nsamp*nstates), ts(nsamp);
+                std::vector<adouble> us( nsamp*((nctrls>0)?nctrls:1) );
+                std::vector<adouble> dsc(nstates), psc(npath);
+                for (int kk=0; kk<norder; kk++) {
+                    ms_propagate_segment(xend_s.data(), NULL, kk, xad, iphase, t0, tf,
+                                         parameters, workspace, 0,
+                                         xs.data(), (nctrls>0)?us.data():NULL, ts.data());
+                    for (int q=0; q<nsamp; q++) {
+                        problem->dae(dsc.data(), psc.data(), &xs[q*nstates],
+                                     (nctrls>0) ? &us[q*nctrls] : NULL,
+                                     parameters, ts[q], xad, iphase, workspace);
+                        if (workspace->enable_nlp_counters)
+                            workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals++;
+                        for (int j2=0; j2<npath; j2++) {
+                            const int r = base + (kk*nsamp + q)*npath + j2;
+                            gad[r] = psc[j2];
+                            if ( algorithm->scaling=="user" ) {
+                                gad[r] *= path_scaling(j2);
+                                constraint_scaling(r) = path_scaling(j2);
+                            }
+                        }
+                    }
+                }
             }
         }
 

@@ -37,6 +37,9 @@ namespace msh {
 // case 1: harmonic oscillator, for which RK4 is not exact, so the integrator's
 //         own order can be measured.
 // case 2: minimum time, free tf, |u| <= 1, (0,0) -> (1,0), tf* = 2.
+// case 3: Bryson-Denham, min (1/2)int u^2 with x <= 1/9 and J* = 4, whose active arc is what
+//         shows whether a path constraint imposed at the segment boundaries is the constraint
+//         the user wrote.
 static int g_case = 0;
 
 adouble endpoint_cost(adouble*, adouble*, adouble*, adouble&, adouble& tf, adouble*,
@@ -46,11 +49,12 @@ adouble endpoint_cost(adouble*, adouble*, adouble*, adouble&, adouble& tf, adoub
 adouble integrand_cost(adouble*, adouble* u, adouble*, adouble&, adouble*, int, Workspace*)
 { return ( g_case == 2 ) ? (adouble) 0.0 : 0.5*u[0]*u[0]; }
 
-void dae(adouble* d, adouble*, adouble* s, adouble* c, adouble*, adouble&,
+void dae(adouble* d, adouble* path, adouble* s, adouble* c, adouble*, adouble&,
          adouble*, int, Workspace*)
 {
     d[0] = s[1];
     d[1] = ( g_case == 1 ) ? ( -9.0*s[0] + c[0] ) : c[0];
+    if ( g_case == 3 ) path[0] = s[0];
 }
 
 void events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
@@ -59,9 +63,32 @@ void events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
 
 void linkages(adouble*, adouble*, Workspace*) {}
 
+// The same problem as case 0, split into two phases joined by a linkage, so that the answer
+// can be asked to be independent of where the split is drawn.
+static int g_two_phase_events = 0;
+
+void events2(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
+             adouble*, int iphase, Workspace*)
+{
+    (void) g_two_phase_events;
+    if ( iphase == 1 ) { e[0] = i[0]; e[1] = i[1]; }
+    else               { e[0] = f[0]; e[1] = f[1]; }
+}
+
+void linkages2(adouble* l, adouble* xad, Workspace* w)
+{
+    adouble xf[2], x0[2];
+    get_final_states(xf, xad, 1, w);
+    get_initial_states(x0, xad, 2, w);
+    l[0] = xf[0] - x0[0];
+    l[1] = xf[1] - x0[1];
+    l[2] = get_final_time(xad,1,w) - get_initial_time(xad,2,w);
+}
+
 struct Run { int flag; double J; double tf; double err_est; };
 
-static Run solve(int which, int segments, int steps)
+static Run solve(int which, int segments, int steps,
+                 const std::string& upar = "constant", int path_samples = 0)
 {
     g_case = which;
 
@@ -79,7 +106,7 @@ static Run solve(int which, int segments, int steps)
     problem.phases(1).nstates   = 2;
     problem.phases(1).ncontrols = 1;
     problem.phases(1).nevents   = 4;
-    problem.phases(1).npath     = 0;
+    problem.phases(1).npath     = ( which == 3 ) ? 1 : 0;
     problem.phases(1).nodes     << nodes;
     psopt_level2_setup(problem, algorithm);
 
@@ -87,8 +114,16 @@ static Run solve(int which, int segments, int steps)
     problem.phases(1).bounds.upper.states   <<  5.0,  5.0;
     problem.phases(1).bounds.lower.controls(0) = ( which == 2 ) ?  -1.0 : -30.0;
     problem.phases(1).bounds.upper.controls(0) = ( which == 2 ) ?   1.0 :  30.0;
-    problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0;
-    problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0;
+    if ( which == 3 ) {
+        problem.phases(1).bounds.lower.path(0) = -5.0;
+        problem.phases(1).bounds.upper.path(0) =  1.0/9.0;
+        problem.phases(1).bounds.lower.events << 0.0, 1.0, 0.0, -1.0;
+        problem.phases(1).bounds.upper.events << 0.0, 1.0, 0.0, -1.0;
+    }
+    else {
+        problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0;
+        problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0;
+    }
     problem.phases(1).bounds.lower.StartTime = 0.0;
     problem.phases(1).bounds.upper.StartTime = 0.0;
     problem.phases(1).bounds.lower.EndTime   = ( which == 2 ) ? 0.5 : 1.0;
@@ -101,7 +136,8 @@ static Run solve(int which, int segments, int steps)
     problem.linkages       = &linkages;
 
     problem.phases(1).guess.states   = zeros(2, nodes);
-    problem.phases(1).guess.states.row(0) = linspace(0.0, 1.0, nodes);
+    if ( which == 3 ) problem.phases(1).guess.states.row(1) = linspace( 1.0, -1.0, nodes);
+    else              problem.phases(1).guess.states.row(0) = linspace( 0.0,  1.0, nodes);
     problem.phases(1).guess.controls = zeros(1, nodes);
     problem.phases(1).guess.time     = linspace(0.0, ( which == 2 ) ? 2.0 : 1.0, nodes);
 
@@ -115,6 +151,8 @@ static Run solve(int which, int segments, int steps)
     algorithm.collocation_method    = "Hermite-Simpson";
     algorithm.transcription_method  = "multiple-shooting";
     algorithm.ms_steps_per_segment  = steps;
+    algorithm.ms_control_parameterisation = upar;
+    algorithm.ms_path_samples             = path_samples;
 
     out.flag = psopt(solution, problem, algorithm);
     if (out.flag == 0) {
@@ -128,6 +166,74 @@ static Run solve(int which, int segments, int steps)
 }
 
 static double discrete_optimum(double M) { return 6.0*M*M/(M*M - 1.0); }
+
+// The same minimum-energy problem in two phases of `segments` each, joined by a linkage.
+static Run solve_two_phase(int segments, int steps)
+{
+    g_case = 0;
+
+    Alg algorithm; Sol solution; Prob problem;
+    Run out; out.flag = -1; out.J = 0.0; out.tf = 0.0; out.err_est = 0.0;
+
+    const int nodes = segments + 1;
+
+    problem.name        = "multiple shooting, two phases";
+    problem.outfilename = "test_multiple_shooting_2p.txt";
+    problem.nphases     = 2;
+    problem.nlinkages   = 3;
+    psopt_level1_setup(problem);
+
+    for (int p = 1; p <= 2; p++) {
+        problem.phases(p).nstates   = 2;
+        problem.phases(p).ncontrols = 1;
+        problem.phases(p).nevents   = 2;
+        problem.phases(p).npath     = 0;
+        problem.phases(p).nodes     << nodes;
+    }
+    psopt_level2_setup(problem, algorithm);
+
+    for (int p = 1; p <= 2; p++) {
+        problem.phases(p).bounds.lower.states   << -5.0, -5.0;
+        problem.phases(p).bounds.upper.states   <<  5.0,  5.0;
+        problem.phases(p).bounds.lower.controls(0) = -30.0;
+        problem.phases(p).bounds.upper.controls(0) =  30.0;
+        problem.phases(p).guess.states   = zeros(2, nodes);
+        problem.phases(p).guess.controls = zeros(1, nodes);
+    }
+    problem.phases(1).bounds.lower.events << 0.0, 0.0;
+    problem.phases(1).bounds.upper.events << 0.0, 0.0;
+    problem.phases(2).bounds.lower.events << 1.0, 0.0;
+    problem.phases(2).bounds.upper.events << 1.0, 0.0;
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 0.5; problem.phases(1).bounds.upper.EndTime   = 0.5;
+    problem.phases(2).bounds.lower.StartTime = 0.5; problem.phases(2).bounds.upper.StartTime = 0.5;
+    problem.phases(2).bounds.lower.EndTime   = 1.0; problem.phases(2).bounds.upper.EndTime   = 1.0;
+    problem.phases(1).guess.states.row(0) = linspace(0.0, 0.5, nodes);
+    problem.phases(1).guess.time          = linspace(0.0, 0.5, nodes);
+    problem.phases(2).guess.states.row(0) = linspace(0.5, 1.0, nodes);
+    problem.phases(2).guess.time          = linspace(0.5, 1.0, nodes);
+
+    problem.integrand_cost = &integrand_cost;
+    problem.endpoint_cost  = &endpoint_cost;
+    problem.dae            = &dae;
+    problem.events         = &events2;
+    problem.linkages       = &linkages2;
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 2000;
+    algorithm.nlp_tolerance         = 1.0e-10;
+    algorithm.print_level           = 0;
+    algorithm.mesh_refinement       = "manual";
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = "multiple-shooting";
+    algorithm.ms_steps_per_segment  = steps;
+
+    out.flag = psopt(solution, problem, algorithm);
+    if (out.flag == 0) out.J = solution.cost;
+    return out;
+}
 
 } // namespace msh
 
@@ -217,4 +323,81 @@ TEST(MultipleShooting, TheFinalTimeCanBeFree)
 
     ASSERT_EQ(r.flag, 0);
     EXPECT_NEAR(r.tf, 2.0, 1.0e-6) << "tf = " << r.tf;
+}
+
+
+// ---------------------------------------------------------------------------
+// A piecewise-LINEAR control, and the cleanest demonstration there is of why the
+// control parameterisation is not a detail. The optimal control of the
+// minimum-energy double integrator is u*(t) = 6 - 12t, exactly linear, so a
+// linear parameterisation CONTAINS the answer: the transcription attains the
+// continuous optimum 6 at five segments, to machine precision, where the
+// piecewise-constant form needs infinitely many (6.25, 6.061, 6.015, ...).
+//
+// A shooting method compared against collocation with a piecewise-constant
+// control loses, and loses for a reason that has nothing to do with shooting.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, ALinearControlIsExactWhereTheOptimalControlIsLinear)
+{
+    const int segs[3] = { 5, 10, 20 };
+    for (int q = 0; q < 3; q++) {
+        const msh::Run r = msh::solve(0, segs[q], 10, "linear");
+        ASSERT_EQ(r.flag, 0) << "failed at " << segs[q] << " segments";
+        EXPECT_NEAR(r.J, 6.0, 1.0e-9)
+            << segs[q] << " segments: got " << r.J << " for a control the "
+            << "parameterisation can represent exactly";
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// A path constraint imposed only at the segment boundaries is not the path
+// constraint the user wrote, and the way it fails is the way that matters: it
+// fails in the direction that looks like success.
+//
+// Bryson and Denham's problem has J* = 4 with x <= 1/9, and no feasible
+// trajectory can cost less. Enforced at the boundaries only, multiple shooting
+// returns 3.993 at ten segments and 3.998 at twenty -- BELOW the optimum, which
+// is the constraint leaking between the boundaries and nothing else. Sampling
+// inside the segments puts the answer back above J*, where a restricted control
+// parameterisation must leave it.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, APathConstraintLeaksBetweenTheSegmentBoundaries)
+{
+    const msh::Run edges   = msh::solve(3, 10, 10, "linear", 0);
+    const msh::Run sampled = msh::solve(3, 10, 10, "linear", 2);
+
+    ASSERT_EQ(edges.flag,   0);
+    ASSERT_EQ(sampled.flag, 0);
+
+    EXPECT_LT(edges.J, 4.0)
+        << "the boundary-only form returned " << edges.J << ", which is not below the "
+        << "optimum -- this test is then measuring something else";
+    EXPECT_GT(sampled.J, 4.0)
+        << "sampling inside the segments left the cost below the optimum: " << sampled.J;
+    EXPECT_LT(sampled.J, 4.01) << "J = " << sampled.J;
+}
+
+
+// ---------------------------------------------------------------------------
+// Multiple phases, joined by linkages. The invariant worth testing is not that
+// two phases solve, but that the answer does not depend on where the phase
+// boundary was drawn: one phase of twenty segments and two phases of ten are the
+// same discretisation of the same problem, and both must return the closed-form
+// discrete optimum.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, TwoPhasesAgreeWithOne)
+{
+    const msh::Run one = msh::solve(0, 20, 10);
+    const msh::Run two = msh::solve_two_phase(10, 10);
+
+    ASSERT_EQ(one.flag, 0);
+    ASSERT_EQ(two.flag, 0) << "the two-phase problem failed to solve";
+
+    EXPECT_NEAR(two.J, one.J, 1.0e-9)
+        << "two phases " << two.J << " against one phase " << one.J;
+    EXPECT_NEAR(two.J, msh::discrete_optimum(20.0), 1.0e-8);
 }
