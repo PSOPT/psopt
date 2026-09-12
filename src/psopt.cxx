@@ -1798,6 +1798,18 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         recover_costates_adjoint(problem, algorithm, solution, workspace);
     }
 
+    // Multiple shooting, for a related reason and a different one. The multipliers of the
+    // matching conditions are a discrete adjoint, but they are not the collocation defect
+    // multipliers that the covector mapping of Section sec:covector_mapping is written for --
+    // there is no quadrature weight to divide by and no differentiation matrix to transpose,
+    // and applying that mapping to them returns a number with the right shape and the wrong
+    // size (measured: -12 came back as 96). The adjoint post-processing does not read the
+    // multipliers at all; it integrates the adjoint equation backwards along the converged
+    // primal, which is defined for any transcription that produces a trajectory.
+    if ( is_multiple_shooting(algorithm) ) {
+        recover_costates_adjoint(problem, algorithm, solution, workspace);
+    }
+
     evaluate_solution(problem, algorithm, solution, workspace);
 
     if ( algorithm.mesh_refinement == "automatic" ) {

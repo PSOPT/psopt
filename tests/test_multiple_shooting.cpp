@@ -401,3 +401,85 @@ TEST(MultipleShooting, TwoPhasesAgreeWithOne)
         << "two phases " << two.J << " against one phase " << one.J;
     EXPECT_NEAR(two.J, msh::discrete_optimum(20.0), 1.0e-8);
 }
+
+
+// ---------------------------------------------------------------------------
+// The costates. They are not the multipliers of the matching conditions: those
+// are a discrete adjoint, but the covector mapping PSOPT applies to collocation
+// defects has a quadrature weight and a differentiation matrix in it and is not
+// written for them -- applied to them it returned +96 where the answer is -12.
+// They come instead from integrating the adjoint equation backwards along the
+// converged primal, which is defined for any transcription that produces a
+// trajectory, and which PSOPT already does for the residual-box solves.
+//
+// The closed form for this problem is l1 = -12 and l2 = 12t - 6.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, TheCostatesAreRecoveredFromThePrimal)
+{
+    msh::g_case = 0;
+
+    Alg algorithm; Sol solution; Prob problem;
+    const int segments = 20, nodes = segments + 1;
+
+    problem.name        = "multiple shooting costates";
+    problem.outfilename = "test_multiple_shooting_costates.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = 2;
+    problem.phases(1).ncontrols = 1;
+    problem.phases(1).nevents   = 4;
+    problem.phases(1).npath     = 0;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    problem.phases(1).bounds.lower.states   << -5.0, -5.0;
+    problem.phases(1).bounds.upper.states   <<  5.0,  5.0;
+    problem.phases(1).bounds.lower.controls(0) = -30.0;
+    problem.phases(1).bounds.upper.controls(0) =  30.0;
+    problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0;
+    problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0;
+    problem.phases(1).bounds.lower.StartTime = 0.0;
+    problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0;
+    problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &msh::integrand_cost;
+    problem.endpoint_cost  = &msh::endpoint_cost;
+    problem.dae            = &msh::dae;
+    problem.events         = &msh::events;
+    problem.linkages       = &msh::linkages;
+
+    problem.phases(1).guess.states   = zeros(2, nodes);
+    problem.phases(1).guess.states.row(0) = linspace(0.0, 1.0, nodes);
+    problem.phases(1).guess.controls = zeros(1, nodes);
+    problem.phases(1).guess.time     = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 2000;
+    algorithm.nlp_tolerance         = 1.0e-10;
+    algorithm.print_level           = 0;
+    algorithm.mesh_refinement       = "manual";
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = "multiple-shooting";
+    algorithm.ms_steps_per_segment  = 10;
+    algorithm.ms_control_parameterisation = "linear";
+
+    ASSERT_EQ(psopt(solution, problem, algorithm), 0);
+
+    MatrixXd L = solution.get_dual_costates_in_phase(1);
+    MatrixXd T = solution.get_time_in_phase(1);
+    ASSERT_EQ(L.cols(), T.cols());
+
+    double e1 = 0.0, e2 = 0.0;
+    for (int q = 0; q < T.cols(); q++) {
+        e1 = std::max( e1, std::fabs( L(0,q) + 12.0 ) );
+        e2 = std::max( e2, std::fabs( L(1,q) - (12.0*T(0,q) - 6.0) ) );
+    }
+    EXPECT_LT(e1, 1.0e-6) << "max |lambda_1 + 12| = " << e1;
+    EXPECT_LT(e2, 1.0e-6) << "max |lambda_2 - (12t-6)| = " << e2;
+}
