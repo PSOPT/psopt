@@ -49,6 +49,27 @@ using namespace Eigen;
 // variable is mostly inside [-1,1]. Where only one side is bounded that side sets it;
 // where neither is, it is one.
 //
+// THE ALTERNATIVE THAT WAS REJECTED, AND WHY, SO THAT IT IS NOT TRIED A THIRD TIME.
+// Betts recommends an affine map from the bounds in "Practical Methods for Optimal
+// Control", and CGPOPS (Agamawi & Rao) uses one: shift the variable to the centre of its
+// box and scale by the box's width, putting every two-sidedly bounded variable on a fixed
+// interval. It addresses a real weakness of the rule above -- a variable bounded between
+// 1000 and 1200 comes out with unit magnitude and a variation of 0.17 -- and it has been
+// tried here twice, once when this file was first written and again in September 2026,
+// and rejected both times on measurement.
+//
+// The reason it fails is worth stating because the rule looks better than it is. This
+// rule scales a variable by its MAGNITUDE; the affine rule scales it by its WIDTH. Two
+// variables appearing in the same equation can have similar magnitudes and very different
+// widths, and the affine rule then drives their scale factors apart by that ratio, which
+// unbalances the equation relating them. Measured on a rest-to-rest move whose position
+// window is 0.03 wide beside a velocity range of 20, the affine map took 1109 iterations
+// against 50 and landed five orders of magnitude further from the exact answer; pairing it
+// with defect_scaling = "jacobian-based" did not absorb it. Note also that a shift alone
+// changes no derivative, so the shift half of it cannot improve conditioning at all.
+//
+// See claude/affine-variable-scaling.md in the book project for the full measurement.
+//
 // An absent bound is recognised through PSOPT::no_lower_bound rather than by comparing
 // against an IEEE infinity, and the two are not the same. The convention every model in
 // examples/ uses for "no bound" is 1.0e19, and a bound written that way reached these
