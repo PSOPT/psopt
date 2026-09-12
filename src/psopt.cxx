@@ -96,6 +96,51 @@ static void build_ir_local_basis(int d, const MatrixXd& gl, MatrixXd& lgl01, Mat
 // dependence on the AD constraint tape); the backward sweep is RK4 on a sub-grid per interval
 // with the primal x(t), u(t) linearly interpolated between nodes.
 // ===========================================================================================
+// ===========================================================================================
+// The solved element widths, written back into the stored mesh.
+//
+// snodes is the source of truth for everything that does not need a derivative: the reported
+// node times, the local error estimator, the plots, and the interpolation that hot-starts the
+// next mesh. All of it reads doubles, and all of it keeps working unchanged -- provided the
+// doubles describe the mesh that was actually solved on. Left at the uniform mesh the phase
+// started from, every node of a moved element is reported at a time it does not have, and the
+// error estimator measures the residual of the solved trajectory against a mesh nobody solved
+// on. That is the second half of the flexible mesh: the widths drive snodes, and snodes drives
+// everything else.
+//
+// Called once per NLP solve, on the returned primal, before anything reads the solution.
+// ===========================================================================================
+static void ir_write_back_snodes(MatrixXd& x, Prob& problem, Alg& algorithm, Workspace* workspace)
+{
+    for (int i = 0; i < problem.nphases; i++) {
+
+        const int norder = problem.phase[i].current_number_of_intervals;
+        const int nflex  = ir_flex_mesh_vars(norder, algorithm);
+        if ( nflex == 0 ) continue;
+
+        const int d = algorithm.ir_local_order;
+        const int M = norder/d;
+
+        const int iphase_offset = get_iphase_offset(problem, i+1, workspace);
+        const int nvars_phase_i = get_nvars_phase_i(problem, i, workspace);
+        const int base          = iphase_offset + nvars_phase_i - 2 - nflex;
+
+        MatrixXd& sn    = workspace->snodes[i];
+        MatrixXd& lgl01 = workspace->ir_lgl01;
+
+        double a = -1.0;
+        for (int e = 0; e < M; e++) {
+            const double h = x(base+e);        // the widths carry no scale factor, by design
+            for (int r = 0; r < d; r++) sn(e*d + r) = a + lgl01(r)*h;
+            a += h;
+        }
+        // The sum equality holds to the NLP's tolerance, not exactly, so the last node is
+        // pinned rather than accumulated to. The phase ends at tf; a reported final time that
+        // missed it by the constraint violation would be a worse answer than the solver gave.
+        sn(norder) = 1.0;
+    }
+}
+
 static void recover_costates_adjoint(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
 {
     const double fd   = 1.0e-6;   // central-difference step
@@ -892,6 +937,9 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     NLP_interface( algorithm, &x0,  ff_num, gg_num, nlp_ncons,  nlp_neq , &xlb, &xub, &lambda, hotflag, 1, workspace, problem.user_data   );
 
+    // Where the elements ended up. Nothing downstream of here may read snodes before this.
+    ir_write_back_snodes( x0, problem, algorithm, workspace );
+
     solution.mesh_stats[workspace->current_mesh_refinement_iteration-1].CPU_time = chronometer_toc(workspace);
 
     workspace->enable_nlp_counters = false;
@@ -945,6 +993,7 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         workspace->enable_nlp_counters = true;
         NLP_interface( algorithm, &x0, ff_num, gg_num, nlp_ncons, nlp_neq, &xlb, &xub, &lambda, 1, 1, workspace, problem.user_data );
         workspace->enable_nlp_counters = false;
+        ir_write_back_snodes( x0, problem, algorithm, workspace );
     }
 
     // Copy the resultant decision vector into the relevant solution variables.

@@ -50,12 +50,19 @@ void events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
 
 void linkages(adouble*, adouble*, Workspace*) {}
 
-struct Run { int flag; double tf; double rel_err; };
+// arc1_mismatch asks whether the reported node TIMES belong to the reported node STATES.
+// On the first arc the control is at its upper bound, u = +2 from rest at the origin, so
+// x(t) = t^2 exactly. Comparing the reported x_k against the square of the reported t_k is
+// therefore an independent check -- x plays no part in deciding where the nodes are -- and
+// it is the check that the solved widths reached the stored mesh. Until they did, a node of
+// a widened element was reported at the time the uniform mesh would have given it, several
+// per cent away from the time its own state belongs to.
+struct Run { int flag; double tf; double rel_err; double arc1_mismatch; };
 
 static Run solve(bool flexible, double residual_bound)
 {
     Alg algorithm; Sol solution; Prob problem;
-    Run out; out.flag = -1; out.tf = 0.0; out.rel_err = 1.0;
+    Run out; out.flag = -1; out.tf = 0.0; out.rel_err = 1.0; out.arc1_mismatch = 1.0;
 
     const int nodes = 17;                      // 16 intervals = 4 elements of degree 4
 
@@ -117,8 +124,18 @@ static Run solve(bool flexible, double residual_bound)
     out.flag = psopt(solution, problem, algorithm);
     if (out.flag == 0) {
         MatrixXd t = solution.get_time_in_phase(1);
+        MatrixXd x = solution.get_states_in_phase(1);
         out.tf      = t(0, (int) t.cols() - 1);
         out.rel_err = std::fabs(out.tf - TF_EXACT)/TF_EXACT;
+        // The switch is at tf/3 = 0.5774; stop short of it so that no node of the second
+        // arc, which obeys a different law, is asked to satisfy the first arc's.
+        out.arc1_mismatch = 0.0;
+        for (int k = 0; k < (int) t.cols(); k++) {
+            const double tk = t(0,k);
+            if ( tk > 0.55 ) break;
+            out.arc1_mismatch = std::max( out.arc1_mismatch,
+                                          std::fabs( x(0,k) - tk*tk ) );
+        }
     }
     return out;
 }
@@ -166,4 +183,29 @@ TEST(IRFlexibleMesh, AFlexibleMeshResolvesIt)
     EXPECT_LT(flex.rel_err, 1.0e-4) << "tf = " << flex.tf;
     EXPECT_LT(flex.rel_err, 0.01*fixed.rel_err)
         << "flexible " << flex.rel_err << " against fixed " << fixed.rel_err;
+}
+
+
+// ---------------------------------------------------------------------------
+// And the mesh it reports is the mesh it solved on.
+//
+// The element boundaries are decision variables, so after the solve the stored
+// mesh has to be told where they went -- otherwise the node times in the
+// solution, the plots and the local error estimator all describe the uniform
+// mesh the phase started from, and every node of an element that moved is
+// reported at a time its own state does not belong to. On this problem the
+// first element widens by a fifth and the second node is reported two per cent
+// of the horizon early, which the check below sees as x_k missing t_k^2 by
+// 3.8e-3 instead of 1.1e-8.
+// ---------------------------------------------------------------------------
+
+TEST(IRFlexibleMesh, TheReportedNodeTimesAreTheSolvedOnes)
+{
+    const irflex::Run flex = irflex::solve(true, 1.0e-6);
+
+    ASSERT_EQ(flex.flag, 0);
+
+    EXPECT_LT(flex.arc1_mismatch, 1.0e-5)
+        << "the reported node times do not belong to the reported states: "
+        << "max |x_k - t_k^2| = " << flex.arc1_mismatch;
 }
