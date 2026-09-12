@@ -47,7 +47,11 @@
 ////////    the error here: on a fixed mesh the switch discontinui-  ////
 ////////    ties induce Gibbs-like local error that higher-degree    ////
 ////////    polynomials do not remove.  The reference addresses this ////
-////////    with a flexible (moving) mesh, which PSOPT does not have.////
+////////    with a flexible (moving) mesh, which PSOPT now has       ////
+////////    (algorithm.ir_flexible_mesh; see examples/flexmesh for   ////
+////////    the case it is built for).  Part D below turns it on     ////
+////////    here, and the honest answer is that it does not help on  ////
+////////    THIS problem -- see the note under that part.            ////
 ////////                                                              ////
 //////// This example was prepared with AI assistance (Claude) and   ////
 //////// validated against the behaviour reported in the reference.  ////
@@ -118,7 +122,8 @@ struct Row { double J; int switches; double umax, R2, rle; };
 static Row solve_fuller(int nodes, const std::string& trans,
                         const std::string& ir_obj, int ir_order,
                         double ir_bound, int ir_resnodes, double nlptol,
-                        const DMatrix& gx, const DMatrix& gu, const DMatrix& gt)
+                        const DMatrix& gx, const DMatrix& gu, const DMatrix& gt,
+                        bool flexible_mesh = false)
 {
     Alg  algorithm; Sol solution; Prob problem;
     problem.name = "Fuller chattering problem";
@@ -174,6 +179,7 @@ static Row solve_fuller(int nodes, const std::string& trans,
     if (trans == "integrated-residual") {
         algorithm.ir_residual_nodes = ir_resnodes;
         if (ir_order >= 2) algorithm.ir_local_order = ir_order;
+        algorithm.ir_flexible_mesh = flexible_mesh;
         if (ir_bound >= 0.0) {           // explicit residual box: min cost s.t. |r|<=delta
             algorithm.ir_objective     = "cost";
             algorithm.ir_residual_bound = ir_bound;
@@ -280,6 +286,28 @@ int main(void)
     Row c4 = solve_fuller(81, "integrated-residual", "cost", 4, 1.0e-3, 8, 1.0e-6, wx, wu, wt);
     print_row("  local order 4 (Nie-Kerrigan)", 81, c4);
 
+    // ---- Part D: the flexible mesh, and why this is not its problem ----
+    printf("  D. flexible mesh at a fixed box delta = 1e-4 (warm-started)\n");
+    for (int d : {2, 4}) {
+        char lab[64];
+        Row f0 = solve_fuller(81, "integrated-residual", "cost", d, 1.0e-4, d+4, 1.0e-6, wx, wu, wt, false);
+        snprintf(lab, sizeof(lab), "  local order %d, fixed mesh", d);     print_row(lab, 81, f0);
+        Row f1 = solve_fuller(81, "integrated-residual", "cost", d, 1.0e-4, d+4, 1.0e-6, wx, wu, wt, true);
+        snprintf(lab, sizeof(lab), "  local order %d, flexible mesh", d);  print_row(lab, 81, f1);
+    }
+    printf("     The flexible mesh does NOT help here, and it is worth being clear about why.\n");
+    printf("     Fuller's control chatters: infinitely many switches, of geometrically\n");
+    printf("     shrinking duration, accumulating at a finite time. No finite set of element\n");
+    printf("     boundaries brackets them, so boundaries that move to catch the few resolvable\n");
+    printf("     switches must stretch the elements elsewhere, and the worst local error\n");
+    printf("     (rle) rises rather than falls. The cost falls slightly too -- which here is a\n");
+    printf("     LOOSER certificate, not a better answer: the box |r| <= delta bounds the\n");
+    printf("     residual of whatever discretisation the solver chose, and making the mesh\n");
+    printf("     itself a decision weakens the guarantee the bound carries.\n");
+    printf("     The flexible mesh is for a solution with FINITELY many switches and enough\n");
+    printf("     elements to isolate each of them; examples/flexmesh is that case, where it\n");
+    printf("     is worth three orders of magnitude on the same nodes.\n");
+
     printf("--------------------------------------------------------------------------------\n");
     printf("  Collocation offers no way to improve its accuracy short of refining the mesh;\n");
     printf("  the residual box drives the cost up to a specified accuracy instead.  Note that\n");
@@ -287,7 +315,8 @@ int main(void)
     printf("  form -- a quadratic over two intervals against a cubic over one -- so it does\n");
     printf("  not by itself improve the error; what the flexible-order representation gives\n");
     printf("  is a degree that is a parameter, and order 4 exercises it.  See the header for\n");
-    printf("  the fixed-mesh high-order limitation on this discontinuous solution.\n");
+    printf("  the fixed-mesh high-order limitation on this discontinuous solution, and Part D\n");
+    printf("  for why the flexible mesh is not the remedy for THIS one.\n");
 
     return 0;
 }
