@@ -80,7 +80,7 @@
 ////////          ecodriving eq28   [nodes]
 ////////
 ////////     w        energy weight in [0,1] (default 0)
-////////     L0       normalising constant in kW (default 6)
+////////     L0       normalising constant in kW (default 5)
 ////////     nodes    number of collocation nodes (default 60)
 ////////
 //////// pareto traces the frontier from w = 0 upwards by continuation, each
@@ -93,42 +93,75 @@
 //////// to know it did not happen is to have looked. (Contrast
 //////// examples/lts_costates, whose sweep must NOT be continued, because
 //////// there the differences between the points are the measurement.)
-//////// corner varies the corner geometry, which the source paper gives only
-//////// as "approximately 30 m".
-//////// eq28 settles which reading of the source paper's driver cost was
-//////// intended, by solving w = 0 under both.
+//////// corner varies the corner geometry, over a range wider than the source
+//////// paper's "approximately 30 m", for the reason given in note 3 below.
+//////// eq28 solves w = 0 under three readings of the source paper's printed
+//////// driver cost, which as printed admits more than one.
 ////////
 //////// Every file a run writes carries that run's weight in its name, so no
 //////// sweep can overwrite the single run's output.
 ////////
 //////// WHAT WE CHOSE, WHERE THE PAPER IS SILENT. Stated here so that anyone
-//////// comparing against the paper knows what is theirs and what is ours.
+//////// comparing against the paper knows what is theirs and what is ours. Six
+//////// things had to be settled. Three of them were afterwards confirmed by
+//////// one of the authors, who answered a set of questions about the scenario
+//////// with considerable generosity; those are marked.
 ////////
-////////  1. v_d = 70 km/h. Table 1 of the paper gives 31.2 m/s, but Section
-////////     4.1 says "v_d = 70 km/h in the driver model", and the reported
-////////     mean speed of 62.1 km/h can only belong to the latter. Table 1
-////////     appears to hold the motorway value used in their Section 4.4.
+////////  1. v_d = 70 km/h (confirmed). Table 1 of the paper gives 31.2 m/s,
+////////     but Section 4.1 says "v_d = 70 km/h in the driver model", and only
+////////     the latter is consistent with the reported mean speed. Table 1
+////////     holds the value used for the motorway journey elsewhere in the
+////////     paper, and 31.2 m/s is 70 mph, so both numbers are seventy in
+////////     different units.
 ////////  2. The acceleration penalties of the paper's Eq. (28) are printed
 ////////     with m*u_a and m*u_b in the denominators. Since Fp/m IS the
-////////     acceleration, that makes each term identically one; they are read
-////////     here as m*a and m*b, the preferred accelerations of Table 1, as
-////////     in the paper's own Eq. (14).
+////////     acceleration, that makes each term identically one, so the
+////////     expression has to be read rather than transcribed, and it admits
+////////     more than one reading. They are read here as m*a and m*b, the
+////////     preferred accelerations of Table 1, as in the paper's own
+////////     Eq. (14). Run "eq28" for what three readings produce.
 ////////  3. The corner is taken as exactly R = 30 m over exactly 90 degrees,
 ////////     with equal straights, and the curvature is blended over a
 ////////     transition length CORNER_EPS. A road cannot step in curvature and
-////////     neither can a differentiable path constraint. Run "corner" to see
-////////     what these two choices are worth.
-////////  4. L0 is not given in the paper at all. It does not change the set of
-////////     solutions -- dividing by (1-w) shows the problem depends only on
-////////     lambda = w/((1-w)L0) -- so it only decides which w labels which
-////////     point of the frontier. 6 kW is chosen here because it spreads the
-////////     frontier evenly over w in [0,1].
-////////  5. The road speed limit is set to 90 km/h. The paper says only that
-////////     it is "just above the legal speed limit" and inactive outside the
-////////     corner; since the driver's speed penalty is symmetric about v_d,
-////////     any value comfortably above 70 km/h gives the same answer.
+////////     neither can a differentiable path constraint. The paper says
+////////     "approximately 30 m" and nothing about the transition; the corner
+////////     was in fact taken from a rural section of recorded driving,
+////////     approximately but not exactly thirty metres, with some transition
+////////     (confirmed).
+////////
+////////     That matters more than it looks, and "corner" measures why. A
+////////     recorded corner reaches the problem as a speed restriction spread
+////////     over a stretch of road. A single constant-curvature arc compresses
+////////     it into one radius and two transitions, and the two can be matched
+////////     on the LOWEST speed the corner permits or on the LENGTH of road
+////////     restricted, but not easily on both: a real restriction is spread
+////////     over a longer stretch than a tight arc of the same minimum speed,
+////////     so an arc matched to the minimum speed needs a smaller radius than
+////////     the nominal geometry. Nothing in the description says which to
+////////     match, and of the six choices here this is the one the answer is
+////////     sensitive to.
+////////  4. L0 is set to 5 kW, the paper giving no value. It does not change
+////////     the set of solutions -- dividing by (1-w) shows the problem
+////////     depends only on lambda = w/((1-w)L0) -- so it only decides which w
+////////     labels which point of the frontier.
+////////  5. The road speed limit is set to 75 km/h, the value drawn in the
+////////     paper's own speed figure; the text says only that it is "just
+////////     above the legal speed limit" and inactive outside the corner.
+////////     Since the driver's speed penalty is symmetric about v_d, any value
+////////     comfortably above 70 km/h gives the same answer, and raising it to
+////////     90 km/h moves the naturalistic energy in the fourth figure only.
 ////////  6. The reported energy excludes the idle loss, although the cost
-////////     includes it. See the note by ENERGY_EXCLUDES_IDLE below.
+////////     includes it, which is how the paper reports it (confirmed). Both
+////////     conventions are printed for every run. The difference is not
+////////     negligible -- L_i T / l is 0.008 kWh/km at w = 0 and 0.017 at
+////////     w = 1 -- and the term does more work than its size suggests: with
+////////     the final time free and the distance fixed, minimising the losses
+////////     reduces at w = 1 to minimising energy per metre over one cruising
+////////     speed, and a constant power term is exactly what gives that
+////////     function an interior minimum. Without it the energy per metre
+////////     falls monotonically as the vehicle slows. A standing load is what
+////////     makes a minimum-energy cruising speed exist at all, and that is
+////////     worth knowing before quoting one. See ENERGY_EXCLUDES_IDLE below.
 ////////
 //////////////////////////////////////////////////////////////////////////
 ////////     Copyright (c) Victor M. Becerra, 2026                   /////
@@ -181,7 +214,7 @@ static const double A30 = 0.00167, A21 = 0.0279;
 static const double FP_MAX = N_GEAR*T_M_MAX/R_WHEEL;   // N
 static const double FR_MAX = N_GEAR*T_R_MAX/R_WHEEL;   // N
 static const double FF_MAX = 12000.0;                  // N, ~0.8 g, never active
-static const double V_LIMIT = 90.0/3.6;                // m/s, road speed limit
+static const double V_LIMIT = 75.0/3.6;                // m/s, road speed limit
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  The road  ///////////////////////////////////////////
@@ -779,12 +812,18 @@ static int run_pareto(int nnodes, double L0)
             fprintf(out, "  What distinguishes the two columns is not an exit status but a\n");
             fprintf(out, "  plot, and on a plot a point that has moved looks like structure.\n");
         }
-        fprintf(out, "\n  The published endpoints, Lot et al. (2025) Table 3, cornering:\n");
-        fprintf(out, "    w = 0   0.153 kWh/km at 62.1 km/h\n");
-        fprintf(out, "    w = 1   0.068 kWh/km at 42.0 km/h\n");
-        fprintf(out, "  L0 is not given in that paper and does not change this frontier;\n");
-        fprintf(out, "  it only decides which w labels which point of it. Compare the\n");
-        fprintf(out, "  curve and its endpoints, not the rows.\n");
+        fprintf(out, "\n  The published frontier of Lot et al. (2025), cornering, read\n");
+        fprintf(out, "  from its Pareto figure:\n");
+        fprintf(out, "    w = 0     about 0.141 kWh/km at 61.9 km/h\n");
+        fprintf(out, "    w = 0.5   about 0.109 kWh/km at 58.8 km/h\n");
+        fprintf(out, "    w = 1     about 0.067 kWh/km at 42.9 km/h\n");
+        fprintf(out, "  Compare the curve and its endpoints rather than the rows of a\n");
+        fprintf(out, "  table: L0 does not change this frontier, only which w labels\n");
+        fprintf(out, "  which point of it, and it is not given in the source.\n");
+        fprintf(out, "  Note also that an energy per kilometre may be quoted with or\n");
+        fprintf(out, "  without the standing idle load. The difference is about\n");
+        fprintf(out, "  0.008 kWh/km here, which is larger than several of the effects\n");
+        fprintf(out, "  worth discussing, so both conventions are printed above.\n");
         fprintf(out, "=====================================================================\n");
     }
     if (fp) { fclose(fp); printf("\n  wrote ecodriving_pareto.txt\n\n"); }
@@ -797,14 +836,23 @@ static int run_pareto(int nnodes, double L0)
 //////////////////////////////////////////////////////////////////////////
 
 // The paper gives the corner as "approximately 30 m" and says nothing about how
-// the curvature is entered. Both are ours. This measures what they are worth,
-// so that the comparison against the published numbers can be read with the
-// right number of significant figures.
+// the curvature is entered. Both are ours, and this measures what they are worth.
+//
+// The range swept is wider than "approximately" suggests, for the reason in
+// note 3 of the header: the corner was a real one, and a recorded corner reaches
+// the problem as a speed restriction spread over a stretch of road rather than
+// as a radius. A single arc matched to the LOWEST speed such a corner permits is
+// tighter than its nominal geometry, because the real restriction is spread over
+// a longer stretch. R = 17.3 m is the arc whose minimum speed, 25.5 km/h, is the
+// one drawn in the paper's own speed figure, and it is the row that reproduces
+// the published naturalistic energy. R = 30 m is the nominal geometry and is
+// five per cent below it. Which of the two to match is not stated anywhere, and
+// it is the choice this whole study turned out to be sensitive to.
 static int run_corner(int nnodes, double L0)
 {
-    static const double radii[] = { 28.0, 30.0, 32.0 };
+    static const double radii[] = { 17.3, 28.0, 30.0, 32.0 };
     static const double epss[]  = { 2.0, 5.0, 10.0, 20.0 };
-    const int nr = 3, ne = 4;
+    const int nr = 4, ne = 4;
     const double R_keep = CORNER_R, E_keep = CORNER_EPS;
 
     printf("\n=====================================================================\n");
@@ -822,8 +870,12 @@ static int run_corner(int nnodes, double L0)
             setup(problem, algorithm, nnodes);
             algorithm.print_level = 0;
 
+            // Tenths, and no decimal point: PSOPT cuts an output filename at
+            // the first dot when it names the mesh statistics file, so "_R17.3"
+            // would collide with "_R17" and with every eps beside it.
             char tag[64];
-            snprintf(tag, sizeof tag, "_R%g_e%g", CORNER_R, CORNER_EPS);
+            snprintf(tag, sizeof tag, "_R%04d_e%03d",
+                     (int) lround(CORNER_R*10.0), (int) lround(CORNER_EPS*10.0));
             Run r0 = run_one(problem, algorithm, solution, 0.0, L0, tag, false);
             if (r0.ok) set_guess_from_solution(problem, solution);
             Run r1 = run_one(problem, algorithm, solution, 1.0, L0, tag, false);
@@ -836,6 +888,14 @@ static int run_corner(int nnodes, double L0)
         }
     }
     CORNER_R = R_keep; CORNER_EPS = E_keep;
+    printf("  ---------------------------------------------------------------\n");
+    printf("  Read from the published frontier of Lot et al. (2025):\n");
+    printf("    w = 0   about 0.141 kWh/km at 61.9 km/h\n");
+    printf("    w = 1   about 0.067 kWh/km at 42.9 km/h\n");
+    printf("  The naturalistic end of that frontier is inside the range above\n");
+    printf("  and the corner is what places it there. The minimum-energy end is\n");
+    printf("  untouched across the whole sweep, because at 29 km/h the cornering\n");
+    printf("  constraint does not bind at all.\n");
     printf("=====================================================================\n\n");
     return 0;
 }
@@ -854,26 +914,42 @@ static int run_eq28(int nnodes)
     printf("=====================================================================\n");
     printf("  %-34s %10s %10s\n", "reading", "km/h", "kWh/km");
 
+    // 1.00  denominators m*a, m*b: what Eq. (14) defines and what is used here
+    // 0.00  denominators m*u_a, m*u_b: Eq. (28) read literally, no penalty at all
+    // 2.25  denominators a, b with the force in kN: a third reading of the same
+    //       printed expression, worth (m a / a)^2 = 2.25 times the first
+    static const double readings[] = { 1.0, 0.0, 2.25 };
+    static const char*  labels[]   = {
+        "denominators m*a, m*b (Eq. 14)",
+        "denominators m*u_a, m*u_b (printed)",
+        "denominators a, b, force in kN" };
+
     const double keep = ACCEL_PENALTY;
-    for (int k = 0; k < 2; k++) {
-        ACCEL_PENALTY = (k == 0) ? 1.0 : 0.0;
+    for (int k = 0; k < 3; k++) {
+        ACCEL_PENALTY = readings[k];
 
         Alg algorithm; Prob problem; Sol solution;
         setup(problem, algorithm, nnodes);
         algorithm.print_level = 0;
 
-        const string tag = (k == 0) ? "_eq28_intended" : "_eq28_asprinted";
-        Run r = run_one(problem, algorithm, solution, 0.0, 6.0, tag, true);
-        printf("  %-34s %10.2f %10.4f  regen %.3f\n",
-               (k == 0) ? "denominators m*a, m*b (intended)"
-                        : "denominators m*u_a, m*u_b (printed)",
+        static const char* tags[] =
+            { "_eq28_eq14", "_eq28_asprinted", "_eq28_authors" };
+        Run r = run_one(problem, algorithm, solution, 0.0, 5.0,
+                        string(tags[k]), true);
+        printf("  %-36s %10.2f %10.4f  regen %.3f\n", labels[k],
                r.ok ? r.vmean : 0.0, r.ok ? r.energy : 0.0,
                r.ok ? r.regen_frac : 0.0);
         fflush(stdout);
     }
     ACCEL_PENALTY = keep;
 
-    printf("  %-34s %10.2f %10.4f\n", "Lot et al. (2025), Table 3", 62.1, 0.153);
+    printf("\n  %-36s %10.2f %10.4f\n", "Lot et al. (2025), Table 3", 62.1, 0.153);
+    printf("  %-36s %10.2f %10.4f\n", "Lot et al. (2025), Fig. 7", 61.92, 0.1414);
+    printf("\n  The literal reading removes the acceleration penalty altogether\n");
+    printf("  and gives more than four times the published energy, which rules\n");
+    printf("  it out. Of the other two the first is both what Eq. (14) defines\n");
+    printf("  and the one nearest the published result, and it is the reading\n");
+    printf("  this example uses.\n");
     printf("=====================================================================\n\n");
     return 0;
 }
@@ -888,11 +964,11 @@ int main(int argc, char* argv[])
 
     if (mode == "pareto") {
         int nnodes = (argc > 2) ? atoi(argv[2]) : 60;
-        return run_pareto(nnodes, 6.0);
+        return run_pareto(nnodes, 5.0);
     }
     if (mode == "corner") {
         int nnodes = (argc > 2) ? atoi(argv[2]) : 60;
-        return run_corner(nnodes, 6.0);
+        return run_corner(nnodes, 5.0);
     }
     if (mode == "eq28") {
         int nnodes = (argc > 2) ? atoi(argv[2]) : 60;
@@ -900,7 +976,7 @@ int main(int argc, char* argv[])
     }
 
     double w      = atof(mode.c_str());
-    double L0     = (argc > 2) ? atof(argv[2]) : 6.0;
+    double L0     = (argc > 2) ? atof(argv[2]) : 5.0;
     int    nnodes = (argc > 3) ? atoi(argv[3]) : 60;
     if (argc > 4) COLLOCATION = argv[4];
 
