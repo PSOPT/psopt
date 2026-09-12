@@ -1602,6 +1602,22 @@ void ir_element_boundaries(adouble* a, adouble* xad, int iphase, Workspace* work
 // problem that does not use one presents the tape it always did.
 bool ir_node_taus(std::vector<adouble>& tau, adouble* xad, int iphase, Workspace* workspace);
 
+// Is the integrated residual's own automatic mesh refinement in force?
+//
+// It is used only where the Betts route cannot serve: with the Nie-Kerrigan element basis,
+// whose nodes sit at the element's own abscissae and which a node inserted at an interval
+// midpoint does not belong to, and with the flexible mesh, whose partition the Betts route
+// would discard. The legacy cubic-Hermite form on a fixed mesh keeps the Betts refinement it
+// has always used, so no run that worked before takes a different route now.
+inline bool ir_element_refinement_active(Alg& algorithm)
+{
+    if ( algorithm.mesh_refinement != "automatic" ) return false;
+    if ( algorithm.transcription_method != "integrated-residual" ) return false;
+    return algorithm.ir_local_order >= 2 || algorithm.ir_flexible_mesh;
+}
+
+void ir_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
+
 // Number of path constraints of a phase that are declared as equalities, and which are
 // therefore folded into the integrated residual when algorithm.ir_include_path == "auto".
 // Returns 0 for any other transcription method or setting, so that call sites can add it

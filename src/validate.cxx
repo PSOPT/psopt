@@ -77,20 +77,6 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                      "PSOPT's own SQP now fills the same place with no licence to obtain.");
     if (algorithm.collocation_method != "Legendre" && algorithm.collocation_method!="Chebyshev" && algorithm.collocation_method!="trapezoidal" && algorithm.collocation_method!="Hermite-Simpson" && algorithm.collocation_method!="Radau" && algorithm.collocation_method!="Gauss")
        error_message("Incorrect collocation method specified. Valid options are \"Legendre\" , \"Chebyshev\", \"trapezoidal\", \"Hermite-Simpson\", \"Radau\", and \"Gauss\" ");
-    // Betts local refinement inserts equally spaced points inside the intervals it flags,
-    // and the Nie-Kerrigan basis is evaluated through ir_Bval and ir_Bder, which are built
-    // once for the reference LGL abscissae of the unit element. After a refinement the nodes
-    // of an element are no longer at those abscissae, so the residual would be a basis
-    // evaluated where that basis does not hold -- silently, since nothing downstream checks
-    // where a node sits. The element structure is also rebuilt only on the first mesh
-    // iteration, so norder % ir_local_order == 0 stops being true and the trailing nodes of
-    // the phase fall outside every element and enter no residual at all.
-    //
-    // Until the mesh itself can move -- which is the flexible mesh of Nie and Kerrigan
-    // (2022), and is the right answer to this need rather than inserting nodes -- the
-    // combination is refused rather than run. algorithm.mesh_refinement = "manual" with a
-    // sequence in algorithm.nodes is the supported way to refine an integrated-residual
-    // discretisation today.
     // The flexible mesh is a property of the integrated-residual transcription: the widths
     // are the widths OF something, and no other transcription here has elements to move.
     // Asking for it otherwise is a misunderstanding worth naming rather than ignoring,
@@ -115,20 +101,19 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                      "the floor on an element width as a fraction of the uniform width, and an "
                      "element free to collapse to zero width has its nodes coincident ");
 
-    if ( algorithm.mesh_refinement == "automatic" && algorithm.ir_local_order >= 2 )
-       error_message("algorithm.mesh_refinement = \"automatic\" is not supported with "
-                     "algorithm.ir_local_order >= 2: local refinement inserts nodes that the "
-                     "element basis does not expect. Use mesh_refinement = \"manual\" with a "
-                     "sequence of node counts in algorithm.nodes ");
-
-    // The same objection in the other representation. Betts refinement decides where to put
-    // nodes; the flexible mesh decides where to put boundaries; and with the cubic-Hermite
-    // form a node IS a boundary, so the two are deciding the same thing by different rules
-    // and the second solve would start from a mesh the first never chose.
-    if ( algorithm.mesh_refinement == "automatic" && algorithm.ir_flexible_mesh )
-       error_message("algorithm.mesh_refinement = \"automatic\" is not supported with "
-                     "algorithm.ir_flexible_mesh: both choose the mesh, by different rules. "
-                     "Use mesh_refinement = \"manual\" with a sequence of node counts ");
+    // Automatic refinement of an element basis, and of a flexible mesh, was refused here
+    // until the refinement could be written in the same currency as the transcription. It
+    // now is: ir_refine_driver splits elements rather than inserting nodes, so the node
+    // count moves in multiples of the stride by construction and the partition the flexible
+    // mesh solved on is what the next mesh is built from. See ir_element_refinement_active.
+    //
+    // What has to be checked instead is that the mesh has somewhere to grow into, because
+    // the workspace is sized once, from get_max_nodes, and the Betts ceiling it computes is
+    // driven by mr_max_growth_factor and mr_max_iterations.
+    if ( ir_element_refinement_active(algorithm) && algorithm.mr_max_growth_factor <= 0.0 )
+       error_message("algorithm.mesh_refinement = \"automatic\" with the integrated-residual "
+                     "transcription needs algorithm.mr_max_growth_factor > 0: it is the budget "
+                     "the element refinement is allowed to spend ");
 
     if (algorithm.scaling != "automatic" && algorithm.scaling!="user")
        error_message("Incorrect scaling option specified. Valid options are \"automatic\" and \"user\" ");

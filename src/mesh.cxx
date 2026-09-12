@@ -285,3 +285,199 @@ void construct_new_mesh(Prob& problem,Alg& algorithm,Sol& solution, Workspace* w
 }
 
 
+
+// ===========================================================================================
+// Automatic mesh refinement for the integrated-residual transcription, which refines
+// ELEMENTS rather than inserting nodes.
+//
+// Betts refinement puts new nodes at interval midpoints, and that is precisely what an
+// element basis cannot take. The nodes of a Nie-Kerrigan element sit at its own LGL
+// abscissae, so a node inserted between them belongs to no element, and the divisibility
+// rule norder % d == 0 stops holding the moment the count changes by anything but a
+// multiple of d. PSOPT refused the combination rather than run it and return an answer to a
+// discretisation nobody had defined.
+//
+// What was wanted instead is refinement in the currency the transcription is written in. An
+// element is either kept or split into k equal sub-elements, each of which is a proper
+// element carrying its own abscissae, and the partition that results is one the
+// transcription can state exactly. The node count moves in multiples of the stride by
+// construction, so the divisibility rule is not something to check afterwards -- it cannot
+// be broken.
+//
+// It composes with the flexible mesh, which is the reason it takes this form. The solved
+// widths are already in snodes by the time this runs (ir_write_back_snodes), so the split
+// works on the partition the previous solve CHOSE rather than on the uniform one it started
+// from: a boundary the optimiser moved onto a switch is a boundary of the new partition too,
+// and the elements on either side of it are then refined independently of each other. The
+// alternative -- rebuilding a uniform partition at a larger node count -- throws away the one
+// thing the flexible mesh found, every iteration, and asks the next solve to find it again.
+//
+// Called after the solve, like hp_refine_driver and unlike construct_new_mesh, because it
+// needs the error estimate of the solve just finished and because old_snodes must already
+// hold the solved mesh for the hot start to interpolate from.
+// ===========================================================================================
+void ir_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace)
+{
+    // How many pieces one element may be cut into in a single iteration. A large error is a
+    // reason to subdivide repeatedly across iterations, not to shatter an element in one:
+    // the error estimate is computed on a trajectory the previous mesh could not represent,
+    // so it says where the trouble is far more reliably than how much of it there is.
+    const int    IR_MAX_SPLIT = 4;
+    const double tol          = algorithm.ode_tolerance;
+
+    const int stride = ir_element_stride(algorithm);
+
+    for (int i = 0; i < problem.nphases; i++) {
+
+        const int norder = problem.phase[i].current_number_of_intervals;
+        const int M      = ir_num_elements(norder, algorithm);
+        if ( M <= 0 ) continue;
+
+        MatrixXd& sn  = workspace->snodes[i];
+        MatrixXd& eps = solution.relative_errors[i];        // 1 x norder, per interval
+
+        if ( (int) eps.size() < norder ) continue;          // no estimate to refine on
+
+        // The error of an element is the worst of the intervals inside it, and its width is
+        // read from the mesh that was actually solved on.
+        std::vector<double> err(M, 0.0), h(M, 0.0);
+        for (int e = 0; e < M; e++) {
+            for (int r = e*stride; r < (e+1)*stride; r++)
+                err[e] = std::max( err[e], eps(0,r) );
+            h[e] = sn((e+1)*stride) - sn(e*stride);
+        }
+
+        // The order the local error converges at: degree d for a Nie-Kerrigan element, and
+        // the Hermite-Simpson order for the cubic-Hermite one. The exponent only grades how
+        // aggressively an element is cut; the decision to cut it at all is the tolerance.
+        const int q = ( stride > 1 ) ? stride : 3;
+
+        double emax = 0.0;
+        for (int e = 0; e < M; e++) emax = std::max( emax, err[e] );
+
+        std::vector<int> k(M, 1);
+        int M_new = M;
+
+        if ( !algorithm.ir_flexible_mesh ) {
+            // A fixed mesh: the refinement decides both how many elements and where, which is
+            // the classic arrangement, so split the elements whose error exceeds the tolerance
+            // and grade the cut by how far it exceeds it.
+            for (int e = 0; e < M; e++) {
+                if ( err[e] <= tol ) continue;
+                const double ratio = pow( err[e]/tol, 1.0/((double) q + 1.0) );
+                int ke = (int) ceil(ratio);
+                if ( ke < 2 )            ke = 2;
+                if ( ke > IR_MAX_SPLIT ) ke = IR_MAX_SPLIT;
+                k[e] = ke;
+            }
+            M_new = 0;
+            for (int e = 0; e < M; e++) M_new += k[e];
+        }
+        else {
+            // A flexible mesh: the two mechanisms are given disjoint jobs, because when they
+            // are given the same one they fight.
+            //
+            // Measured, splitting by error with the flexible mesh on makes the answer WORSE.
+            // On the minimum-time problem with a switch at tf/3 the flexible mesh alone
+            // reaches 9.1e-8 on nine nodes; error-directed refinement to thirty-seven nodes
+            // gives 1.9e-6, and the cubic-Hermite form degrades to 6.2e-5 with thirty tiny
+            // elements packed around the switch. The reason is visible in the partition and
+            // is not a tuning problem. Once the flexible mesh has isolated a discontinuity
+            // inside a thin element, the local error of that element stays large however thin
+            // it is -- the error is the jump, not the resolution -- so an estimator built for
+            // smooth solutions flags it every iteration, the refinement splits it every
+            // iteration, and the mesh starves the rest of the trajectory to feed a point that
+            // was already handled.
+            //
+            // So the estimator is asked the only question it can answer well here, which is
+            // HOW MANY elements the phase needs; where they go is the flexible mesh's job,
+            // and it will re-place every boundary in the next solve in any case. The new
+            // elements are seeded by splitting the WIDEST elements, which is where resolution
+            // is cheap and which leaves a partition the next solve can start from without a
+            // degenerate element in it.
+            if ( emax <= tol ) continue;
+            const double ratio  = pow( emax/tol, 1.0/((double) q + 1.0) );
+            int M_target = (int) ceil( M*std::min( ratio, 1.0 + algorithm.mr_max_growth_factor ) );
+            if ( M_target < M+1 ) M_target = M+1;
+
+            while ( M_new < M_target ) {
+                int widest = -1; double best = 0.0;
+                for (int e = 0; e < M; e++) {
+                    if ( k[e] >= IR_MAX_SPLIT ) continue;
+                    const double sub = h[e]/((double) k[e]);
+                    if ( widest < 0 || sub > best ) { widest = e; best = sub; }
+                }
+                if ( widest < 0 ) break;
+                k[widest]++; M_new++;
+            }
+        }
+
+        if ( M_new == M ) continue;                          // nothing exceeded the tolerance
+
+        // Two ceilings. The growth factor is the user's limit on how fast the mesh may grow,
+        // and the workspace ceiling is not negotiable at all: max_nodes sized xad, and a mesh
+        // past it writes off the end of the tape.
+        const int max_nodes  = get_max_nodes(problem, i+1, &algorithm);
+        int cap = M + (int) floor( M*algorithm.mr_max_growth_factor );
+        if ( cap < M+1 )              cap = M+1;
+        if ( cap > max_nodes/stride ) cap = max_nodes/stride;
+        if ( cap < M )                cap = M;
+
+        // Over budget: give up the splits of the least troublesome elements first, so that
+        // the budget is spent where the error is.
+        while ( M_new > cap ) {
+            int worst = -1; double smallest = 0.0;
+            for (int e = 0; e < M; e++) {
+                if ( k[e] <= 1 ) continue;
+                if ( worst < 0 || err[e] < smallest ) { worst = e; smallest = err[e]; }
+            }
+            if ( worst < 0 ) break;
+            k[worst]--; M_new--;
+        }
+        if ( M_new <= M ) continue;
+
+        // A split may not push an element below the floor the flexible mesh will impose on
+        // it, or the mesh just built would be outside its own bounds. The floor falls as the
+        // partition grows, so removing a split can make another one legal again; the loop
+        // settles because M_new only decreases.
+        if ( algorithm.ir_flexible_mesh ) {
+            bool changed = true;
+            while ( changed && M_new > M ) {
+                changed = false;
+                const double hlo = algorithm.ir_min_element_fraction * 2.0/((double) M_new);
+                for (int e = 0; e < M; e++) {
+                    while ( k[e] > 1 && h[e]/((double) k[e]) < hlo ) { k[e]--; M_new--; changed = true; }
+                }
+            }
+            if ( M_new <= M ) continue;
+        }
+
+        // Build the new partition. Each split element contributes k equal pieces of its own
+        // width, so the boundaries of the old partition all survive into the new one.
+        std::vector<double> hn;
+        hn.reserve(M_new);
+        for (int e = 0; e < M; e++)
+            for (int j = 0; j < k[e]; j++) hn.push_back( h[e]/((double) k[e]) );
+
+        const int norder_new = M_new*stride;
+        sn.resize(1, norder_new+1);
+        MatrixXd& lgl01 = workspace->ir_lgl01;
+
+        double a = -1.0;
+        for (int e = 0; e < M_new; e++) {
+            if ( stride == 1 ) sn(e) = a;
+            else for (int r = 0; r < stride; r++) sn(e*stride + r) = a + lgl01(r)*hn[e];
+            a += hn[e];
+        }
+        sn(norder_new) = 1.0;      // pinned, for the reason ir_write_back_snodes pins it
+
+        problem.phase[i].current_number_of_intervals = norder_new;
+
+        snprintf(workspace->text, sizeof(workspace->text),
+                 "\n>>> Phase %d: integrated-residual element refinement, %d -> %d elements "
+                 "(%d -> %d intervals), worst element error %e\n",
+                 i+1, M, M_new, norder, norder_new,
+                 *std::max_element(err.begin(), err.end()));
+        psopt_print(workspace, workspace->text);
+    }
+}

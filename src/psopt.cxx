@@ -642,6 +642,19 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         }
     }
 
+    else if ( ir_element_refinement_active(algorithm) ) {
+          // The integrated residual's own automatic refinement, which works on elements; see
+          // ir_refine_driver. Only the first mesh is set here. From iteration 2 on the driver,
+          // called after the previous solve, has already written both
+          // current_number_of_intervals and snodes, and the pre-solve rebuild below is
+          // skipped for exactly that reason -- it would overwrite a partition that was chosen
+          // with a uniform one that was not.
+          if ( iter_nodes == 1 ) {
+              for (i=0; i<nphases; i++)
+                  problem.phase[i].current_number_of_intervals = ((int) problem.phase[i].nodes(0)) - 1;
+          }
+    }
+
     else  if (algorithm.mesh_refinement=="automatic" && use_local_collocation(algorithm) ) {
           // Local mesh refinement algorithm by Betts (2001)
 
@@ -1794,6 +1807,15 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
     if ( hp_auto_active(algorithm) && iter_nodes < number_of_mesh_refinement_iterations )
     {
         hp_refine_driver( problem, algorithm, solution, workspace );
+    }
+
+    // The integrated residual's element refinement, in the same place and for the same
+    // reasons: it needs the error estimate of the solve just finished, and old_snodes must
+    // already hold the solved mesh so that the hot start interpolates from the partition
+    // that was solved on rather than from the one about to replace it.
+    if ( ir_element_refinement_active(algorithm) && iter_nodes < number_of_mesh_refinement_iterations )
+    {
+        ir_refine_driver( problem, algorithm, solution, workspace );
     }
 
 

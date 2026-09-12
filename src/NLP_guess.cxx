@@ -207,13 +207,20 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
             x0.block(x_phase_offset+offset2+nparam, 0, nstates, 1) = elemProduct((solution.states[i]).col(norder), state_scaling);
        }
 
-       // The flexible mesh starts uniform, which is the mesh a fixed-mesh run would have
-       // used. Starting anywhere else would be asserting where the solution's corners are
-       // before the solve has said.
+       // The flexible mesh starts from the stored partition, which on a first mesh is the
+       // uniform one a fixed-mesh run would have used -- starting anywhere else would be
+       // asserting where the solution's corners are before the solve has said. It is NOT
+       // uniform when the element refinement has just built the next mesh from the one the
+       // previous solve chose, and reading it here is what carries that choice forward.
        {
            const int nflex = ir_flex_mesh_vars(norder, *workspace->algorithm);
-           for (int q = 0; q < nflex; q++)
-               x0(x_phase_offset + nvars_phase_i - 2 - nflex + q) = 2.0/(double) nflex;
+           if ( nflex > 0 ) {
+               const int stride = ir_element_stride(*workspace->algorithm);
+               MatrixXd& sn = workspace->snodes[i];
+               for (int q = 0; q < nflex; q++)
+                   x0(x_phase_offset + nvars_phase_i - 2 - nflex + q)
+                       = sn((q+1)*stride) - sn(q*stride);
+           }
        }
 
         x_phase_offset += nvars_phase_i;
@@ -390,13 +397,22 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
             }
         }
 
-        // The flexible mesh, re-seeded uniform on the new mesh. Carrying the previous
-        // solve's widths across a change in the number of elements would mean mapping one
-        // partition onto another, and there is no mapping that is obviously right.
+        // The flexible mesh, seeded from the stored partition of the new mesh. Under a
+        // manual sequence of node counts that partition is uniform, which is the only
+        // honest seed when one mesh's elements have no relation to the next one's. Under
+        // the element refinement it is the previous solve's partition with the flagged
+        // elements subdivided, so every boundary the optimiser moved is a boundary the next
+        // solve starts from -- which is the whole reason the refinement splits elements
+        // rather than rebuilding a uniform mesh at a larger node count.
         {
             const int nflex = ir_flex_mesh_vars(norder, *workspace->algorithm);
-            for (int q = 0; q < nflex; q++)
-                x0(x_phase_offset + nvars_phase_i - 2 - nflex + q) = 2.0/(double) nflex;
+            if ( nflex > 0 ) {
+                const int stride = ir_element_stride(*workspace->algorithm);
+                MatrixXd& sn = workspace->snodes[i];
+                for (int q = 0; q < nflex; q++)
+                    x0(x_phase_offset + nvars_phase_i - 2 - nflex + q)
+                        = sn((q+1)*stride) - sn(q*stride);
+            }
         }
 
 	x0(x_phase_offset+ nvars_phase_i-2) = prev_t0(i)*time_scaling;
