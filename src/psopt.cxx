@@ -802,7 +802,13 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 	                error_message("ir_local_order: (number of nodes - 1) must be divisible by ir_local_order ");
 	            int M = norder / d;
 	            MatrixXd& sn = workspace->snodes[i];
-	            sn.resize(norder+1,1);
+	            // A ROW, like every other producer of snodes. This branch resized it to a
+	            // column, which nothing noticed because every reader indexes sn(k) and Eigen
+	            // does not care -- until construct_new_mesh, which grows the array with
+	            // block(0,0,1,cols) and then sorts it, and died in sort_vector() on "argument
+	            // must be a column or row vector". A shape that only one consumer can see is
+	            // a shape nobody maintains.
+	            sn.resize(1,norder+1);
 	            MatrixXd& lgl01 = workspace->ir_lgl01;       // d+1 reference LGL nodes on [0,1]
 	            double H = 2.0 / (double) M;                 // element width on [-1,1]
 	            for (int e=0; e<M; e++) {

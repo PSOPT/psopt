@@ -77,6 +77,26 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                      "PSOPT's own SQP now fills the same place with no licence to obtain.");
     if (algorithm.collocation_method != "Legendre" && algorithm.collocation_method!="Chebyshev" && algorithm.collocation_method!="trapezoidal" && algorithm.collocation_method!="Hermite-Simpson" && algorithm.collocation_method!="Radau" && algorithm.collocation_method!="Gauss")
        error_message("Incorrect collocation method specified. Valid options are \"Legendre\" , \"Chebyshev\", \"trapezoidal\", \"Hermite-Simpson\", \"Radau\", and \"Gauss\" ");
+    // Betts local refinement inserts equally spaced points inside the intervals it flags,
+    // and the Nie-Kerrigan basis is evaluated through ir_Bval and ir_Bder, which are built
+    // once for the reference LGL abscissae of the unit element. After a refinement the nodes
+    // of an element are no longer at those abscissae, so the residual would be a basis
+    // evaluated where that basis does not hold -- silently, since nothing downstream checks
+    // where a node sits. The element structure is also rebuilt only on the first mesh
+    // iteration, so norder % ir_local_order == 0 stops being true and the trailing nodes of
+    // the phase fall outside every element and enter no residual at all.
+    //
+    // Until the mesh itself can move -- which is the flexible mesh of Nie and Kerrigan
+    // (2022), and is the right answer to this need rather than inserting nodes -- the
+    // combination is refused rather than run. algorithm.mesh_refinement = "manual" with a
+    // sequence in algorithm.nodes is the supported way to refine an integrated-residual
+    // discretisation today.
+    if ( algorithm.mesh_refinement == "automatic" && algorithm.ir_local_order >= 2 )
+       error_message("algorithm.mesh_refinement = \"automatic\" is not supported with "
+                     "algorithm.ir_local_order >= 2: local refinement inserts nodes that the "
+                     "element basis does not expect. Use mesh_refinement = \"manual\" with a "
+                     "sequence of node counts in algorithm.nodes ");
+
     if (algorithm.scaling != "automatic" && algorithm.scaling!="user")
        error_message("Incorrect scaling option specified. Valid options are \"automatic\" and \"user\" ");
     if (algorithm.transcription_method != "collocation" && algorithm.transcription_method != "integrated-residual")
