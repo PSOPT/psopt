@@ -248,9 +248,16 @@ adouble integrated_residual_phase(int i, int iphase, adouble* xad,
     const int nalg  = (int) aidx.size();
     const double pw = workspace->algorithm->ir_path_weight;
 
+    // The cubic-Hermite form's element is one mesh interval, so a flexible mesh here makes
+    // every interval width a variable. Empty unless one is in force, in which case the
+    // interval ends -- and with them hk, the 1/hk in xdot, and the sample times tq -- become
+    // expressions in the widths. Nothing else in this loop changes.
+    std::vector<adouble> ir_tau;
+    ir_node_taus(ir_tau, xad, iphase, workspace);
+
     for (k=0; k<norder; k++) {
-        adouble tk  = convert_to_original_time_ad( (workspace->snodes[i])(k),   t0, tf );
-        adouble tk1 = convert_to_original_time_ad( (workspace->snodes[i])(k+1), t0, tf );
+        adouble tk  = ir_node_time( ir_tau, k,   t0, tf, workspace->snodes[i] );
+        adouble tk1 = ir_node_time( ir_tau, k+1, t0, tf, workspace->snodes[i] );
         adouble hk  = tk1 - tk;
 
         get_states(xk,  xad, iphase, k,   workspace);
@@ -440,6 +447,12 @@ adouble phase_running_cost(int i, int iphase, adouble* xad, adouble t0, adouble 
 		  adouble* const   path_scr2 = workspace->path_next[i].get();
 		  adouble* const   states_bar= workspace->states_bar[i].get();
 
+		  // Empty under collocation and under a fixed mesh; non-empty when the legacy
+		  // integrated-residual form is running on a flexible mesh, where the interval
+		  // ends this quadrature is built on have become variables.
+		  std::vector<adouble> ir_tau_cost;
+		  ir_node_taus(ir_tau_cost, xad, iphase, workspace);
+
 		  for (k=0; k<norder;k++) { // EIGEN_UPDATE: k index shifted by -1
 		      int l;
 
@@ -451,8 +464,8 @@ adouble phase_running_cost(int i, int iphase, adouble* xad, adouble t0, adouble 
 		      get_controls(controls, xad, iphase, k, workspace);
 		      get_states(states, xad, iphase, k, workspace);
 
-		      adouble tk = convert_to_original_time_ad( (workspace->snodes[i])(k),   t0, tf );
-		      adouble tk1= convert_to_original_time_ad( (workspace->snodes[i])(k+1), t0, tf );
+		      adouble tk = ir_node_time( ir_tau_cost, k,   t0, tf, workspace->snodes[i] );
+		      adouble tk1= ir_node_time( ir_tau_cost, k+1, t0, tf, workspace->snodes[i] );
 
 		      adouble h = tk1-tk;
 

@@ -59,12 +59,12 @@ void linkages(adouble*, adouble*, Workspace*) {}
 // per cent away from the time its own state belongs to.
 struct Run { int flag; double tf; double rel_err; double arc1_mismatch; };
 
-static Run solve(bool flexible, double residual_bound)
+static Run solve(bool flexible, double residual_bound, int local_order = 4, int nodes_in = 17)
 {
     Alg algorithm; Sol solution; Prob problem;
     Run out; out.flag = -1; out.tf = 0.0; out.rel_err = 1.0; out.arc1_mismatch = 1.0;
 
-    const int nodes = 17;                      // 16 intervals = 4 elements of degree 4
+    const int nodes = nodes_in;                // at d=4: 16 intervals = 4 elements of degree 4
 
     problem.name        = "flexible mesh";
     problem.outfilename = flexible ? "test_ir_flex_on.txt" : "test_ir_flex_off.txt";
@@ -110,8 +110,8 @@ static Run solve(bool flexible, double residual_bound)
     algorithm.mesh_refinement       = "manual";
     algorithm.collocation_method    = "Hermite-Simpson";
     algorithm.transcription_method  = "integrated-residual";
-    algorithm.ir_local_order        = 4;
-    algorithm.ir_residual_nodes     = 6;
+    algorithm.ir_local_order        = local_order;
+    algorithm.ir_residual_nodes     = ( local_order >= 2 ) ? local_order + 2 : 4;
     // Minimise the cost subject to a residual box. The default minimises the
     // residual itself, and on a free horizon the smoothest trajectory is the
     // longest one, so a minimum-time problem posed that way simply runs tf to
@@ -207,5 +207,35 @@ TEST(IRFlexibleMesh, TheReportedNodeTimesAreTheSolvedOnes)
 
     EXPECT_LT(flex.arc1_mismatch, 1.0e-5)
         << "the reported node times do not belong to the reported states: "
+        << "max |x_k - t_k^2| = " << flex.arc1_mismatch;
+}
+
+
+// ---------------------------------------------------------------------------
+// The same facility on the legacy cubic-Hermite representation, whose element is
+// one mesh interval carrying one cubic. A flexible mesh there makes every
+// interval width a variable -- a larger decision vector than the Nie-Kerrigan
+// form needs for the same node count, and a lower order per element -- but it
+// moves a node onto the switch by exactly the same mechanism, and it clears the
+// same wall. On nine nodes the fixed mesh is wrong by 7.9e-3 and the flexible
+// one by 1.8e-5.
+// ---------------------------------------------------------------------------
+
+TEST(IRFlexibleMesh, TheCubicHermiteRepresentationGetsItToo)
+{
+    const irflex::Run fixed = irflex::solve(false, 1.0e-6, 0, 9);
+    const irflex::Run flex  = irflex::solve(true,  1.0e-6, 0, 9);
+
+    ASSERT_EQ(fixed.flag, 0);
+    ASSERT_EQ(flex.flag,  0) << "the flexible mesh failed to solve at local order 0";
+
+    EXPECT_GT(fixed.rel_err, 1.0e-3) << "tf = " << fixed.tf;
+    EXPECT_LT(flex.rel_err,  1.0e-4) << "tf = " << flex.tf;
+    EXPECT_LT(flex.rel_err,  0.01*fixed.rel_err)
+        << "flexible " << flex.rel_err << " against fixed " << fixed.rel_err;
+
+    // And the write-back reaches this representation as well: on the first arc
+    // the reported node times must belong to the reported states.
+    EXPECT_LT(flex.arc1_mismatch, 1.0e-4)
         << "max |x_k - t_k^2| = " << flex.arc1_mismatch;
 }

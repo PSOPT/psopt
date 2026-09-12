@@ -118,8 +118,8 @@ static void ir_write_back_snodes(MatrixXd& x, Prob& problem, Alg& algorithm, Wor
         const int nflex  = ir_flex_mesh_vars(norder, algorithm);
         if ( nflex == 0 ) continue;
 
-        const int d = algorithm.ir_local_order;
-        const int M = norder/d;
+        const int M      = ir_num_elements(norder, algorithm);
+        const int stride = ir_element_stride(algorithm);
 
         const int iphase_offset = get_iphase_offset(problem, i+1, workspace);
         const int nvars_phase_i = get_nvars_phase_i(problem, i, workspace);
@@ -131,7 +131,8 @@ static void ir_write_back_snodes(MatrixXd& x, Prob& problem, Alg& algorithm, Wor
         double a = -1.0;
         for (int e = 0; e < M; e++) {
             const double h = x(base+e);        // the widths carry no scale factor, by design
-            for (int r = 0; r < d; r++) sn(e*d + r) = a + lgl01(r)*h;
+            if ( stride == 1 ) sn(e) = a;      // cubic Hermite: the node is the boundary
+            else for (int r = 0; r < stride; r++) sn(e*stride + r) = a + lgl01(r)*h;
             a += h;
         }
         // The sum equality holds to the NLP's tolerance, not exactly, so the last node is

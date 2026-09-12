@@ -142,6 +142,12 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 		  adouble* const path_scr2 = workspace->path_next[i].get();
 		  adouble* const states_bar= workspace->states_bar[i].get();
 
+		  // Non-empty only when the legacy integrated-residual form runs on a flexible
+		  // mesh, where the interval ends are variables; see the same pairing in
+		  // phase_running_cost.
+		  std::vector<adouble> ir_tau_hs;
+		  ir_node_taus(ir_tau_hs, xad, iphase, workspace);
+
 		  for (k=0; k<norder;k++) {  // EIGEN_UPDATE: k index shifted by -1
 		      int l;
 
@@ -150,8 +156,8 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 		      get_controls(controls, xad, iphase, k, workspace);
 		      get_states(states, xad, iphase, k, workspace);
 
-		      adouble tk = convert_to_original_time_ad( (workspace->snodes[i])(k),   t0, tf );
-		      adouble tk1= convert_to_original_time_ad( (workspace->snodes[i])(k+1), t0, tf );
+		      adouble tk = ir_node_time( ir_tau_hs, k,   t0, tf, workspace->snodes[i] );
+		      adouble tk1= ir_node_time( ir_tau_hs, k+1, t0, tf, workspace->snodes[i] );
 
 		      adouble h = tk1-tk;
 

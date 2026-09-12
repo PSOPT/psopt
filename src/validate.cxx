@@ -91,14 +91,23 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
     // combination is refused rather than run. algorithm.mesh_refinement = "manual" with a
     // sequence in algorithm.nodes is the supported way to refine an integrated-residual
     // discretisation today.
-    // The flexible mesh is a property of the Nie-Kerrigan element basis: the widths are the
-    // widths OF something, and without that basis a phase has no elements to move. Asking
-    // for it otherwise is a misunderstanding worth naming rather than ignoring, because
-    // ir_flex_mesh_vars would simply return zero and the option would appear to work.
-    if ( algorithm.ir_flexible_mesh && algorithm.ir_local_order < 2 )
-       error_message("algorithm.ir_flexible_mesh requires algorithm.ir_local_order >= 2: the "
-                     "flexible mesh moves the boundaries of the Nie-Kerrigan elements, and "
-                     "without that local basis the phase has no element boundaries to move ");
+    // The flexible mesh is a property of the integrated-residual transcription: the widths
+    // are the widths OF something, and no other transcription here has elements to move.
+    // Asking for it otherwise is a misunderstanding worth naming rather than ignoring,
+    // because ir_flex_mesh_vars would simply return zero and the option would appear to work.
+    //
+    // Both local representations have them. The Nie-Kerrigan element of degree d spans d
+    // intervals; the legacy cubic-Hermite element is one interval carrying one cubic, so a
+    // flexible mesh there makes every interval width a variable. The second is a larger
+    // decision vector for the same node count and a lower order per element, but it is the
+    // same facility and it moves a node onto a switch the same way.
+    if ( algorithm.ir_flexible_mesh && algorithm.transcription_method != "integrated-residual" )
+       error_message("algorithm.ir_flexible_mesh requires algorithm.transcription_method = "
+                     "\"integrated-residual\": the flexible mesh moves the element boundaries "
+                     "of that transcription, and no other has element boundaries to move ");
+    if ( algorithm.ir_flexible_mesh && algorithm.ir_local_order != 0 && algorithm.ir_local_order < 2 )
+       error_message("algorithm.ir_local_order must be 0 (cubic Hermite) or at least 2 "
+                     "(Nie-Kerrigan): no other local order is defined ");
 
     if ( algorithm.ir_flexible_mesh &&
          ( algorithm.ir_min_element_fraction <= 0.0 || algorithm.ir_min_element_fraction >= 1.0 ) )
@@ -111,6 +120,15 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                      "algorithm.ir_local_order >= 2: local refinement inserts nodes that the "
                      "element basis does not expect. Use mesh_refinement = \"manual\" with a "
                      "sequence of node counts in algorithm.nodes ");
+
+    // The same objection in the other representation. Betts refinement decides where to put
+    // nodes; the flexible mesh decides where to put boundaries; and with the cubic-Hermite
+    // form a node IS a boundary, so the two are deciding the same thing by different rules
+    // and the second solve would start from a mesh the first never chose.
+    if ( algorithm.mesh_refinement == "automatic" && algorithm.ir_flexible_mesh )
+       error_message("algorithm.mesh_refinement = \"automatic\" is not supported with "
+                     "algorithm.ir_flexible_mesh: both choose the mesh, by different rules. "
+                     "Use mesh_refinement = \"manual\" with a sequence of node counts ");
 
     if (algorithm.scaling != "automatic" && algorithm.scaling!="user")
        error_message("Incorrect scaling option specified. Valid options are \"automatic\" and \"user\" ");

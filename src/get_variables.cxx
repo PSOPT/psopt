@@ -262,16 +262,16 @@ void ir_element_boundaries(adouble* a, adouble* xad, int iphase, Workspace* work
         Alg&  algorithm = *workspace->algorithm;
 
         const int norder = problem.phase[i].current_number_of_intervals;
-        const int d      = algorithm.ir_local_order;
-        if ( d < 2 || norder < d || (norder % d) != 0 ) return;
-        const int M = norder/d;
+        const int M      = ir_num_elements(norder, algorithm);
+        if ( M <= 0 ) return;
+        const int stride = ir_element_stride(algorithm);
 
         const int nflex = ir_flex_mesh_vars(norder, algorithm);
 
         if ( nflex == 0 ) {
             // Fixed mesh: the boundaries are stored node positions, constants to the tape.
             MatrixXd& sn = workspace->snodes[i];
-            for (int e=0; e<=M; e++) a[e] = sn(e*d);
+            for (int e=0; e<=M; e++) a[e] = sn(e*stride);
             return;
         }
 
@@ -300,17 +300,24 @@ bool ir_node_taus(std::vector<adouble>& tau, adouble* xad, int iphase, Workspace
         tau.clear();
         if ( nflex == 0 ) return false;
 
-        const int d = algorithm.ir_local_order;
-        const int M = norder/d;
+        const int M      = ir_num_elements(norder, algorithm);
+        const int stride = ir_element_stride(algorithm);
 
         std::vector<adouble> a(M+1);
         ir_element_boundaries(a.data(), xad, iphase, workspace);
 
-        MatrixXd& lgl01 = workspace->ir_lgl01;       // d+1 reference LGL nodes on [0,1]
         tau.resize(norder+1);
+        if ( stride == 1 ) {
+            // Cubic Hermite: the element is one interval, so its two nodes are its two
+            // boundaries and there is nothing to place inside it.
+            for (int e=0; e<=M; e++) tau[e] = a[e];
+            return true;
+        }
+
+        MatrixXd& lgl01 = workspace->ir_lgl01;       // d+1 reference LGL nodes on [0,1]
         for (int e=0; e<M; e++) {
             adouble he = a[e+1] - a[e];
-            for (int r=0; r<d; r++) tau[e*d + r] = a[e] + lgl01(r)*he;
+            for (int r=0; r<stride; r++) tau[e*stride + r] = a[e] + lgl01(r)*he;
         }
         tau[norder] = a[M];                          // the phase's right-hand end, exactly +1
 

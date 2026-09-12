@@ -1527,6 +1527,34 @@ inline int ir_extra_control_vars(int norder, int ncontrols, Alg& algorithm)
     return ncontrols * ( norder/d - 1 );
 }
 
+// How many nodes one element spans, as a stride through the phase's node array. The
+// Nie-Kerrigan element of degree d spans d intervals and shares its end nodes with its
+// neighbours, so consecutive elements start d apart; the legacy cubic-Hermite form carries
+// one cubic per mesh interval, so its element IS an interval and the stride is one.
+inline int ir_element_stride(Alg& algorithm)
+{
+    return ( algorithm.ir_local_order >= 2 ) ? algorithm.ir_local_order : 1;
+}
+
+// The number of elements a phase's mesh is divided into, for every purpose that treats the
+// mesh as a partition rather than as a list of nodes: the flexible mesh, and the
+// element-aware refinement built on it. Zero when there is no element structure to speak of,
+// which is every transcription but the integrated residual.
+//
+// The two representations differ in the stride and in nothing else, which is the fact that
+// let the flexible mesh reach the legacy branch without a second implementation of it.
+inline int ir_num_elements(int norder, Alg& algorithm)
+{
+    if ( algorithm.transcription_method != "integrated-residual" ) return 0;
+    const int d = algorithm.ir_local_order;
+    if ( d >= 2 ) {
+        if ( norder < d || (norder % d) != 0 ) return 0;
+        return norder/d;
+    }
+    if ( d != 0 ) return 0;                // no other local order is defined
+    return norder;                         // cubic Hermite: one element per interval
+}
+
 // The flexible mesh: one width variable per element, and one equality row per phase.
 //
 // The widths live on the normalised interval [-1,1], so they sum to 2. Node e*d+r of the
@@ -1534,7 +1562,9 @@ inline int ir_extra_control_vars(int norder, int ncontrols, Alg& algorithm)
 // makes the element's local coordinates -- and therefore ir_Bval and ir_Bder, which are
 // built once for the reference element -- independent of where the boundaries are. That
 // is the property that makes a moving mesh cost so little here: only the physical times
-// change, and those were already adouble expressions in t0 and tf.
+// change, and those were already adouble expressions in t0 and tf. Under the cubic-Hermite
+// form the same statement reads more simply still: the element's two nodes are its two ends,
+// so a node position IS a boundary and there are no interior abscissae to place.
 //
 // The variables occupy the slot immediately before t0 and tf, which are the last two of
 // every phase, so get_times keeps indexing from nvars_phase_i-2 and every offset computed
@@ -1542,10 +1572,7 @@ inline int ir_extra_control_vars(int norder, int ncontrols, Alg& algorithm)
 inline int ir_flex_mesh_vars(int norder, Alg& algorithm)
 {
     if ( !algorithm.ir_flexible_mesh ) return 0;
-    if ( !ir_local_basis_active(algorithm) ) return 0;
-    const int d = algorithm.ir_local_order;
-    if ( d < 2 || norder < d || (norder % d) != 0 ) return 0;
-    return norder/d;                       // one width per element
+    return ir_num_elements(norder, algorithm);    // one width per element
 }
 
 // The single row that closes the parameterisation: sum of the widths equals 2. Written
