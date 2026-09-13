@@ -384,7 +384,6 @@ struct alg_str {
   string    scaling;
   string    derivatives;
   string    constraint_scaling;
-  string    ps_method;
   string    collocation_method;
   string    transcription_method;   // "collocation" (default), "integrated-residual" or
                                     // "multiple-shooting"
