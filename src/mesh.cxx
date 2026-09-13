@@ -358,7 +358,7 @@ void ir_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* w
         std::vector<int> k(M, 1);
         int M_new = M;
 
-        if ( !algorithm.ir_flexible_mesh ) {
+        if ( !flexible_partition_active(algorithm) ) {
             // A fixed mesh: the refinement decides both how many elements and where, which is
             // the classic arrangement, so split the elements whose error exceeds the tolerance
             // and grade the cut by how far it exceeds it.
@@ -440,11 +440,11 @@ void ir_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* w
         // it, or the mesh just built would be outside its own bounds. The floor falls as the
         // partition grows, so removing a split can make another one legal again; the loop
         // settles because M_new only decreases.
-        if ( algorithm.ir_flexible_mesh ) {
+        if ( flexible_partition_active(algorithm) ) {
             bool changed = true;
             while ( changed && M_new > M ) {
                 changed = false;
-                const double hlo = algorithm.ir_min_element_fraction * 2.0/((double) M_new);
+                const double hlo = min_partition_fraction(algorithm) * 2.0/((double) M_new);
                 for (int e = 0; e < M; e++) {
                     while ( k[e] > 1 && h[e]/((double) k[e]) < hlo ) { k[e]--; M_new--; changed = true; }
                 }

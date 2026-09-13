@@ -410,7 +410,7 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                 if ( k != norder ) {
                     std::vector<adouble> xend(nstates);
                     ms_propagate_segment(xend.data(), NULL, k, xad, iphase, t0, tf,
-                                         parameters, workspace);
+                                         parameters, workspace, 0, NULL, NULL, NULL, &ir_tau);
                     // x_{k+1}, read directly rather than from the loop's `states`, which holds
                     // the state at node k.
                     adouble* xnext = workspace->states_next[i].get();
@@ -786,7 +786,7 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                 for (int kk=0; kk<norder; kk++) {
                     ms_propagate_segment(xend_s.data(), NULL, kk, xad, iphase, t0, tf,
                                          parameters, workspace, 0,
-                                         xs.data(), (nctrls>0)?us.data():NULL, ts.data());
+                                         xs.data(), (nctrls>0)?us.data():NULL, ts.data(), &ir_tau);
                     for (int q=0; q<nsamp; q++) {
                         problem->dae(dsc.data(), psc.data(), &xs[q*nstates],
                                      (nctrls>0) ? &us[q*nctrls] : NULL,

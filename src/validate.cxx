@@ -95,11 +95,12 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("algorithm.ir_local_order must be 0 (cubic Hermite) or at least 2 "
                      "(Nie-Kerrigan): no other local order is defined ");
 
-    if ( algorithm.ir_flexible_mesh &&
-         ( algorithm.ir_min_element_fraction <= 0.0 || algorithm.ir_min_element_fraction >= 1.0 ) )
-       error_message("algorithm.ir_min_element_fraction must lie strictly between 0 and 1: it is "
-                     "the floor on an element width as a fraction of the uniform width, and an "
-                     "element free to collapse to zero width has its nodes coincident ");
+    if ( flexible_partition_active(algorithm) &&
+         ( min_partition_fraction(algorithm) <= 0.0 || min_partition_fraction(algorithm) >= 1.0 ) )
+       error_message("the minimum element or segment fraction must lie strictly between 0 and 1: "
+                     "it is the floor on a width as a fraction of the uniform width, and a piece "
+                     "free to collapse to zero width has its ends coincident. See "
+                     "algorithm.ir_min_element_fraction and algorithm.ms_min_segment_fraction ");
 
     // Automatic refinement of an element basis, and of a flexible mesh, was refused here
     // until the refinement could be written in the same currency as the transcription. It
@@ -151,7 +152,16 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                         "exactly for the scheme it uses ");
        if ( algorithm.ir_flexible_mesh )
           error_message("algorithm.ir_flexible_mesh belongs to the integrated-residual "
-                        "transcription; multiple shooting has segments rather than elements ");
+                        "transcription; multiple shooting has segments rather than elements, and "
+                        "the option that moves them is algorithm.ms_flexible_segments ");
+       if ( algorithm.ir_local_order != 0 )
+          error_message("algorithm.ir_local_order belongs to the integrated-residual "
+                        "transcription and has no meaning with multiple shooting ");
+       if ( algorithm.ms_flexible_segments && algorithm.ms_path_samples == 0 )
+          psopt_print(workspace,
+                 "\n>>> Note: algorithm.ms_flexible_segments is on and ms_path_samples is zero, so "
+                 "\n>>> the path constraints are imposed only at boundaries that are now free to "
+                 "\n>>> move. Consider setting ms_path_samples.\n");
        if ( algorithm.mesh_refinement == "automatic" )
           error_message("algorithm.mesh_refinement = \"automatic\" is not yet supported with "
                         "transcription_method = \"multiple-shooting\": where to put a segment "

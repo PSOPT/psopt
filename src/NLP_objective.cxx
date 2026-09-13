@@ -352,13 +352,16 @@ adouble phase_running_cost(int i, int iphase, adouble* xad, adouble t0, adouble 
 	    adouble* parameters_ms = workspace->parameters[i].get();
 	    get_parameters(parameters_ms, xad, iphase, workspace);
 	    std::vector<adouble> xend(problem.phase[i].nstates);
+	    std::vector<adouble> ms_tau;
+	    ir_node_taus(ms_tau, xad, iphase, workspace);
 	    for (k=0; k<norder; k++) {
 	        adouble Lk = 0.0;
 	        ms_propagate_segment(xend.data(), &Lk, k, xad, iphase, t0, tf,
-	                             parameters_ms, workspace);
+	                             parameters_ms, workspace, 0, NULL, NULL, NULL, &ms_tau);
 	        phase_sum_cost += Lk;
 	        (solution.integrand_cost[i])(k) = Lk.value();
 	    }
+
 	    return phase_sum_cost;
 	}
 

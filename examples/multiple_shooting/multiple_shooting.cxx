@@ -22,10 +22,11 @@
 //////// RK4 steps cross a segment; ms_control_parameterisation, which ///
 //////// is "constant" or "linear"; and ms_path_samples, which sets how ///
 //////// many interior points of a segment the path constraints are    ///
-//////// also enforced at.                                             ///
+//////// also enforced at; and ms_flexible_segments, which lets the    ///
+//////// segment boundaries move.                                      ///
 ////////                                                               ///
-//////// This example makes four points, each with a number attached,  ///
-//////// and two of them are cautions rather than selling points.      ///
+//////// This example makes five points, each with a number attached,  ///
+//////// and three of them are cautions rather than selling points.    ///
 ////////                                                               ///
 //////// Reference for the method: H. G. Bock and K. J. Plitt, "A      ///
 //////// multiple shooting algorithm for direct solution of optimal    ///
@@ -52,16 +53,20 @@ using namespace PSOPT;
 //    costates l1 = -12 and l2 = 12t - 6.
 // 1: Bryson and Denham's problem, the same dynamics with x <= 1/9 and
 //    x(0)=0, v(0)=1, x(1)=0, v(1)=-1.  J* = 4.
+// 2: minimum time with u in [-1,2], so the single switch falls at tf/3 and tf is
+//    free.  tf* = sqrt(3).
 static int problem_case = 0;
+
+static const double TF_SQRT3 = 1.7320508075688772;
 
 adouble endpoint_cost(adouble* initial_states, adouble* final_states,
                       adouble* parameters, adouble& t0, adouble& tf,
                       adouble* xad, int iphase, Workspace* workspace)
-{ return 0.0; }
+{ return ( problem_case == 2 ) ? tf : (adouble) 0.0; }
 
 adouble integrand_cost(adouble* states, adouble* controls, adouble* parameters,
                        adouble& time, adouble* xad, int iphase, Workspace* workspace)
-{ return 0.5*controls[0]*controls[0]; }
+{ return ( problem_case == 2 ) ? (adouble) 0.0 : 0.5*controls[0]*controls[0]; }
 
 void dae(adouble* derivatives, adouble* path, adouble* states, adouble* controls,
          adouble* parameters, adouble& time, adouble* xad, int iphase,
@@ -89,7 +94,8 @@ void linkages(adouble* linkages, adouble* xad, Workspace* workspace) {}
 struct Row { int flag; double J; double l1_err; double l2_err; };
 
 static Row solve_it(int which, const char* transcription, int segments, int steps,
-                    const char* upar, int path_samples, bool costates)
+                    const char* upar, int path_samples, bool costates,
+                    bool flexible_segments = false)
 {
     problem_case = which;
 
@@ -113,8 +119,8 @@ static Row solve_it(int which, const char* transcription, int segments, int step
 
     problem.phases(1).bounds.lower.states   << -5.0, -5.0;
     problem.phases(1).bounds.upper.states   <<  5.0,  5.0;
-    problem.phases(1).bounds.lower.controls(0) = -30.0;
-    problem.phases(1).bounds.upper.controls(0) =  30.0;
+    problem.phases(1).bounds.lower.controls(0) = ( which == 2 ) ? -1.0 : -30.0;
+    problem.phases(1).bounds.upper.controls(0) = ( which == 2 ) ?  2.0 :  30.0;
 
     if ( which == 1 ) {
         problem.phases(1).bounds.lower.path(0) = -5.0;
@@ -128,8 +134,8 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     }
     problem.phases(1).bounds.lower.StartTime = 0.0;
     problem.phases(1).bounds.upper.StartTime = 0.0;
-    problem.phases(1).bounds.lower.EndTime   = 1.0;
-    problem.phases(1).bounds.upper.EndTime   = 1.0;
+    problem.phases(1).bounds.lower.EndTime   = ( which == 2 ) ? 0.5 : 1.0;
+    problem.phases(1).bounds.upper.EndTime   = ( which == 2 ) ? 8.0 : 1.0;
 
     problem.integrand_cost = &integrand_cost;
     problem.endpoint_cost  = &endpoint_cost;
@@ -141,7 +147,7 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     if ( which == 1 ) problem.phases(1).guess.states.row(1) = linspace( 1.0, -1.0, nodes);
     else              problem.phases(1).guess.states.row(0) = linspace( 0.0,  1.0, nodes);
     problem.phases(1).guess.controls = zeros(1, nodes);
-    problem.phases(1).guess.time     = linspace(0.0, 1.0, nodes);
+    problem.phases(1).guess.time     = linspace(0.0, ( which == 2 ) ? 1.73 : 1.0, nodes);
 
     algorithm.nlp_method            = "IPOPT";
     algorithm.scaling               = "automatic";
@@ -155,11 +161,16 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     algorithm.ms_steps_per_segment  = steps;
     algorithm.ms_control_parameterisation = upar;
     algorithm.ms_path_samples             = path_samples;
+    algorithm.ms_flexible_segments        = flexible_segments;
 
     out.flag = psopt(solution, problem, algorithm);
     if (out.flag != 0) return out;
 
     out.J = solution.cost;
+    if ( which == 2 ) {
+        DMatrix T = solution.get_time_in_phase(1);
+        out.J = T(0, T.cols()-1);          // the final time is the answer here
+    }
 
     if (costates) {
         DMatrix L = solution.get_dual_costates_in_phase(1);
@@ -249,6 +260,39 @@ int main(void)
     printf("\n     The last line is larger because the constant-control solution really is\n");
     printf("     1.5 per cent away from the continuous optimum, so its costates are too.\n");
     printf("     That is the transcription being consistent with itself, not an error.\n");
+
+    printf("\n  5. The segment boundaries can move, and on a problem with a switch that is\n");
+    printf("     worth six orders of magnitude. With u in [-1,2] the single switch falls at\n");
+    printf("     tf/3 and tf is free, so a UNIFORM partition has a boundary on the switch\n");
+    printf("     exactly when the segment count is divisible by three -- and nothing else\n");
+    printf("     about the problem changes between M = 9 and M = 10:\n\n");
+    printf("        M      uniform partition   flexible (ms_flexible_segments = true)\n");
+    const int msegs[6] = { 5, 6, 7, 9, 10, 20 };
+    for (int q = 0; q < 6; q++) {
+        Row a = solve_it(2, "multiple-shooting", msegs[q], 10, "constant", 0, false, false);
+        Row b = solve_it(2, "multiple-shooting", msegs[q], 10, "constant", 0, false, true);
+        printf("      %3d      %.3e%s        %.3e\n", msegs[q],
+               fabs(a.J - TF_SQRT3)/TF_SQRT3, (msegs[q] % 3 == 0) ? "  *" : "   ",
+               fabs(b.J - TF_SQRT3)/TF_SQRT3);
+    }
+    printf("      (* the segment count is divisible by three, so a boundary lands on the\n");
+    printf("       switch by arithmetic rather than by design)\n");
+    printf("\n     The flexible column does not depend on M at all, which is the point. What\n");
+    printf("     it costs is a few times the CPU of the uniform solve, and at M = 5 it is\n");
+    printf("     both faster and six orders of magnitude better than the uniform partition\n");
+    printf("     at M = 40.\n");
+    printf("\n     algorithm.ms_min_segment_fraction is the floor on a segment width, and its\n");
+    printf("     default of 0.8 is not a safety device -- it is what makes the problem well\n");
+    printf("     posed. A moving partition is a free-knot approximation problem, and those\n");
+    printf("     are degenerate: moving a boundary and adjusting the controls either side of\n");
+    printf("     it compensates, so the objective is flat along a manifold and there is no\n");
+    printf("     isolated solution to converge to. A tight floor removes most of that\n");
+    printf("     manifold. At a floor of 0.5 or below these solves stop converging.\n");
+    printf("\n     For the same reason, do NOT turn this on for a problem whose optimal\n");
+    printf("     control is smooth. There is then no corner for a boundary to sit on, the\n");
+    printf("     degeneracy is complete, and the solve does not converge at any floor --\n");
+    printf("     measured, on the problem of point 1 above with the dynamics made\n");
+    printf("     oscillatory. This facility is for solutions with corners.\n");
 
     printf("\n--------------------------------------------------------------------------------\n");
     printf("  What this transcription does not yet have: automatic mesh refinement, which\n");

@@ -241,7 +241,8 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int iphase,
                           adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
                           int nsteps_override,
-                          adouble* xsamp, adouble* usamp, adouble* tsamp)
+                          adouble* xsamp, adouble* usamp, adouble* tsamp,
+                          std::vector<adouble>* tau)
 {
     Prob& problem   = *workspace->problem;
     Alg&  algorithm = *workspace->algorithm;
@@ -270,10 +271,16 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     adouble* const f4    = f4_.data();
     adouble* const pscr  = pscr_.data();
 
-    // The segment ends. snodes holds the boundaries, so this is the same map every other
-    // transcription uses and a flexible mesh would reach it through the same accessor.
-    adouble tk  = convert_to_original_time_ad( (workspace->snodes[i])(k),   t0, tf );
-    adouble tk1 = convert_to_original_time_ad( (workspace->snodes[i])(k+1), t0, tf );
+    // The segment ends. Under a fixed partition these are stored node positions and constants
+    // to the tape; under a flexible one they are expressions in the segment widths, and the
+    // whole of the segment -- its duration, its step length, every stage time inside it, and
+    // therefore the end state and the running cost -- becomes differentiable in them. That is
+    // the entire cost of a moving partition here, and it is why the accessor is shared with
+    // the integrated residual rather than reimplemented: it is the same parameterisation.
+    std::vector<adouble> ms_tau_local;
+    if ( tau == NULL ) { ir_node_taus(ms_tau_local, xad, iphase, workspace); tau = &ms_tau_local; }
+    adouble tk  = ir_node_time( *tau, k,   t0, tf, workspace->snodes[i] );
+    adouble tk1 = ir_node_time( *tau, k+1, t0, tf, workspace->snodes[i] );
     adouble dt  = (tk1 - tk)/((double) nsteps);
 
     get_states(xw, xad, iphase, k, workspace);

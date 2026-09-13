@@ -127,7 +127,7 @@ int get_max_number_nlp_vars(Prob& problem, Alg& algorithm)
         // count. Note that the legacy cubic-Hermite form has one element per interval,
         // so the count here is max_nodes rather than max_nodes/d -- and d is zero there,
         // which is why this cannot simply divide.
-        if ( algorithm.ir_flexible_mesh )
+        if ( flexible_partition_active(algorithm) )
             nlp_vars += ir_num_elements(max_nodes, algorithm) + 1;
 
    }
@@ -190,7 +190,7 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
        nlp_ncons  += nstates*(max_nodes+1)+ (nevents) + npath*(max_nodes+1) + 1;
        // The flexible mesh's one equality per phase; see the note in
        // get_max_number_nlp_vars about this function being the layout written twice.
-       if ( algorithm.ir_flexible_mesh ) nlp_ncons += 1;
+       if ( flexible_partition_active(algorithm) ) nlp_ncons += 1;
        if ( is_multiple_shooting(algorithm) ) {
            nlp_ncons += ms_terminal_pin_rows(problem.phase[i].ncontrols, algorithm);
            nlp_ncons += ms_interior_path_rows(max_nodes, npath, algorithm);

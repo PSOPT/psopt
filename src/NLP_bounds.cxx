@@ -165,10 +165,20 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
             if ( nflex > 0 ) {
                 const int foff   = nvars_phase_i - 2 - nflex;
                 const double hu  = 2.0/(double) nflex;                     // the uniform width
-                const double hlo = algorithm.ir_min_element_fraction * hu;
+                const double frac = min_partition_fraction(algorithm);
+                const double hlo  = frac * hu;
+                // The ceiling is the floor's reciprocal, so the box is symmetric in the
+                // logarithm: a width may grow by the factor it may shrink by. It used to be
+                // the whole interval, which is a ceiling only in the sense that a variable
+                // has to have one -- and on a partition of twenty that is twenty times the
+                // uniform width against a floor of one twentieth, a range of four hundred
+                // for a variable whose answer is within a few per cent of uniform. An
+                // interior-point method spends its early iterations crossing that range.
+                double hup = hu/frac;
+                if ( hup > 2.0 ) hup = 2.0;
                 for (int q = 0; q < nflex; q++) {
                     xlb(x_phase_offset+foff+q) = hlo;
-                    xub(x_phase_offset+foff+q) = 2.0;
+                    xub(x_phase_offset+foff+q) = hup;
                 }
             }
         }

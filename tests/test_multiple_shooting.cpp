@@ -40,14 +40,18 @@ namespace msh {
 // case 3: Bryson-Denham, min (1/2)int u^2 with x <= 1/9 and J* = 4, whose active arc is what
 //         shows whether a path constraint imposed at the segment boundaries is the constraint
 //         the user wrote.
+// case 4: minimum time with ASYMMETRIC control bounds, u in [-1,2], so the single switch
+//         falls at tf/3 rather than tf/2. tf* = sqrt(3).
 static int g_case = 0;
+
+const double TF_SQRT3 = 1.7320508075688772;
 
 adouble endpoint_cost(adouble*, adouble*, adouble*, adouble&, adouble& tf, adouble*,
                       int, Workspace*)
-{ return ( g_case == 2 ) ? tf : (adouble) 0.0; }
+{ return ( g_case == 2 || g_case == 4 ) ? tf : (adouble) 0.0; }
 
 adouble integrand_cost(adouble*, adouble* u, adouble*, adouble&, adouble*, int, Workspace*)
-{ return ( g_case == 2 ) ? (adouble) 0.0 : 0.5*u[0]*u[0]; }
+{ return ( g_case == 2 || g_case == 4 ) ? (adouble) 0.0 : 0.5*u[0]*u[0]; }
 
 void dae(adouble* d, adouble* path, adouble* s, adouble* c, adouble*, adouble&,
          adouble*, int, Workspace*)
@@ -88,7 +92,8 @@ void linkages2(adouble* l, adouble* xad, Workspace* w)
 struct Run { int flag; double J; double tf; double err_est; };
 
 static Run solve(int which, int segments, int steps,
-                 const std::string& upar = "constant", int path_samples = 0)
+                 const std::string& upar = "constant", int path_samples = 0,
+                 bool flexible_segments = false)
 {
     g_case = which;
 
@@ -112,8 +117,9 @@ static Run solve(int which, int segments, int steps,
 
     problem.phases(1).bounds.lower.states   << -5.0, -5.0;
     problem.phases(1).bounds.upper.states   <<  5.0,  5.0;
-    problem.phases(1).bounds.lower.controls(0) = ( which == 2 ) ?  -1.0 : -30.0;
-    problem.phases(1).bounds.upper.controls(0) = ( which == 2 ) ?   1.0 :  30.0;
+    problem.phases(1).bounds.lower.controls(0) = ( which == 2 || which == 4 ) ? -1.0 : -30.0;
+    problem.phases(1).bounds.upper.controls(0) = ( which == 2 ) ?  1.0
+                                               : ( which == 4 ) ?  2.0 : 30.0;
     if ( which == 3 ) {
         problem.phases(1).bounds.lower.path(0) = -5.0;
         problem.phases(1).bounds.upper.path(0) =  1.0/9.0;
@@ -126,8 +132,8 @@ static Run solve(int which, int segments, int steps,
     }
     problem.phases(1).bounds.lower.StartTime = 0.0;
     problem.phases(1).bounds.upper.StartTime = 0.0;
-    problem.phases(1).bounds.lower.EndTime   = ( which == 2 ) ? 0.5 : 1.0;
-    problem.phases(1).bounds.upper.EndTime   = ( which == 2 ) ? 8.0 : 1.0;
+    problem.phases(1).bounds.lower.EndTime   = ( which == 2 || which == 4 ) ? 0.5 : 1.0;
+    problem.phases(1).bounds.upper.EndTime   = ( which == 2 || which == 4 ) ? 8.0 : 1.0;
 
     problem.integrand_cost = &integrand_cost;
     problem.endpoint_cost  = &endpoint_cost;
@@ -139,7 +145,8 @@ static Run solve(int which, int segments, int steps,
     if ( which == 3 ) problem.phases(1).guess.states.row(1) = linspace( 1.0, -1.0, nodes);
     else              problem.phases(1).guess.states.row(0) = linspace( 0.0,  1.0, nodes);
     problem.phases(1).guess.controls = zeros(1, nodes);
-    problem.phases(1).guess.time     = linspace(0.0, ( which == 2 ) ? 2.0 : 1.0, nodes);
+    problem.phases(1).guess.time     = linspace(0.0, ( which == 2 ) ? 2.0
+                                                   : ( which == 4 ) ? 1.73 : 1.0, nodes);
 
     algorithm.nlp_method            = "IPOPT";
     algorithm.scaling               = "automatic";
@@ -153,6 +160,7 @@ static Run solve(int which, int segments, int steps,
     algorithm.ms_steps_per_segment  = steps;
     algorithm.ms_control_parameterisation = upar;
     algorithm.ms_path_samples             = path_samples;
+    algorithm.ms_flexible_segments        = flexible_segments;
 
     out.flag = psopt(solution, problem, algorithm);
     if (out.flag == 0) {
@@ -482,4 +490,56 @@ TEST(MultipleShooting, TheCostatesAreRecoveredFromThePrimal)
     }
     EXPECT_LT(e1, 1.0e-6) << "max |lambda_1 + 12| = " << e1;
     EXPECT_LT(e2, 1.0e-6) << "max |lambda_2 - (12t-6)| = " << e2;
+}
+
+
+// ---------------------------------------------------------------------------
+// Flexible segment boundaries, and the thing they remove: a dependence of the
+// answer on an arithmetic coincidence.
+//
+// Minimum time with u in [-1,2] switches at tf/3 and tf is free, so a UNIFORM
+// partition has a boundary on the switch exactly when the segment count is
+// divisible by three -- and the answer is then correct to eight digits, and
+// wrong by parts in a thousand when it is not. Nothing about the problem
+// changes between M = 9 and M = 10.
+//
+// With the boundaries free, every segment count gives the same answer, because
+// the optimisation puts a boundary where the solution needs one rather than
+// where the partition happened to put it.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, AUniformPartitionIsRightOnlyByCoincidence)
+{
+    const msh::Run lucky   = msh::solve(4,  9, 10);   // 9 divisible by 3
+    const msh::Run unlucky = msh::solve(4, 10, 10);   // 10 is not
+
+    ASSERT_EQ(lucky.flag,   0);
+    ASSERT_EQ(unlucky.flag, 0);
+
+    const double e_lucky   = std::fabs(lucky.tf   - msh::TF_SQRT3)/msh::TF_SQRT3;
+    const double e_unlucky = std::fabs(unlucky.tf - msh::TF_SQRT3)/msh::TF_SQRT3;
+
+    EXPECT_LT(e_lucky,   1.0e-7) << "M = 9, tf = "  << lucky.tf;
+    EXPECT_GT(e_unlucky, 1.0e-4) << "M = 10, tf = " << unlucky.tf
+        << " -- if this is small the coincidence is not being exercised";
+}
+
+
+TEST(MultipleShooting, FlexibleSegmentsRemoveTheCoincidence)
+{
+    const int segs[4] = { 5, 7, 10, 20 };     // none divisible by three
+    for (int q = 0; q < 4; q++) {
+        const msh::Run fixed = msh::solve(4, segs[q], 10, "constant", 0, false);
+        const msh::Run flex  = msh::solve(4, segs[q], 10, "constant", 0, true);
+
+        ASSERT_EQ(fixed.flag, 0) << "M = " << segs[q];
+        ASSERT_EQ(flex.flag,  0) << "the flexible partition failed at M = " << segs[q];
+
+        const double e_fixed = std::fabs(fixed.tf - msh::TF_SQRT3)/msh::TF_SQRT3;
+        const double e_flex  = std::fabs(flex.tf  - msh::TF_SQRT3)/msh::TF_SQRT3;
+
+        EXPECT_GT(e_fixed, 1.0e-4) << "M = " << segs[q] << ": the uniform partition is "
+            << "unexpectedly accurate, so this test is measuring nothing";
+        EXPECT_LT(e_flex,  1.0e-7) << "M = " << segs[q] << ": flexible tf = " << flex.tf;
+    }
 }

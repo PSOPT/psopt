@@ -418,6 +418,24 @@ struct alg_str {
   // samples are placed at integrator step boundaries, so ms_steps_per_segment must be at
   // least ms_path_samples + 1.
   int       ms_path_samples;
+
+  // A moving partition, for the same reason and by the same parameterisation the
+  // integrated residual's flexible mesh uses: the segment boundaries become decision
+  // variables, so the optimisation can put one at a switching time instead of leaving the
+  // switch inside a segment where the control parameterisation cannot represent it.
+  //
+  // The measurement that motivates it. On a minimum-time bang-bang problem whose switch
+  // falls at tf/3, with tf free, a uniform partition has a boundary on the switch exactly
+  // when the segment count is divisible by three -- and the relative error in tf is 5.7e-9
+  // when it is and 5.0e-3 when it is not. Six orders of magnitude on the same problem at the
+  // same cost, decided by an arithmetic coincidence.
+  bool      ms_flexible_segments;
+
+  // Floor on a segment's width as a fraction of the uniform width, for the same reason
+  // ir_min_element_fraction exists: a width free to reach zero gives a singular local
+  // problem, and the floor has to be a bound rather than a penalty.
+  double    ms_min_segment_fraction;
+
   int       ir_residual_nodes;      // Gauss-Legendre residual-quadrature points per interval
                                     // (integrated-residual transcription; default 4)
   double    ir_regularization;      // weight rho on integral(||xdot-f||^2) added to the
@@ -1558,13 +1576,46 @@ inline int ir_extra_control_vars(int norder, int ncontrols, Alg& algorithm)
     return ncontrols * ( norder/d - 1 );
 }
 
+// Is the multiple-shooting transcription in force?
+//
+// A shooting phase reuses the collocation layout exactly: current_number_of_intervals is the
+// number of SEGMENTS, snodes holds the segment boundaries in normalised coordinates, the
+// stored node states are the segment-start states with the phase's final state last, and the
+// nstates*(norder+1) rows that carry the collocation defects carry the matching conditions
+// instead. Nothing about the decision vector, the bounds, the guess or the reporting had to
+// change; only what the defect rows mean.
+inline bool is_multiple_shooting(Alg& algorithm)
+{
+    return algorithm.transcription_method == "multiple-shooting";
+}
+
 // How many nodes one element spans, as a stride through the phase's node array. The
 // Nie-Kerrigan element of degree d spans d intervals and shares its end nodes with its
 // neighbours, so consecutive elements start d apart; the legacy cubic-Hermite form carries
 // one cubic per mesh interval, so its element IS an interval and the stride is one.
 inline int ir_element_stride(Alg& algorithm)
 {
+    if ( is_multiple_shooting(algorithm) ) return 1;   // a segment is one interval
     return ( algorithm.ir_local_order >= 2 ) ? algorithm.ir_local_order : 1;
+}
+
+// Is a moving partition in force, whichever transcription is asking?
+//
+// The integrated residual calls its pieces elements and multiple shooting calls them
+// segments, and the two options are named for their own transcriptions because that is what
+// a user reads. Underneath they are the same thing: one width variable per piece, one sum
+// equality per phase, a floor imposed as a bound, and the same accessors. Everything below
+// this line treats them as one.
+inline bool flexible_partition_active(Alg& algorithm)
+{
+    if ( is_multiple_shooting(algorithm) ) return algorithm.ms_flexible_segments;
+    return algorithm.ir_flexible_mesh;
+}
+
+inline double min_partition_fraction(Alg& algorithm)
+{
+    return is_multiple_shooting(algorithm) ? algorithm.ms_min_segment_fraction
+                                           : algorithm.ir_min_element_fraction;
 }
 
 // The number of elements a phase's mesh is divided into, for every purpose that treats the
@@ -1576,6 +1627,7 @@ inline int ir_element_stride(Alg& algorithm)
 // let the flexible mesh reach the legacy branch without a second implementation of it.
 inline int ir_num_elements(int norder, Alg& algorithm)
 {
+    if ( is_multiple_shooting(algorithm) ) return norder;   // one segment per interval
     if ( algorithm.transcription_method != "integrated-residual" ) return 0;
     const int d = algorithm.ir_local_order;
     if ( d >= 2 ) {
@@ -1602,8 +1654,8 @@ inline int ir_num_elements(int norder, Alg& algorithm)
 // through get_iphase_offset picks the block up for free.
 inline int ir_flex_mesh_vars(int norder, Alg& algorithm)
 {
-    if ( !algorithm.ir_flexible_mesh ) return 0;
-    return ir_num_elements(norder, algorithm);    // one width per element
+    if ( !flexible_partition_active(algorithm) ) return 0;
+    return ir_num_elements(norder, algorithm);    // one width per element or segment
 }
 
 // The single row that closes the parameterisation: sum of the widths equals 2. Written
@@ -1640,19 +1692,6 @@ bool ir_node_taus(std::vector<adouble>& tau, adouble* xad, int iphase, Workspace
 // midpoint does not belong to, and with the flexible mesh, whose partition the Betts route
 // would discard. The legacy cubic-Hermite form on a fixed mesh keeps the Betts refinement it
 // has always used, so no run that worked before takes a different route now.
-// Is the multiple-shooting transcription in force?
-//
-// A shooting phase reuses the collocation layout exactly: current_number_of_intervals is the
-// number of SEGMENTS, snodes holds the segment boundaries in normalised coordinates, the
-// stored node states are the segment-start states with the phase's final state last, and the
-// nstates*(norder+1) rows that carry the collocation defects carry the matching conditions
-// instead. Nothing about the decision vector, the bounds, the guess or the reporting had to
-// change; only what the defect rows mean.
-inline bool is_multiple_shooting(Alg& algorithm)
-{
-    return algorithm.transcription_method == "multiple-shooting";
-}
-
 // Does the control ramp across a segment, or hold?
 inline bool ms_linear_controls(Alg& algorithm)
 {
@@ -1702,10 +1741,16 @@ void ir_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* w
 // interior sample points -- ms_path_samples of them, at integrator step boundaries -- so that
 // the path constraints can be imposed where the trajectory actually goes rather than only
 // where it is a decision variable.
+// tau, when non-null, is the node-position array ir_node_taus fills, computed ONCE by the
+// caller and passed in. Building it costs O(M) because a boundary is a running sum of the
+// widths before it, so recomputing it per segment inside a loop over segments is O(M^2) tape
+// -- which is what it was, and what made a twenty-segment flexible-segment solve take nine
+// seconds where the fixed one took a twentieth of that.
 void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int iphase,
                           adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
                           int nsteps_override = 0,
-                          adouble* xsamp = NULL, adouble* usamp = NULL, adouble* tsamp = NULL);
+                          adouble* xsamp = NULL, adouble* usamp = NULL, adouble* tsamp = NULL,
+                          std::vector<adouble>* tau = NULL);
 
 // Number of path constraints of a phase that are declared as equalities, and which are
 // therefore folded into the integrated residual when algorithm.ir_include_path == "auto".
