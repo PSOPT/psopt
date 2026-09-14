@@ -18,14 +18,15 @@
 ////////                                                               ///
 ////////     algorithm.transcription_method = "multiple-shooting";     ///
 ////////                                                               ///
-//////// and configured with ms_steps_per_segment, which sets how many ///
-//////// RK4 steps cross a segment; ms_control_parameterisation, which ///
-//////// is "constant", "linear" or "quadratic"; ms_path_samples, which ///
-//////// sets how many interior points of a segment the path            ///
+//////// and configured with ms_integrator, which chooses the explicit  ///
+//////// scheme ("RK4" or "RK8"); ms_steps_per_segment, which sets how  ///
+//////// many of its steps cross a segment; ms_control_parameterisation,///
+//////// which is "constant", "linear" or "quadratic"; ms_path_samples, ///
+//////// which sets how many interior points of a segment the path      ///
 //////// constraints are also enforced at; and ms_flexible_segments,    ///
 //////// which lets the segment boundaries move.                        ///
 ////////                                                               ///
-//////// This example makes six points, each with a number attached,   ///
+//////// This example makes seven points, each with a number attached, ///
 //////// and four of them are cautions rather than selling points.     ///
 ////////                                                               ///
 //////// Reference for the method: H. G. Bock and K. J. Plitt, "A      ///
@@ -109,17 +110,18 @@ void linkages(adouble* linkages, adouble* xad, Workspace* workspace) {}
 ///////////////////  One solve  ///////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
-struct Row { int flag; double J; double l1_err; double l2_err; double u_out_of_bounds; };
+struct Row { int flag; double J; double l1_err; double l2_err; double u_out_of_bounds;
+             double err_est; };
 
 static Row solve_it(int which, const char* transcription, int segments, int steps,
                     const char* upar, int path_samples, bool costates,
-                    bool flexible_segments = false)
+                    bool flexible_segments = false, const char* integrator = "RK4")
 {
     problem_case = which;
 
     Alg algorithm; Sol solution; Prob problem;
     Row out; out.flag = -1; out.J = 0.0; out.l1_err = 0.0; out.l2_err = 0.0;
-    out.u_out_of_bounds = 0.0;
+    out.u_out_of_bounds = 0.0; out.err_est = 0.0;
 
     const int nodes = segments + 1;
 
@@ -189,11 +191,16 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     algorithm.ms_control_parameterisation = upar;
     algorithm.ms_path_samples             = path_samples;
     algorithm.ms_flexible_segments        = flexible_segments;
+    algorithm.ms_integrator               = integrator;
 
     out.flag = psopt(solution, problem, algorithm);
     if (out.flag != 0) return out;
 
     out.J = solution.cost;
+    {
+        DMatrix E = solution.get_relative_local_error_in_phase(1);
+        for (int q = 0; q < E.size(); q++) out.err_est = fmax(out.err_est, fabs(E(q)));
+    }
     if ( which == 2 ) {
         DMatrix T = solution.get_time_in_phase(1);
         out.J = T(0, T.cols()-1);          // the final time is the answer here
@@ -404,6 +411,55 @@ int main(void)
     printf("     on this problem whatever the partition, because a continuous control cannot\n");
     printf("     represent a jump. Use \"constant\" where the optimal control has corners or\n");
     printf("     rides its bounds, and the higher forms where it is smooth and interior.\n");
+
+    printf("\n  7. The segment integrator has a choice of explicit scheme, and what the choice\n");
+    printf("     buys is accuracy per RIGHT-HAND-SIDE EVALUATION rather than accuracy for its\n");
+    printf("     own sake. The tape is stages x steps x segments long, and both the memory it\n");
+    printf("     takes and the time to evaluate the constraints are linear in that, so four\n");
+    printf("     extra orders of convergence for 2.75 times the stages is a large trade in the\n");
+    printf("     right direction. On the oscillator of point 2, with a held control:\n\n");
+    printf("        scheme   steps   RHS evals/segment   discretisation error\n");
+    {
+        const int s4[4] = { 2, 4, 8, 16 };
+        const int s8[3] = { 1, 2, 3 };
+        for (int q = 0; q < 4; q++) {
+            Row r = solve_it(3, "multiple-shooting", 10, s4[q], "constant", 0, false, false, "RK4");
+            printf("        RK4     %5d   %17d   %.3e\n", s4[q], 4*s4[q], r.err_est);
+        }
+        for (int q = 0; q < 3; q++) {
+            Row r = solve_it(3, "multiple-shooting", 10, s8[q], "constant", 0, false, false, "RK8");
+            printf("        RK8     %5d   %17d   %.3e\n", s8[q], 11*s8[q], r.err_est);
+        }
+    }
+    printf("\n     Twenty-two evaluations of RK8 are twenty times more accurate than thirty-two\n");
+    printf("     of RK4, and thirty-three are thirty-four times more accurate than sixty-four.\n");
+    printf("     The reported figure is the error of the trajectory that was returned: a\n");
+    printf("     Richardson difference scaled by 1/(1 - 2^-p), which is why the scheme's order\n");
+    printf("     p has to be known and not assumed.\n");
+
+    printf("\n     What a better integrator does NOT do is make the ANSWER better once the\n");
+    printf("     integrator is no longer the binding error, which on most problems it is not.\n");
+    printf("     The cost of the oscillator problem against its closed form, at twenty\n");
+    printf("     segments:\n\n");
+    printf("        control       steps    RK4            RK8\n");
+    {
+        const double Jo = oscillator_optimum();
+        for (const char* form : { "constant", "quadratic" })
+            for (int st : { 2, 10 }) {
+                Row a = solve_it(3, "multiple-shooting", 20, st, form, 0, false, false, "RK4");
+                Row b = solve_it(3, "multiple-shooting", 20, st, form, 0, false, false, "RK8");
+                printf("        %-12s %5d    %.6e   %.6e\n", form, st,
+                       fabs(a.J-Jo)/Jo, fabs(b.J-Jo)/Jo);
+            }
+    }
+    printf("\n     Under a held control the two rows at ten steps agree to five figures and the\n");
+    printf("     answer is 2.3 per cent from the optimum either way: what limits it is the\n");
+    printf("     control, and no scheme can lift that. Under the quadratic control the two\n");
+    printf("     differ by three orders of magnitude at two steps, because there the\n");
+    printf("     integrator WAS the binding error -- and RK8 reaches in two steps, at\n");
+    printf("     twenty-two evaluations, the floor RK4 needs ten steps and forty to reach.\n");
+    printf("     Raise the order of the integrator to stop the dynamics being the limit;\n");
+    printf("     raise the order of the control to move the limit itself.\n");
 
     printf("\n--------------------------------------------------------------------------------\n");
     printf("  What this transcription does not yet have: automatic mesh refinement, which\n");

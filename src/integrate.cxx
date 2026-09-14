@@ -238,6 +238,87 @@ adouble integrate( adouble (*integrand)(adouble*,adouble*,adouble*,adouble&,adou
 //
 // The control is piecewise constant over the segment, so it is read once and held.
 // ===========================================================================================
+// The two schemes, as Butcher tableaux. Writing the propagation against a tableau rather than
+// unrolling one scheme is what makes a second scheme cost a table instead of a second loop.
+//
+// Classical fourth-order Runge-Kutta.
+static const double ms_rk4_c[4] = { 0.0, 0.5, 0.5, 1.0 };
+static const double ms_rk4_b[4] = { 1.0/6.0, 1.0/3.0, 1.0/3.0, 1.0/6.0 };
+static const double ms_rk4_A[16] = {
+    0.0, 0.0, 0.0, 0.0,
+    0.5, 0.0, 0.0, 0.0,
+    0.0, 0.5, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0 };
+
+// Cooper and Verner's eleven-stage eighth-order formula (SIAM J. Numer. Anal. 9 (3), 1972).
+// Eleven stages is the minimum for order eight, and every coefficient lies in Q(sqrt(21)),
+// so the table is exact rather than a decimal truncation of one.
+//
+// The table was checked before it was used, which for a Runge-Kutta tableau is the whole of
+// the verification problem: a mistyped coefficient gives a scheme of lower order that still
+// converges to the right answer, so it does not fail, it just stops being what it claims to
+// be. Four checks, none of which depends on PSOPT: the row sums equal c to 1.3e-15; sum b is
+// 1 exactly; the linear conditions sum b_i c_i^(k-1) = 1/k hold to round-off for k = 1..8 and
+// fail at k = 9; the stability polynomial matches the exponential series through z^8 and
+// departs at z^9; and the measured order on a nonlinear non-autonomous system, in fifty-digit
+// arithmetic, is 7.914, 7.975, 7.991 for successive halvings.
+static const double MS_S21 = 4.58257569495584000658804719372800848898445657676797190260724212;
+
+static double ms_rk8_c[11];
+static double ms_rk8_b[11];
+static double ms_rk8_A[121];
+static bool   ms_rk8_built = false;
+
+static void ms_build_rk8(void)
+{
+    if (ms_rk8_built) return;
+    const double s = MS_S21;
+    for (int q = 0; q < 121; q++) ms_rk8_A[q] = 0.0;
+    for (int q = 0; q < 11;  q++) { ms_rk8_b[q] = 0.0; ms_rk8_c[q] = 0.0; }
+
+#define AA(i,j) ms_rk8_A[(i)*11 + (j)]
+    ms_rk8_c[1] = 0.5;                 AA(1,0) = 0.5;
+    ms_rk8_c[2] = 0.5;                 AA(2,0) = 0.25;            AA(2,1) = 0.25;
+    ms_rk8_c[3] = (7.0+s)/14.0;        AA(3,0) = 1.0/7.0;         AA(3,1) = (-7.0-3.0*s)/98.0;
+                                       AA(3,2) = (21.0+5.0*s)/49.0;
+    ms_rk8_c[4] = (7.0+s)/14.0;        AA(4,0) = (11.0+s)/84.0;   AA(4,2) = (18.0+4.0*s)/63.0;
+                                       AA(4,3) = (21.0-s)/252.0;
+    ms_rk8_c[5] = 0.5;                 AA(5,0) = (5.0+s)/48.0;    AA(5,2) = (9.0+s)/36.0;
+                                       AA(5,3) = (-231.0+14.0*s)/360.0;
+                                       AA(5,4) = (63.0-7.0*s)/80.0;
+    ms_rk8_c[6] = (7.0-s)/14.0;        AA(6,0) = (10.0-s)/42.0;   AA(6,2) = (-432.0+92.0*s)/315.0;
+                                       AA(6,3) = (633.0-145.0*s)/90.0;
+                                       AA(6,4) = (-504.0+115.0*s)/70.0;
+                                       AA(6,5) = (63.0-13.0*s)/35.0;
+    ms_rk8_c[7] = (7.0-s)/14.0;        AA(7,0) = 1.0/14.0;        AA(7,4) = (14.0-3.0*s)/126.0;
+                                       AA(7,5) = (13.0-3.0*s)/63.0;
+                                       AA(7,6) = 1.0/9.0;
+    ms_rk8_c[8] = 0.5;                 AA(8,0) = 1.0/32.0;        AA(8,4) = (91.0-21.0*s)/576.0;
+                                       AA(8,5) = 11.0/72.0;
+                                       AA(8,6) = (-385.0-75.0*s)/1152.0;
+                                       AA(8,7) = (63.0+13.0*s)/128.0;
+    ms_rk8_c[9] = (7.0+s)/14.0;        AA(9,0) = 1.0/14.0;        AA(9,4) = 1.0/9.0;
+                                       AA(9,5) = (-733.0-147.0*s)/2205.0;
+                                       AA(9,6) = (515.0+111.0*s)/504.0;
+                                       AA(9,7) = (-51.0-11.0*s)/56.0;
+                                       AA(9,8) = (132.0+28.0*s)/245.0;
+    ms_rk8_c[10] = 1.0;                AA(10,4) = (-42.0+7.0*s)/18.0;
+                                       AA(10,5) = (-18.0+28.0*s)/45.0;
+                                       AA(10,6) = (-273.0-53.0*s)/72.0;
+                                       AA(10,7) = (301.0+53.0*s)/72.0;
+                                       AA(10,8) = (28.0-28.0*s)/45.0;
+                                       AA(10,9) = (49.0-7.0*s)/18.0;
+#undef AA
+
+    ms_rk8_b[0]  = 1.0/20.0;
+    ms_rk8_b[7]  = 49.0/180.0;
+    ms_rk8_b[8]  = 16.0/45.0;
+    ms_rk8_b[9]  = 49.0/180.0;
+    ms_rk8_b[10] = 1.0/20.0;
+
+    ms_rk8_built = true;
+}
+
 void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int iphase,
                           adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
                           int nsteps_override,
@@ -257,18 +338,26 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     // the caller -- this is called from inside gg_ad's node loop, which is holding states,
     // controls, derivatives and path across the call -- and borrowing one of them here would
     // corrupt the row being written rather than fail.
+    // The scheme. Everything below is written against the tableau, so RK4 and RK8 differ in
+    // the table and in nothing else.
+    const int     nstg = ms_integrator_stages(algorithm);
+    const double* Atab;
+    const double* btab;
+    const double* ctab;
+    if ( ms_rk8(algorithm) ) { ms_build_rk8(); Atab = ms_rk8_A; btab = ms_rk8_b; ctab = ms_rk8_c; }
+    else                     { Atab = ms_rk4_A; btab = ms_rk4_b; ctab = ms_rk4_c; }
+
     const int npath = problem.phase[i].npath;
     std::vector<adouble> u_( (ncontrols>0) ? ncontrols : 1 );
     std::vector<adouble> xw_(nstates), xstg_(nstates);
-    std::vector<adouble> f1_(nstates), f2_(nstates), f3_(nstates), f4_(nstates);
+    std::vector<adouble> K_(nstg*nstates);
+    std::vector<adouble> Lstg_(nstg);
     std::vector<adouble> pscr_( (npath>0) ? npath : 1 );
     adouble* const u     = u_.data();
     adouble* const xw    = xw_.data();
     adouble* const xstg  = xstg_.data();
-    adouble* const f1    = f1_.data();
-    adouble* const f2    = f2_.data();
-    adouble* const f3    = f3_.data();
-    adouble* const f4    = f4_.data();
+    adouble* const K     = K_.data();
+    adouble* const Lstg  = Lstg_.data();
     adouble* const pscr  = pscr_.data();
 
     // The segment ends. Under a fixed partition these are stored node positions and constants
@@ -341,60 +430,72 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
         sample_step[q] = st;
     }
 
+    // A held control is read once for the whole segment. The varying forms are read at every
+    // stage, which is the only place the stage count reaches the control at all.
+    if ( !varying_u ) eval_u(0.0);
+
     adouble t = tk;
     for (int s = 0; s < nsteps; s++) {
 
-        adouble L1 = 0.0, L2 = 0.0, L3 = 0.0, L4 = 0.0;
+        for (int p = 0; p < nstg; p++) {
 
-        // Local coordinates of the four stages, in [0,1] across the segment.
-        const double sa = ((double) s)/((double) nsteps);
-        const double sm = ((double) s + 0.5)/((double) nsteps);
-        const double sb = ((double) s + 1.0)/((double) nsteps);
+            // Where this stage sits: as a fraction of the SEGMENT, for the control, and as a
+            // time, for the dynamics. The control's coordinate is a fixed double whatever the
+            // segment's physical length turns out to be, which is what keeps a flexible
+            // partition from changing the control's shape as well as its span.
+            const double sp = ( (double) s + ctab[p] )/((double) nsteps);
+            if ( varying_u ) eval_u(sp);
 
-        eval_u(sa);
-        problem.dae(f1, pscr, xw, u, parameters, t, xad, iphase, workspace);
-        if (want_cost && problem.integrand_cost)
-            L1 = problem.integrand_cost(xw, u, parameters, t, xad, iphase, workspace);
+            adouble tp = t + ctab[p]*dt;
 
-        adouble th = t + dt/2.0;
-        if (varying_u) eval_u(sm);
-        for (int j=0;j<nstates;j++) xstg[j] = xw[j] + (dt/2.0)*f1[j];
-        problem.dae(f2, pscr, xstg, u, parameters, th, xad, iphase, workspace);
-        if (want_cost && problem.integrand_cost)
-            L2 = problem.integrand_cost(xstg, u, parameters, th, xad, iphase, workspace);
+            // The stage state. Stage zero has no coefficients at all, so it reads the step's
+            // own state rather than copying it; zero coefficients elsewhere are skipped, which
+            // matters because the eighth-order table is mostly zeros and every skipped term is
+            // a multiplication and an addition that never reach the tape.
+            adouble* xin = xw;
+            if ( p > 0 ) {
+                for (int j=0;j<nstates;j++) xstg[j] = xw[j];
+                for (int m = 0; m < p; m++) {
+                    const double a = Atab[p*nstg + m];
+                    if ( a == 0.0 ) continue;
+                    adouble dta = a*dt;
+                    const adouble* Km = K + m*nstates;
+                    for (int j=0;j<nstates;j++) xstg[j] = xstg[j] + dta*Km[j];
+                }
+                xin = xstg;
+            }
 
-        for (int j=0;j<nstates;j++) xstg[j] = xw[j] + (dt/2.0)*f2[j];
-        problem.dae(f3, pscr, xstg, u, parameters, th, xad, iphase, workspace);
-        if (want_cost && problem.integrand_cost)
-            L3 = problem.integrand_cost(xstg, u, parameters, th, xad, iphase, workspace);
-
-        adouble t1 = t + dt;
-        if (varying_u) eval_u(sb);
-        for (int j=0;j<nstates;j++) xstg[j] = xw[j] + dt*f3[j];
-        problem.dae(f4, pscr, xstg, u, parameters, t1, xad, iphase, workspace);
-        if (want_cost && problem.integrand_cost)
-            L4 = problem.integrand_cost(xstg, u, parameters, t1, xad, iphase, workspace);
+            problem.dae(K + p*nstates, pscr, xin, u, parameters, tp, xad, iphase, workspace);
+            if (want_cost && problem.integrand_cost)
+                Lstg[p] = problem.integrand_cost(xin, u, parameters, tp, xad, iphase, workspace);
+        }
 
         if (workspace->enable_nlp_counters)
-            workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals += 4;
+            workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals += nstg;
 
-        for (int j=0;j<nstates;j++)
-            xw[j] = xw[j] + (dt/6.0)*( f1[j] + 2.0*f2[j] + 2.0*f3[j] + f4[j] );
+        for (int p = 0; p < nstg; p++) {
+            const double bp = btab[p];
+            if ( bp == 0.0 ) continue;
+            adouble dtb = bp*dt;
+            const adouble* Kp = K + p*nstates;
+            for (int j=0;j<nstates;j++) xw[j] = xw[j] + dtb*Kp[j];
+            if (want_cost && problem.integrand_cost) *Lint = *Lint + dtb*Lstg[p];
+        }
 
-        if (want_cost) *Lint = *Lint + (dt/6.0)*( L1 + 2.0*L2 + 2.0*L3 + L4 );
-
-        t = t1;
+        t = t + dt;
 
         for (int q = 0; q < nsamp; q++) {
             if ( sample_step[q] != s+1 ) continue;
             if (xsamp) for (int j=0;j<nstates;j++) xsamp[q*nstates+j] = xw[j];
             if (tsamp) tsamp[q] = t;
-            // u still holds the control at local coordinate sb, which is this step's end and
-            // therefore the sample time: the fourth RK stage was evaluated there. Copying it
-            // rather than re-deriving it is what stops the sampled control and the integrated
-            // control from being two different functions under a parameterisation added later.
-            if (usamp && ncontrols > 0)
+            // The control at the end of this step. The last stage of both tableaux has c = 1,
+            // so u already holds it; deriving it again here is what would let the sampled
+            // control and the integrated control drift apart under a scheme added later, so it
+            // is asked for rather than assumed.
+            if (usamp && ncontrols > 0) {
+                if ( varying_u ) eval_u( ((double) s + 1.0)/((double) nsteps) );
                 for (int c=0;c<ncontrols;c++) usamp[q*ncontrols+c] = u[c];
+            }
         }
     }
 

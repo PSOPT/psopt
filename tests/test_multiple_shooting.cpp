@@ -94,11 +94,13 @@ struct Run {
     int nvars;                  // mesh_stats[0].nvars: the decision vector's actual length
     MatrixXd u_nodes;           // controls at the segment boundaries
     MatrixXd u_hs, t_hs;        // node and midpoint controls interleaved, and their times
+    MatrixXd x_nodes, t_nodes;  // the states at the segment boundaries, and their times
 };
 
 static Run solve(int which, int segments, int steps,
                  const std::string& upar = "constant", int path_samples = 0,
-                 bool flexible_segments = false)
+                 bool flexible_segments = false,
+                 const std::string& integrator = "RK4")
 {
     g_case = which;
 
@@ -166,6 +168,7 @@ static Run solve(int which, int segments, int steps,
     algorithm.ms_control_parameterisation = upar;
     algorithm.ms_path_samples             = path_samples;
     algorithm.ms_flexible_segments        = flexible_segments;
+    algorithm.ms_integrator               = integrator;
 
     out.flag = psopt(solution, problem, algorithm);
     if (out.flag == 0) {
@@ -178,8 +181,53 @@ static Run solve(int which, int segments, int steps,
         out.u_nodes = solution.get_controls_in_phase(1);
         out.u_hs    = solution.get_hs_controls_in_phase(1);
         out.t_hs    = solution.get_hs_time_in_phase(1);
+        out.x_nodes = solution.get_states_in_phase(1);
+        out.t_nodes = solution.get_time_in_phase(1);
     }
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// Case 1's segment map in closed form. xddot = -9x + u with u held over the
+// segment is linear with a constant forcing, so writing y = x1 - u/9 gives
+// ybar'' = -9 ybar and the flow over a span D is
+//
+//     y(D)  =  y_k cos 3D + (x2_k/3) sin 3D,     x2(D) = -3 y_k sin 3D + x2_k cos 3D.
+//
+// This is what makes case 1 the right problem for an integrator test: the true
+// segment map is available without a reference integration, so the scheme's own
+// error can be measured rather than estimated.
+static void exact_segment_map(double x1, double x2, double u, double D,
+                              double& x1e, double& x2e)
+{
+    const double y = x1 - u/9.0;
+    const double s3 = std::sin(3.0*D), c3 = std::cos(3.0*D);
+    x1e = y*c3 + (x2/3.0)*s3 + u/9.0;
+    x2e = -3.0*y*s3 + x2*c3;
+}
+
+// The largest per-segment error of the scheme, in the SAME normalisation PSOPT
+// reports: divided by w_i = max( max_k |x_i(t_k)|, max_k |xdot_i(t_k)| ) + 1.
+// Comparing an estimate with a differently normalised truth measures nothing.
+static double true_relative_local_error(const Run& r, int M)
+{
+    double w1 = 0.0, w2 = 0.0;
+    for (int k = 0; k <= M; k++) {
+        const double uk = r.u_nodes(0, (k < M) ? k : M-1);
+        w1 = std::max(w1, std::max(std::fabs(r.x_nodes(0,k)), std::fabs(r.x_nodes(1,k))));
+        w2 = std::max(w2, std::max(std::fabs(r.x_nodes(1,k)),
+                                   std::fabs(-9.0*r.x_nodes(0,k) + uk)));
+    }
+    w1 += 1.0; w2 += 1.0;
+    double worst = 0.0;
+    for (int k = 0; k < M; k++) {
+        double x1e, x2e;
+        exact_segment_map(r.x_nodes(0,k), r.x_nodes(1,k), r.u_nodes(0,k),
+                          r.t_nodes(0,k+1) - r.t_nodes(0,k), x1e, x2e);
+        worst = std::max(worst, std::max(std::fabs(x1e - r.x_nodes(0,k+1))/w1,
+                                         std::fabs(x2e - r.x_nodes(1,k+1))/w2));
+    }
+    return worst;
 }
 
 static double discrete_optimum(double M) { return 6.0*M*M/(M*M - 1.0); }
@@ -811,4 +859,132 @@ TEST(MultipleShooting, TheParabolaCanLeaveTheControlBounds)
         EXPECT_LE(r.u_hs(0,c),  2.0 + 1.0e-7);
         EXPECT_GE(r.u_hs(0,c), -1.0 - 1.0e-7);
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// A choice of explicit scheme.
+//
+// algorithm.ms_integrator = "RK8" is Cooper and Verner's eleven-stage
+// eighth-order formula. What it is for is not accuracy for its own sake but
+// accuracy per RIGHT-HAND-SIDE EVALUATION: the tape a shooting transcription
+// builds is stages x steps x segments long, and both the memory it occupies and
+// the time to evaluate the constraints are linear in that. Four orders of
+// convergence for 2.75 times the stages is a large trade in the right direction
+// whenever the integrator error matters at all.
+//
+// The scheme's own error is measured here against the closed-form segment map of
+// case 1 rather than against PSOPT's estimate of it, so that the scheme and the
+// estimator are tested separately and neither can excuse the other.
+// ---------------------------------------------------------------------------
+
+// Each scheme has to be measured in the window where its error is above
+// round-off and below saturation, and those windows do not overlap: on this
+// problem RK8 is already at 2e-15 with four steps across a tenth of the horizon,
+// where RK4 still has five useful decades. Measuring both on one configuration
+// would mean measuring one of them on noise.
+static void check_order(const char* scheme, int M, const int* steps, int nsteps,
+                        double lo, double hi)
+{
+    double prev = 0.0;
+    int checked = 0;
+    for (int q = 0; q < nsteps; q++) {
+        const msh::Run r = msh::solve(1, M, steps[q], "constant", 0, false, scheme);
+        ASSERT_EQ(r.flag, 0) << scheme << " failed at " << steps[q] << " steps";
+        const double e = msh::true_relative_local_error(r, M);
+        if ( prev > 0.0 && e > 1.0e-12 ) {
+            const double ratio = prev/e;
+            EXPECT_GT(ratio, lo) << scheme << ", " << steps[q] << " steps: ratio " << ratio;
+            EXPECT_LT(ratio, hi) << scheme << ", " << steps[q] << " steps: ratio " << ratio;
+            checked++;
+        }
+        prev = e;
+    }
+    EXPECT_GT(checked, 0) << scheme << ": every ratio was at the round-off floor, so this "
+        << "measured nothing -- the configuration, not the scheme, is what failed";
+}
+
+TEST(MultipleShooting, TheEighthOrderSchemeConvergesAtEighthOrder)
+{
+    const int s4[3] = { 2, 4, 8 };
+    check_order("RK4", 10, s4, 3, 12.0, 20.0);          // 2^4 = 16
+
+    // A mistyped tableau coefficient does not fail: it gives a scheme of lower
+    // order that still converges to the right answer. This is where it shows.
+    // Two steps across a third of the horizon already leaves RK8 within a factor
+    // of a hundred of round-off, so the window here is one halving wide. One
+    // ratio in [150, 400] separates order eight from every lower order.
+    const int s8[2] = { 1, 2 };
+    check_order("RK8", 3, s8, 2, 150.0, 400.0);         // 2^8 = 256
+}
+
+
+TEST(MultipleShooting, TheEighthOrderSchemeBuysMoreAccuracyPerEvaluation)
+{
+    const int M = 10;
+    // 8 RK4 steps is 32 evaluations per segment; 2 RK8 steps is 22. The cheaper
+    // one has to be the more accurate one, or the scheme is not worth having.
+    const msh::Run r4 = msh::solve(1, M, 8, "constant", 0, false, "RK4");
+    const msh::Run r8 = msh::solve(1, M, 2, "constant", 0, false, "RK8");
+    ASSERT_EQ(r4.flag, 0);
+    ASSERT_EQ(r8.flag, 0);
+
+    const double e4 = msh::true_relative_local_error(r4, M);
+    const double e8 = msh::true_relative_local_error(r8, M);
+
+    EXPECT_LT(e8, e4/10.0)
+        << "RK8 at 22 evaluations per segment gave " << e8
+        << " against RK4 at 32 evaluations giving " << e4;
+}
+
+
+// The estimate has to be the error of the trajectory the user HAS, not of one
+// that was computed to produce it. Writing C h^p for the leading error of a
+// scheme of order p, the difference between the run at h and the run at h/2 is
+// C h^p (2^-p - 1), so the solved run's error is that difference over
+// (1 - 2^-p); dividing by (2^p - 1) instead gives the HALF-STEP run's error,
+// which is smaller by exactly 2^p.
+//
+// That factor was in the code from the day the branch was written and was
+// invisible, because a constant factor leaves every convergence ratio right. It
+// is caught here by comparing against a truth computed outside PSOPT, and the
+// test covers both schemes because the factor is 2^p and therefore differs
+// between them -- 16 and 256.
+TEST(MultipleShooting, TheErrorEstimateIsTheErrorOfTheRunThatWasSolved)
+{
+    struct Cfg { const char* scheme; int M; int steps; };
+    const Cfg cfg[4] = { {"RK4", 10, 2}, {"RK4", 10, 4}, {"RK8", 3, 1}, {"RK8", 3, 2} };
+
+    for (int q = 0; q < 4; q++) {
+        const msh::Run r = msh::solve(1, cfg[q].M, cfg[q].steps, "constant", 0, false,
+                                      cfg[q].scheme);
+        ASSERT_EQ(r.flag, 0) << cfg[q].scheme << " failed at " << cfg[q].steps << " steps";
+        const double truth = msh::true_relative_local_error(r, cfg[q].M);
+        ASSERT_GT(truth, 1.0e-13) << cfg[q].scheme << " at " << cfg[q].steps
+            << " steps is at the round-off floor, so this comparison measures nothing";
+        const double ratio = r.err_est/truth;
+        EXPECT_GT(ratio, 0.8) << cfg[q].scheme << " at " << cfg[q].steps << " steps: reported "
+            << r.err_est << " against a true " << truth;
+        EXPECT_LT(ratio, 1.25) << cfg[q].scheme << " at " << cfg[q].steps << " steps: reported "
+            << r.err_est << " against a true " << truth;
+    }
+}
+
+
+// And the caution that belongs with the option. Raising the order of the
+// integrator improves the ANSWER only where the integrator was the binding
+// error, and under a piecewise-constant control it never is: the control
+// parameterisation caps the cost at O(h^2) and no scheme can lift that.
+TEST(MultipleShooting, AHigherOrderSchemeCannotLiftTheControlParameterisationsCap)
+{
+    const msh::Run c4 = msh::solve(0, 20, 10, "constant", 0, false, "RK4");
+    const msh::Run c8 = msh::solve(0, 20, 10, "constant", 0, false, "RK8");
+    ASSERT_EQ(c4.flag, 0);
+    ASSERT_EQ(c8.flag, 0);
+
+    // The same discrete problem, so the same answer: the segment map of case 0
+    // is a polynomial both schemes integrate exactly.
+    EXPECT_NEAR(c4.J, c8.J, 1.0e-9)
+        << "constant control: RK4 gave " << c4.J << " and RK8 " << c8.J;
+    EXPECT_NEAR(c8.J, msh::discrete_optimum(20), 1.0e-8);
 }

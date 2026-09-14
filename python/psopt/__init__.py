@@ -176,7 +176,8 @@ class Algorithm:
                  ir_element_local_controls=None, ir_flexible_mesh=None,
                  ir_min_element_fraction=None,
                  # multiple-shooting transcription
-                 ms_steps_per_segment=None, ms_control_parameterisation=None,
+                 ms_steps_per_segment=None, ms_integrator=None,
+                 ms_control_parameterisation=None,
                  ms_path_samples=None, ms_flexible_segments=None,
                  ms_min_segment_fraction=None):
         self.collocation_method = collocation_method
@@ -212,6 +213,7 @@ class Algorithm:
         self.ir_flexible_mesh = ir_flexible_mesh
         self.ir_min_element_fraction = ir_min_element_fraction
         self.ms_steps_per_segment = ms_steps_per_segment
+        self.ms_integrator = ms_integrator
         self.ms_control_parameterisation = ms_control_parameterisation
         self.ms_path_samples = ms_path_samples
         self.ms_flexible_segments = ms_flexible_segments
@@ -264,7 +266,8 @@ def _alg_dict(a):
                 "ir_include_path", "ir_path_weight", "ir_residual_scaling",
                 "ir_element_local_controls", "ir_flexible_mesh",
                 "ir_min_element_fraction",
-                "ms_steps_per_segment", "ms_control_parameterisation",
+                "ms_steps_per_segment", "ms_integrator",
+                "ms_control_parameterisation",
                 "ms_path_samples", "ms_flexible_segments",
                 "ms_min_segment_fraction"]
     for k in optional:

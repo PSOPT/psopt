@@ -137,6 +137,9 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
             && algorithm.ms_control_parameterisation != "quadratic" )
           error_message("algorithm.ms_control_parameterisation must be \"constant\", "
                         "\"linear\" or \"quadratic\" ");
+       if ( algorithm.ms_integrator != "RK4" && algorithm.ms_integrator != "RK8" )
+          error_message("algorithm.ms_integrator must be \"RK4\" or \"RK8\": those are the "
+                        "explicit schemes the segment integrator provides ");
        if ( algorithm.ms_path_samples < 0 )
           error_message("algorithm.ms_path_samples must be zero or positive: it is the number "
                         "of interior points per segment at which the path constraints are also "

@@ -524,12 +524,33 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
            // the segment. Interpolating the stored node states, which is what the branch
            // below does, would be measuring the error of a polynomial nobody used.
            //
-           // So the segment is run again at half the step and the two ends compared. For a
-           // scheme of order p the coarse error is (x_fine - x_coarse)/(2^p - 1); RK4 gives
-           // 15. That is Richardson extrapolation used as an estimate rather than as a
-           // correction, which is the standard device and costs one extra propagation per
-           // segment, once, after the solve.
+           // So the segment is run again at half the step and the two ends compared. That is
+           // Richardson extrapolation used as an estimate rather than as a correction, which
+           // is the standard device and costs one extra propagation per segment, once, after
+           // the solve.
+           //
+           // The factor. Writing x_h for the run at the step actually used, x_{h/2} for the
+           // run at half of it and C h^p for the leading error of a scheme of order p,
+           //
+           //     x_{h/2} - x_h = C h^p (2^{-p} - 1),
+           //
+           // so the error OF THE RUN THAT WAS SOLVED is |x_{h/2} - x_h| / (1 - 2^{-p}), and
+           // |x_{h/2} - x_h| / (2^p - 1) is the error of the half-step run -- a trajectory
+           // nobody computed and nobody has. The two differ by exactly 2^p, and dividing by
+           // 2^p - 1 was under-reporting this estimate by a factor of 16 from the day the
+           // branch was written.
+           //
+           // It was invisible while there was one scheme, because a constant factor leaves
+           // every ratio right: the reported error still fell by 16 for each doubling of the
+           // step count, which is the fourth order RK4 must have, and nothing compared its
+           // SIZE against anything. A second scheme is what exposes it -- the factor is 2^p,
+           // so it changes with the scheme, and measured against the true relative local
+           // error on a test problem the old formula gave 0.062 for RK4 and 0.0039 for RK8,
+           // which are 1/16 and 1/256. With the factor below both come out at 1.00.
            const int nsteps = workspace->algorithm->ms_steps_per_segment;
+           const double two_p =
+               std::pow(2.0, (double) ms_integrator_order(*workspace->algorithm));
+           const double richardson_factor = 1.0 - 1.0/two_p;
            std::vector<adouble> xa(nstates), xb(nstates), par_ms;
            par_ms.resize( (problem->phase[iphase-1].nparameters > 0)
                           ? problem->phase[iphase-1].nparameters : 1 );
@@ -539,7 +560,7 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
            ms_propagate_segment(xb.data(), NULL, k, xad, iphase, t0, tf, par_ms.data(),
                                 workspace, 2*nsteps);
            for (int j=0;j<nstates;j++)
-               eta_k(j) = fabs( xb[j].value() - xa[j].value() )/15.0;
+               eta_k(j) = fabs( xb[j].value() - xa[j].value() )/richardson_factor;
       }
       else {
            evaluate_integral_of_differential_error(eta_k,iphase,t1,t2,xad,n, workspace);

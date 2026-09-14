@@ -396,10 +396,32 @@ struct alg_str {
   // finite difference across an adaptive integrator does not have.
   //
   // Cost: the tape grows linearly in this number, and so does the time to evaluate the
-  // constraints. Accuracy: the local error of RK4 is O(dt^5), so doubling it buys a factor
-  // of about thirty-two until round-off. The default of 10 is a starting point, not a
-  // recommendation; a stiff or fast segment needs more.
+  // constraints. Accuracy: the local error of the scheme is O(dt^(p+1)) for order p, so
+  // doubling this buys a factor of 2^p until round-off. The default of 10 is a starting
+  // point, not a recommendation; a stiff or fast segment needs more, and RK8 needs far
+  // fewer -- see ms_integrator.
   int       ms_steps_per_segment;
+
+  // Which explicit Runge-Kutta scheme the segment integrator uses.
+  //
+  // "RK4" (default) is the classical four-stage fourth-order method. "RK8" is Cooper and
+  // Verner's eleven-stage EIGHTH-order formula (Cooper and Verner, SIAM J. Numer. Anal. 9,
+  // 1972), whose coefficients lie in Q(sqrt(21)) and which is the minimum-stage explicit
+  // method of its order.
+  //
+  // What it is for. The cost of a shooting transcription is dominated by the tape: the
+  // number of right-hand-side evaluations per segment is stages x steps, and both the
+  // memory and the constraint-evaluation time are linear in it. RK8 costs 2.75 times as
+  // many stages per step and converges four orders faster, so a given integrator accuracy
+  // is reached in far fewer evaluations -- which is a saving in tape, not merely in
+  // arithmetic. The same argument recommends it whenever the integrator error matters at
+  // all; where it does not, RK4 with a handful of steps is smaller and simpler.
+  //
+  // What it is NOT for. It does not make the ANSWER more accurate once the integrator
+  // error is below the control parameterisation's error, which is where most problems
+  // sit: see ms_control_parameterisation. Raising the order of the integrator when the
+  // control is piecewise constant buys nothing at all.
+  string    ms_integrator;
 
   // The control's shape across a segment. "constant" (default) holds the segment's own
   // control value; "linear" interpolates between the values at the segment's two ends, which
@@ -1738,6 +1760,18 @@ inline bool ms_quadratic_controls(Alg& algorithm)
     return is_multiple_shooting(algorithm)
            && algorithm.ms_control_parameterisation == "quadratic";
 }
+
+// The segment integrator's scheme, as the two numbers every caller actually wants: how many
+// right-hand-side evaluations a step costs, and what power of the step its error falls like.
+// The second is not decoration -- the discretisation-error estimate scales a Richardson
+// difference by 1/(1 - 2^-p), and getting p wrong there is wrong by a factor of 2^p without
+// changing anything a convergence table would notice.
+inline bool ms_rk8(Alg& algorithm)
+{
+    return is_multiple_shooting(algorithm) && algorithm.ms_integrator == "RK8";
+}
+inline int ms_integrator_stages(Alg& algorithm) { return ms_rk8(algorithm) ? 11 : 4; }
+inline int ms_integrator_order (Alg& algorithm) { return ms_rk8(algorithm) ?  8 : 4; }
 
 // Rows a phase spends on path constraints sampled INSIDE its segments. Zero unless multiple
 // shooting is in force with ms_path_samples > 0; the boundary rows are the ordinary
