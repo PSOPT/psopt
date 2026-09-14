@@ -1360,3 +1360,384 @@ TEST(MultipleShooting, TheSolutionDiagnosticsRunAndChangeNothing)
         << "a diagnostic that changes the answer is not a diagnostic: "
         << quiet.J << " against " << loud.J;
 }
+
+
+// ===========================================================================
+// A semi-explicit index-1 DAE, and the half-explicit segment integrator
+// (Phases::nalgebraic).
+//
+//   xdot1 = x2,   xdot2 = u - z,   0 = z^3 + z - x1,
+//   min (1/2) int_0^1 u^2 dt,   (0,0) -> (1,0).
+//
+// Index 1 because dg/dz = 3z^2 + 1 never vanishes, and chosen so that nothing
+// can be smuggled in by hand: z has no closed form in terms of x1, so neither
+// the user nor the test can eliminate it and compare against an ODE.
+//
+// The same user code serves two formulations, which is the point of the
+// declaration -- nalgebraic changes what PSOPT does with the model, not the
+// model:
+//   A  nalgebraic = 0: z is an ordinary control and g = 0 is an equality path
+//      constraint, imposed where the trajectory is a decision variable, which
+//      is the segment boundaries and nowhere else.
+//   C  nalgebraic = 1: the segment integrator solves g = 0 for z at every one
+//      of its own stages.
+// A third formulation, INDEX REDUCTION, carries z as a state with
+// zdot = x2/(3z^2 + 1) and imposes g = 0 once at t0 as an event. It is written
+// here as an independent check: it shares no code path with C inside PSOPT, so
+// the two agreeing is evidence about the method rather than about one
+// implementation of it.
+// ===========================================================================
+namespace msdae {
+
+static int g_form = 0;              // 0 = path constraint or algebraic, 1 = index-reduced
+
+adouble endpoint_cost(adouble*, adouble*, adouble*, adouble&, adouble&, adouble*,
+                      int, Workspace*) { return (adouble) 0.0; }
+adouble integrand_cost(adouble*, adouble* c, adouble*, adouble&, adouble*, int, Workspace*)
+{ return 0.5*c[0]*c[0]; }
+
+void dae(adouble* d, adouble* path, adouble* s, adouble* c, adouble*, adouble&,
+         adouble*, int, Workspace*)
+{
+    if ( g_form == 1 ) {
+        d[0] = s[1];
+        d[1] = c[0] - s[2];
+        d[2] = s[1]/(3.0*s[2]*s[2] + 1.0);      // the differentiated algebraic relation
+    }
+    else {
+        d[0] = s[1];
+        d[1] = c[0] - c[1];
+        path[0] = c[1]*c[1]*c[1] + c[1] - s[0];
+    }
+}
+
+void events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
+            adouble*, int, Workspace*)
+{
+    e[0]=i[0]; e[1]=i[1]; e[2]=f[0]; e[3]=f[1];
+    if ( g_form == 1 ) e[4] = i[2]*i[2]*i[2] + i[2] - i[0];
+}
+
+struct Run { int flag; int rc; double J; int M; int ncons; MatrixXd t, u, x; };
+
+// which: 0 = path constraint, 1 = index-reduced, 2 = nalgebraic = 1.
+static Run solve(int which, int segments, int steps, const char* integrator,
+                 int malg = 4, const char* transcription = "multiple-shooting")
+{
+    g_form = ( which == 1 ) ? 1 : 0;
+    Alg algorithm; Sol solution; Prob problem;
+    Run out; out.flag = -1; out.rc = -99; out.J = 0.0; out.M = 0; out.ncons = 0;
+
+    const bool colloc = ( std::string(transcription) == "collocation" );
+    const int nodes = colloc ? 41 : segments + 1;
+    const int ns = ( which == 1 ) ? 3 : 2;
+    const int nc = ( which == 1 ) ? 1 : 2;
+    const int ne = ( which == 1 ) ? 5 : 4;
+
+    problem.name        = "multiple shooting, index-1 DAE";
+    problem.outfilename = "test_multiple_shooting_dae.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = ns;
+    problem.phases(1).ncontrols = nc;
+    problem.phases(1).nevents   = ne;
+    problem.phases(1).npath     = ( which == 1 ) ? 0 : 1;
+    if ( which == 2 ) problem.phases(1).nalgebraic = 1;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    if ( which == 1 ) {
+        problem.phases(1).bounds.lower.states   << -10.0, -10.0, -10.0;
+        problem.phases(1).bounds.upper.states   <<  10.0,  10.0,  10.0;
+        problem.phases(1).bounds.lower.controls(0) = -100.0;
+        problem.phases(1).bounds.upper.controls(0) =  100.0;
+        problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0, 0.0;
+        problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0, 0.0;
+    }
+    else {
+        problem.phases(1).bounds.lower.states   << -10.0, -10.0;
+        problem.phases(1).bounds.upper.states   <<  10.0,  10.0;
+        problem.phases(1).bounds.lower.controls << -100.0, -10.0;
+        problem.phases(1).bounds.upper.controls <<  100.0,  10.0;
+        problem.phases(1).bounds.lower.path(0)  = 0.0;          // an EQUALITY
+        problem.phases(1).bounds.upper.path(0)  = 0.0;
+        problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0;
+        problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0;
+    }
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0; problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &integrand_cost;
+    problem.endpoint_cost  = &endpoint_cost;
+    problem.dae            = &dae;
+    problem.events         = &events;
+    problem.linkages       = &msh::linkages;
+
+    problem.phases(1).guess.states          = zeros(ns, nodes);
+    problem.phases(1).guess.states.row(0)   = linspace(0.0, 1.0, nodes);
+    problem.phases(1).guess.controls        = zeros(nc, nodes);
+    problem.phases(1).guess.time            = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 3000;
+    algorithm.nlp_tolerance         = 1.0e-11;
+    algorithm.print_level           = 0;
+    algorithm.mesh_refinement       = "manual";
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = transcription;
+    algorithm.ms_steps_per_segment  = steps;
+    algorithm.ms_integrator         = integrator;
+    algorithm.ms_control_parameterisation = "constant";
+    algorithm.ms_algebraic_iterations     = malg;
+
+    out.flag = psopt(solution, problem, algorithm);
+    out.rc   = solution.nlp_return_code;
+    if ( out.flag == 0 ) {
+        out.J     = solution.cost;
+        out.t     = solution.get_time_in_phase(1);
+        out.u     = solution.get_controls_in_phase(1);
+        out.x     = solution.get_states_in_phase(1);
+        out.M     = (int) out.t.cols() - 1;
+        out.ncons = solution.mesh_stats[0].ncons;
+    }
+    return out;
+}
+
+// z solving z^3 + z = x, outside any tape: the truth the trajectory is held to.
+static double z_of(double x)
+{
+    double z = x;
+    for (int it = 0; it < 200; it++) {
+        const double r = z*z*z + z - x, d = 3.0*z*z + 1.0, dz = r/d;
+        z -= dz;
+        if ( std::fabs(dz) < 1.0e-16 ) break;
+    }
+    return z;
+}
+
+// The worst |z^3 + z - x1| along the trajectory the transcription produced,
+// reconstructed at a step far finer than the transcription used. For the path
+// formulation the algebraic variable is a control held across the segment while
+// x1 moves under it; for the declaration it is solved wherever it is needed, so
+// the reconstruction solves it too. That is not a thumb on the scale: it is what
+// the two formulations respectively assert, and the reconstruction has to
+// integrate what each of them actually integrated.
+static double worst_residual(const Run& r, int which)
+{
+    const int NSUB = 400;
+    double worst = 0.0, x1 = r.x(0,0), x2 = r.x(1,0);
+    for (int k = 0; k < r.M; k++) {
+        const double a = r.t(0,k), b = r.t(0,k+1), h = (b-a)/NSUB;
+        const double uk = r.u(0,k), zk = r.u(1,k);
+        for (int s = 0; s < NSUB; s++) {
+            const double zz = ( which == 0 ) ? zk : z_of(x1);
+            worst = std::max( worst, std::fabs(zz*zz*zz + zz - x1) );
+            double k1a,k1b,k2a,k2b,k3a,k3b,k4a,k4b;
+            auto f = [&](double p, double q, double& dp, double& dq) {
+                dp = q; dq = uk - ( (which == 0) ? zk : z_of(p) ); };
+            f(x1,x2,k1a,k1b);                       f(x1+h/2*k1a, x2+h/2*k1b, k2a,k2b);
+            f(x1+h/2*k2a, x2+h/2*k2b, k3a,k3b);     f(x1+h*k3a,   x2+h*k3b,   k4a,k4b);
+            x1 += h/6*(k1a+2*k2a+2*k3a+k4a);
+            x2 += h/6*(k1b+2*k2b+2*k3b+k4b);
+        }
+    }
+    return worst;
+}
+
+} // namespace msdae
+
+
+// ---------------------------------------------------------------------------
+// The declaration is what makes the algebraic relation hold between the
+// boundaries, and the difference is not a matter of accuracy but of kind.
+//
+// Written as a path constraint, g = 0 is imposed at the M+1 places where the
+// trajectory is a decision variable; in between, z is held and x1 moves, so the
+// relation drifts, at FIRST order in the segment width whatever the integrator
+// is doing. Declared, the equation is solved at every stage of every step, so
+// the residual is the inner iteration's and not a quantity that accumulates.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, AnAlgebraicRelationHoldsOnlyAtTheBoundariesUntilItIsDeclared)
+{
+    const msdae::Run path = msdae::solve(0, 10, 20, "RK4");
+    const msdae::Run alg  = msdae::solve(2, 10, 20, "RK4");
+
+    ASSERT_EQ(path.flag, 0) << "IPOPT return code " << path.rc;
+    ASSERT_EQ(alg.flag,  0) << "IPOPT return code " << alg.rc;
+
+    const double dpath = msdae::worst_residual(path, 0);
+    const double dalg  = msdae::worst_residual(alg,  2);
+
+    EXPECT_GT(dpath, 1.0e-2)
+        << "the path formulation is supposed to drift across a segment; it gave " << dpath;
+    EXPECT_LT(dalg, 1.0e-12)
+        << "the declared formulation solves g = 0 wherever z is defined, so the residual "
+           "should be at round-off; it gave " << dalg;
+    EXPECT_LT(dalg, 1.0e-6*dpath);
+}
+
+// ---------------------------------------------------------------------------
+// The strongest check available, because it is not a check against this
+// implementation. Index reduction reaches the same class by a completely
+// different route -- z becomes a state, the algebraic relation becomes an
+// invariant, and nothing in PSOPT's segment integrator is asked to solve
+// anything. If the half-explicit scheme is right, the two must produce the same
+// discrete answer to the accuracy of the integrator, and they do: ten figures.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, TheDeclarationAgreesWithIndexReduction)
+{
+    const msdae::Run red = msdae::solve(1, 10, 20, "RK4");
+    const msdae::Run alg = msdae::solve(2, 10, 20, "RK4");
+
+    ASSERT_EQ(red.flag, 0) << "IPOPT return code " << red.rc;
+    ASSERT_EQ(alg.flag, 0) << "IPOPT return code " << alg.rc;
+
+    EXPECT_NEAR(red.J, alg.J, 1.0e-9)
+        << "index reduction and the half-explicit scheme are two independent ways to the same "
+           "discrete problem and disagree: " << red.J << " against " << alg.J;
+}
+
+// ---------------------------------------------------------------------------
+// The scheme keeps the tableau's order. That is a theorem rather than a hope --
+// for index 1 the algebraic relation defines z = G(x) locally, so a
+// half-explicit method IS the explicit method applied to the reduced ordinary
+// system -- and this is the measurement of it inside PSOPT.
+//
+// The segment count is held fixed so that the control parameterisation's error
+// is fixed with it, and only the step count moves. The reference is the same
+// formulation at a step count fine enough that its own integrator error is
+// below everything being measured.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, TheHalfExplicitSchemeKeepsTheTableausOrder)
+{
+    const msdae::Run fine = msdae::solve(2, 10, 60, "RK8");
+    ASSERT_EQ(fine.flag, 0) << "IPOPT return code " << fine.rc;
+
+    const int steps[3] = { 2, 4, 8 };
+    double err[3];
+    for (int q = 0; q < 3; q++) {
+        const msdae::Run r = msdae::solve(2, 10, steps[q], "RK4");
+        ASSERT_EQ(r.flag, 0) << "IPOPT return code " << r.rc;
+        err[q] = std::fabs(r.J - fine.J);
+    }
+    for (int q = 1; q < 3; q++) {
+        const double ratio = err[q-1]/err[q];
+        EXPECT_GT(ratio,  9.0) << "RK4 on a DAE should still be fourth order; the error fell by "
+                               << ratio << " for a doubling of the step count";
+        EXPECT_LT(ratio, 26.0) << "an error falling faster than the scheme's order means the "
+                                  "reference, not the scheme: ratio " << ratio;
+    }
+
+    // And the eighth-order table reaches, in two steps, an accuracy RK4 does not
+    // reach in eight -- which is the whole argument for having a second scheme,
+    // now available on a class of problem it could not previously carry at all.
+    const msdae::Run r8 = msdae::solve(2, 10, 2, "RK8");
+    ASSERT_EQ(r8.flag, 0) << "IPOPT return code " << r8.rc;
+    EXPECT_LT(std::fabs(r8.J - fine.J), err[2]);
+}
+
+// ---------------------------------------------------------------------------
+// The iteration count is derived, not tuned, and this is the measurement that
+// says so.
+//
+// The stage solve is warm-started from the previous stage, whose algebraic
+// variables differ by O(h), and a secant recurrence e_{k+1} ~ e_k e_{k-1} then
+// gives exponents 1, 2, 3, 5, 8 -- so m iterations support a scheme of order
+// 2, 3, 5, 8 for m = 1, 2, 3, 4. Four is therefore the number for both schemes
+// this transcription has, and a fifth buys nothing because there is nothing
+// left to buy.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, FourUnrolledIterationsAreEnoughAndFewerAreNot)
+{
+    const msdae::Run fine = msdae::solve(2, 10, 60, "RK8");
+    ASSERT_EQ(fine.flag, 0) << "IPOPT return code " << fine.rc;
+
+    double err[7];
+    for (int m = 1; m <= 6; m++) {
+        const msdae::Run r = msdae::solve(2, 10, 4, "RK8", m);
+        ASSERT_EQ(r.flag, 0) << "m = " << m << ", IPOPT return code " << r.rc;
+        err[m] = std::fabs(r.J - fine.J);
+    }
+
+    EXPECT_GT(err[1], err[2]) << "each iteration up to four should buy an order";
+    EXPECT_GT(err[2], err[3]);
+    EXPECT_GT(err[3], err[4]);
+    EXPECT_LT(err[4], 1.0e-11)
+        << "four iterations should carry the eighth-order scheme to its own floor; the error "
+           "was " << err[4];
+    EXPECT_GT(err[2], 1.0e-9)
+        << "two iterations support a third-order scheme and should NOT reach that floor, or "
+           "the test is measuring something other than the iteration count";
+
+    // The fifth and sixth iterations have nothing left to do. This is the
+    // assertion that makes four a derived number rather than a lucky default.
+    EXPECT_LT(std::fabs(err[5] - err[4]), 1.0e-12);
+    EXPECT_LT(std::fabs(err[6] - err[4]), 1.0e-12);
+}
+
+// ---------------------------------------------------------------------------
+// An algebraic variable is not pinned at the terminal node, and the row count
+// is how that is checked.
+//
+// Under a piecewise-constant parameterisation the terminal control slot belongs
+// to no segment and is pinned to its neighbour, because nothing else determines
+// it. An algebraic variable is not in that position: the path row at the
+// terminal node is its own algebraic equation, evaluated at a state that IS a
+// decision variable, so it is already determined. Pinning it as well would be a
+// second equation for a variable that has one -- not a harmless duplicate but a
+// rank deficiency, which is how the same mistake shows up elsewhere in this
+// transcription. Declaring one algebraic variable therefore removes exactly one
+// constraint row and no more.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, AnAlgebraicVariableIsNotPinnedAtTheTerminalNode)
+{
+    const msdae::Run path = msdae::solve(0, 10, 20, "RK4");
+    const msdae::Run alg  = msdae::solve(2, 10, 20, "RK4");
+
+    ASSERT_EQ(path.flag, 0) << "IPOPT return code " << path.rc;
+    ASSERT_EQ(alg.flag,  0) << "IPOPT return code " << alg.rc;
+    EXPECT_EQ(path.ncons - alg.ncons, 1)
+        << "declaring one algebraic variable should drop exactly the one terminal pin row that "
+           "would duplicate its own algebraic equation: " << path.ncons << " rows against "
+        << alg.ncons;
+}
+
+// ---------------------------------------------------------------------------
+// And the answer it converges to is the answer, checked against a transcription
+// that shares nothing with it. Collocation builds the trajectory out of
+// decision variables and imposes g = 0 at every node, which for an index-1
+// system is a perfectly good thing to do; the shooting answer has to converge
+// to the same place as the segment count grows, at the second order a held
+// control gives.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, TheDeclaredDaeConvergesToTheCollocationAnswer)
+{
+    const msdae::Run ref = msdae::solve(0, 0, 0, "RK4", 4, "collocation");
+    ASSERT_EQ(ref.flag, 0) << "IPOPT return code " << ref.rc;
+
+    const int M[3] = { 10, 20, 40 };
+    double err[3];
+    for (int q = 0; q < 3; q++) {
+        const msdae::Run r = msdae::solve(2, M[q], 20, "RK4");
+        ASSERT_EQ(r.flag, 0) << "M = " << M[q] << ", IPOPT return code " << r.rc;
+        err[q] = std::fabs(r.J - ref.J)/std::fabs(ref.J);
+    }
+    EXPECT_LT(err[2], 2.0e-3) << "relative error at forty segments: " << err[2];
+    for (int q = 1; q < 3; q++) {
+        const double ratio = err[q-1]/err[q];
+        EXPECT_GT(ratio, 3.0) << "a held control gives second order in the segment count; the "
+                                 "error fell by " << ratio;
+        EXPECT_LT(ratio, 6.0) << "faster than second order means the reference, not the method: "
+                              << ratio;
+    }
+}

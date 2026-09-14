@@ -74,6 +74,7 @@ static void apply_algorithm(Alg& a, py::dict o) {
     B("ms_flexible_segments", a.ms_flexible_segments);
     D("ms_min_segment_fraction", a.ms_min_segment_fraction);
     D("ms_refine_tolerance", a.ms_refine_tolerance);
+    I("ms_algebraic_iterations", a.ms_algebraic_iterations);
 }
 
 
@@ -161,6 +162,9 @@ static py::dict solve_single_phase(py::dict spec) {
     ph.nparameters = py::cast<int>(spec["nparameters"]);
     ph.nevents     = py::cast<int>(spec["nevents"]);
     ph.npath       = py::cast<int>(spec["npath"]);
+    // The algebraic declaration of a semi-explicit index-1 DAE. A count, like every other
+    // size here; it is read only by the multiple-shooting segment integrator.
+    if (spec.contains("nalgebraic")) ph.nalgebraic = py::cast<int>(spec["nalgebraic"]);
     ph.nobserved   = py::cast<int>(spec["nobserved"]);
     ph.nsamples    = py::cast<int>(spec["nsamples"]);
     {
@@ -287,6 +291,7 @@ static py::dict solve_multiphase(py::dict spec) {
         ph.nparameters = py::cast<int>(p["nparameters"]);
         ph.nevents     = py::cast<int>(p["nevents"]);
         ph.npath       = py::cast<int>(p["npath"]);
+        if (p.contains("nalgebraic")) ph.nalgebraic = py::cast<int>(p["nalgebraic"]);
         auto nodes = py::cast<std::vector<int>>(p["nodes"]);
         ph.nodes.resize(1, (int)nodes.size());
         for (size_t i = 0; i < nodes.size(); ++i) ph.nodes(i) = nodes[i];

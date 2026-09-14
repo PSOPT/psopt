@@ -62,11 +62,17 @@ class _Guess:
 
 class Phase:
     def __init__(self, nstates, ncontrols, nevents=0, npath=0, nparameters=0,
-                 nobserved=0, nsamples=0):
+                 nobserved=0, nsamples=0, nalgebraic=0):
         self.nstates = nstates
         self.ncontrols = ncontrols
         self.nevents = nevents
         self.npath = npath
+        # How many of the controls are the algebraic variables of a semi-explicit index-1
+        # DAE: the LAST nalgebraic controls, determined by the FIRST nalgebraic path
+        # constraints, which must be equalities. Read only by transcription_method =
+        # "multiple-shooting", whose segment integrator then solves them at every stage
+        # instead of holding them across a segment.
+        self.nalgebraic = nalgebraic
         self.nparameters = nparameters
         self.nobserved = nobserved
         self.nsamples = nsamples
@@ -179,7 +185,8 @@ class Algorithm:
                  ms_steps_per_segment=None, ms_integrator=None,
                  ms_control_parameterisation=None,
                  ms_path_samples=None, ms_flexible_segments=None,
-                 ms_min_segment_fraction=None, ms_refine_tolerance=None):
+                 ms_min_segment_fraction=None, ms_refine_tolerance=None,
+                 ms_algebraic_iterations=None):
         self.collocation_method = collocation_method
         self.nlp_method = nlp_method
         self.derivatives = derivatives
@@ -219,6 +226,7 @@ class Algorithm:
         self.ms_flexible_segments = ms_flexible_segments
         self.ms_min_segment_fraction = ms_min_segment_fraction
         self.ms_refine_tolerance = ms_refine_tolerance
+        self.ms_algebraic_iterations = ms_algebraic_iterations
 
 
 def _col(a):
@@ -229,6 +237,7 @@ def _phase_dict(ph):
     return {
         "nstates": ph.nstates, "ncontrols": ph.ncontrols, "nparameters": ph.nparameters,
         "nevents": ph.nevents, "npath": ph.npath, "nodes": list(ph.nodes),
+        "nalgebraic": getattr(ph, "nalgebraic", 0),
         "states_lower": list(map(float, ph.bounds.lower.states)),
         "states_upper": list(map(float, ph.bounds.upper.states)),
         "controls_lower": list(map(float, ph.bounds.lower.controls or [])),
@@ -270,7 +279,8 @@ def _alg_dict(a):
                 "ms_steps_per_segment", "ms_integrator",
                 "ms_control_parameterisation",
                 "ms_path_samples", "ms_flexible_segments",
-                "ms_min_segment_fraction", "ms_refine_tolerance"]
+                "ms_min_segment_fraction", "ms_refine_tolerance",
+                "ms_algebraic_iterations"]
     for k in optional:
         v = getattr(a, k, None)
         if v is not None:
@@ -336,8 +346,9 @@ class Problem:
         self._links = []
 
     def add_phase(self, nstates, ncontrols, nevents=0, npath=0, nparameters=0,
-                  nobserved=0, nsamples=0):
-        ph = Phase(nstates, ncontrols, nevents, npath, nparameters, nobserved, nsamples)
+                  nobserved=0, nsamples=0, nalgebraic=0):
+        ph = Phase(nstates, ncontrols, nevents, npath, nparameters, nobserved, nsamples,
+                   nalgebraic)
         self._phases.append(ph)
         return ph
 

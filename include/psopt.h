@@ -488,6 +488,32 @@ struct alg_str {
   // where nothing is enforcing it. Default 1e-3.
   double    ms_refine_tolerance;
 
+  // How many iterations the half-explicit scheme spends solving a phase's algebraic
+  // equations at each stage, when Phases::nalgebraic is set. Default 4, and the number is
+  // derived rather than tuned.
+  //
+  // The iteration is Broyden's, which needs no derivative of the algebraic equations and so
+  // adds nothing to differentiate; the count is FIXED and unrolled, which is what lets the
+  // tape record it. A loop whose length depends on the values could not be taped, and worse,
+  // would make the constraint function non-smooth in the decision variables -- the same
+  // objection that rules out an adaptive step inside the propagation, and Bock's reason for
+  // freezing the discretisation.
+  //
+  // Why four. The stage solve is warm-started from the previous stage, whose algebraic
+  // variables differ by O(h), and the secant recurrence e_{k+1} ~ e_k e_{k-1} then gives
+  // exponents 1, 2, 3, 5, 8 -- so m iterations support a scheme of order 2, 3, 5, 8 for
+  // m = 1, 2, 3, 4. Measured on a nonlinear index-1 problem in fifty-digit arithmetic, the
+  // observed order of the half-explicit eighth-order scheme is 2.00, 3.00, 5.01, 8.10 for
+  // those four counts, and four reproduces the exact-stage-solve error to six significant
+  // figures at every step count. Four therefore serves both schemes this transcription has.
+  //
+  // The count does NOT have to grow with the number of algebraic components: measured at one,
+  // two and three coupled components, four iterations give the full eighth order in each.
+  // That is true only because the Broyden update is guarded -- see the note in
+  // ms_solve_algebraic. Without the guard the two-component case stalls, which looks exactly
+  // like a count that needs to grow and is not.
+  int       ms_algebraic_iterations;
+
   int       ir_residual_nodes;      // Gauss-Legendre residual-quadrature points per interval
                                     // (integrated-residual transcription; default 4)
   double    ir_regularization;      // weight rho on integral(||xdot-f||^2) added to the
@@ -761,6 +787,29 @@ struct phases_str {
    int nevents;
 
    int npath;
+
+   // How many of this phase's controls are the ALGEBRAIC VARIABLES of a semi-explicit
+   // index-1 DAE, rather than controls the optimiser is free to choose. Default 0, which is
+   // every problem PSOPT has ever run.
+   //
+   // The convention is a count and not a list, like every other size in this structure: the
+   // LAST nalgebraic of the ncontrols are the algebraic variables, and the FIRST nalgebraic
+   // of the npath constraints are the algebraic equations that determine them. Those path
+   // components must be equalities. So a problem already written the obvious way -- the
+   // algebraic variable carried as a control, its equation written as an equality path
+   // constraint -- becomes a genuine DAE by setting one number, and nothing else about it
+   // changes.
+   //
+   // What changes is what happens BETWEEN the segment boundaries. Written as a path
+   // constraint alone, the equation holds where the trajectory is a decision variable and
+   // nowhere else, so the algebraic relation drifts across a segment at first order in the
+   // step, and the answer is wrong in its first significant figure at ten segments. Declared
+   // here, the segment integrator solves the equation at every one of its own stages, which
+   // is the half-explicit scheme: the algebraic relation then holds wherever the algebraic
+   // variable is defined at all, by construction rather than to an order.
+   //
+   // Only the multiple-shooting transcription reads this; validate refuses it elsewhere.
+   int nalgebraic;
 
    int current_number_of_intervals;
 
@@ -1822,16 +1871,36 @@ inline int ms_interior_path_rows(int norder, int nsamplable, Alg& algorithm)
     return nsamplable*norder*algorithm.ms_path_samples;
 }
 
+// How many of a phase's controls are the algebraic variables of a semi-explicit index-1 DAE.
+// Zero unless multiple shooting is in force, because no other transcription reads the field
+// and a stale value must not change a layout elsewhere.
+inline int ms_algebraic_vars(Prob& problem, int iphase_index, Alg& algorithm)
+{
+    if ( !is_multiple_shooting(algorithm) ) return 0;
+    const int n = problem.phase[iphase_index].nalgebraic;
+    return ( n > 0 ) ? n : 0;
+}
+
 // The terminal control belongs to no segment under a piecewise-CONSTANT parameterisation and
 // is pinned to its neighbour; under the linear and quadratic ones the last segment reads the
 // terminal node's control as its right-hand value, so every slot is read and there is nothing
 // to pin. One row per control, or none.
-inline int ms_terminal_pin_rows(int ncontrols, Alg& algorithm)
+//
+// An ALGEBRAIC component is never pinned, at either end. Its terminal value is already
+// determined -- the path row at the terminal node is its own algebraic equation, evaluated at
+// a state that IS a decision variable -- so a pin there would be a second equation for a
+// variable that already has one, which is not a harmless duplicate but a rank deficiency: the
+// multipliers stop being unique and the solve fails or wanders. That is the terminal
+// path-row duplication this transcription already has under a control-only path constraint,
+// arriving by a different door, and here it can be avoided exactly because the declaration
+// says which components are algebraic. Pass ncontrols - nalgebraic; the algebraic components
+// are the last ones, so the pin's loop over the first rows needs no other change.
+inline int ms_terminal_pin_rows(int ncontrols_pinnable, Alg& algorithm)
 {
-    if ( !is_multiple_shooting(algorithm) ) return 0;
-    if ( ms_linear_controls(algorithm) )    return 0;
-    if ( ms_quadratic_controls(algorithm) ) return 0;
-    return ncontrols;
+    if ( !is_multiple_shooting(algorithm) )  return 0;
+    if ( ms_linear_controls(algorithm) )     return 0;
+    if ( ms_quadratic_controls(algorithm) )  return 0;
+    return ( ncontrols_pinnable > 0 ) ? ncontrols_pinnable : 0;
 }
 
 // The polynomial degree of the control across a segment: 0, 1 or 2 for the three forms.

@@ -52,6 +52,7 @@ void psopt_level1_setup(Prob& problem)
        problem.phase[i].scale.time = 1.0;
        problem.phase[i].nparameters = 0;
        problem.phase[i].nobserved   = 0;
+       problem.phase[i].nalgebraic  = 0;
        problem.phase[i].nsamples    = 0;
        problem.phase[i].zero_cost_integrand = false;
        problem.phase[i].regularization_factor = 0.0;
@@ -184,6 +185,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.ms_path_samples             = 0;
   algorithm.ms_flexible_segments        = false;
   algorithm.ms_min_segment_fraction     = 0.8;
+  algorithm.ms_algebraic_iterations     = 4;
   algorithm.ir_residual_nodes           = 4;
   algorithm.ir_regularization           = 0.0;
   algorithm.ir_objective                = "residual";

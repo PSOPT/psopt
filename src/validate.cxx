@@ -144,6 +144,52 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
           error_message("algorithm.ms_path_samples must be zero or positive: it is the number "
                         "of interior points per segment at which the path constraints are also "
                         "enforced ");
+       if ( algorithm.ms_algebraic_iterations < 1 )
+          error_message("algorithm.ms_algebraic_iterations must be at least 1: it is the fixed, "
+                        "unrolled number of Broyden iterations the half-explicit scheme spends "
+                        "on a phase's algebraic equations at each stage ");
+
+       // The algebraic declaration. Every check here is a sizing statement the user can get
+       // wrong silently, and a half-explicit scheme that solves the wrong rows or reads the
+       // wrong controls does not fail -- it returns a plausible answer to a different problem.
+       for (i = 0; i < problem.nphases; i++) {
+          const int nalg = problem.phase[i].nalgebraic;
+          if ( nalg == 0 ) continue;
+          if ( nalg < 0 )
+             error_message("problem.phases(i).nalgebraic must not be negative: it is how many of "
+                           "the phase's controls are the algebraic variables of a semi-explicit "
+                           "index-1 DAE ");
+          if ( nalg > problem.phase[i].ncontrols )
+             error_message("problem.phases(i).nalgebraic exceeds the phase's ncontrols: the "
+                           "algebraic variables are carried as the LAST nalgebraic controls, so "
+                           "there have to be that many ");
+          if ( nalg > problem.phase[i].npath )
+             error_message("problem.phases(i).nalgebraic exceeds the phase's npath: the algebraic "
+                           "equations are the FIRST nalgebraic path constraints, so there have to "
+                           "be that many ");
+          for (int j = 0; j < nalg; j++) {
+             if ( (problem.phase[i].bounds.lower.path)(j) != (problem.phase[i].bounds.upper.path)(j) )
+                error_message("the first nalgebraic path constraints of a phase that declares "
+                              "nalgebraic must be EQUALITIES -- equal lower and upper bounds. "
+                              "They are the algebraic equations of the DAE, solved for the "
+                              "algebraic variables at every stage of the segment integrator; an "
+                              "inequality has no solution to be solved for ");
+          }
+          // Half-explicit is explicit in the differential part and inherits its stability
+          // restriction exactly. Saying so here is the difference between a user reaching for
+          // this because their system is a DAE, which it serves, and reaching for it because
+          // their system is stiff, which it does not.
+          snprintf(workspace->text, sizeof(workspace->text),
+             "\n>>> Note: phase %d declares %d algebraic variable(s); the segment integrator is "
+             "\n>>> half-explicit and solves the first %d path constraint(s) for the last %d "
+             "\n>>> control(s) at every stage, with %d unrolled Broyden iterations. The algebraic"
+             "\n>>> relation then holds wherever those variables are defined, rather than only at"
+             "\n>>> the segment boundaries, and the scheme keeps the order of ms_integrator."
+             "\n>>> The differential part stays EXPLICIT, so this does nothing for a STIFF"
+             "\n>>> system: it adds a class of problem, not a stability region.\n",
+             i+1, nalg, nalg, nalg, algorithm.ms_algebraic_iterations);
+          psopt_print(workspace, workspace->text);
+       }
        // Equality path components are not sampled inside the segments, and a user who set
        // ms_path_samples expecting them to be should hear it from PSOPT rather than from a
        // return code. See ms_samplable_path_indices for why they cannot be.
@@ -226,6 +272,22 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        // transcription at all: it re-tapes the constraints at the final iterate and factorises
        // them, which is the same question whatever wrote the rows. solution_diagnostics says
        // which pieces do not apply here rather than being refused wholesale.
+    }
+    // nalgebraic is read by the segment integrator and by nothing else. Every other
+    // transcription builds the trajectory out of decision variables, so an algebraic relation
+    // there is an ordinary equality path constraint imposed at every node and needs no
+    // declaration -- and accepting a number that changes nothing would be the worse outcome,
+    // since the user would believe a DAE was being solved.
+    if ( !is_multiple_shooting(algorithm) ) {
+       for (i = 0; i < problem.nphases; i++)
+          if ( problem.phase[i].nalgebraic > 0 )
+             error_message("problem.phases(i).nalgebraic is read only by "
+                           "transcription_method = \"multiple-shooting\", whose segment "
+                           "integrator solves the algebraic equations at each of its own "
+                           "stages. Under collocation or the integrated residual the "
+                           "trajectory is made of decision variables and an algebraic relation "
+                           "is an ordinary equality path constraint at every node, so leave "
+                           "nalgebraic at zero ");
     }
     if (algorithm.transcription_method == "integrated-residual") {
        if (algorithm.collocation_method != "Hermite-Simpson")

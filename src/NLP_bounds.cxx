@@ -330,7 +330,8 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
         if ( is_multiple_shooting(*algorithm) ) {
             int ncontrols = problem->phase[i].ncontrols;
             int base      = lam_phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
-            const int npin = ms_terminal_pin_rows(ncontrols, *algorithm);
+            const int npin = ms_terminal_pin_rows(ncontrols
+                             - ms_algebraic_vars(*problem, i, *algorithm), *algorithm);
             for (int l2=0; l2<npin; l2++) { g_l[base+l2] = 0.0; g_u[base+l2] = 0.0; }
             base += npin;
             // Inequality components only, and in the same order the constraint rows are

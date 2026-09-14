@@ -757,7 +757,8 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
         if ( workspace->differential_defects == "multiple-shooting" ) {
             int ncontrols = problem->phase[i].ncontrols;
             int base      = phase_offset + nstates*(norder+1) + nevents + npath*(norder+1);
-            const int npin = ms_terminal_pin_rows(ncontrols, *algorithm);
+            const int npin = ms_terminal_pin_rows(ncontrols
+                                   - ms_algebraic_vars(*problem, i, *algorithm), *algorithm);
             if ( npin > 0 ) {
                 if ( norder >= 1 ) {
                     adouble* u_last = workspace->controls[i].get();

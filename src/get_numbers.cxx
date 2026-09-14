@@ -192,7 +192,8 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
        // get_max_number_nlp_vars about this function being the layout written twice.
        if ( flexible_partition_active(algorithm) ) nlp_ncons += 1;
        if ( is_multiple_shooting(algorithm) ) {
-           nlp_ncons += ms_terminal_pin_rows(problem.phase[i].ncontrols, algorithm);
+           nlp_ncons += ms_terminal_pin_rows(problem.phase[i].ncontrols
+                                             - ms_algebraic_vars(problem, i, algorithm), algorithm);
            nlp_ncons += ms_interior_path_rows(max_nodes,
                              ms_samplable_path_components(problem, i), algorithm);
        }
@@ -388,7 +389,9 @@ int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
         // the segment that ends there -- the same slot, and the same remedy, that Radau's
         // non-collocated terminal node uses. Under the linear parameterisation every slot is
         // read and there is nothing to pin.
-        ncons_phase_i += ms_terminal_pin_rows(problem.phase[i].ncontrols, *workspace->algorithm);
+        ncons_phase_i += ms_terminal_pin_rows(problem.phase[i].ncontrols
+                              - ms_algebraic_vars(problem, i, *workspace->algorithm),
+                              *workspace->algorithm);
 
         // Path constraints sampled inside the segments, which is what makes them mean what
         // the user wrote rather than what holds at the boundaries.

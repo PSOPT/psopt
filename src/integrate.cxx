@@ -361,6 +361,184 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     adouble* const Lstg  = Lstg_.data();
     adouble* const pscr  = pscr_.data();
 
+    // ===================================================================================
+    // The algebraic block, when this phase declares one: the half-explicit scheme.
+    //
+    // For a semi-explicit index-1 system xdot = f(x,z,u,t), 0 = g(x,z,u,t), the differential
+    // part of a stage is EXPLICIT -- the stage state is known from stages already taken --
+    // so the only thing left to determine is z, and it is determined by n_z equations in n_z
+    // unknowns and nothing else. That is the whole of the method.
+    //
+    // It keeps the tableau's own order, and that is a theorem rather than a hope. Index 1
+    // means dg/dz is nonsingular, so the algebraic relation defines z = G(x,u,t) locally, and
+    // an explicit Runge-Kutta applied to the REDUCED ordinary system xdot = f(x,G(x,u,t),u,t)
+    // produces exactly the stage sequence written below. The two are the same computation,
+    // not an approximation of one another, so RK8 carries a DAE at eighth order on the day it
+    // carries an ODE at eighth order. Measured, in fifty-digit arithmetic outside PSOPT:
+    // 8.40, 8.30, 8.18, 8.10 for successive halvings against the tableau's 8, and 4.16, 4.08,
+    // 4.04, 4.02 against RK4's 4.
+    //
+    // And there is no drift. The algebraic relation is not an invariant that the integrator
+    // is asked to preserve, it is an equation solved wherever z is defined at all, so |g| is
+    // the inner iteration's residual and not a quantity that grows along the trajectory.
+    // That is the structural difference from index reduction, which is the other way to reach
+    // this class and leaves |g| to the integrator's own error.
+    // ===================================================================================
+    const int nalg    = ms_algebraic_vars(problem, i, algorithm);
+    const int nfree_u = ncontrols - nalg;          // the controls the optimiser actually chooses
+    int malg = algorithm.ms_algebraic_iterations;
+    if ( malg < 1 ) malg = 1;
+
+    std::vector<adouble> gres_( (nalg>0) ? nalg : 1 );
+    std::vector<adouble> gnew_( (nalg>0) ? nalg : 1 );
+    std::vector<adouble> Jb_  ( (nalg>0) ? nalg*nalg : 1 );
+    std::vector<adouble> Jw_  ( (nalg>0) ? nalg*(nalg+1) : 1 );
+    std::vector<adouble> dz_  ( (nalg>0) ? nalg : 1 );
+    std::vector<adouble> Kscr_( (nalg>0) ? nstates : 1 );
+    std::vector<double>  gtar_( (nalg>0) ? nalg : 1, 0.0 );
+    // The target is the path component's own bound rather than zero, so that a user who
+    // writes the algebraic relation as g = c rather than g = 0 gets the equation solved
+    // and not a different one. validate has already required lower == upper on these.
+    for (int j = 0; j < nalg; j++) gtar_[j] = (problem.phase[i].bounds.lower.path)(j);
+    bool alg_seeded = false;
+
+    // The residual of the algebraic equations at the current (xin, u, tp). Every evaluation
+    // costs a full call of the user's dae, because the user's dae computes the derivatives
+    // and the path together; that is the price of the method and it is why the iteration
+    // count matters. The derivative buffer is scratch here -- the stage's own derivatives are
+    // taken from the LAST call, made after z has converged.
+    auto alg_residual = [&](adouble* xin, adouble& tp, adouble* r) {
+        problem.dae(Kscr_.data(), pscr, xin, u, parameters, tp, xad, iphase, workspace);
+        for (int j = 0; j < nalg; j++) r[j] = pscr[j] - gtar_[j];
+    };
+
+    // Dense solve of Jb dz = r. Gaussian elimination with partial pivoting, the pivot chosen
+    // on the taping-point values -- the same standing caveat any branch in a user's dae
+    // carries, and harmless here because the pivot order only reorders exact arithmetic.
+    auto alg_solve = [&](const adouble* J, const adouble* r, adouble* dz) {
+        if ( nalg == 1 ) { dz[0] = r[0]/J[0]; return; }
+        const int n = nalg;
+        adouble* M = Jw_.data();
+        for (int p = 0; p < n; p++) {
+            for (int q = 0; q < n; q++) M[p*(n+1)+q] = J[p*n+q];
+            M[p*(n+1)+n] = r[p];
+        }
+        for (int col = 0; col < n; col++) {
+            int piv = col; double best = fabs( M[col*(n+1)+col].value() );
+            for (int rr = col+1; rr < n; rr++) {
+                const double v = fabs( M[rr*(n+1)+col].value() );
+                if ( v > best ) { best = v; piv = rr; }
+            }
+            if ( piv != col )
+                for (int cc = col; cc <= n; cc++) {
+                    adouble tmp = M[col*(n+1)+cc];
+                    M[col*(n+1)+cc] = M[piv*(n+1)+cc];
+                    M[piv*(n+1)+cc] = tmp;
+                }
+            for (int rr = col+1; rr < n; rr++) {
+                adouble fct = M[rr*(n+1)+col]/M[col*(n+1)+col];
+                for (int cc = col; cc <= n; cc++)
+                    M[rr*(n+1)+cc] = M[rr*(n+1)+cc] - fct*M[col*(n+1)+cc];
+            }
+        }
+        for (int rr = n-1; rr >= 0; rr--) {
+            adouble s = M[rr*(n+1)+n];
+            for (int cc = rr+1; cc < n; cc++) s = s - M[rr*(n+1)+cc]*dz[cc];
+            dz[rr] = s/M[rr*(n+1)+rr];
+        }
+    };
+
+    // The stage solve: a FIXED, unrolled number of Broyden iterations.
+    //
+    // Fixed is the point. A loop whose length depends on the values cannot be taped, and --
+    // the deeper objection -- would make the constraint function non-smooth in the decision
+    // variables, because a convergence test flipping as the iterate moves changes the discrete
+    // map the matching condition is written on. What is taped here is a fixed sequence of
+    // arithmetic, so the derivative that comes back is the derivative of what was computed.
+    // That is Bock's internal numerical differentiation applied one level further in.
+    //
+    // Broyden rather than Newton because Broyden needs no derivative of g: it builds its slope
+    // from function values alone, so nothing inside the iteration has to be differentiated and
+    // the nesting that a DAE capability is usually said to require never arises. The slope is
+    // seeded once per segment by finite differences and updated thereafter; the seed's quality
+    // does not matter -- measured, an identity seed gives the same answer to every digit --
+    // because the updates correct it within an iteration.
+    //
+    // THE UPDATE IS DAMPED, and the damping is not a nicety. Once the iteration has converged
+    // the step and the residual difference are both at round-off, and the update divides one
+    // by the square of the other: undamped it replaces a good slope with noise. The symptom is
+    // a count that appears to need to grow with the number of algebraic components --
+    // measured, two coupled components stalled at four iterations and looked as though they
+    // wanted five. Damped, four iterations give the full eighth order at one, two and three
+    // components alike. It is written as arithmetic rather than a branch for a reason that is
+    // specific to a taped computation; see the note at the update itself.
+    auto solve_algebraic = [&](adouble* xin, adouble& tp) {
+        if ( nalg <= 0 ) return;
+        adouble* const r  = gres_.data();
+        adouble* const rn = gnew_.data();
+        adouble* const J  = Jb_.data();
+        adouble* const dz = dz_.data();
+
+        alg_residual(xin, tp, r);
+
+        if ( !alg_seeded ) {
+            for (int q = 0; q < nalg; q++) {
+                const double zq = u[nfree_u+q].value();
+                const double dl = 1.0e-7*(1.0 + fabs(zq));
+                u[nfree_u+q] = u[nfree_u+q] + dl;
+                alg_residual(xin, tp, rn);
+                u[nfree_u+q] = u[nfree_u+q] - dl;
+                for (int p = 0; p < nalg; p++) J[p*nalg+q] = (rn[p] - r[p])/dl;
+            }
+            alg_seeded = true;
+            if (workspace->enable_nlp_counters)
+                workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ]
+                    .n_ode_rhs_evals += nalg;
+        }
+
+        for (int it = 0; it < malg; it++) {
+            alg_solve(J, r, dz);
+            for (int j = 0; j < nalg; j++) u[nfree_u+j] = u[nfree_u+j] - dz[j];
+            alg_residual(xin, tp, rn);
+
+            // Broyden's first update with Delta z = -dz:
+            //   J <- J + ((rn - r) + J dz)(-dz)^T/(||dz||^2 + eps)
+            //
+            // The eps is the whole of the guard, and it is arithmetic rather than a branch on
+            // purpose. Once the iteration has converged, dz and (rn - r) are both at round-off
+            // and the quotient is noise of order one, which replaces a good slope with a bad
+            // one. A BRANCH cannot guard that: the condition is false at the taping point,
+            // where the iterate is far from any solution, and true later -- so the tape would
+            // record the unguarded division and then perform it at exactly the iterates where
+            // it is unsafe. Measured, that is not a small effect: the cost stopped converging
+            // in the step count and moved in the wrong direction.
+            //
+            // eps = (1e-8)^2 (1 + ||z||^2) leaves the update untouched wherever ||dz|| is
+            // larger than about 1e-8 times the variable's own size, which covers every
+            // iteration that is still making progress, and damps it smoothly to nothing below
+            // that. The slope then stops improving at a relative accuracy of about 1e-8, which
+            // is enough to carry the remaining iterations to machine precision.
+            adouble s2 = 1.0e-16, z2 = 0.0;
+            for (int j = 0; j < nalg; j++) {
+                s2 = s2 + dz[j]*dz[j];
+                z2 = z2 + u[nfree_u+j]*u[nfree_u+j];
+            }
+            s2 = s2 + 1.0e-16*z2;
+            for (int p = 0; p < nalg; p++) {
+                adouble Jd = 0.0;
+                for (int q = 0; q < nalg; q++) Jd = Jd + J[p*nalg+q]*dz[q];
+                adouble num = rn[p] - r[p] + Jd;
+                for (int q = 0; q < nalg; q++)
+                    J[p*nalg+q] = J[p*nalg+q] - num*dz[q]/s2;
+            }
+            for (int j = 0; j < nalg; j++) r[j] = rn[j];
+        }
+
+        if (workspace->enable_nlp_counters)
+            workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ]
+                .n_ode_rhs_evals += malg + 1;
+    };
+
     // The segment ends. Under a fixed partition these are stored node positions and constants
     // to the tape; under a flexible one they are expressions in the segment widths, and the
     // whole of the segment -- its duration, its step length, every stage time inside it, and
@@ -399,19 +577,27 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     // cannot drift apart. The quadratic weights are the same three Lagrange factors
     // get_interpolated_control uses, which is what makes the reported control the control the
     // integrator actually saw.
+    //
+    // The algebraic components are NOT parameterised. They are the last nfree_u..ncontrols-1
+    // slots, they are solved at every stage, and interpolating them between the node values
+    // would be exactly the approximation this method exists to remove -- an algebraic variable
+    // held or ramped across a segment while the state moves under it is the path-constraint
+    // formulation, drifting at first order. So eval_u writes the free controls only, and the
+    // algebraic slots carry the last solved value forward as the next stage's warm start.
+    const int nparam_u = ( nalg > 0 ) ? nfree_u : ncontrols;
     auto eval_u = [&](double s) {
-        if (ncontrols <= 0) return;
+        if (nparam_u <= 0) return;
         if (quad_u) {
             const double w0 = (2.0*s-1.0)*(s-1.0);
             const double wm = 4.0*s*(1.0-s);
             const double w1 = s*(2.0*s-1.0);
-            for (int c=0;c<ncontrols;c++) u[c] = w0*u0_[c] + wm*um_[c] + w1*u1_[c];
+            for (int c=0;c<nparam_u;c++) u[c] = w0*u0_[c] + wm*um_[c] + w1*u1_[c];
         }
         else if (linear_u) {
-            for (int c=0;c<ncontrols;c++) u[c] = (1.0-s)*u0_[c] + s*u1_[c];
+            for (int c=0;c<nparam_u;c++) u[c] = (1.0-s)*u0_[c] + s*u1_[c];
         }
         else {
-            for (int c=0;c<ncontrols;c++) u[c] = u0_[c];
+            for (int c=0;c<nparam_u;c++) u[c] = u0_[c];
         }
     };
 
@@ -444,6 +630,12 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     // stage, which is the only place the stage count reaches the control at all.
     if ( !varying_u ) eval_u(0.0);
 
+    // The algebraic variables start from the segment's own start node, where they are decision
+    // variables whose path row IS their algebraic equation -- so at a solution the warm start
+    // is exact, and the finite-difference seed for the slope is taken at a point where the
+    // residual is zero.
+    for (int j = 0; j < nalg; j++) u[nfree_u+j] = u0_[nfree_u+j];
+
     adouble t = tk;
     for (int s = 0; s < nsteps; s++) {
 
@@ -475,6 +667,11 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
                 xin = xstg;
             }
 
+            // The algebraic variables first, then the derivatives at the point they define.
+            // The order matters: f is evaluated at the z that satisfies g, never the other
+            // way round, which is what makes the stage a point of the reduced system.
+            if ( nalg > 0 ) solve_algebraic(xin, tp);
+
             problem.dae(K + p*nstates, pscr, xin, u, parameters, tp, xad, iphase, workspace);
             if (want_cost && problem.integrand_cost)
                 Lstg[p] = problem.integrand_cost(xin, u, parameters, tp, xad, iphase, workspace);
@@ -504,6 +701,13 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
             // is asked for rather than assumed.
             if (usamp && ncontrols > 0) {
                 if ( varying_u ) eval_u( ((double) s + 1.0)/((double) nsteps) );
+                // The algebraic variables at a sample belong to the state at the sample, and
+                // the state at the END of a step is not any stage's state -- it is the
+                // b-weighted combination of them -- so the last stage's z does not answer for
+                // it. Solved again here, at the point the sample actually is. A path
+                // constraint imposed at a sample would otherwise be imposed at a z that
+                // satisfies g nowhere.
+                if ( nalg > 0 ) solve_algebraic(xw, t);
                 for (int c=0;c<ncontrols;c++) usamp[q*ncontrols+c] = u[c];
             }
         }

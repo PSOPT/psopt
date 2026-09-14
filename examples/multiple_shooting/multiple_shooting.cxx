@@ -46,6 +46,7 @@
 #include <cstdio>
 #include <cmath>
 
+#include <cstring>
 using namespace PSOPT;
 
 //////////////////////////////////////////////////////////////////////////
@@ -260,6 +261,173 @@ static Row solve_it(int which, const char* transcription, int segments, int step
 // constraints onto it gives this in closed form, and it is what a correct implementation
 // must return -- not the continuous optimum 6, which it approaches from above as M grows.
 static double discrete_optimum(double M) { return 6.0*M*M/(M*M - 1.0); }
+
+//////////////////////////////////////////////////////////////////////////
+/////////  A semi-explicit index-1 DAE, and the two ways to pose it  //////
+//////////////////////////////////////////////////////////////////////////
+//
+//   xdot1 = x2,   xdot2 = u - z,   0 = z^3 + z - x1,
+//   min (1/2) int_0^1 u^2 dt,   (0,0) -> (1,0).
+//
+// Index 1 because dg/dz = 3z^2 + 1 never vanishes; and z has no closed form in
+// terms of x1, so it cannot be eliminated by hand and the example is not
+// secretly an ODE.
+//
+// dae_form selects which of three problems is being written:
+//   0  z is an ordinary control, g = 0 is an equality PATH CONSTRAINT
+//   1  INDEX-REDUCED: z is a third state with zdot = x2/(3z^2+1), g = 0 at t0
+//   2  the same user code as 0, with nalgebraic = 1 declared
+// 0 and 2 are the SAME model. What differs is what PSOPT is told about it.
+static int dae_form = 0;
+
+adouble dae_endpoint(adouble*, adouble*, adouble*, adouble&, adouble&, adouble*,
+                     int, Workspace*) { return (adouble) 0.0; }
+adouble dae_integrand(adouble*, adouble* c, adouble*, adouble&, adouble*, int, Workspace*)
+{ return 0.5*c[0]*c[0]; }
+
+void dae_dynamics(adouble* d, adouble* path, adouble* s, adouble* c, adouble*, adouble&,
+                  adouble*, int, Workspace*)
+{
+    if ( dae_form == 1 ) {
+        d[0] = s[1];
+        d[1] = c[0] - s[2];
+        d[2] = s[1]/(3.0*s[2]*s[2] + 1.0);
+    }
+    else {
+        d[0] = s[1];
+        d[1] = c[0] - c[1];
+        path[0] = c[1]*c[1]*c[1] + c[1] - s[0];
+    }
+}
+
+void dae_events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
+                adouble*, int, Workspace*)
+{
+    e[0]=i[0]; e[1]=i[1]; e[2]=f[0]; e[3]=f[1];
+    if ( dae_form == 1 ) e[4] = i[2]*i[2]*i[2] + i[2] - i[0];
+}
+
+struct DaeRow { int flag; double J; double residual; };
+
+// z solving z^3 + z = x, outside any tape.
+static double dae_z_of(double x)
+{
+    double z = x;
+    for (int it = 0; it < 200; it++) {
+        const double r = z*z*z + z - x, d = 3.0*z*z + 1.0, dz = r/d;
+        z -= dz;
+        if ( fabs(dz) < 1.0e-16 ) break;
+    }
+    return z;
+}
+
+static DaeRow solve_dae(int form, const char* transcription, int segments, int steps,
+                        const char* integrator, int malg = 4)
+{
+    dae_form = form;
+    Alg algorithm; Sol solution; Prob problem;
+    DaeRow out; out.flag = -1; out.J = 0.0; out.residual = -1.0;
+
+    const bool colloc = ( strcmp(transcription, "collocation") == 0 );
+    const int nodes = colloc ? 41 : segments + 1;
+    const int ns = ( form == 1 ) ? 3 : 2;
+    const int nc = ( form == 1 ) ? 1 : 2;
+    const int ne = ( form == 1 ) ? 5 : 4;
+
+    problem.name        = "Multiple shooting, index-1 DAE";
+    problem.outfilename = "multiple_shooting_dae.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = ns;
+    problem.phases(1).ncontrols = nc;
+    problem.phases(1).nevents   = ne;
+    problem.phases(1).npath     = ( form == 1 ) ? 0 : 1;
+    if ( form == 2 ) problem.phases(1).nalgebraic = 1;   // <<< the whole of the declaration
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    if ( form == 1 ) {
+        problem.phases(1).bounds.lower.states   << -10.0, -10.0, -10.0;
+        problem.phases(1).bounds.upper.states   <<  10.0,  10.0,  10.0;
+        problem.phases(1).bounds.lower.controls(0) = -100.0;
+        problem.phases(1).bounds.upper.controls(0) =  100.0;
+        problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0, 0.0;
+        problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0, 0.0;
+    }
+    else {
+        problem.phases(1).bounds.lower.states   << -10.0, -10.0;
+        problem.phases(1).bounds.upper.states   <<  10.0,  10.0;
+        problem.phases(1).bounds.lower.controls << -100.0, -10.0;
+        problem.phases(1).bounds.upper.controls <<  100.0,  10.0;
+        problem.phases(1).bounds.lower.path(0)  = 0.0;      // an EQUALITY: the algebraic equation
+        problem.phases(1).bounds.upper.path(0)  = 0.0;
+        problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0;
+        problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0;
+    }
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0; problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &dae_integrand;
+    problem.endpoint_cost  = &dae_endpoint;
+    problem.dae            = &dae_dynamics;
+    problem.events         = &dae_events;
+    problem.linkages       = &linkages;
+
+    problem.phases(1).guess.states        = zeros(ns, nodes);
+    problem.phases(1).guess.states.row(0) = linspace(0.0, 1.0, nodes);
+    problem.phases(1).guess.controls      = zeros(nc, nodes);
+    problem.phases(1).guess.time          = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 3000;
+    algorithm.nlp_tolerance         = 1.0e-11;
+    algorithm.print_level           = 0;
+    algorithm.mesh_refinement       = "manual";
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = transcription;
+    algorithm.ms_steps_per_segment  = steps;
+    algorithm.ms_integrator         = integrator;
+    algorithm.ms_control_parameterisation = "constant";
+    algorithm.ms_algebraic_iterations     = malg;
+
+    out.flag = psopt(solution, problem, algorithm);
+    if ( out.flag != 0 ) return out;
+    out.J = solution.cost;
+    if ( form == 1 || colloc ) return out;
+
+    // The worst |z^3 + z - x1| along the trajectory, reconstructed far more finely
+    // than the transcription integrated it. For form 0 the algebraic variable is a
+    // control held across the segment while x1 moves under it; for form 2 it is
+    // solved wherever it is needed, so the reconstruction solves it too -- which is
+    // exactly what the two formulations respectively claim.
+    const MatrixXd t = solution.get_time_in_phase(1);
+    const MatrixXd u = solution.get_controls_in_phase(1);
+    const MatrixXd x = solution.get_states_in_phase(1);
+    const int M = (int) t.cols() - 1;
+    const int NSUB = 400;
+    double worst = 0.0, x1 = x(0,0), x2 = x(1,0);
+    for (int k = 0; k < M; k++) {
+        const double a = t(0,k), b = t(0,k+1), h = (b-a)/NSUB;
+        const double uk = u(0,k), zk = u(1,k);
+        for (int q = 0; q < NSUB; q++) {
+            const double zz = ( form == 0 ) ? zk : dae_z_of(x1);
+            worst = fmax( worst, fabs(zz*zz*zz + zz - x1) );
+            auto f = [&](double p, double r, double& dp, double& dr) {
+                dp = r; dr = uk - ( (form == 0) ? zk : dae_z_of(p) ); };
+            double k1a,k1b,k2a,k2b,k3a,k3b,k4a,k4b;
+            f(x1,x2,k1a,k1b);                    f(x1+h/2*k1a, x2+h/2*k1b, k2a,k2b);
+            f(x1+h/2*k2a, x2+h/2*k2b, k3a,k3b);  f(x1+h*k3a,   x2+h*k3b,   k4a,k4b);
+            x1 += h/6*(k1a+2*k2a+2*k3a+k4a);
+            x2 += h/6*(k1b+2*k2b+2*k3b+k4b);
+        }
+    }
+    out.residual = worst;
+    return out;
+}
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Main  ////////////////////////////////////////////////
@@ -532,10 +700,90 @@ int main(void)
     printf("     WHERE inside a segment the constraint is enforced, and the segment count\n");
     printf("     says how far apart those places can be.\n");
 
+    printf("\n  9. A semi-explicit index-1 DAE can be propagated, and it takes one number to\n");
+    printf("     say so. The problem below is\n\n");
+    printf("        xdot1 = x2,   xdot2 = u - z,   0 = z^3 + z - x1,   min (1/2) int u^2,\n\n");
+    printf("     index 1 because dg/dz = 3z^2 + 1 never vanishes, and with no closed form for\n");
+    printf("     z in terms of x1, so it cannot be eliminated by hand.\n");
+    {
+        const DaeRow ref = solve_dae(0, "collocation", 0, 0, "RK4");
+        const DaeRow a   = solve_dae(0, "multiple-shooting", 10, 20, "RK4");
+        const DaeRow b   = solve_dae(1, "multiple-shooting", 10, 20, "RK4");
+        const DaeRow c   = solve_dae(2, "multiple-shooting", 10, 20, "RK4");
+        printf("\n     Collocation on 41 nodes gives the reference, J = %.9f. At ten segments\n",
+               ref.J);
+        printf("     and twenty RK4 steps:\n\n");
+        printf("        how the algebraic relation is posed        J             worst |g|\n");
+        printf("        z a control, g = 0 a path constraint       %.9f   %.2e\n",
+               a.J, a.residual);
+        printf("        index-reduced (z a state, g = 0 at t0)     %.9f   (an invariant)\n",
+               b.J);
+        printf("        phases(1).nalgebraic = 1                   %.9f   %.2e\n",
+               c.J, c.residual);
+    }
+    printf("\n     The first row is what the problem looks like without the declaration: g = 0\n");
+    printf("     is imposed where the trajectory is a decision variable, which is the segment\n");
+    printf("     boundaries, and between them z is HELD while x1 moves under it. The relation\n");
+    printf("     drifts at first order in the segment width and the cost is wrong in its\n");
+    printf("     first figure. That is not a bug to be tuned away; it is what the formulation\n");
+    printf("     says.\n");
+    printf("\n     The last row solves g = 0 for z at every stage of every step, which is the\n");
+    printf("     half-explicit scheme. The residual is the inner iteration's and not a\n");
+    printf("     quantity that accumulates, and the answer agrees with index reduction -- an\n");
+    printf("     entirely separate route to the same class, sharing no code with it -- to ten\n");
+    printf("     figures. The convention is a count, like every other size: the LAST\n");
+    printf("     nalgebraic controls are the algebraic variables and the FIRST nalgebraic\n");
+    printf("     path constraints are their equations, which must be equalities. The user\n");
+    printf("     code for the first and last rows above is character for character the same.\n");
+    printf("\n     It keeps the order of ms_integrator, which is a theorem and not a hope: for\n");
+    printf("     index 1 the algebraic relation defines z = G(x) locally, so a half-explicit\n");
+    printf("     method IS the explicit method applied to the reduced ordinary system. At ten\n");
+    printf("     segments, against the same formulation at sixty RK8 steps:\n\n");
+    printf("        scheme   steps    |J - J_fine|    ratio\n");
+    {
+        const DaeRow fine = solve_dae(2, "multiple-shooting", 10, 60, "RK8");
+        double prev = -1.0;
+        for (int st : { 2, 4, 8, 16 }) {
+            const DaeRow r = solve_dae(2, "multiple-shooting", 10, st, "RK4");
+            const double e = fabs(r.J - fine.J);
+            printf("        RK4     %5d    %.3e", st, e);
+            if ( prev > 0.0 ) printf("       %5.1f", prev/e);
+            printf("\n");
+            prev = e;
+        }
+        const DaeRow r8 = solve_dae(2, "multiple-shooting", 10, 2, "RK8");
+        printf("        RK8     %5d    %.3e\n", 2, fabs(r8.J - fine.J));
+    }
+    printf("\n     Sixteen is 2^4, so RK4 is still fourth order on a DAE; and two steps of RK8\n");
+    printf("     are already at the floor, which is what an eighth-order table is for.\n");
+    printf("\n     algorithm.ms_algebraic_iterations is how many iterations each stage solve\n");
+    printf("     spends, and its default of 4 is derived rather than tuned. The iteration is\n");
+    printf("     Broyden's, so nothing in it has to be differentiated and the nested\n");
+    printf("     automatic differentiation a DAE capability is usually said to need never\n");
+    printf("     arises; the count is FIXED and unrolled, because a loop whose length depends\n");
+    printf("     on the values could not be taped, and would make the constraint function\n");
+    printf("     non-smooth in the decision variables. Warm-started from the previous stage,\n");
+    printf("     whose algebraic variables differ by O(h), the secant recurrence gives\n");
+    printf("     exponents 1, 2, 3, 5, 8 -- so m iterations support a scheme of order 2, 3, 5\n");
+    printf("     and 8. Measured, at ten segments and four RK8 steps:\n\n");
+    printf("        iterations   |J - J_fine|\n");
+    {
+        const DaeRow fine = solve_dae(2, "multiple-shooting", 10, 60, "RK8");
+        for (int m : { 1, 2, 3, 4, 5 }) {
+            const DaeRow r = solve_dae(2, "multiple-shooting", 10, 4, "RK8", m);
+            printf("        %10d   %.3e\n", m, fabs(r.J - fine.J));
+        }
+    }
+    printf("\n     The fifth iteration buys nothing because there is nothing left to buy.\n");
+    printf("\n     What this does NOT do is make a stiff problem tractable. The differential\n");
+    printf("     part of the scheme is explicit and inherits its stability restriction\n");
+    printf("     exactly: this adds a class of problem, not a stability region.\n");
+
     printf("\n--------------------------------------------------------------------------------\n");
-    printf("  What this transcription does not yet have: an implicit integrator, without\n");
-    printf("  which an index-1 DAE cannot be propagated. That is now the only structural\n");
-    printf("  gap; everything else on the list has been built.\n");
+    printf("  What this transcription does not yet have: an IMPLICIT integrator. Semi-explicit\n");
+    printf("  index-1 DAEs are reached by point 9 above, so what is left is stiff dynamics,\n");
+    printf("  and higher-index systems where the algebraic relation has to be differentiated\n");
+    printf("  more than once. A stiffly accurate ESDIRK is the shape that would take.\n");
 
     return 0;
 }
