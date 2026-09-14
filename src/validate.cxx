@@ -220,11 +220,12 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
           error_message("algorithm.mesh_refinement = \"automatic\" with multiple shooting "
                         "needs algorithm.mr_max_growth_factor > 0: it is the budget the "
                         "segment refinement is allowed to spend ");
-       if ( algorithm.diagnostic_level > 0 )
-          error_message("algorithm.diagnostic_level > 0 is not yet supported with "
-                        "transcription_method = \"multiple-shooting\": the diagnostics read a "
-                        "collocation trajectory and a costate this transcription does not yet "
-                        "recover ");
+       // diagnostic_level was refused here when this transcription had no costates. It has
+       // them now (recover_costates_adjoint), and the part of the report that matters most --
+       // the rank and conditioning of the constraint Jacobian -- never depended on the
+       // transcription at all: it re-tapes the constraints at the final iterate and factorises
+       // them, which is the same question whatever wrote the rows. solution_diagnostics says
+       // which pieces do not apply here rather than being refused wholesale.
     }
     if (algorithm.transcription_method == "integrated-residual") {
        if (algorithm.collocation_method != "Hermite-Simpson")

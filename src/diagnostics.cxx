@@ -193,6 +193,21 @@ static void constraint_jacobian_conditioning(Prob& problem, Alg& algorithm,
         if (c >= 0) J(Jt.row[k], c) += Jt.val[k];
     }
 
+    // Rows with no entry at all in any free column. Such a row cannot contribute to the
+    // rank, so it is part of any deficiency reported below -- and it is a different kind of
+    // thing from a genuine dependence between constraints, so it is counted and named
+    // separately rather than left for the reader to guess at.
+    //
+    // Two causes, both common and neither a mistake on its own. A row every one of whose
+    // variables is pinned by coincident bounds: the duration row t0 <= tf is exactly this
+    // whenever both times are fixed. And a row a transcription counts but leaves empty by
+    // construction: multiple shooting reuses the collocation layout, whose defect block holds
+    // nstates*(norder+1) rows while there are only nstates*norder matching conditions, so the
+    // last nstates rows of every phase are identically zero. Reporting the deficiency without
+    // that count made the check almost useless there, since it can never read as full rank.
+    int zero_rows = 0;
+    for (int r = 0; r < nc; r++) if ( J.row(r).cwiseAbs().maxCoeff() == 0.0 ) zero_rows++;
+
     Eigen::BDCSVD<MatrixXd> svd(J);
     const MatrixXd sv = svd.singularValues();
     const int    ns   = (int) sv.rows();
@@ -210,17 +225,36 @@ static void constraint_jacobian_conditioning(Prob& problem, Alg& algorithm,
     snprintf(t, tn, "\n    %d rows, %d free columns (%d of %d variables fixed by coincident bounds)",
              nc, nf, nv - nf, nv);
     psopt_print(workspace, t);
+    if (zero_rows > 0) {
+        snprintf(t, tn, "\n    %d row(s) are identically zero over the free columns and account"
+                        "\n    for that much of any deficiency below.", zero_rows);
+        psopt_print(workspace, t);
+        if ( is_multiple_shooting(algorithm) )
+            psopt_print(workspace,
+                "\n      Multiple shooting leaves nstates rows per phase empty by construction:"
+                "\n      it reuses the collocation layout, whose defect block is one node longer"
+                "\n      than the number of matching conditions. Those are expected.");
+    }
     if (def > 0) {
+        if (def == zero_rows) {
+            snprintf(t, tn, "\n    rank %d of a possible %d;  sigma_max %10.3e"
+                            "\n    Deficient by %d, which is exactly the empty rows: the"
+                            " constraints that are\n    actually written are independent.",
+                     rank, full, smax, def);
+            psopt_print(workspace, t);
+        }
+        else {
         // The gap is the evidence, so show it: the smallest singular value that counts as
         // rank against the largest that does not. A clean separation says the deficiency is
         // structural rather than an artefact of the tolerance.
         const double kept    = (rank > 0)  ? sv(rank - 1) : 0.0;
         const double dropped = (rank < ns) ? sv(rank)     : 0.0;
         snprintf(t, tn, "\n    rank %d of a possible %d;  sigma_max %10.3e"
-                        "\n    RANK DEFICIENT BY %d, at a tolerance of %10.3e:"
+                        "\n    RANK DEFICIENT BY %d (%d beyond the empty rows), at a tolerance"
+                        " of %10.3e:"
                         "\n      smallest singular value counted as rank  %10.3e"
                         "\n      largest  singular value counted as zero  %10.3e",
-                 rank, full, smax, def, rtol, kept, dropped);
+                 rank, full, smax, def, def - zero_rows, rtol, kept, dropped);
         psopt_print(workspace, t);
         psopt_print(workspace,
             "\n    Read: the constraints are not independent, so the multipliers are not unique"
@@ -230,6 +264,7 @@ static void constraint_jacobian_conditioning(Prob& problem, Alg& algorithm,
             "\n          problem. The usual causes are a constraint stated twice, a boundary"
             "\n          condition already implied by the dynamics, and a differential-algebraic"
             "\n          system of index two or higher collocated without being index-reduced.");
+        }
     }
     else {
         snprintf(t, tn, "\n    rank %d of a possible %d, which is full;  sigma_max %10.3e,"

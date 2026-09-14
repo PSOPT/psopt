@@ -1178,7 +1178,8 @@ void events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
 
 struct Run { int flag; int rc; double J; MatrixXd u; int M; };
 
-static Run solve(int segments, const std::string& upar, int path_samples)
+static Run solve(int segments, const std::string& upar, int path_samples,
+                 int diagnostic_level = 0)
 {
     Alg algorithm; Sol solution; Prob problem;
     Run out; out.flag = -1; out.rc = -99; out.J = 0.0; out.M = 0;
@@ -1231,6 +1232,7 @@ static Run solve(int segments, const std::string& upar, int path_samples)
     algorithm.ms_steps_per_segment  = 20;
     algorithm.ms_control_parameterisation = upar;
     algorithm.ms_path_samples             = path_samples;
+    algorithm.diagnostic_level            = diagnostic_level;
 
     out.flag = psopt(solution, problem, algorithm);
     out.rc   = solution.nlp_return_code;
@@ -1317,4 +1319,44 @@ TEST(MultipleShooting, SamplingDoesNotOverDetermineAnEqualityPathConstraint)
             << "an equality component is not sampled, so asking for samples must not "
             << "change the answer: " << none.J << " against " << r.J;
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// The solution diagnostics run with this transcription.
+//
+// They were refused while it had no costates. It has them now, and the part
+// that matters most -- the rank and conditioning of the constraint Jacobian --
+// never depended on the transcription at all: it re-tapes the constraints at
+// the final iterate and factorises them, which is the same question whatever
+// wrote the rows.
+//
+// What the report says on the problem above is the point of enabling it. With
+// the equality depending on the controls ALONE the terminal control slot is
+// pinned to its neighbour, so the path row at the final node duplicates the row
+// before it and the report reads "RANK DEFICIENT BY 5 (1 beyond the empty
+// rows)". With the same constraint made state-dependent it reads "deficient by
+// 4, which is exactly the empty rows: the constraints that are actually written
+// are independent". The four are structural -- three unused matching rows from
+// the shared layout and the duration row, whose two times are both fixed here --
+// and counting them separately is what makes the check usable at all, since
+// otherwise it can never read as full rank under this transcription.
+//
+// The report prints rather than returns, so what is asserted here is that
+// asking for it is allowed and changes nothing about the answer. The numbers
+// themselves are demonstrated in the scratch record and the manual.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, TheSolutionDiagnosticsRunAndChangeNothing)
+{
+    const mspath::Run quiet = mspath::solve(10, "constant", 0, 0);
+    const mspath::Run loud  = mspath::solve(10, "constant", 0, 2);
+
+    ASSERT_EQ(quiet.flag, 0) << "IPOPT return code " << quiet.rc;
+    ASSERT_EQ(loud.flag,  0) << "asking for diagnostics made the solve fail: IPOPT return code "
+                             << loud.rc;
+    EXPECT_EQ(quiet.M, loud.M);
+    EXPECT_NEAR(quiet.J, loud.J, 1.0e-12)
+        << "a diagnostic that changes the answer is not a diagnostic: "
+        << quiet.J << " against " << loud.J;
 }
