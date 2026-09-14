@@ -185,12 +185,19 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                  "corner"
                  "\n>>> of the optimal control. Use \"constant\" where the control rides its "
                  "bounds.\n");
-       if ( algorithm.mesh_refinement == "automatic" )
-          error_message("algorithm.mesh_refinement = \"automatic\" is not yet supported with "
-                        "transcription_method = \"multiple-shooting\": where to put a segment "
-                        "boundary is a different question from where to put a node, and the "
-                        "existing drivers answer the second. Use \"manual\" with a sequence of "
-                        "segment counts in problem.phases(i).nodes ");
+       // Automatic segment refinement was refused here until the refinement could be
+       // written in the currency this transcription is stated in. It now is: ms_refine_driver
+       // refines on an indicator of the CONTROL PARAMETERISATION's error and of the PATH
+       // CONSTRAINTS' coverage, which are the two things the segment count controls, and not
+       // on the reported ODE error, which it does not. See ms_refine_driver.
+       if ( ms_refinement_active(algorithm) && algorithm.ms_refine_tolerance <= 0.0 )
+          error_message("algorithm.ms_refine_tolerance must be positive: it is the tolerance "
+                        "automatic segment refinement compares its indicator against, and the "
+                        "indicator is dimensionless ");
+       if ( ms_refinement_active(algorithm) && algorithm.mr_max_growth_factor <= 0.0 )
+          error_message("algorithm.mesh_refinement = \"automatic\" with multiple shooting "
+                        "needs algorithm.mr_max_growth_factor > 0: it is the budget the "
+                        "segment refinement is allowed to spend ");
        if ( algorithm.diagnostic_level > 0 )
           error_message("algorithm.diagnostic_level > 0 is not yet supported with "
                         "transcription_method = \"multiple-shooting\": the diagnostics read a "

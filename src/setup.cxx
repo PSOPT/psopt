@@ -180,6 +180,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.ms_steps_per_segment        = 10;
   algorithm.ms_control_parameterisation = "constant";
   algorithm.ms_integrator = "RK4";
+  algorithm.ms_refine_tolerance = 1.0e-3;
   algorithm.ms_path_samples             = 0;
   algorithm.ms_flexible_segments        = false;
   algorithm.ms_min_segment_fraction     = 0.8;

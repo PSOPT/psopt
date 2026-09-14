@@ -63,7 +63,7 @@ static void apply_algorithm(Alg& a, py::dict o) {
     B("ir_flexible_mesh", a.ir_flexible_mesh);
     D("ir_min_element_fraction", a.ir_min_element_fraction);
     // Multiple shooting. transcription_method above is what selects it, and without these
-    // six the selection reaches Python and nothing that configures it does -- so a Python
+    // seven the selection reaches Python and nothing that configures it does -- so a Python
     // user would get the default scheme and step count, a piecewise-constant control, path
     // constraints at the boundaries only and a fixed partition, with no way to change any of
     // them and no sign that there was anything to change.
@@ -73,6 +73,7 @@ static void apply_algorithm(Alg& a, py::dict o) {
     I("ms_path_samples", a.ms_path_samples);
     B("ms_flexible_segments", a.ms_flexible_segments);
     D("ms_min_segment_fraction", a.ms_min_segment_fraction);
+    D("ms_refine_tolerance", a.ms_refine_tolerance);
 }
 
 

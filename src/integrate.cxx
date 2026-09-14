@@ -323,7 +323,8 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
                           adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
                           int nsteps_override,
                           adouble* xsamp, adouble* usamp, adouble* tsamp,
-                          std::vector<adouble>* tau)
+                          std::vector<adouble>* tau,
+                          int nsamp_override)
 {
     Prob& problem   = *workspace->problem;
     Alg&  algorithm = *workspace->algorithm;
@@ -420,8 +421,17 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     // Where the interior samples fall, as step indices. They are placed at step boundaries so
     // that the state at a sample is one the integrator actually produced, rather than an
     // interpolation of states either side of it.
-    const int nsamp = ( xsamp != NULL || usamp != NULL || tsamp != NULL )
-                      ? algorithm.ms_path_samples : 0;
+    // How many interior samples to capture. Normally the user's ms_path_samples, because the
+    // samples the constraints are imposed at and the samples captured have to be the same
+    // points. The override exists for the refinement indicator, which needs to look inside a
+    // segment at points where nothing is being enforced -- that being the whole of what it
+    // measures -- without changing what the NLP sees.
+    int nsamp = ( xsamp != NULL || usamp != NULL || tsamp != NULL )
+                ? algorithm.ms_path_samples : 0;
+    if ( nsamp_override > 0 && ( xsamp != NULL || usamp != NULL || tsamp != NULL ) )
+        nsamp = nsamp_override;
+    if ( nsamp > nsteps - 1 ) nsamp = nsteps - 1;
+    if ( nsamp < 0 )          nsamp = 0;
     std::vector<int> sample_step(nsamp>0 ? nsamp : 1, 0);
     for (int q = 0; q < nsamp; q++) {
         int st = (int) ( ( (double)(q+1) * (double) nsteps )/((double)(nsamp+1)) + 0.5 );

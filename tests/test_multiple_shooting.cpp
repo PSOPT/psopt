@@ -95,17 +95,20 @@ struct Run {
     MatrixXd u_nodes;           // controls at the segment boundaries
     MatrixXd u_hs, t_hs;        // node and midpoint controls interleaved, and their times
     MatrixXd x_nodes, t_nodes;  // the states at the segment boundaries, and their times
+    int segments;               // how many segments the phase ended with
 };
 
 static Run solve(int which, int segments, int steps,
                  const std::string& upar = "constant", int path_samples = 0,
                  bool flexible_segments = false,
-                 const std::string& integrator = "RK4")
+                 const std::string& integrator = "RK4",
+                 bool automatic = false, double refine_tol = 1.0e-3)
 {
     g_case = which;
 
     Alg algorithm; Sol solution; Prob problem;
     Run out; out.flag = -1; out.J = 0.0; out.tf = 0.0; out.err_est = 0.0; out.nvars = 0;
+    out.segments = 0;
 
     const int nodes = segments + 1;
 
@@ -161,7 +164,8 @@ static Run solve(int which, int segments, int steps,
     algorithm.nlp_iter_max          = 2000;
     algorithm.nlp_tolerance         = 1.0e-10;
     algorithm.print_level           = 0;
-    algorithm.mesh_refinement       = "manual";
+    algorithm.mesh_refinement       = automatic ? "automatic" : "manual";
+    algorithm.mr_max_iterations     = 7;
     algorithm.collocation_method    = "Hermite-Simpson";
     algorithm.transcription_method  = "multiple-shooting";
     algorithm.ms_steps_per_segment  = steps;
@@ -169,6 +173,7 @@ static Run solve(int which, int segments, int steps,
     algorithm.ms_path_samples             = path_samples;
     algorithm.ms_flexible_segments        = flexible_segments;
     algorithm.ms_integrator               = integrator;
+    algorithm.ms_refine_tolerance         = refine_tol;
 
     out.flag = psopt(solution, problem, algorithm);
     if (out.flag == 0) {
@@ -183,6 +188,7 @@ static Run solve(int which, int segments, int steps,
         out.t_hs    = solution.get_hs_time_in_phase(1);
         out.x_nodes = solution.get_states_in_phase(1);
         out.t_nodes = solution.get_time_in_phase(1);
+        out.segments = (int) out.t_nodes.cols() - 1;
     }
     return out;
 }
@@ -231,6 +237,20 @@ static double true_relative_local_error(const Run& r, int M)
 }
 
 static double discrete_optimum(double M) { return 6.0*M*M/(M*M - 1.0); }
+
+// Case 1's continuous optimum, from the controllability Gramian: for
+// xddot = -w^2 x + u driven from rest to (1,0) on [0,1] the minimum-energy cost
+// is (1/2) x_T' W^-1 x_T. With w = 3 this is 8.600..., which is NOT case 0's 6 --
+// a distinction that cost one wrong assertion before it was noticed.
+static double oscillator_optimum()
+{
+    const double w = 3.0, T = 1.0;
+    const double s2 = T/2.0 - std::sin(2*w*T)/(4*w);
+    const double c2 = T/2.0 + std::sin(2*w*T)/(4*w);
+    const double sc = (1.0 - std::cos(2*w*T))/(4*w);
+    const double W11 = s2/(w*w), W12 = sc/w, W22 = c2;
+    return 0.5*W22/(W11*W22 - W12*W12);
+}
 
 // The parabola through (u_k, ubar_k, u_{k+1}) at local coordinate x in [0,1] of segment k,
 // read from the interleaved arrays the solution reports. This is the control the segment
@@ -987,4 +1007,128 @@ TEST(MultipleShooting, AHigherOrderSchemeCannotLiftTheControlParameterisationsCa
     EXPECT_NEAR(c4.J, c8.J, 1.0e-9)
         << "constant control: RK4 gave " << c4.J << " and RK8 " << c8.J;
     EXPECT_NEAR(c8.J, msh::discrete_optimum(20), 1.0e-8);
+}
+
+
+// ---------------------------------------------------------------------------
+// Automatic segment refinement.
+//
+// The question a shooting mesh asks is not the one the other drivers answer.
+// More segments does not mean a better approximation of the DYNAMICS here --
+// those are integrated to whatever ms_steps_per_segment and ms_integrator buy,
+// however many segments there are. What the segment count controls is the
+// resolution of the CONTROL PARAMETERISATION and the coverage of the PATH
+// CONSTRAINTS, and the indicator measures those.
+//
+// The counts below are path-dependent -- the refinement makes a discrete choice
+// each iteration from an estimate computed on the previous solve -- so the
+// thresholds are set from measurement with room, and the claims are about what
+// the refinement achieves rather than about which mesh it took to get there.
+// The element-refinement tests learned that the hard way.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, RefinementMakesTheAnswerIndependentOfTheStartingMesh)
+{
+    // Minimum time with u in [-1,2]: the switch falls at tf/3, so a uniform
+    // partition resolves it only when the segment count is divisible by three.
+    // None of these three is, and every one of them is wrong by parts in a
+    // thousand before refinement.
+    const int segs[3] = { 7, 10, 13 };
+    for (int q = 0; q < 3; q++) {
+        const msh::Run fixed = msh::solve(4, segs[q], 10, "constant", 0, false, "RK4", false);
+        const msh::Run autom = msh::solve(4, segs[q], 10, "constant", 0, false, "RK4", true);
+
+        ASSERT_EQ(fixed.flag, 0) << "M = " << segs[q];
+        ASSERT_EQ(autom.flag, 0) << "automatic refinement failed at M = " << segs[q];
+
+        const double e_fixed = std::fabs(fixed.tf - msh::TF_SQRT3)/msh::TF_SQRT3;
+        const double e_auto  = std::fabs(autom.tf - msh::TF_SQRT3)/msh::TF_SQRT3;
+
+        EXPECT_GT(e_fixed, 1.0e-4) << "M = " << segs[q] << ": the uniform partition is "
+            << "unexpectedly accurate, so this test is measuring nothing";
+        EXPECT_LT(e_auto, 1.0e-6) << "M = " << segs[q] << " refined to " << autom.segments
+            << " segments and gave tf = " << autom.tf;
+        EXPECT_GT(autom.segments, segs[q]) << "the mesh did not grow";
+    }
+}
+
+
+// And the other half of the same claim: a mesh that ALREADY resolves the corner
+// is left alone. This is the patch-177 trap in a new place -- an estimator built
+// for smooth solutions, pointed at a discontinuity the mesh has already
+// resolved, flags it every iteration however fine the mesh becomes. The
+// indicator avoids it by forming its departure from a window extended to the
+// left and one extended to the right and taking the SMALLER: a corner sitting on
+// a boundary spoils exactly one of the two.
+TEST(MultipleShooting, AMeshThatAlreadyResolvesTheCornerIsNotShattered)
+{
+    // 12 is divisible by three, so a uniform boundary sits on the switch.
+    const msh::Run resolved = msh::solve(4, 12, 10, "constant", 0, false, "RK4", true);
+    ASSERT_EQ(resolved.flag, 0);
+
+    EXPECT_LT(std::fabs(resolved.tf - msh::TF_SQRT3)/msh::TF_SQRT3, 1.0e-6);
+    EXPECT_LE(resolved.segments, 24)
+        << "the mesh grew from 12 to " << resolved.segments
+        << " on a partition that already had a boundary on the switch -- the "
+        << "indicator is flagging a corner it should be ignoring";
+
+    // whereas one segment more, and the switch is inside a segment again
+    const msh::Run inside = msh::solve(4, 13, 10, "constant", 0, false, "RK4", true);
+    ASSERT_EQ(inside.flag, 0);
+    EXPECT_GT(inside.segments, resolved.segments)
+        << "a mesh with the switch inside a segment (" << inside.segments
+        << ") was refined no more than one with the switch on a boundary ("
+        << resolved.segments << ")";
+}
+
+
+TEST(MultipleShooting, RefinementImprovesASmoothProblem)
+{
+    // The oscillator, whose optimal control is smooth and reachable by none of
+    // the three parameterisations, so refinement is answering the question it
+    // was designed for and nothing else is confusing the measurement.
+    const msh::Run coarse = msh::solve(1, 5, 10, "constant", 0, false, "RK4", false);
+    const msh::Run autom  = msh::solve(1, 5, 10, "constant", 0, false, "RK4", true);
+
+    ASSERT_EQ(coarse.flag, 0);
+    ASSERT_EQ(autom.flag,  0) << "automatic refinement failed on a smooth problem";
+
+    EXPECT_GT(autom.segments, 5) << "the mesh did not grow";
+    EXPECT_LT(autom.J, coarse.J)
+        << "refined " << autom.J << " against coarse " << coarse.J
+        << " -- this is a minimisation, so more segments cannot cost more";
+
+    const double Jstar = msh::oscillator_optimum();
+    const double e_coarse = std::fabs(coarse.J - Jstar);
+    const double e_auto   = std::fabs(autom.J  - Jstar);
+    EXPECT_LT(e_auto, 0.1*e_coarse)
+        << "the refinement was worth less than a factor of ten: coarse "
+        << coarse.J << " (error " << e_coarse << "), refined " << autom.J
+        << " (error " << e_auto << "), against J* = " << Jstar;
+}
+
+
+// The path constraints are the other thing the segment count controls, and they
+// are the half that produces a WRONG answer rather than an inaccurate one: the
+// state between two boundaries is not a decision variable, so a constraint
+// imposed only at boundaries leaks, and the optimiser returns a cost BELOW the
+// true optimum. Nothing in the NLP reports that, because every constraint the
+// NLP was given is satisfied; the indicator has to go and look.
+TEST(MultipleShooting, RefinementShrinksAPathConstraintLeak)
+{
+    const msh::Run fixed = msh::solve(3, 10, 10, "linear", 0, false, "RK4", false);
+    const msh::Run autom = msh::solve(3, 10, 10, "linear", 0, false, "RK4", true);
+
+    ASSERT_EQ(fixed.flag, 0);
+    ASSERT_EQ(autom.flag, 0) << "automatic refinement failed with a path constraint";
+
+    // J* = 4 and no feasible trajectory costs less, so 4 - J is the leak.
+    const double leak_fixed = 4.0 - fixed.J;
+    const double leak_auto  = std::fabs(4.0 - autom.J);
+
+    EXPECT_GT(leak_fixed, 1.0e-3) << "the coarse mesh is not leaking (J = " << fixed.J
+        << "), so this test is measuring nothing";
+    EXPECT_LT(leak_auto, leak_fixed/20.0)
+        << "the leak went from " << leak_fixed << " to " << leak_auto
+        << " over " << fixed.segments << " -> " << autom.segments << " segments";
 }

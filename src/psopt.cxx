@@ -651,6 +651,17 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
         }
     }
 
+    else if ( ms_refinement_active(algorithm) ) {
+          // Multiple shooting's own automatic refinement, which works on segments and asks a
+          // different question from every other driver here; see ms_refine_driver. As with
+          // the integrated residual's, only the first mesh is set here -- from iteration 2 on
+          // the driver has already written both current_number_of_intervals and snodes.
+          if ( iter_nodes == 1 ) {
+              for (i=0; i<nphases; i++)
+                  problem.phase[i].current_number_of_intervals = ((int) problem.phase[i].nodes(0)) - 1;
+          }
+    }
+
     else if ( ir_element_refinement_active(algorithm) ) {
           // The integrated residual's own automatic refinement, which works on elements; see
           // ir_refine_driver. Only the first mesh is set here. From iteration 2 on the driver,
@@ -862,8 +873,16 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
             // array, holding the same kind of thing, that every other transcription puts its
             // node positions in -- which is what lets the reported times, the plots, the
             // guess interpolation and the hot start work here with no change at all.
-            for (i=0; i<nphases; i++)
-                workspace->snodes[i] = linspace(-1.0, 1.0, problem.phase[i].current_number_of_intervals+1);
+            //
+            // Rebuilt uniformly on the first mesh, and on every mesh of a MANUAL schedule,
+            // where a new node count means a new partition. NOT rebuilt under automatic
+            // refinement past the first: ms_refine_driver has already written the partition
+            // it chose, and overwriting a chosen partition with a uniform one would throw
+            // away the refinement every iteration and ask the next solve to find it again.
+            if ( !ms_refinement_active(algorithm) || iter_nodes == 1 ) {
+                for (i=0; i<nphases; i++)
+                    workspace->snodes[i] = linspace(-1.0, 1.0, problem.phase[i].current_number_of_intervals+1);
+            }
 
     }
 
@@ -1812,7 +1831,44 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     evaluate_solution(problem, algorithm, solution, workspace);
 
-    if ( algorithm.mesh_refinement == "automatic" ) {
+    if ( ms_refinement_active(algorithm) ) {
+       // Multiple shooting converges against its OWN indicator, not against the reported ODE
+       // error, because the two measure different things and only one of them is a question
+       // about the segment count. The driver computes the indicator and, unless this is the
+       // last iteration, refines on it in the same pass.
+       const bool do_refine = ( iter_nodes < number_of_mesh_refinement_iterations );
+       const double ms_worst = ms_refine_driver( problem, algorithm, solution, workspace,
+                                                 do_refine );
+
+       // The ODE error is still worth reporting, and the knob for it is not this one. Saying
+       // so is the difference between a user who adds steps and a user who adds segments and
+       // wonders why it did not help.
+       {
+           double ode_worst = 0.0;
+           for ( i=0; i< problem.nphases; i++ )
+               ode_worst = std::max( ode_worst,
+                                     workspace->emax_history[i]( iter_nodes-1, 1 ) );
+           if ( ode_worst > algorithm.ode_tolerance ) {
+               snprintf(workspace->text, sizeof(workspace->text),
+                        "\n>>> Note: the reported discretisation error is %e, above "
+                        "ode_tolerance.\n>>> On a shooting mesh that is the segment "
+                        "INTEGRATOR's error and more segments will not\n>>> fix it: raise "
+                        "algorithm.ms_steps_per_segment, or set algorithm.ms_integrator\n"
+                        ">>> to \"RK8\".\n", ode_worst);
+               psopt_print(workspace, workspace->text);
+           }
+       }
+
+       if ( ms_worst <= algorithm.ms_refine_tolerance ) {
+           snprintf(workspace->text, sizeof(workspace->text),
+                    "\n>>> PSOPT: automatic segment refinement converged; the worst segment "
+                    "indicator is\n>>> %e, below algorithm.ms_refine_tolerance.\n", ms_worst);
+           psopt_print(workspace, workspace->text);
+           break;
+       }
+    }
+
+    else if ( algorithm.mesh_refinement == "automatic" ) {
        // Check satisfaction of mesh refinement tolerance
        int mr_phase_convergence_count = 0;
        for ( i=0; i< problem.nphases; i++ ) {

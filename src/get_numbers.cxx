@@ -288,8 +288,16 @@ int get_max_nodes(Prob& problem,int iphase, Alg* algorithm)
 
     // Automatic + global pseudospectral never reaches here: hp_auto_active is handled at the
     // top of this function via hp_node_ceiling (the a-priori N_eff ceiling). Only the local
-    // (Betts) automatic schedule remains.
-    else if (algorithm->mesh_refinement == "automatic" && use_local_collocation(*algorithm) ) {
+    // (Betts) automatic schedule and multiple shooting's segment refinement remain, and they
+    // grow the mesh the same way, so they get the same ceiling.
+    //
+    // ms_refinement_active is named explicitly rather than left to use_local_collocation,
+    // which happens to be true for the Hermite-Simpson setting most shooting problems carry
+    // and would be false if the user set another one. This function sizes the AD tape: a
+    // refinement that grows past the ceiling it returns writes off the end of it, and the
+    // condition deciding that must not depend on an option this transcription ignores.
+    else if ( ms_refinement_active(*algorithm)
+              || (algorithm->mesh_refinement == "automatic" && use_local_collocation(*algorithm)) ) {
          int M = problem.phase[iphase-1].nodes(0);
 	      int mcount = M;
 	      for (i=1; i<= algorithm->mr_max_iterations;i++) {

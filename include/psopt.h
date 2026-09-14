@@ -470,6 +470,24 @@ struct alg_str {
   // problem, and the floor has to be a bound rather than a penalty.
   double    ms_min_segment_fraction;
 
+  // Tolerance for automatic SEGMENT refinement, and the reason it is not ode_tolerance.
+  //
+  // On a collocation mesh more nodes means a better approximation of the dynamics, so one
+  // tolerance serves. Here it does not, because the segment count and the step count control
+  // different errors and the ODE error is not the one the segment count controls: the
+  // dynamics are integrated to whatever ms_steps_per_segment and ms_integrator buy, however
+  // many segments there are. What the segment count controls is the CONTROL
+  // PARAMETERISATION's resolution and the PATH CONSTRAINTS' coverage, and this is the
+  // tolerance on those. ode_tolerance still applies to the reported discretisation error and
+  // is still the right thing to look at -- but the knob it names is the step count, and
+  // PSOPT says so rather than adding segments to fix it.
+  //
+  // The quantity it bounds is dimensionless: the departure of the control representation
+  // from a one-degree-higher reconstruction of the same data, divided by the control's own
+  // scale, and the worst relative violation of a path constraint at points inside a segment
+  // where nothing is enforcing it. Default 1e-3.
+  double    ms_refine_tolerance;
+
   int       ir_residual_nodes;      // Gauss-Legendre residual-quadrature points per interval
                                     // (integrated-residual transcription; default 4)
   double    ir_regularization;      // weight rho on integral(||xdot-f||^2) added to the
@@ -1795,6 +1813,22 @@ inline int ms_terminal_pin_rows(int ncontrols, Alg& algorithm)
     return ncontrols;
 }
 
+// The polynomial degree of the control across a segment: 0, 1 or 2 for the three forms.
+// The representation's local error is O(h^(degree+1)), which is what grades a split.
+inline int ms_control_degree(Alg& algorithm)
+{
+    if ( ms_quadratic_controls(algorithm) ) return 2;
+    if ( ms_linear_controls(algorithm) )    return 1;
+    return 0;
+}
+
+// Is multiple shooting's own automatic segment refinement in force? It asks a different
+// question from every other driver here, so it is a different driver; see ms_refine_driver.
+inline bool ms_refinement_active(Alg& algorithm)
+{
+    return is_multiple_shooting(algorithm) && algorithm.mesh_refinement == "automatic";
+}
+
 inline bool ir_element_refinement_active(Alg& algorithm)
 {
     if ( algorithm.mesh_refinement != "automatic" ) return false;
@@ -1803,6 +1837,20 @@ inline bool ir_element_refinement_active(Alg& algorithm)
 }
 
 void ir_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace);
+
+// Multiple shooting's automatic segment refinement. Writes current_number_of_intervals and
+// snodes for the next mesh, and returns the worst per-segment indicator it saw over all
+// phases, which is what the convergence test reads -- the ordinary emax_history holds the
+// reported ODE error, and that is a different quantity here.
+double ms_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace,
+                        bool do_refine);
+
+// The per-segment refinement indicator of phase iphase, one entry per segment. Exposed
+// rather than hidden so that a test can ask for it directly: the whole question this
+// increment turns on is whether the indicator is small where the mesh is adequate and large
+// where it is not, and that is not answerable from the refined mesh alone.
+void ms_segment_indicators(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace,
+                           int iphase, std::vector<double>& indicator);
 
 // Propagate one multiple-shooting segment: the end state of segment k given its start state,
 // its control and the phase's parameters, together with the integral of the user's running
@@ -1826,7 +1874,8 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
                           adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
                           int nsteps_override = 0,
                           adouble* xsamp = NULL, adouble* usamp = NULL, adouble* tsamp = NULL,
-                          std::vector<adouble>* tau = NULL);
+                          std::vector<adouble>* tau = NULL,
+                          int nsamp_override = 0);
 
 // Number of path constraints of a phase that are declared as equalities, and which are
 // therefore folded into the integrated residual when algorithm.ir_include_path == "auto".

@@ -24,9 +24,11 @@
 //////// which is "constant", "linear" or "quadratic"; ms_path_samples, ///
 //////// which sets how many interior points of a segment the path      ///
 //////// constraints are also enforced at; and ms_flexible_segments,    ///
-//////// which lets the segment boundaries move.                        ///
+//////// which lets the segment boundaries move. Setting                ///
+//////// mesh_refinement = "automatic" turns on segment refinement,     ///
+//////// governed by ms_refine_tolerance.                               ///
 ////////                                                               ///
-//////// This example makes seven points, each with a number attached, ///
+//////// This example makes eight points, each with a number attached, ///
 //////// and four of them are cautions rather than selling points.     ///
 ////////                                                               ///
 //////// Reference for the method: H. G. Bock and K. J. Plitt, "A      ///
@@ -111,17 +113,19 @@ void linkages(adouble* linkages, adouble* xad, Workspace* workspace) {}
 //////////////////////////////////////////////////////////////////////////
 
 struct Row { int flag; double J; double l1_err; double l2_err; double u_out_of_bounds;
-             double err_est; };
+             double err_est; int segments; double t_switch_gap; };
 
 static Row solve_it(int which, const char* transcription, int segments, int steps,
                     const char* upar, int path_samples, bool costates,
-                    bool flexible_segments = false, const char* integrator = "RK4")
+                    bool flexible_segments = false, const char* integrator = "RK4",
+                    bool automatic = false)
 {
     problem_case = which;
 
     Alg algorithm; Sol solution; Prob problem;
     Row out; out.flag = -1; out.J = 0.0; out.l1_err = 0.0; out.l2_err = 0.0;
-    out.u_out_of_bounds = 0.0; out.err_est = 0.0;
+    out.u_out_of_bounds = 0.0; out.err_est = 0.0; out.segments = 0;
+    out.t_switch_gap = -1.0;
 
     const int nodes = segments + 1;
 
@@ -184,7 +188,9 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     algorithm.nlp_iter_max          = 2000;
     algorithm.nlp_tolerance         = ( which == 3 ) ? 1.0e-12 : 1.0e-10;
     algorithm.print_level           = 0;
-    algorithm.mesh_refinement       = "manual";
+    algorithm.mesh_refinement       = automatic ? "automatic" : "manual";
+    algorithm.mr_max_iterations     = 7;
+    algorithm.ms_refine_tolerance   = 1.0e-3;
     algorithm.collocation_method    = "Hermite-Simpson";
     algorithm.transcription_method  = transcription;
     algorithm.ms_steps_per_segment  = steps;
@@ -201,9 +207,17 @@ static Row solve_it(int which, const char* transcription, int segments, int step
         DMatrix E = solution.get_relative_local_error_in_phase(1);
         for (int q = 0; q < E.size(); q++) out.err_est = fmax(out.err_est, fabs(E(q)));
     }
-    if ( which == 2 ) {
+    {
         DMatrix T = solution.get_time_in_phase(1);
-        out.J = T(0, T.cols()-1);          // the final time is the answer here
+        out.segments = (int) T.cols() - 1;
+        if ( which == 2 ) {
+            out.J = T(0, T.cols()-1);      // the final time is the answer here
+            // how close did any boundary come to the switch, which is at tf/3?
+            const double sw = out.J/3.0;
+            out.t_switch_gap = 1.0e30;
+            for (int q = 0; q < T.cols(); q++)
+                out.t_switch_gap = fmin( out.t_switch_gap, fabs(T(0,q) - sw) );
+        }
     }
 
     // How far outside its own bounds does the control the integrator was handed go? The
@@ -461,13 +475,67 @@ int main(void)
     printf("     Raise the order of the integrator to stop the dynamics being the limit;\n");
     printf("     raise the order of the control to move the limit itself.\n");
 
+    printf("\n  8. The segment count can be chosen automatically, and the question it answers\n");
+    printf("     is not the one the other mesh-refinement drivers answer. On a collocation\n");
+    printf("     mesh, more nodes means a better approximation of the DYNAMICS; here the\n");
+    printf("     dynamics are integrated to whatever ms_steps_per_segment and ms_integrator\n");
+    printf("     buy, however many segments there are. What the segment count controls is the\n");
+    printf("     resolution of the CONTROL PARAMETERISATION and the coverage of the PATH\n");
+    printf("     CONSTRAINTS, so that is what the indicator measures, and\n");
+    printf("     algorithm.ms_refine_tolerance is the tolerance on it -- not ode_tolerance,\n");
+    printf("     which still reports the integrator's error and is still fixed by steps.\n");
+    printf("\n     On the minimum-time problem above, from uniform partitions that do not\n");
+    printf("     resolve the switch (M not divisible by three):\n\n");
+    printf("        start M   uniform tf rel.err   refined M   refined tf rel.err   boundary\n");
+    for (int m : { 7, 10, 13 }) {
+        Row a = solve_it(2, "multiple-shooting", m, 10, "constant", 0, false, false, "RK4", false);
+        Row b = solve_it(2, "multiple-shooting", m, 10, "constant", 0, false, false, "RK4", true);
+        printf("        %5d     %.3e           %5d       %.3e            %.1e\n", m,
+               fabs(a.J - TF_SQRT3)/TF_SQRT3, b.segments,
+               fabs(b.J - TF_SQRT3)/TF_SQRT3, b.t_switch_gap);
+    }
+    printf("\n     The last column is how far the nearest segment boundary ended up from the\n");
+    printf("     switch. The refinement finds it, and the answer stops depending on where\n");
+    printf("     the partition started -- which is what ms_flexible_segments buys too, by a\n");
+    printf("     different route and without needing a floor to stay well posed.\n");
+    printf("\n     The estimator is built so that a corner ALREADY sitting on a boundary is\n");
+    printf("     not flagged, which is not automatic: an estimator written for smooth\n");
+    printf("     solutions sees the jump and refines the same place for ever. The departure\n");
+    printf("     of the control representation from a richer one is formed twice, from a\n");
+    printf("     window extended to the left and one extended to the right, and the SMALLER\n");
+    printf("     is taken -- a corner on a boundary spoils exactly one of the two, a corner\n");
+    printf("     inside a segment spoils both. From a partition that already resolves the\n");
+    printf("     switch:\n\n");
+    {
+        Row c = solve_it(2, "multiple-shooting", 12, 10, "constant", 0, false, false, "RK4", true);
+        printf("        started at 12 segments (divisible by three), ended at %d,"
+               " tf rel.err %.2e\n", c.segments, fabs(c.J - TF_SQRT3)/TF_SQRT3);
+    }
+    printf("\n     And on the path-constraint leak of point 3, which is the other thing the\n");
+    printf("     segment count controls. J* = 4 and no feasible trajectory costs less, so\n");
+    printf("     4 - J is the leak:\n\n");
+    printf("        mode                      M      J            leak\n");
+    {
+        Row a = solve_it(1, "multiple-shooting", 10, 10, "linear", 0, false, false, "RK4", false);
+        Row b = solve_it(1, "multiple-shooting", 10, 10, "linear", 0, false, false, "RK4", true);
+        Row c = solve_it(1, "multiple-shooting", 10, 10, "linear", 2, false, false, "RK4", true);
+        printf("        fixed,      0 samples  %3d    %.7f    %+.2e\n", a.segments, a.J, 4.0-a.J);
+        printf("        automatic,  0 samples  %3d    %.7f    %+.2e\n", b.segments, b.J, 4.0-b.J);
+        printf("        automatic,  2 samples  %3d    %.7f    %+.2e\n", c.segments, c.J, 4.0-c.J);
+    }
+    printf("\n     A positive number in the last column is the constraint leaking. Refinement\n");
+    printf("     alone takes the leak from parts in a hundred to parts in a million, because\n");
+    printf("     narrower segments leave less room between the points where the constraint\n");
+    printf("     is imposed; adding two interior samples puts the answer ABOVE the optimum,\n");
+    printf("     which is where a restricted control parameterisation has to leave it. The\n");
+    printf("     two are complementary and neither replaces the other: ms_path_samples says\n");
+    printf("     WHERE inside a segment the constraint is enforced, and the segment count\n");
+    printf("     says how far apart those places can be.\n");
+
     printf("\n--------------------------------------------------------------------------------\n");
-    printf("  What this transcription does not yet have: automatic mesh refinement, which\n");
-    printf("  asks a different question here (how many segments is a question about the\n");
-    printf("  control parameterisation, while the integration error is set by\n");
-    printf("  ms_steps_per_segment), and an implicit integrator, without which an index-1\n");
-    printf("  DAE cannot be propagated. Refine by giving a sequence of segment counts in\n");
-    printf("  problem.phases(i).nodes; each mesh is hot-started from the one before it.\n");
+    printf("  What this transcription does not yet have: an implicit integrator, without\n");
+    printf("  which an index-1 DAE cannot be propagated. That is now the only structural\n");
+    printf("  gap; everything else on the list has been built.\n");
 
     return 0;
 }
