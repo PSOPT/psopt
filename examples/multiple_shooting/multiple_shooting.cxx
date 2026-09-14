@@ -114,7 +114,7 @@ void linkages(adouble* linkages, adouble* xad, Workspace* workspace) {}
 //////////////////////////////////////////////////////////////////////////
 
 struct Row { int flag; double J; double l1_err; double l2_err; double u_out_of_bounds;
-             double err_est; int segments; double t_switch_gap; };
+             double err_est; int segments; double t_switch_gap; double cpu; };
 
 static Row solve_it(int which, const char* transcription, int segments, int steps,
                     const char* upar, int path_samples, bool costates,
@@ -125,7 +125,7 @@ static Row solve_it(int which, const char* transcription, int segments, int step
 
     Alg algorithm; Sol solution; Prob problem;
     Row out; out.flag = -1; out.J = 0.0; out.l1_err = 0.0; out.l2_err = 0.0;
-    out.u_out_of_bounds = 0.0; out.err_est = 0.0; out.segments = 0;
+    out.u_out_of_bounds = 0.0; out.err_est = 0.0; out.segments = 0; out.cpu = 0.0;
     out.t_switch_gap = -1.0;
 
     const int nodes = segments + 1;
@@ -207,6 +207,11 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     {
         DMatrix E = solution.get_relative_local_error_in_phase(1);
         for (int q = 0; q < E.size(); q++) out.err_est = fmax(out.err_est, fabs(E(q)));
+    }
+    // Summed over the mesh iterations, which for a manual single-count run is one.
+    for (int q = 0; q < 64; q++) {
+        if ( solution.mesh_stats[q].nnodes <= 0 ) break;
+        out.cpu += solution.mesh_stats[q].CPU_time;
     }
     {
         DMatrix T = solution.get_time_in_phase(1);
@@ -726,6 +731,23 @@ int main(void)
         }
     }
     printf("\n     The ratio after each doubling is the order: 4 = 2^2, 16 = 2^4 and 64 = 2^6.\n");
+    printf("\n     The two error sources are SEPARABLE, and only one of them binds. Holding the\n");
+    printf("     segment count and the control form fixed and varying only the integrator, the\n");
+    printf("     dynamics can be driven to round-off while the cost does not move at all:\n\n");
+    printf("        steps/segment   |J-J*|/J*    reported error   CPU\n");
+    {
+        const double Jo = oscillator_optimum();
+        for (int st : { 2, 4, 10, 40, 160 }) {
+            Row r = solve_it(3, "multiple-shooting", 40, st, "linear", 0, false);
+            printf("        %13d   %.3e    %.3e        %.2f s\n", st,
+                   fabs(r.J - Jo)/Jo, r.err_est, r.cpu);
+        }
+    }
+    printf("\n     Eighty times the integration work buys nothing, because at forty segments with\n");
+    printf("     a ramped control the answer is limited by the control and not by the dynamics.\n");
+    printf("     That is the single most useful thing to know about this transcription: the\n");
+    printf("     integrator's error is bought off at linear cost in CPU and NONE in decision\n");
+    printf("     variables, and what is left is the control parameterisation's.\n");
     printf("     The quadratic form carries one extra control variable per segment, in the\n");
     printf("     slot Hermite-Simpson uses for its midpoint control, and reports it through\n");
     printf("     solution.get_hs_controls_in_phase. Reading get_controls_in_phase alone there\n");
