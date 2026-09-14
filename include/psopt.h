@@ -1791,14 +1791,35 @@ inline bool ms_rk8(Alg& algorithm)
 inline int ms_integrator_stages(Alg& algorithm) { return ms_rk8(algorithm) ? 11 : 4; }
 inline int ms_integrator_order (Alg& algorithm) { return ms_rk8(algorithm) ?  8 : 4; }
 
+// Which components of a phase's path vector may be sampled INSIDE a segment, and how many.
+//
+// An EQUALITY component may not, and sampling one does not merely waste a row: it adds an
+// equation and no unknown. The control inside a segment is a segment's worth of parameters and
+// the state there is not a decision variable at all, so every extra point at which an equality
+// is demanded takes a degree of freedom the transcription does not have. IPOPT says exactly
+// that -- Not_Enough_Degrees_Of_Freedom, return code -10 -- and PSOPT then returned the
+// initial guess with a success flag. Measured on Bryson's maximum-range problem, whose path
+// constraint is u1^2 + u2^2 = 1: EVERY run with ms_path_samples > 0 failed that way, at every
+// segment count and under both control parameterisations.
+//
+// An INEQUALITY component may be sampled, and is what the facility exists for: it is satisfied
+// on a set rather than at a point, so more places to satisfy it is a restriction and not an
+// over-determination.
+//
+// The indices are returned as a list rather than recomputed at each site, because the row
+// counter, the bounds and the constraints must agree about which component owns which row and
+// a rule written out three times is a rule that will drift.
+void ms_samplable_path_indices(Prob& problem, int iphase_index, std::vector<int>& idx);
+int  ms_samplable_path_components(Prob& problem, int iphase_index);
+
 // Rows a phase spends on path constraints sampled INSIDE its segments. Zero unless multiple
 // shooting is in force with ms_path_samples > 0; the boundary rows are the ordinary
-// npath*(norder+1) block and are counted elsewhere.
-inline int ms_interior_path_rows(int norder, int npath, Alg& algorithm)
+// npath*(norder+1) block and are counted elsewhere. nsamplable is the count above, NOT npath.
+inline int ms_interior_path_rows(int norder, int nsamplable, Alg& algorithm)
 {
     if ( !is_multiple_shooting(algorithm) ) return 0;
-    if ( npath <= 0 || algorithm.ms_path_samples <= 0 ) return 0;
-    return npath*norder*algorithm.ms_path_samples;
+    if ( nsamplable <= 0 || algorithm.ms_path_samples <= 0 ) return 0;
+    return nsamplable*norder*algorithm.ms_path_samples;
 }
 
 // The terminal control belongs to no segment under a piecewise-CONSTANT parameterisation and

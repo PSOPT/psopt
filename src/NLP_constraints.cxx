@@ -778,8 +778,17 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
             // an integrator, and nothing at all constrains what it does there. These rows ask
             // the integrator for the states it produced at ms_path_samples of its own step
             // boundaries and impose the user's bounds on them.
+            //
+            // Only the INEQUALITY components are sampled. An equality demanded at a point
+            // inside a segment is an equation with no unknown to answer it -- the state there
+            // is not a decision variable and the control is already spent -- so sampling one
+            // does not tighten the problem, it over-determines it. See
+            // ms_samplable_path_indices.
             const int nsamp = algorithm->ms_path_samples;
-            if ( npath > 0 && nsamp > 0 ) {
+            std::vector<int> spath;
+            ms_samplable_path_indices(*problem, i, spath);
+            const int nsp = (int) spath.size();
+            if ( nsp > 0 && nsamp > 0 ) {
                 std::vector<adouble> xend_s(nstates), xs(nsamp*nstates), ts(nsamp);
                 std::vector<adouble> us( nsamp*((nctrls>0)?nctrls:1) );
                 std::vector<adouble> dsc(nstates), psc(npath);
@@ -793,8 +802,9 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
                                      parameters, ts[q], xad, iphase, workspace);
                         if (workspace->enable_nlp_counters)
                             workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ].n_ode_rhs_evals++;
-                        for (int j2=0; j2<npath; j2++) {
-                            const int r = base + (kk*nsamp + q)*npath + j2;
+                        for (int slot=0; slot<nsp; slot++) {
+                            const int j2 = spath[slot];
+                            const int r  = base + (kk*nsamp + q)*nsp + slot;
                             gad[r] = psc[j2];
                             if ( algorithm->scaling=="user" ) {
                                 gad[r] *= path_scaling(j2);

@@ -333,12 +333,18 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
             const int npin = ms_terminal_pin_rows(ncontrols, *algorithm);
             for (int l2=0; l2<npin; l2++) { g_l[base+l2] = 0.0; g_u[base+l2] = 0.0; }
             base += npin;
+            // Inequality components only, and in the same order the constraint rows are
+            // written in; the two must agree about which component owns which row.
             const int nsamp = algorithm->ms_path_samples;
-            if ( npath > 0 && nsamp > 0 ) {
+            std::vector<int> spath;
+            ms_samplable_path_indices(*problem, i, spath);
+            const int nsp = (int) spath.size();
+            if ( nsp > 0 && nsamp > 0 ) {
                 for (int kk=0; kk<norder; kk++) {
                     for (int q=0; q<nsamp; q++) {
-                        for (int j2=0; j2<npath; j2++) {
-                            const int r = base + (kk*nsamp + q)*npath + j2;
+                        for (int slot=0; slot<nsp; slot++) {
+                            const int j2 = spath[slot];
+                            const int r  = base + (kk*nsamp + q)*nsp + slot;
                             const double sc = ( algorithm->scaling == "user" )
                                               ? path_scaling(j2) : constraint_scaling(r);
                             g_l[r] = PSOPT::scaled_lower_bound(

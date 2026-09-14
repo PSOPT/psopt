@@ -1132,3 +1132,189 @@ TEST(MultipleShooting, RefinementShrinksAPathConstraintLeak)
         << "the leak went from " << leak_fixed << " to " << leak_auto
         << " over " << fixed.segments << " -> " << autom.segments << " segments";
 }
+
+
+// ---------------------------------------------------------------------------
+// Equality path constraints.
+//
+// Bryson's maximum-range problem: max x(tf) with xdot = v u1, ydot = v u2,
+// vdot = a - g u2 and u1^2 + u2^2 = 1, which is an equality in the CONTROLS
+// ALONE. That distinction decides everything about how it behaves here.
+//
+// Between two segment boundaries the state is not a decision variable, so an
+// equality involving the state cannot be made to hold there by anything but the
+// dynamics. An equality in the controls alone is a different matter: under a
+// piecewise-CONSTANT parameterisation a control that satisfies it at the start
+// of a segment satisfies it everywhere on that segment, exactly, and the
+// transcription represents the constraint with no error at all.
+//
+// And such a component must NOT be sampled inside the segments. Sampling an
+// equality adds an equation and no unknown; IPOPT says so in as many words --
+// Not_Enough_Degrees_Of_Freedom, return code -10 -- and PSOPT then returned the
+// initial guess with a success flag. Every run of this problem with
+// ms_path_samples > 0 failed that way before ms_samplable_path_indices.
+// ---------------------------------------------------------------------------
+
+namespace mspath {
+
+adouble endpoint_cost(adouble*, adouble* f, adouble*, adouble&, adouble&, adouble*,
+                      int, Workspace*) { return -f[0]; }
+adouble integrand_cost(adouble*, adouble*, adouble*, adouble&, adouble*, int, Workspace*)
+{ return (adouble) 0.0; }
+
+void dae(adouble* d, adouble* path, adouble* s, adouble* c, adouble*, adouble&,
+         adouble*, int, Workspace*)
+{
+    const double g = 1.0, a = 0.5*g;
+    d[0] = s[2]*c[0];
+    d[1] = s[2]*c[1];
+    d[2] = a - g*c[1];
+    path[0] = c[0]*c[0] + c[1]*c[1];
+}
+
+void events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
+            adouble*, int, Workspace*)
+{ e[0]=i[0]; e[1]=i[1]; e[2]=i[2]; e[3]=f[1]; }
+
+struct Run { int flag; int rc; double J; MatrixXd u; int M; };
+
+static Run solve(int segments, const std::string& upar, int path_samples)
+{
+    Alg algorithm; Sol solution; Prob problem;
+    Run out; out.flag = -1; out.rc = -99; out.J = 0.0; out.M = 0;
+
+    const int nodes = segments + 1;
+    problem.name        = "multiple shooting, equality path";
+    problem.outfilename = "test_multiple_shooting_eq.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = 3;
+    problem.phases(1).ncontrols = 2;
+    problem.phases(1).nevents   = 4;
+    problem.phases(1).npath     = 1;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    problem.phases(1).bounds.lower.states   << -10.0, -10.0, -10.0;
+    problem.phases(1).bounds.upper.states   <<  10.0,  10.0,  10.0;
+    problem.phases(1).bounds.lower.controls << -10.0, -10.0;
+    problem.phases(1).bounds.upper.controls <<  10.0,  10.0;
+    problem.phases(1).bounds.lower.path(0)  = 1.0;      // an EQUALITY
+    problem.phases(1).bounds.upper.path(0)  = 1.0;
+    problem.phases(1).bounds.lower.events   << 0.0, 0.0, 0.0, 0.0;
+    problem.phases(1).bounds.upper.events   << 0.0, 0.0, 0.0, 0.0;
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 2.0; problem.phases(1).bounds.upper.EndTime   = 2.0;
+
+    problem.integrand_cost = &integrand_cost;
+    problem.endpoint_cost  = &endpoint_cost;
+    problem.dae            = &dae;
+    problem.events         = &events;
+    problem.linkages       = &msh::linkages;
+
+    problem.phases(1).guess.states   = zeros(3, nodes);
+    problem.phases(1).guess.controls = zeros(2, nodes);
+    problem.phases(1).guess.controls.row(0) = ones(1, nodes);
+    problem.phases(1).guess.time     = linspace(0.0, 2.0, nodes);
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 2000;
+    algorithm.nlp_tolerance         = 1.0e-9;
+    algorithm.print_level           = 0;
+    algorithm.mesh_refinement       = "manual";
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = "multiple-shooting";
+    algorithm.ms_steps_per_segment  = 20;
+    algorithm.ms_control_parameterisation = upar;
+    algorithm.ms_path_samples             = path_samples;
+
+    out.flag = psopt(solution, problem, algorithm);
+    out.rc   = solution.nlp_return_code;
+    if (out.flag == 0) {
+        out.J = solution.cost;
+        out.u = solution.get_controls_in_phase(1);
+        out.M = (int) out.u.cols() - 1;
+    }
+    return out;
+}
+
+// The worst |u|^2 - 1 anywhere along a segment, using the control representation
+// the transcription actually integrated -- which is the only place the question
+// can be asked, the nodal values satisfying it by construction.
+static double worst_violation(const Run& r, const std::string& upar)
+{
+    double worst = 0.0;
+    for (int k = 0; k < r.M; k++)
+        for (int q = 0; q <= 40; q++) {
+            const double s = ((double) q)/40.0;
+            double u1, u2;
+            if ( upar == "constant" ) { u1 = r.u(0,k); u2 = r.u(1,k); }
+            else { u1 = (1-s)*r.u(0,k) + s*r.u(0,k+1);
+                   u2 = (1-s)*r.u(1,k) + s*r.u(1,k+1); }
+            worst = std::max( worst, std::fabs(u1*u1 + u2*u2 - 1.0) );
+        }
+    return worst;
+}
+
+} // namespace mspath
+
+
+TEST(MultipleShooting, AControlOnlyEqualityPathConstraintIsExactUnderAHeldControl)
+{
+    const mspath::Run r = mspath::solve(10, "constant", 0);
+    ASSERT_EQ(r.flag, 0) << "IPOPT return code " << r.rc;
+
+    EXPECT_LT(mspath::worst_violation(r, "constant"), 1.0e-12)
+        << "a constant control satisfying the equality at the start of a segment "
+        << "satisfies it everywhere on that segment, so this should be round-off";
+    EXPECT_NEAR(r.J, -1.7944638, 0.02)
+        << "against the Hermite-Simpson collocation answer on fifty nodes";
+}
+
+
+TEST(MultipleShooting, AContinuousControlLeavesAControlOnlyEqualityBetweenTheNodes)
+{
+    // The chord between two points on the unit circle lies inside it, so the
+    // linear form satisfies the equality at the nodes and nowhere else. This is
+    // a limitation rather than a defect, and it is pinned so that it cannot stop
+    // being true quietly.
+    const mspath::Run coarse = mspath::solve(10, "linear", 0);
+    const mspath::Run fine   = mspath::solve(40, "linear", 0);
+    ASSERT_EQ(coarse.flag, 0) << "IPOPT return code " << coarse.rc;
+    ASSERT_EQ(fine.flag,   0) << "IPOPT return code " << fine.rc;
+
+    const double v_coarse = mspath::worst_violation(coarse, "linear");
+    const double v_fine   = mspath::worst_violation(fine,   "linear");
+
+    EXPECT_GT(v_coarse, 1.0e-3) << "the ramp is unexpectedly satisfying the equality "
+        << "between the nodes (" << v_coarse << "), so this test measures nothing";
+    EXPECT_LT(v_fine, v_coarse/4.0)
+        << "four times the segments should buy about sixteen: " << v_coarse
+        << " -> " << v_fine;
+}
+
+
+// The regression this all turns on: asking for interior samples must not make
+// the problem infeasible. Before ms_samplable_path_indices every one of these
+// returned the initial guess with a success flag and an IPOPT return code of
+// -10, Not_Enough_Degrees_Of_Freedom.
+TEST(MultipleShooting, SamplingDoesNotOverDetermineAnEqualityPathConstraint)
+{
+    const mspath::Run none = mspath::solve(10, "constant", 0);
+    ASSERT_EQ(none.flag, 0) << "IPOPT return code " << none.rc;
+
+    for (int samples : { 1, 3 }) {
+        const mspath::Run r = mspath::solve(10, "constant", samples);
+        ASSERT_EQ(r.flag, 0) << samples << " interior samples: IPOPT return code " << r.rc
+            << " (-10 is Not_Enough_Degrees_Of_Freedom, which is what sampling an "
+            << "equality used to produce)";
+        EXPECT_NE(r.rc, -10);
+        EXPECT_NEAR(r.J, none.J, 1.0e-6)
+            << "an equality component is not sampled, so asking for samples must not "
+            << "change the answer: " << none.J << " against " << r.J;
+    }
+}

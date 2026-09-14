@@ -144,6 +144,28 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
           error_message("algorithm.ms_path_samples must be zero or positive: it is the number "
                         "of interior points per segment at which the path constraints are also "
                         "enforced ");
+       // Equality path components are not sampled inside the segments, and a user who set
+       // ms_path_samples expecting them to be should hear it from PSOPT rather than from a
+       // return code. See ms_samplable_path_indices for why they cannot be.
+       if ( algorithm.ms_path_samples > 0 ) {
+          for (i = 0; i < problem.nphases; i++) {
+             const int npath = problem.phase[i].npath;
+             const int nsp   = ms_samplable_path_components(problem, i);
+             if ( npath > 0 && nsp < npath ) {
+                snprintf(workspace->text, sizeof(workspace->text),
+                   "\n>>> Note: phase %d has %d path constraint(s) of which %d are equalities."
+                   "\n>>> Equality components are imposed at the segment boundaries and are NOT"
+                   "\n>>> sampled inside the segments: an equality demanded where the state is"
+                   "\n>>> not a decision variable is an equation with nothing to answer it, and"
+                   "\n>>> the NLP would be over-determined. Between the boundaries such a"
+                   "\n>>> constraint holds only as well as the control parameterisation makes"
+                   "\n>>> it hold -- exactly, if it involves the controls alone and the"
+                   "\n>>> parameterisation is \"constant\"; otherwise to O(h).\n",
+                   i+1, npath, npath - nsp);
+                psopt_print(workspace, workspace->text);
+             }
+          }
+       }
        if ( algorithm.ms_path_samples > algorithm.ms_steps_per_segment - 1 )
           error_message("algorithm.ms_path_samples must be at most "
                         "algorithm.ms_steps_per_segment - 1: the samples are placed at "

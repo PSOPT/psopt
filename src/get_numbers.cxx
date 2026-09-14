@@ -193,7 +193,8 @@ int get_max_number_nlp_constraints(Prob& problem, Alg& algorithm)
        if ( flexible_partition_active(algorithm) ) nlp_ncons += 1;
        if ( is_multiple_shooting(algorithm) ) {
            nlp_ncons += ms_terminal_pin_rows(problem.phase[i].ncontrols, algorithm);
-           nlp_ncons += ms_interior_path_rows(max_nodes, npath, algorithm);
+           nlp_ncons += ms_interior_path_rows(max_nodes,
+                             ms_samplable_path_components(problem, i), algorithm);
        }
 
 
@@ -391,7 +392,8 @@ int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace)
 
         // Path constraints sampled inside the segments, which is what makes them mean what
         // the user wrote rather than what holds at the boundaries.
-        ncons_phase_i += ms_interior_path_rows(norder, npath, *workspace->algorithm);
+        ncons_phase_i += ms_interior_path_rows(norder,
+                             ms_samplable_path_components(problem, i), *workspace->algorithm);
 
         if ( workspace->algorithm->collocation_method == "Gauss" ) {
                     int Kg = hp_mesh_active(problem.phase[i]) ? (int) problem.phase[i].hp_orders.size() : 1;

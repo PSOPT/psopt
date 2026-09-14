@@ -573,6 +573,28 @@ bool need_midpoint_controls(Alg& algorithm, Workspace* workspace)
 // need_midpoint_controls -- which asks whether the DEFECTS are Hermite-Simpson, and drives
 // the Simpson quadrature and the midpoint path rows as well -- is the wrong question to
 // widen; this one, which asks only whether the variables exist, is the right one.
+// See the note in psopt.h. A component is an equality when the user set its two bounds to the
+// same number; that is the user's own statement and not an inference, so no tolerance is
+// invented here.
+void ms_samplable_path_indices(Prob& problem, int iphase_index, std::vector<int>& idx)
+{
+    idx.clear();
+    const int npath = problem.phase[iphase_index].npath;
+    for (int j = 0; j < npath; j++) {
+        const double lo = (problem.phase[iphase_index].bounds.lower.path)(j);
+        const double up = (problem.phase[iphase_index].bounds.upper.path)(j);
+        if ( lo != up ) idx.push_back(j);
+    }
+}
+
+int ms_samplable_path_components(Prob& problem, int iphase_index)
+{
+    std::vector<int> idx;
+    ms_samplable_path_indices(problem, iphase_index, idx);
+    return (int) idx.size();
+}
+
+
 bool midpoint_control_vars(Alg& algorithm, Workspace* workspace)
 {
     if ( ms_quadratic_controls(algorithm) ) return true;
