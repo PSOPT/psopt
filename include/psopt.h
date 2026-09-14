@@ -232,10 +232,9 @@ struct alg_str {
   // Which nonlinear programming solver PSOPT hands the discretised problem to.
   // "IPOPT" (default) is Waechter and Biegler's interior-point method, and is what most
   // problems here are solved with. "SQP" is PSOPT's own sequential quadratic programming
-  // solver, described in include/psopt_sqp.hpp and measured in doc/SQP_ALL_EXAMPLES.md;
-  // it must be built with -DWITH_SQP=ON and at least one QP backend, and it offers a
-  // second opinion whose every part lives in this repository rather than behind a
-  // third-party interface.
+  // solver, described in include/psopt_sqp.hpp; it must be built with -DWITH_SQP=ON
+  // and at least one QP backend, and it offers a second opinion whose every part lives
+  // in this repository rather than behind a third-party interface.
   //
   // "SNOPT" was a third option until 2026 and is no longer accepted. It is commercial,
   // so it was only ever available to a minority of users, and the SQP above now fills
@@ -246,10 +245,10 @@ struct alg_str {
   // (default), "ProxQP", "QPALM" or "OSQP". All of them factorise the KKT system
   // sparsely, which is what a collocated optimal control problem needs; they differ in
   // method. GALAHAD's QPA is active-set and is the one the solver has been tuned and
-  // measured against -- doc/SQP_ALL_EXAMPLES.md reports it across the whole example
-  // set. ProxQP is a proximal augmented-Lagrangian method that tolerates an indefinite
-  // Hessian, as is QPALM, which differs from it in the factorisation underneath and in
-  // estimating the Hessian's smallest eigenvalue itself; OSQP is ADMM-based. Whichever
+  // measured against across the whole example set. ProxQP is a proximal augmented-
+  // Lagrangian method that tolerates an indefinite Hessian, as is QPALM, which differs
+  // from it in the factorisation underneath and in estimating the Hessian's smallest
+  // eigenvalue itself; OSQP is ADMM-based. Whichever
   // is named must have been built: see WITH_GALAHAD and its siblings in CMakeLists.
   // Ignored unless nlp_method is "SQP". Note that QPALM is LGPL-3: a PSOPT built with it
   // is distributable under LGPL-3 rather than LGPL-2.1.

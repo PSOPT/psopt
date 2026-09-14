@@ -425,8 +425,9 @@ ordinary build: with `WITH_SQP=OFF` the solver compiles to a stub. Everything be
 needed only if you want to build it.
 
 The algorithm is broadly based on the sparse SQP method of Betts, *Practical Methods for
-Optimal Control Using Nonlinear Programming*, 3rd ed., chapter 2. `doc/SQP_VS_BETTS.md`
-records component by component what has been taken from it and what has not, and why.
+Optimal Control Using Nonlinear Programming*, 3rd ed., chapter 2, with several of its
+components left out; the section on the SQP solver in the reference manual lists which,
+and what replaces them.
 
 **Should you build it? For most problems, no.** IPOPT is the default NLP solver and
 performs better across the board: it solves more of the shipped examples than the SQP does,
@@ -447,9 +448,8 @@ And the caveats, plainly:
 
 - **It does not solve everything IPOPT does.** As last measured it fails outright on one of
   the shipped examples and does not finish within a practical time budget on a further
-  handful, where IPOPT succeeds. `doc/SQP_ALL_EXAMPLES.md` carries the current table and is
-  regenerated as the solver changes; treat it, not this paragraph, as the authoritative
-  statement.
+  handful, where IPOPT succeeds. The proportion moves as the solver changes, so read it as
+  indicative: a problem the SQP will not take is one to give to IPOPT.
 - **It is slower**, dominated by the QP subproblems, of which there is at least one per
   iteration.
 - **It needs `hessian = "exact"` to be usable at any size.** The alternative is a dense
@@ -461,9 +461,9 @@ And the caveats, plainly:
 The quadratic programming subproblem goes to one of several backends, every one of them
 sparse, and at least one must be built: `WITH_SQP=ON` on its own is an error, because the
 SQP has no QP solver of its own. **GALAHAD's QPA is the one to use**: it is sparse, BSD-3
-licensed, and the configuration the solver has been tuned and measured against (see
-`doc/SQP_ALL_EXAMPLES.md`). **PIQP is the one to try when it disappoints** -- it is
-header-only, so it costs nothing to have, it solves a few examples GALAHAD does not, and
+licensed, and the configuration the solver has been tuned and measured against. **PIQP is
+the one to try when it disappoints** -- it is header-only, so it costs nothing to have, it
+solves a few examples GALAHAD does not, and
 over the examples both solve it is several times faster at very nearly the same number of
 SQP iterations. Between them the two solve every example any backend solves. Clarabel,
 ProxQP, QPALM and OSQP are also supported, and solve nothing those two do not.
@@ -478,8 +478,8 @@ Fortran dependency that came with it out of the build entirely.
 qpOASES was the original backend and has been removed. It was a dense active-set method,
 so its memory was quadratic and its work per subproblem cubic in the number of variables
 however sparse the matrices it was handed, which made it unsuitable for the problems this
-library exists for; it timed out on every large example in
-`doc/SQP_BACKEND_BENCHMARK.md`. It is no longer a dependency of anything.
+library exists for; it timed out on every large example it was benchmarked against. It is
+no longer a dependency of anything.
 
 *What you need beyond a working PSOPT build*
 

@@ -9,7 +9,7 @@
 # does not touch PSOPT itself; it prints the cmake line to use when you are done.
 #
 # The meson options below are not a guess. They are the configuration of the GALAHAD
-# build that every PSOPT SQP measurement in doc/SQP_ALL_EXAMPLES.md was made against.
+# build that every PSOPT SQP measurement was made against.
 #
 #   ./build_galahad.sh                 # install under ~/galahad-install
 #   ./build_galahad.sh --prefix /usr/local --sudo
