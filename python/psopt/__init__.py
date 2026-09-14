@@ -174,7 +174,11 @@ class Algorithm:
                  ir_dair_delta_factor=None, ir_local_order=None,
                  ir_include_path=None, ir_path_weight=None, ir_residual_scaling=None,
                  ir_element_local_controls=None, ir_flexible_mesh=None,
-                 ir_min_element_fraction=None):
+                 ir_min_element_fraction=None,
+                 # multiple-shooting transcription
+                 ms_steps_per_segment=None, ms_control_parameterisation=None,
+                 ms_path_samples=None, ms_flexible_segments=None,
+                 ms_min_segment_fraction=None):
         self.collocation_method = collocation_method
         self.nlp_method = nlp_method
         self.derivatives = derivatives
@@ -207,6 +211,11 @@ class Algorithm:
         self.ir_element_local_controls = ir_element_local_controls
         self.ir_flexible_mesh = ir_flexible_mesh
         self.ir_min_element_fraction = ir_min_element_fraction
+        self.ms_steps_per_segment = ms_steps_per_segment
+        self.ms_control_parameterisation = ms_control_parameterisation
+        self.ms_path_samples = ms_path_samples
+        self.ms_flexible_segments = ms_flexible_segments
+        self.ms_min_segment_fraction = ms_min_segment_fraction
 
 
 def _col(a):
@@ -254,7 +263,10 @@ def _alg_dict(a):
                 "ir_dair_delta_factor", "ir_local_order",
                 "ir_include_path", "ir_path_weight", "ir_residual_scaling",
                 "ir_element_local_controls", "ir_flexible_mesh",
-                "ir_min_element_fraction"]
+                "ir_min_element_fraction",
+                "ms_steps_per_segment", "ms_control_parameterisation",
+                "ms_path_samples", "ms_flexible_segments",
+                "ms_min_segment_fraction"]
     for k in optional:
         v = getattr(a, k, None)
         if v is not None:

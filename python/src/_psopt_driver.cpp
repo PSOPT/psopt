@@ -62,6 +62,16 @@ static void apply_algorithm(Alg& a, py::dict o) {
     // does not is an option a Python user cannot discover exists.
     B("ir_flexible_mesh", a.ir_flexible_mesh);
     D("ir_min_element_fraction", a.ir_min_element_fraction);
+    // Multiple shooting. transcription_method above is what selects it, and without these
+    // five the selection reaches Python and nothing that configures it does -- so a Python
+    // user would get the default segment integrator, a piecewise-constant control, path
+    // constraints at the boundaries only and a fixed partition, with no way to change any of
+    // them and no sign that there was anything to change.
+    I("ms_steps_per_segment", a.ms_steps_per_segment);
+    S("ms_control_parameterisation", a.ms_control_parameterisation);
+    I("ms_path_samples", a.ms_path_samples);
+    B("ms_flexible_segments", a.ms_flexible_segments);
+    D("ms_min_segment_fraction", a.ms_min_segment_fraction);
 }
 
 
