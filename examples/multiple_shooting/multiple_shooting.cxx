@@ -339,6 +339,126 @@ void bump_events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble
 
 struct BumpRow { int flag; double J; double eps; int iters; };
 
+//////////////////////////////////////////////////////////////////////////
+/////////  A STIFF problem, with and without an algebraic relation  ///////
+//////////////////////////////////////////////////////////////////////////
+//
+//  stiff_case 0:  xdot1 = -lam x1 + u,   xdot2 = x1               (stiff, linear)
+//  stiff_case 1:  the same with lam = 1                           (not stiff)
+//  stiff_case 2:  xdot1 = -lam(x1 - 0.3 sin x2) + u,  xdot2 = x1^2 + x2/2   (nonlinear)
+//  stiff_case 3:  xdot1 = x2,  xdot2 = u - z - lam(x2 - 1),  0 = z^3 + z - x1
+//
+// min (1/2) int_0^1 u^2 with x(0) = 0 and x2(1) fixed.
+static double STIFF_LAM = 1000.0;
+static int    stiff_case = 0;
+
+adouble stiff_endpoint(adouble*, adouble*, adouble*, adouble&, adouble&, adouble*,
+                       int, Workspace*) { return (adouble) 0.0; }
+adouble stiff_integrand(adouble*, adouble* c, adouble*, adouble&, adouble*, int, Workspace*)
+{ return 0.5*c[0]*c[0]; }
+void stiff_dynamics(adouble* d, adouble* path, adouble* s, adouble* c, adouble*, adouble&,
+                    adouble*, int, Workspace*)
+{
+    if ( stiff_case == 2 ) {
+        d[0] = -STIFF_LAM*(s[0] - 0.3*sin(s[1])) + c[0];
+        d[1] = s[0]*s[0] + 0.5*s[1];
+    }
+    else if ( stiff_case == 3 ) {
+        d[0] = s[1];
+        d[1] = c[0] - c[1] - STIFF_LAM*(s[1] - 1.0);
+        path[0] = c[1]*c[1]*c[1] + c[1] - s[0];
+    }
+    else {
+        d[0] = -STIFF_LAM*s[0] + c[0];
+        d[1] = s[0];
+    }
+}
+void stiff_events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
+                  adouble*, int, Workspace*)
+{ e[0]=i[0]; e[1]=i[1]; e[2]=f[1]; }
+
+struct StiffRow { int flag; double J; double gmax; };
+
+static StiffRow solve_stiff(int segments, int steps, const char* integrator, int mimp = 4)
+{
+    Alg algorithm; Sol solution; Prob problem;
+    StiffRow out; out.flag = -1; out.J = 0.0; out.gmax = -1.0;
+    const int nodes = segments + 1;
+    const int nc    = ( stiff_case == 3 ) ? 2 : 1;
+
+    problem.name        = "Multiple shooting, stiff";
+    problem.outfilename = "multiple_shooting_stiff.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = 2;
+    problem.phases(1).ncontrols = nc;
+    problem.phases(1).nevents   = 3;
+    problem.phases(1).npath     = ( stiff_case == 3 ) ? 1 : 0;
+    if ( stiff_case == 3 ) problem.phases(1).nalgebraic = 1;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    problem.phases(1).bounds.lower.states << -100.0, -100.0;
+    problem.phases(1).bounds.upper.states <<  100.0,  100.0;
+    if ( stiff_case == 3 ) {
+        problem.phases(1).bounds.lower.controls << -1.0e5, -20.0;
+        problem.phases(1).bounds.upper.controls <<  1.0e5,  20.0;
+        problem.phases(1).bounds.lower.path(0) = 0.0;
+        problem.phases(1).bounds.upper.path(0) = 0.0;
+    }
+    else {
+        problem.phases(1).bounds.lower.controls(0) = -1.0e5;
+        problem.phases(1).bounds.upper.controls(0) =  1.0e5;
+    }
+    const double xT = ( stiff_case == 3 ) ? 3.0 : 1.0;
+    problem.phases(1).bounds.lower.events << 0.0, 0.0, xT;
+    problem.phases(1).bounds.upper.events << 0.0, 0.0, xT;
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0; problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &stiff_integrand;
+    problem.endpoint_cost  = &stiff_endpoint;
+    problem.dae            = &stiff_dynamics;
+    problem.events         = &stiff_events;
+    problem.linkages       = &linkages;
+
+    problem.phases(1).guess.states        = zeros(2, nodes);
+    problem.phases(1).guess.states.row(1) = linspace(0.0, xT, nodes);
+    problem.phases(1).guess.controls      = zeros(nc, nodes);
+    problem.phases(1).guess.time          = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 3000;
+    algorithm.nlp_tolerance         = 1.0e-10;
+    algorithm.print_level           = 0;
+    algorithm.mesh_refinement       = "manual";
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = "multiple-shooting";
+    algorithm.ms_control_parameterisation = "constant";
+    algorithm.ms_steps_per_segment  = steps;
+    algorithm.ms_integrator         = integrator;
+    algorithm.ms_implicit_iterations = mimp;
+
+    out.flag = psopt(solution, problem, algorithm);
+    if ( out.flag != 0 ) return out;
+    out.J = solution.cost;
+    if ( stiff_case == 3 ) {
+        const MatrixXd u = solution.get_controls_in_phase(1);
+        const MatrixXd x = solution.get_states_in_phase(1);
+        out.gmax = 0.0;
+        for (int q = 0; q < (int) u.cols(); q++) {
+            const double z = u(1,q), x1 = x(0,q);
+            out.gmax = fmax( out.gmax, fabs(z*z*z + z - x1) );
+        }
+    }
+    return out;
+}
+
+
 static BumpRow solve_bump(int segments, int steps, bool adaptive, const char* integrator,
                           int print_level = 0)
 {
@@ -941,11 +1061,104 @@ int main(void)
     printf("     resolve a segment in two hundred steps is usually meeting STIFFNESS, which no\n");
     printf("     step count fixes cheaply and which this transcription does not serve.\n");
 
+    printf("\n 11. And for STIFF dynamics the segment integrator has two implicit schemes.\n");
+    printf("     ms_integrator = \"TRBDF2\" and \"ESDIRK3\" are ESDIRKs: explicit first stage,\n");
+    printf("     one repeated diagonal, stiffly accurate and L-stable, of classical order 2\n");
+    printf("     and 3. This is a different KIND of thing from RK4 and RK8, not two more\n");
+    printf("     tables, and it is worth being clear about what it is for.\n");
+    printf("\n     An explicit scheme does not become inaccurate on a stiff problem, it\n");
+    printf("     becomes UNBOUNDED. RK4's stability region reaches |lam h| = 2.78, so on\n\n");
+    printf("        xdot1 = -%.0f x1 + u,   xdot2 = x1,   min (1/2) int_0^1 u^2\n\n", STIFF_LAM);
+    printf("     with ten segments it needs at least %d steps per segment before the\n",
+           (int) ceil(STIFF_LAM/10.0/2.78));
+    printf("     propagation is even bounded -- and below that it does not return a poor\n");
+    printf("     answer, it returns a meaningless one:\n\n");
+    printf("        scheme    steps   J\n");
+    stiff_case = 0; STIFF_LAM = 1000.0;
+    for (int st : { 8, 16, 36, 72 }) {
+        const StiffRow r = solve_stiff(10, st, "RK4");
+        if ( r.flag != 0 ) printf("        %-8s %6d   (the solve failed)\n", "RK4", st);
+        else               printf("        %-8s %6d   %.6f\n", "RK4", st, r.J);
+    }
+    for (const char* sch : { "TRBDF2", "ESDIRK3" }) {
+        const StiffRow r = solve_stiff(10, 1, sch);
+        printf("        %-8s %6d   %.6f\n", sch, 1, r.J);
+    }
+    printf("\n     One step per segment, for a scheme with no stability limit at all.\n");
+    printf("\n     The classical order can only be measured on a NON-STIFF problem, which is\n");
+    printf("     a trap rather than an inconvenience: in the stiff limit an L-stable scheme\n");
+    printf("     resolves the quasi-steady state almost exactly, and on the problem above\n");
+    printf("     TR-BDF2 -- a second-order scheme -- reads as order eight. At lam = 1:\n\n");
+    printf("        scheme    steps   |J - J_fine|   ratio\n");
+    stiff_case = 1; STIFF_LAM = 1.0;
+    for (const char* sch : { "TRBDF2", "ESDIRK3" }) {
+        const StiffRow fine = solve_stiff(10, 64, sch);
+        double prev = -1.0;
+        for (int st : { 2, 4, 8, 16 }) {
+            const StiffRow r = solve_stiff(10, st, sch);
+            const double e = fabs(r.J - fine.J);
+            printf("        %-8s %6d   %.3e", sch, st, e);
+            if ( prev > 0.0 ) printf("      %6.2f", prev/e);
+            printf("\n");
+            prev = e;
+        }
+    }
+    printf("\n     4 = 2^2 and 8 = 2^3, so the two tables are the orders they claim. They were\n");
+    printf("     DERIVED rather than transcribed -- gamma from its own defining cubic, then\n");
+    printf("     the remaining coefficients from C(2) and B(1..3) -- and checked before use\n");
+    printf("     against the row sums, the order conditions, stiff accuracy, the stability\n");
+    printf("     function at minus infinity and on the imaginary axis, and the expansion of\n");
+    printf("     R(z) against the exponential series.\n");
+    printf("\n     algorithm.ms_implicit_iterations is the fixed, unrolled number of\n");
+    printf("     modified-Newton iterations each stage system gets; the default of 4 is\n");
+    printf("     derived and not tuned. W = I - h gamma J is formed by finite differences\n");
+    printf("     once per STEP and reused by every stage -- which is what one repeated\n");
+    printf("     diagonal is for -- so nothing in the iteration has to be differentiated and\n");
+    printf("     no automatic differentiation is nested. Warm-started from the previous\n");
+    printf("     stage, modified Newton contracts by O(h) an iteration, so m of them leave\n");
+    printf("     O(h^(m+1)). Measured on a NONLINEAR stiff problem, since modified Newton\n");
+    printf("     solves a LINEAR stage system exactly in one iteration and a linear problem\n");
+    printf("     would make every count look sufficient:\n\n");
+    printf("        iterations   relative change from m = 8\n");
+    stiff_case = 2; STIFF_LAM = 1000.0;
+    {
+        const StiffRow ref = solve_stiff(10, 8, "ESDIRK3", 8);
+        for (int m : { 1, 2, 3, 4, 5 }) {
+            const StiffRow r = solve_stiff(10, 8, "ESDIRK3", m);
+            printf("        %10d   %.3e\n", m, fabs(r.J - ref.J)/fabs(ref.J));
+        }
+    }
+    printf("\n     And the combination that needs points 9 and 11 at once -- STIFF, and a\n");
+    printf("     semi-explicit index-1 DAE:\n\n");
+    printf("        xdot1 = x2,  xdot2 = u - z - %.0f(x2 - 1),  0 = z^3 + z - x1\n\n", STIFF_LAM);
+    printf("        scheme    steps   J                worst |g| at the nodes\n");
+    stiff_case = 3;
+    for (const char* sch : { "RK4", "ESDIRK3" }) {
+        for (int st : { 4, 20, 100 }) {
+            const StiffRow r = solve_stiff(10, st, sch);
+            if ( r.flag != 0 ) { printf("        %-8s %6d   (the solve failed)\n", sch, st); continue; }
+            printf("        %-8s %6d   %.6f     %.3e\n", sch, st, r.J, r.gmax);
+        }
+    }
+    printf("\n     ESDIRK3 at four steps is already within a part in ten thousand, where RK4 is\n");
+    printf("     not even stable until a hundred -- and its unstable rows are not reproducible\n");
+    printf("     between builds, because a meaningless propagation makes a nonconvex problem\n");
+    printf("     land wherever it lands. That is the reading: below its stability limit an\n");
+    printf("     explicit scheme neither converges nor respects the algebraic relation it is\n");
+    printf("     being solved against, and how badly is not a number worth quoting.\n");
+    printf("\n     The implicit column holds |g| at round-off at every step count, which is\n");
+    printf("     what STIFF ACCURACY is for: the last stage IS the step, so the constraint\n");
+    printf("     holds at the step end, which is where the matching conditions live.\n");
+    printf("\n     Two cautions. An implicit step costs several times an explicit one, so on a\n");
+    printf("     non-stiff problem these are the wrong choice -- lower order than RK8 and\n");
+    printf("     dearer than RK4. And in the stiff limit a Runge-Kutta method converges below\n");
+    printf("     its classical order (order reduction), so the reported discretisation error,\n");
+    printf("     which scales a Richardson difference by that order, is optimistic there.\n");
+
     printf("\n--------------------------------------------------------------------------------\n");
-    printf("  What this transcription does not yet have: an IMPLICIT integrator. Semi-explicit\n");
-    printf("  index-1 DAEs are reached by point 9 above, so what is left is stiff dynamics,\n");
-    printf("  and higher-index systems where the algebraic relation has to be differentiated\n");
-    printf("  more than once. A stiffly accurate ESDIRK is the shape that would take.\n");
+    printf("  What is left: higher-index DAEs, where the algebraic relation has to be\n");
+    printf("  differentiated more than once and the reduction needs stabilising. Everything\n");
+    printf("  else on the accuracy study's improvement list has been built.\n");
 
     return 0;
 }

@@ -514,6 +514,24 @@ struct alg_str {
   // like a count that needs to grow and is not.
   int       ms_algebraic_iterations;
 
+  // How many iterations the implicit schemes spend on each stage system. Default 4, and as
+  // with ms_algebraic_iterations the count is FIXED and unrolled -- what is taped is a fixed
+  // sequence of arithmetic, so the derivative that comes back is the derivative of what was
+  // computed.
+  //
+  // The iteration is modified Newton: W = I - h*gamma*J is formed by finite differences ONCE
+  // PER STEP, factorised once, and reused by every stage, which is what a single repeated
+  // diagonal is for and what a stiff solver has always done. Nothing in it is differentiated
+  // to build it, so no automatic differentiation is nested.
+  //
+  // Why four. The stage solve is warm-started from the previous stage, O(h) away, and modified
+  // Newton with a Jacobian formed at the step's own start contracts by O(h) per iteration, so
+  // m iterations leave O(h^(m+1)) -- enough for a scheme of order m. Measured in fifty-digit
+  // arithmetic on a stiff nonlinear system, the observed order of ESDIRK3 is 1.88, 2.97, 2.98,
+  // 2.98 for m = 1, 2, 3, 4: three saturate and a fourth is the margin. TR-BDF2 reaches its
+  // order 2.00 at m = 2.
+  int       ms_implicit_iterations;
+
   // Choose the segment integrator's step count automatically, PER SEGMENT, from the reported
   // discretisation error and ode_tolerance. Off by default.
   //
@@ -1880,8 +1898,54 @@ inline bool ms_rk8(Alg& algorithm)
 {
     return is_multiple_shooting(algorithm) && algorithm.ms_integrator == "RK8";
 }
-inline int ms_integrator_stages(Alg& algorithm) { return ms_rk8(algorithm) ? 11 : 4; }
-inline int ms_integrator_order (Alg& algorithm) { return ms_rk8(algorithm) ?  8 : 4; }
+
+// The two IMPLICIT schemes, and what makes them a different thing rather than two more
+// tables. Both are ESDIRK: explicit first stage, a single repeated diagonal, stiffly
+// accurate (the last stage IS the step) and L-stable.
+//
+// Stiff accuracy is not decoration here. It is what makes the algebraic constraint of a DAE
+// hold at the STEP END, which is where the matching conditions live -- an A-stable scheme
+// that is not stiffly accurate leaves the algebraic components undamped and satisfies the
+// constraint at no point the transcription uses. And a single repeated diagonal is what lets
+// one factorisation of I - h*gamma*J serve every stage of a step, which is the difference
+// between an implicit scheme that tapes in the same shape as the explicit loop and one that
+// couples s(nstates + nalgebraic) unknowns at once.
+inline bool ms_trbdf2(Alg& algorithm)
+{
+    return is_multiple_shooting(algorithm) && algorithm.ms_integrator == "TRBDF2";
+}
+inline bool ms_esdirk3(Alg& algorithm)
+{
+    return is_multiple_shooting(algorithm) && algorithm.ms_integrator == "ESDIRK3";
+}
+inline bool ms_implicit_integrator(Alg& algorithm)
+{
+    return ms_trbdf2(algorithm) || ms_esdirk3(algorithm);
+}
+
+inline int ms_integrator_stages(Alg& algorithm)
+{
+    if ( ms_rk8(algorithm) )     return 11;
+    if ( ms_trbdf2(algorithm) )  return  3;
+    if ( ms_esdirk3(algorithm) ) return  4;
+    return 4;
+}
+// The order the Richardson estimate scales by. It is the tableau's CLASSICAL order, which is
+// what the scheme attains on a non-stiff problem. In the stiff limit a Runge-Kutta method
+// converges at something between its stage order and its classical order -- order reduction,
+// a property of the method class and not of this implementation -- so on a stiff problem the
+// reported discretisation error is an estimate formed with an optimistic exponent. Measured on
+// an index-1 DAE: order 3.00 at lambda = 0, 2.90 at lambda = 20 and 2.39 at lambda = 500, the
+// last still climbing towards 3 as the step falls. Both implicit tables here satisfy C(2), so
+// the floor is two rather than one, which is why that condition was imposed when they were
+// derived rather than left to chance.
+inline int ms_integrator_order (Alg& algorithm)
+{
+    if ( ms_rk8(algorithm) )     return 8;
+    if ( ms_trbdf2(algorithm) )  return 2;
+    if ( ms_esdirk3(algorithm) ) return 3;
+    return 4;
+}
 
 // Which components of a phase's path vector may be sampled INSIDE a segment, and how many.
 //

@@ -77,6 +77,7 @@ static void apply_algorithm(Alg& a, py::dict o) {
     I("ms_algebraic_iterations", a.ms_algebraic_iterations);
     B("ms_adaptive_steps", a.ms_adaptive_steps);
     I("ms_max_steps_per_segment", a.ms_max_steps_per_segment);
+    I("ms_implicit_iterations", a.ms_implicit_iterations);
 }
 
 

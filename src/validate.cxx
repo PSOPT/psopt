@@ -137,9 +137,37 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
             && algorithm.ms_control_parameterisation != "quadratic" )
           error_message("algorithm.ms_control_parameterisation must be \"constant\", "
                         "\"linear\" or \"quadratic\" ");
-       if ( algorithm.ms_integrator != "RK4" && algorithm.ms_integrator != "RK8" )
-          error_message("algorithm.ms_integrator must be \"RK4\" or \"RK8\": those are the "
-                        "explicit schemes the segment integrator provides ");
+       if ( algorithm.ms_integrator != "RK4"     && algorithm.ms_integrator != "RK8"
+            && algorithm.ms_integrator != "TRBDF2" && algorithm.ms_integrator != "ESDIRK3" )
+          error_message("algorithm.ms_integrator must be \"RK4\", \"RK8\", \"TRBDF2\" or "
+                        "\"ESDIRK3\": the first two are the explicit schemes and the last two "
+                        "are stiffly accurate, L-stable ESDIRKs for stiff dynamics ");
+       if ( algorithm.ms_implicit_iterations < 1 )
+          error_message("algorithm.ms_implicit_iterations must be at least 1: it is the fixed, "
+                        "unrolled number of modified-Newton iterations an implicit scheme "
+                        "spends on each stage system ");
+       // An implicit scheme costs several times an explicit one per step and is worth that
+       // only where the explicit one cannot take the step at all. Saying so where the user
+       // selects it is the difference between reaching for it because the problem is STIFF,
+       // which it serves, and reaching for it for accuracy, which it does not.
+       if ( ms_implicit_integrator(algorithm) ) {
+          snprintf(workspace->text, sizeof(workspace->text),
+             "\n>>> Note: algorithm.ms_integrator = \"%s\" is an implicit scheme -- stiffly "
+             "\n>>> accurate and L-stable, of classical order %d, with %d unrolled "
+             "modified-Newton"
+             "\n>>> iterations per stage and one finite-difference factorisation per step. It "
+             "is for"
+             "\n>>> STIFF dynamics, where an explicit scheme cannot take the step at all. On a "
+             "\n>>> non-stiff problem it is several times the cost per step of \"RK4\" and "
+             "lower"
+             "\n>>> order than \"RK8\", so it is the wrong choice there. Note also that in the "
+             "\n>>> stiff limit a Runge-Kutta method converges below its classical order --"
+             "\n>>> order reduction -- so the reported discretisation error, which scales a "
+             "\n>>> Richardson difference by that order, is optimistic on a stiff problem.\n",
+             algorithm.ms_integrator.c_str(), ms_integrator_order(algorithm),
+             algorithm.ms_implicit_iterations);
+          psopt_print(workspace, workspace->text);
+       }
        if ( algorithm.ms_path_samples < 0 )
           error_message("algorithm.ms_path_samples must be zero or positive: it is the number "
                         "of interior points per segment at which the path constraints are also "

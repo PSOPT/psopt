@@ -319,6 +319,93 @@ static void ms_build_rk8(void)
     ms_rk8_built = true;
 }
 
+// ===========================================================================================
+// The two IMPLICIT tableaux, DERIVED rather than transcribed.
+//
+// The standing rule is that a mistyped Runge-Kutta coefficient does not fail -- it gives a
+// scheme of lower order that still converges to the right answer -- so these are computed here
+// from the conditions that define them, in the same order a derivation would take them, and
+// were checked before use against properties none of the derivation used: row sums against c,
+// the linear conditions B(k) holding to round-off up to the order and failing beyond it, the
+// stage-order condition C(2), stiff accuracy (b equal to the last row of A), the stability
+// function tending to zero at minus infinity (L-stability) and staying inside the unit disc on
+// the imaginary axis (A-stability), the expansion of R(z) against the exponential series, and
+// the observed order on a stiff nonlinear non-autonomous system in fifty-digit arithmetic.
+//
+// TR-BDF2 (Bank, Coughran, Fichtner, Grosse, Rose and Smith, 1985): a trapezoidal step to
+// gamma followed by a BDF2 step to the end, which as an ESDIRK is three stages of order two.
+// Its coefficients are short enough to check by hand, which is why it is here as well as the
+// third-order table.
+//
+// ESDIRK3: four stages, order three. gamma is the root of x^3 - 3x^2 + 3x/2 - 1/6 in (1/3, 1),
+// the value that makes a singly diagonally implicit scheme third order and A-stable; c2 = 2
+// gamma is forced by C(2) at the second stage; c3 = 3/5 is the one free parameter; and a32,
+// a31 and b then FOLLOW from C(2) and B(1..3), which is how they are obtained below.
+// ===========================================================================================
+static double ms_trbdf2_c[3], ms_trbdf2_b[3], ms_trbdf2_A[9];
+static double ms_esdirk3_c[4], ms_esdirk3_b[4], ms_esdirk3_A[16];
+static double ms_trbdf2_gamma = 0.0, ms_esdirk3_gamma = 0.0;
+static bool   ms_implicit_built = false;
+
+static void ms_build_implicit(void)
+{
+    if (ms_implicit_built) return;
+
+    // ---- TR-BDF2 -------------------------------------------------------------------------
+    {
+        const double g = 2.0 - std::sqrt(2.0);          // the second abscissa
+        const double d = g/2.0;                         // the repeated diagonal
+        for (int q = 0; q < 9; q++) ms_trbdf2_A[q] = 0.0;
+        ms_trbdf2_c[0] = 0.0;  ms_trbdf2_c[1] = g;  ms_trbdf2_c[2] = 1.0;
+        ms_trbdf2_A[3*1 + 0] = d;  ms_trbdf2_A[3*1 + 1] = d;
+        const double w = std::sqrt(2.0)/4.0;
+        ms_trbdf2_A[3*2 + 0] = w;  ms_trbdf2_A[3*2 + 1] = w;  ms_trbdf2_A[3*2 + 2] = d;
+        // Stiff accuracy IS the definition of b here: the last stage is the step.
+        for (int q = 0; q < 3; q++) ms_trbdf2_b[q] = ms_trbdf2_A[3*2 + q];
+        ms_trbdf2_gamma = d;
+    }
+
+    // ---- ESDIRK3 -------------------------------------------------------------------------
+    {
+        // gamma by Newton on its own defining cubic, from the standard bracket.
+        double g = 0.435;
+        for (int it = 0; it < 200; it++) {
+            const double p  = g*g*g - 3.0*g*g + 1.5*g - 1.0/6.0;
+            const double dp = 3.0*g*g - 6.0*g + 1.5;
+            const double dg = p/dp;
+            g -= dg;
+            if ( fabs(dg) < 1.0e-16 ) break;
+        }
+        const double c3 = 0.6;
+        for (int q = 0; q < 16; q++) ms_esdirk3_A[q] = 0.0;
+        ms_esdirk3_c[0] = 0.0;  ms_esdirk3_c[1] = 2.0*g;
+        ms_esdirk3_c[2] = c3;   ms_esdirk3_c[3] = 1.0;
+        ms_esdirk3_A[4*1 + 0] = g;  ms_esdirk3_A[4*1 + 1] = g;
+        // C(2) at the third stage: a32 c2 + gamma c3 = c3^2/2.
+        const double a32 = ( 0.5*c3*c3 - g*c3 )/( 2.0*g );
+        const double a31 = c3 - a32 - g;
+        ms_esdirk3_A[4*2 + 0] = a31; ms_esdirk3_A[4*2 + 1] = a32; ms_esdirk3_A[4*2 + 2] = g;
+        // B(1), B(2), B(3) for b1, b2, b3 with b4 = gamma: a 3x3 Vandermonde in (c1,c2,c3),
+        // solved in closed form because c1 = 0 makes it small enough to write out.
+        const double c2 = 2.0*g;
+        const double r1 = 1.0 - g;
+        const double r2 = 0.5 - g;
+        const double r3 = 1.0/3.0 - g;
+        // b2 c2 + b3 c3 = r2 ;  b2 c2^2 + b3 c3^2 = r3
+        const double det = c2*c3*(c3 - c2);
+        const double b2  = ( r2*c3*c3 - r3*c3 )/det;
+        const double b3  = ( r3*c2 - r2*c2*c2 )/det;
+        const double b1  = r1 - b2 - b3;
+        ms_esdirk3_A[4*3 + 0] = b1; ms_esdirk3_A[4*3 + 1] = b2;
+        ms_esdirk3_A[4*3 + 2] = b3; ms_esdirk3_A[4*3 + 3] = g;
+        for (int q = 0; q < 4; q++) ms_esdirk3_b[q] = ms_esdirk3_A[4*3 + q];
+        ms_esdirk3_gamma = g;
+    }
+
+    ms_implicit_built = true;
+}
+
+
 void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int iphase,
                           adouble& t0, adouble& tf, adouble* parameters, Workspace* workspace,
                           int nsteps_override,
@@ -350,8 +437,14 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     const double* Atab;
     const double* btab;
     const double* ctab;
-    if ( ms_rk8(algorithm) ) { ms_build_rk8(); Atab = ms_rk8_A; btab = ms_rk8_b; ctab = ms_rk8_c; }
-    else                     { Atab = ms_rk4_A; btab = ms_rk4_b; ctab = ms_rk4_c; }
+    double        gam_impl = 0.0;
+    const bool    implicit = ms_implicit_integrator(algorithm);
+    if      ( ms_rk8(algorithm) )    { ms_build_rk8(); Atab = ms_rk8_A; btab = ms_rk8_b; ctab = ms_rk8_c; }
+    else if ( ms_trbdf2(algorithm) ) { ms_build_implicit(); Atab = ms_trbdf2_A; btab = ms_trbdf2_b;
+                                       ctab = ms_trbdf2_c; gam_impl = ms_trbdf2_gamma; }
+    else if ( ms_esdirk3(algorithm) ){ ms_build_implicit(); Atab = ms_esdirk3_A; btab = ms_esdirk3_b;
+                                       ctab = ms_esdirk3_c; gam_impl = ms_esdirk3_gamma; }
+    else                             { Atab = ms_rk4_A; btab = ms_rk4_b; ctab = ms_rk4_c; }
 
     const int npath = problem.phase[i].npath;
     std::vector<adouble> u_( (ncontrols>0) ? ncontrols : 1 );
@@ -399,7 +492,7 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     std::vector<adouble> Jb_  ( (nalg>0) ? nalg*nalg : 1 );
     std::vector<adouble> Jw_  ( (nalg>0) ? nalg*(nalg+1) : 1 );
     std::vector<adouble> dz_  ( (nalg>0) ? nalg : 1 );
-    std::vector<adouble> Kscr_( (nalg>0) ? nstates : 1 );
+    std::vector<adouble> Kscr_( (nalg>0 || implicit) ? nstates : 1 );
     std::vector<double>  gtar_( (nalg>0) ? nalg : 1, 0.0 );
     // The target is the path component's own bound rather than zero, so that a user who
     // writes the algebraic relation as g = c rather than g = 0 gets the equation solved
@@ -641,8 +734,186 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     // residual is zero.
     for (int j = 0; j < nalg; j++) u[nfree_u+j] = u0_[nfree_u+j];
 
+    // =======================================================================================
+    // The implicit path: an ESDIRK stage solve, and the one factorisation that serves a step.
+    //
+    // For stage i the unknown is Y = (X, Z) with
+    //
+    //     X - S_i - h gamma f(X, Z, u, t_i) = 0,      g(X, Z, u, t_i) = 0,
+    //
+    // S_i being everything the earlier stages already fixed. The algebraic block, when there
+    // is one, is folded into the SAME system rather than solved separately: for a stiff DAE
+    // the differential and algebraic parts are coupled through the stiffness and solving them
+    // in turn would be solving a different problem.
+    //
+    // W = I - h gamma J is formed by finite differences once per STEP, factorised once, and
+    // reused by every stage. That is what a single repeated diagonal is for, and it is what a
+    // stiff solver has always done: the stages differ in S and in the time, not in the matrix.
+    // Nothing in it is differentiated to build it, so no automatic differentiation is nested;
+    // the finite differences, the factorisation and the fixed iteration count are all ordinary
+    // arithmetic and the tape records them as such.
+    //
+    // Stiff accuracy is why the step's state is the LAST STAGE rather than a b-weighted sum.
+    // The two are equal in exact arithmetic, b being the last row of A, but the stage value is
+    // the one that satisfies the algebraic constraint -- so on a DAE the constraint holds at
+    // the step end, which is where the matching conditions live.
+    const int nd_impl = implicit ? ( nstates + nalg ) : 1;
+    std::vector<adouble> Wlu_( implicit ? nd_impl*nd_impl : 1 );
+    std::vector<adouble> Rv_ ( nd_impl ), dY_( nd_impl ), Yv_( nd_impl ), Sv_( nstates );
+    std::vector<int>     piv_( nd_impl, 0 );
+
+    // The residual of the stage system at the trial Y. One call of the user's dae, which
+    // returns the derivatives and the path together.
+    auto impl_residual = [&](const adouble* Y, const adouble* S, adouble& hg, adouble& tp,
+                             adouble* R) {
+        for (int j = 0; j < nstates; j++) xstg[j] = Y[j];
+        for (int q = 0; q < nalg;    q++) u[nfree_u+q] = Y[nstates+q];
+        problem.dae(Kscr_.data(), pscr, xstg, u, parameters, tp, xad, iphase, workspace);
+        for (int j = 0; j < nstates; j++) R[j] = Y[j] - S[j] - hg*Kscr_[j];
+        for (int q = 0; q < nalg;    q++) R[nstates+q] = pscr[q] - gtar_[q];
+    };
+
+    // LU with partial pivoting, the pivot order decided on the taping-point values. The same
+    // standing caveat as any branch inside a taped computation, and harmless here: a pivot
+    // order reorders exact arithmetic, and W is nonsingular for any step small enough for the
+    // scheme to be worth using.
+    auto impl_factor = [&](adouble* W) {
+        const int n = nd_impl;
+        for (int q = 0; q < n; q++) piv_[q] = q;
+        for (int col = 0; col < n; col++) {
+            int    pv = col;
+            double best = fabs( W[col*n+col].value() );
+            for (int r = col+1; r < n; r++) {
+                const double v = fabs( W[r*n+col].value() );
+                if ( v > best ) { best = v; pv = r; }
+            }
+            if ( pv != col ) {
+                for (int q = 0; q < n; q++) { adouble tmp = W[col*n+q];
+                    W[col*n+q] = W[pv*n+q]; W[pv*n+q] = tmp; }
+                const int ti = piv_[col]; piv_[col] = piv_[pv]; piv_[pv] = ti;
+            }
+            for (int r = col+1; r < n; r++) {
+                adouble m = W[r*n+col]/W[col*n+col];
+                W[r*n+col] = m;
+                for (int q = col+1; q < n; q++) W[r*n+q] = W[r*n+q] - m*W[col*n+q];
+            }
+        }
+    };
+    auto impl_solve = [&](const adouble* W, const adouble* R, adouble* y) {
+        const int n = nd_impl;
+        for (int r = 0; r < n; r++) {
+            adouble sum = R[ piv_[r] ];
+            for (int q = 0; q < r; q++) sum = sum - W[r*n+q]*y[q];
+            y[r] = sum;
+        }
+        for (int r = n-1; r >= 0; r--) {
+            adouble sum = y[r];
+            for (int q = r+1; q < n; q++) sum = sum - W[r*n+q]*y[q];
+            y[r] = sum/W[r*n+r];
+        }
+    };
+
+    int mimp = algorithm.ms_implicit_iterations;
+    if ( mimp < 1 ) mimp = 1;
+
     adouble t = tk;
     for (int s = 0; s < nsteps; s++) {
+
+      if ( implicit ) {
+
+        // One factorisation for the whole step. W = I - h gamma J, with J formed by forward
+        // differences on the same residual the stages will solve, at the step's own start --
+        // where it is cheapest to be accurate, because every stage begins within O(h) of it.
+        {
+            adouble hg0 = gam_impl*dt;
+            adouble t0s = t;
+            for (int j = 0; j < nstates; j++) { Yv_[j] = xw[j]; Sv_[j] = xw[j]; }
+            for (int q = 0; q < nalg;    q++) Yv_[nstates+q] = u[nfree_u+q];
+            impl_residual(Yv_.data(), Sv_.data(), hg0, t0s, Rv_.data());
+            for (int c2 = 0; c2 < nd_impl; c2++) {
+                const double y0 = Yv_[c2].value();
+                const double dl = 1.0e-7*(1.0 + fabs(y0));
+                Yv_[c2] = Yv_[c2] + dl;
+                impl_residual(Yv_.data(), Sv_.data(), hg0, t0s, dY_.data());
+                Yv_[c2] = Yv_[c2] - dl;
+                for (int r2 = 0; r2 < nd_impl; r2++)
+                    Wlu_[r2*nd_impl + c2] = (dY_[r2] - Rv_[r2])/dl;
+            }
+            impl_factor(Wlu_.data());
+            if (workspace->enable_nlp_counters)
+                workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ]
+                    .n_ode_rhs_evals += nd_impl + 1;
+        }
+
+        // Stage zero is EXPLICIT -- the E of ESDIRK -- so it is the derivative at the step's
+        // own state, with the algebraic variables it already carries. At the segment start
+        // those come from the node, whose path row is their algebraic equation; afterwards
+        // they come from the previous step's last stage, where stiff accuracy left them
+        // satisfying the constraint.
+        {
+            const double sp0 = ( (double) s + ctab[0] )/((double) nsteps);
+            if ( varying_u ) eval_u(sp0);
+            adouble tp0 = t + ctab[0]*dt;
+            problem.dae(K, pscr, xw, u, parameters, tp0, xad, iphase, workspace);
+            if (want_cost && problem.integrand_cost)
+                Lstg[0] = problem.integrand_cost(xw, u, parameters, tp0, xad, iphase, workspace);
+        }
+
+        for (int p = 1; p < nstg; p++) {
+            const double sp = ( (double) s + ctab[p] )/((double) nsteps);
+            if ( varying_u ) eval_u(sp);
+            adouble tp = t + ctab[p]*dt;
+            adouble hg = gam_impl*dt;
+
+            // Everything the earlier stages already fixed.
+            for (int j = 0; j < nstates; j++) Sv_[j] = xw[j];
+            for (int m = 0; m < p; m++) {
+                const double a = Atab[p*nstg + m];
+                if ( a == 0.0 ) continue;
+                adouble dta = a*dt;
+                const adouble* Km = K + m*nstates;
+                for (int j = 0; j < nstates; j++) Sv_[j] = Sv_[j] + dta*Km[j];
+            }
+
+            // Warm-started from the previous stage, which is O(h) away -- the reason a fixed
+            // count works at all. Modified Newton with a Jacobian formed at the step's start
+            // contracts by O(h) an iteration, so m iterations leave O(h^(m+1)).
+            for (int j = 0; j < nstates; j++) Yv_[j] = xstg[j];
+            for (int q = 0; q < nalg;    q++) Yv_[nstates+q] = u[nfree_u+q];
+            if ( p == 1 ) for (int j = 0; j < nstates; j++) Yv_[j] = xw[j];
+
+            for (int it = 0; it < mimp; it++) {
+                impl_residual(Yv_.data(), Sv_.data(), hg, tp, Rv_.data());
+                impl_solve(Wlu_.data(), Rv_.data(), dY_.data());
+                for (int q = 0; q < nd_impl; q++) Yv_[q] = Yv_[q] - dY_[q];
+            }
+
+            // The stage's derivative, at the converged stage value.
+            for (int j = 0; j < nstates; j++) xstg[j] = Yv_[j];
+            for (int q = 0; q < nalg;    q++) u[nfree_u+q] = Yv_[nstates+q];
+            problem.dae(K + p*nstates, pscr, xstg, u, parameters, tp, xad, iphase, workspace);
+            if (want_cost && problem.integrand_cost)
+                Lstg[p] = problem.integrand_cost(xstg, u, parameters, tp, xad, iphase, workspace);
+
+            if (workspace->enable_nlp_counters)
+                workspace->solution->mesh_stats[ workspace->current_mesh_refinement_iteration-1 ]
+                    .n_ode_rhs_evals += mimp + 1;
+        }
+
+        // Stiff accuracy: the step IS the last stage. Not the b-weighted sum, which is the
+        // same number in exact arithmetic and is not the vector that satisfies the algebraic
+        // constraint. The running cost still takes the b-weighted sum, that being a quadrature
+        // and not a state.
+        for (int j = 0; j < nstates; j++) xw[j] = xstg[j];
+        if (want_cost && problem.integrand_cost)
+            for (int p = 0; p < nstg; p++) {
+                const double bp = btab[p];
+                if ( bp == 0.0 ) continue;
+                *Lint = *Lint + (bp*dt)*Lstg[p];
+            }
+
+      }
+      else {
 
         for (int p = 0; p < nstg; p++) {
 
@@ -694,6 +965,8 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
             if (want_cost && problem.integrand_cost) *Lint = *Lint + dtb*Lstg[p];
         }
 
+      }
+
         t = t + dt;
 
         for (int q = 0; q < nsamp; q++) {
@@ -712,7 +985,10 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
                 // it. Solved again here, at the point the sample actually is. A path
                 // constraint imposed at a sample would otherwise be imposed at a z that
                 // satisfies g nowhere.
-                if ( nalg > 0 ) solve_algebraic(xw, t);
+                // Under an implicit scheme there is nothing to re-solve: stiff accuracy
+                // means the step end IS the last stage, so u already carries the algebraic
+                // variables that satisfy the constraint there.
+                if ( nalg > 0 && !implicit ) solve_algebraic(xw, t);
                 for (int c=0;c<ncontrols;c++) usamp[q*ncontrols+c] = u[c];
             }
         }

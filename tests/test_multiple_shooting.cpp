@@ -1935,3 +1935,284 @@ TEST(MultipleShooting, StepAdaptationComposesWithTheSchemeChoice)
         << "the two schemes, each adapted to the same tolerance, should agree: "
         << r4.J << " against " << r8.J;
 }
+
+
+// ===========================================================================
+// The implicit segment integrators: TR-BDF2 and ESDIRK3.
+//
+// Both are ESDIRK -- explicit first stage, one repeated diagonal, stiffly
+// accurate, L-stable. The tables were derived rather than transcribed and
+// checked before use; what is checked HERE is the behaviour that follows from
+// them, which is the part a table can be right about and an implementation
+// wrong about.
+//
+// Three problems, because the three questions cannot be asked on one:
+//   0  a STIFF linear problem, where an explicit scheme is unstable below a
+//      step count set by |lambda h| < 2.78 and no accuracy argument applies;
+//   1  the same problem made NON-STIFF, which is the only place the classical
+//      order can be measured -- in the stiff limit an L-stable scheme resolves
+//      the quasi-steady state almost exactly and reads as order eight for a
+//      second-order table;
+//   2  a NONLINEAR stiff problem, which is the only place the iteration count
+//      can be measured -- modified Newton solves a LINEAR stage system exactly
+//      in one iteration, so a linear problem makes every count look sufficient.
+// ===========================================================================
+namespace msstiff {
+
+static double LAM  = 1000.0;
+static int    CASE = 0;      // 0,1 = ODE (stiff / not);  2 = nonlinear stiff;  3 = stiff DAE
+
+adouble endpoint_cost(adouble*, adouble*, adouble*, adouble&, adouble&, adouble*,
+                      int, Workspace*) { return (adouble) 0.0; }
+adouble integrand_cost(adouble*, adouble* c, adouble*, adouble&, adouble*, int, Workspace*)
+{ return 0.5*c[0]*c[0]; }
+
+void dae(adouble* d, adouble* path, adouble* s, adouble* c, adouble*, adouble&,
+         adouble*, int, Workspace*)
+{
+    if ( CASE == 2 ) {
+        d[0] = -LAM*(s[0] - 0.3*sin(s[1])) + c[0];
+        d[1] = s[0]*s[0] + 0.5*s[1];
+    }
+    else if ( CASE == 3 ) {
+        d[0] = s[1];
+        d[1] = c[0] - c[1] - LAM*(s[1] - 1.0);
+        path[0] = c[1]*c[1]*c[1] + c[1] - s[0];
+    }
+    else {
+        d[0] = -LAM*s[0] + c[0];
+        d[1] = s[0];
+    }
+}
+
+void events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
+            adouble*, int, Workspace*)
+{ e[0]=i[0]; e[1]=i[1]; e[2]=f[1]; }
+
+struct Run { int flag; int rc; double J; double gmax; };
+
+static Run solve(int segments, int steps, const char* integrator, int mimp = 4)
+{
+    Alg algorithm; Sol solution; Prob problem;
+    Run out; out.flag = -1; out.rc = -99; out.J = 0.0; out.gmax = -1.0;
+
+    const int nodes = segments + 1;
+    const int nc    = ( CASE == 3 ) ? 2 : 1;
+
+    problem.name        = "multiple shooting, implicit integrator";
+    problem.outfilename = "test_multiple_shooting_stiff.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = 2;
+    problem.phases(1).ncontrols = nc;
+    problem.phases(1).nevents   = 3;
+    problem.phases(1).npath     = ( CASE == 3 ) ? 1 : 0;
+    if ( CASE == 3 ) problem.phases(1).nalgebraic = 1;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    problem.phases(1).bounds.lower.states << -100.0, -100.0;
+    problem.phases(1).bounds.upper.states <<  100.0,  100.0;
+    if ( CASE == 3 ) {
+        problem.phases(1).bounds.lower.controls << -1.0e5, -20.0;
+        problem.phases(1).bounds.upper.controls <<  1.0e5,  20.0;
+        problem.phases(1).bounds.lower.path(0) = 0.0;
+        problem.phases(1).bounds.upper.path(0) = 0.0;
+    }
+    else {
+        problem.phases(1).bounds.lower.controls(0) = -1.0e5;
+        problem.phases(1).bounds.upper.controls(0) =  1.0e5;
+    }
+    const double xT = ( CASE == 3 ) ? 3.0 : 1.0;
+    problem.phases(1).bounds.lower.events << 0.0, 0.0, xT;
+    problem.phases(1).bounds.upper.events << 0.0, 0.0, xT;
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0; problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &integrand_cost;
+    problem.endpoint_cost  = &endpoint_cost;
+    problem.dae            = &dae;
+    problem.events         = &events;
+    problem.linkages       = &msh::linkages;
+
+    problem.phases(1).guess.states        = zeros(2, nodes);
+    problem.phases(1).guess.states.row(1) = linspace(0.0, xT, nodes);
+    problem.phases(1).guess.controls      = zeros(nc, nodes);
+    problem.phases(1).guess.time          = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 3000;
+    algorithm.nlp_tolerance         = 1.0e-10;
+    algorithm.print_level           = 0;
+    algorithm.mesh_refinement       = "manual";
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = "multiple-shooting";
+    algorithm.ms_control_parameterisation = "constant";
+    algorithm.ms_steps_per_segment  = steps;
+    algorithm.ms_integrator         = integrator;
+    algorithm.ms_implicit_iterations = mimp;
+
+    out.flag = psopt(solution, problem, algorithm);
+    out.rc   = solution.nlp_return_code;
+    if ( out.flag != 0 ) return out;
+    out.J = solution.cost;
+    if ( CASE == 3 ) {
+        const MatrixXd u = solution.get_controls_in_phase(1);
+        const MatrixXd x = solution.get_states_in_phase(1);
+        out.gmax = 0.0;
+        for (int q = 0; q < (int) u.cols(); q++) {
+            const double z = u(1,q), x1 = x(0,q);
+            out.gmax = std::max( out.gmax, std::fabs(z*z*z + z - x1) );
+        }
+    }
+    return out;
+}
+
+} // namespace msstiff
+
+
+// ---------------------------------------------------------------------------
+// An explicit scheme cannot take a stiff step, and that is not an accuracy
+// statement. RK4's stability region reaches |lambda h| = 2.78, so at
+// lambda = 1000 and ten segments it needs at least 36 steps per segment before
+// the propagation is even bounded -- and below that it does not return a poor
+// answer, it returns a meaningless one. An L-stable scheme has no such limit
+// and works at ONE step per segment.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, AnExplicitSchemeCannotTakeAStiffStepAndAnImplicitOneCan)
+{
+    msstiff::LAM = 1000.0; msstiff::CASE = 0;
+
+    const msstiff::Run good = msstiff::solve(10, 72, "RK4");
+    ASSERT_EQ(good.flag, 0) << "IPOPT return code " << good.rc;
+
+    const msstiff::Run bad = msstiff::solve(10, 8, "RK4");
+    if ( bad.flag == 0 )
+        EXPECT_GT(std::fabs(bad.J - good.J)/good.J, 0.5)
+            << "RK4 below its own stability limit is supposed to be meaningless, not merely "
+               "inaccurate; it returned " << bad.J << " against " << good.J;
+
+    for (const char* scheme : { "TRBDF2", "ESDIRK3" }) {
+        const msstiff::Run r = msstiff::solve(10, 1, scheme);
+        ASSERT_EQ(r.flag, 0) << scheme << " failed at one step per segment: IPOPT return code "
+                             << r.rc;
+        EXPECT_LT(std::fabs(r.J - good.J)/good.J, 1.0e-5)
+            << scheme << " at ONE step per segment should already agree with RK4 at 72: "
+            << r.J << " against " << good.J;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The classical order of each table, measured where it can be: on the
+// NON-STIFF problem. In the stiff limit an L-stable scheme resolves the
+// quasi-steady state almost exactly and the measured rate is not the tableau's
+// order at all -- on the stiff version of this same problem TR-BDF2, a
+// second-order scheme, reads as order eight. That is a trap worth a test of
+// its own rather than a comment.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, TheImplicitSchemesAttainTheirTableausOrder)
+{
+    msstiff::LAM = 1.0; msstiff::CASE = 1;
+
+    struct { const char* name; double lo; double hi; } want[2] =
+        { { "TRBDF2",  3.0,  5.5 },      // 2^2
+          { "ESDIRK3", 6.5, 10.0 } };    // 2^3
+
+    for (int s = 0; s < 2; s++) {
+        const msstiff::Run fine = msstiff::solve(10, 64, want[s].name);
+        ASSERT_EQ(fine.flag, 0) << want[s].name << ": IPOPT return code " << fine.rc;
+
+        const int steps[3] = { 2, 4, 8 };
+        double err[3];
+        for (int q = 0; q < 3; q++) {
+            const msstiff::Run r = msstiff::solve(10, steps[q], want[s].name);
+            ASSERT_EQ(r.flag, 0) << want[s].name << ": IPOPT return code " << r.rc;
+            err[q] = std::fabs(r.J - fine.J);
+        }
+        for (int q = 1; q < 3; q++) {
+            const double ratio = err[q-1]/err[q];
+            EXPECT_GT(ratio, want[s].lo) << want[s].name << " fell by " << ratio
+                                         << " for a doubling of the step count";
+            EXPECT_LT(ratio, want[s].hi) << want[s].name << " fell by " << ratio
+                                         << ", faster than its own order, which means the "
+                                            "reference and not the scheme";
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The fixed iteration count, measured on a NONLINEAR stiff problem because
+// modified Newton solves a linear stage system exactly in one iteration -- on a
+// linear problem every count looks sufficient, which is the wrong conclusion
+// arrived at honestly.
+//
+// Each iteration should gain about an order of h, so four leaves a relative
+// change of parts per billion and a fifth is the margin.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, FourImplicitIterationsSaturateTheStageSolve)
+{
+    msstiff::LAM = 1000.0; msstiff::CASE = 2;
+
+    const msstiff::Run ref = msstiff::solve(10, 8, "ESDIRK3", 8);
+    ASSERT_EQ(ref.flag, 0) << "IPOPT return code " << ref.rc;
+
+    double d[6];
+    for (int m = 1; m <= 5; m++) {
+        const msstiff::Run r = msstiff::solve(10, 8, "ESDIRK3", m);
+        ASSERT_EQ(r.flag, 0) << "m = " << m << ", IPOPT return code " << r.rc;
+        d[m] = std::fabs(r.J - ref.J)/std::fabs(ref.J);
+    }
+
+    EXPECT_GT(d[1], 1.0e-3) << "one iteration is supposed to be visibly short on a nonlinear "
+                               "stiff problem, or this test is measuring nothing; it gave "
+                            << d[1];
+    EXPECT_GT(d[1], d[2]);
+    EXPECT_GT(d[2], d[3]);
+    EXPECT_GT(d[3], d[4]);
+    EXPECT_LT(d[4], 1.0e-7) << "four iterations should have saturated the stage solve; the "
+                               "relative difference was " << d[4];
+}
+
+// ---------------------------------------------------------------------------
+// Stiff AND a semi-explicit index-1 DAE, which is the combination that needs
+// the algebraic declaration and the implicit scheme at once -- and the place
+// where stiff accuracy earns its name. The last stage IS the step, so the
+// algebraic constraint holds at the step end, which is where the matching
+// conditions live.
+//
+// The explicit scheme does not merely lose accuracy here. At twenty steps per
+// segment it leaves the algebraic relation violated by hundreds.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, StiffAccuracyHoldsTheAlgebraicConstraintOnAStiffDae)
+{
+    msstiff::LAM = 1000.0; msstiff::CASE = 3;
+
+    const msstiff::Run ref = msstiff::solve(10, 200, "ESDIRK3");
+    ASSERT_EQ(ref.flag, 0) << "IPOPT return code " << ref.rc;
+
+    const msstiff::Run imp = msstiff::solve(10, 4, "ESDIRK3");
+    ASSERT_EQ(imp.flag, 0) << "IPOPT return code " << imp.rc;
+    EXPECT_LT(std::fabs(imp.J - ref.J)/std::fabs(ref.J), 1.0e-3)
+        << "four implicit steps per segment should already be close: " << imp.J;
+    EXPECT_LT(imp.gmax, 1.0e-10)
+        << "stiff accuracy puts the step end ON the algebraic constraint; the worst nodal "
+           "residual was " << imp.gmax;
+
+    const msstiff::Run exp20 = msstiff::solve(10, 20, "RK4");
+    if ( exp20.flag == 0 ) {
+        EXPECT_GT(std::fabs(exp20.J - ref.J)/std::fabs(ref.J), 1.0e-2)
+            << "RK4 at twenty steps is below its stability limit here and should be far out; "
+               "it gave " << exp20.J;
+        EXPECT_GT(exp20.gmax, imp.gmax)
+            << "and it should not be holding the algebraic relation better than the scheme "
+               "that solves it at every stage";
+    }
+}

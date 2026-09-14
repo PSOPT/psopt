@@ -187,7 +187,7 @@ class Algorithm:
                  ms_path_samples=None, ms_flexible_segments=None,
                  ms_min_segment_fraction=None, ms_refine_tolerance=None,
                  ms_algebraic_iterations=None, ms_adaptive_steps=None,
-                 ms_max_steps_per_segment=None):
+                 ms_max_steps_per_segment=None, ms_implicit_iterations=None):
         self.collocation_method = collocation_method
         self.nlp_method = nlp_method
         self.derivatives = derivatives
@@ -230,6 +230,7 @@ class Algorithm:
         self.ms_algebraic_iterations = ms_algebraic_iterations
         self.ms_adaptive_steps = ms_adaptive_steps
         self.ms_max_steps_per_segment = ms_max_steps_per_segment
+        self.ms_implicit_iterations = ms_implicit_iterations
 
 
 def _col(a):
@@ -284,7 +285,7 @@ def _alg_dict(a):
                 "ms_path_samples", "ms_flexible_segments",
                 "ms_min_segment_fraction", "ms_refine_tolerance",
                 "ms_algebraic_iterations", "ms_adaptive_steps",
-                "ms_max_steps_per_segment"]
+                "ms_max_steps_per_segment", "ms_implicit_iterations"]
     for k in optional:
         v = getattr(a, k, None)
         if v is not None:
