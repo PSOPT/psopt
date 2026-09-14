@@ -286,17 +286,44 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     get_states(xw, xad, iphase, k, workspace);
 
     // The control across the segment. Piecewise constant reads one value and holds it;
-    // piecewise linear reads both ends and ramps between them. The ramp's coefficients are
-    // ordinary doubles -- the local coordinate of a stage is a fixed fraction of the segment,
-    // whatever the segment's physical length turns out to be -- so the linear form costs two
-    // multiplications per stage and nothing on the tape's structure.
+    // piecewise linear reads both ends and ramps between them; piecewise quadratic reads both
+    // ends and the segment's own midpoint variable and carries the parabola through the three.
+    // Every coefficient is an ordinary double -- the local coordinate of a stage is a fixed
+    // fraction of the segment, whatever the segment's physical length turns out to be, and
+    // that stays true when the partition itself is a decision variable -- so the higher forms
+    // cost two or three multiplications per stage and nothing on the tape's structure.
     const bool linear_u = ms_linear_controls(algorithm);
+    const bool quad_u   = ms_quadratic_controls(algorithm);
+    const bool varying_u = ( linear_u || quad_u );
     std::vector<adouble> u0_( (ncontrols>0) ? ncontrols : 1 );
     std::vector<adouble> u1_( (ncontrols>0) ? ncontrols : 1 );
+    std::vector<adouble> um_( (ncontrols>0) ? ncontrols : 1 );
     if (ncontrols > 0) {
         get_controls(u0_.data(), xad, iphase, k, workspace);
-        if (linear_u) get_controls(u1_.data(), xad, iphase, k+1, workspace);
+        if (varying_u) get_controls(u1_.data(), xad, iphase, k+1, workspace);
+        if (quad_u)    get_controls_bar(um_.data(), xad, iphase, k, workspace);
     }
+
+    // The control at local coordinate s in [0,1] across this segment, written once so that
+    // the four RK4 stages, the interior path samples and the reader of the reported control
+    // cannot drift apart. The quadratic weights are the same three Lagrange factors
+    // get_interpolated_control uses, which is what makes the reported control the control the
+    // integrator actually saw.
+    auto eval_u = [&](double s) {
+        if (ncontrols <= 0) return;
+        if (quad_u) {
+            const double w0 = (2.0*s-1.0)*(s-1.0);
+            const double wm = 4.0*s*(1.0-s);
+            const double w1 = s*(2.0*s-1.0);
+            for (int c=0;c<ncontrols;c++) u[c] = w0*u0_[c] + wm*um_[c] + w1*u1_[c];
+        }
+        else if (linear_u) {
+            for (int c=0;c<ncontrols;c++) u[c] = (1.0-s)*u0_[c] + s*u1_[c];
+        }
+        else {
+            for (int c=0;c<ncontrols;c++) u[c] = u0_[c];
+        }
+    };
 
     const bool want_cost = ( Lint != NULL );
     if (want_cost) *Lint = 0.0;
@@ -324,17 +351,13 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
         const double sm = ((double) s + 0.5)/((double) nsteps);
         const double sb = ((double) s + 1.0)/((double) nsteps);
 
-        if (ncontrols > 0) {
-            for (int c=0;c<ncontrols;c++)
-                u[c] = linear_u ? ( (1.0-sa)*u0_[c] + sa*u1_[c] ) : u0_[c];
-        }
+        eval_u(sa);
         problem.dae(f1, pscr, xw, u, parameters, t, xad, iphase, workspace);
         if (want_cost && problem.integrand_cost)
             L1 = problem.integrand_cost(xw, u, parameters, t, xad, iphase, workspace);
 
         adouble th = t + dt/2.0;
-        if (ncontrols > 0 && linear_u)
-            for (int c=0;c<ncontrols;c++) u[c] = (1.0-sm)*u0_[c] + sm*u1_[c];
+        if (varying_u) eval_u(sm);
         for (int j=0;j<nstates;j++) xstg[j] = xw[j] + (dt/2.0)*f1[j];
         problem.dae(f2, pscr, xstg, u, parameters, th, xad, iphase, workspace);
         if (want_cost && problem.integrand_cost)
@@ -346,8 +369,7 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
             L3 = problem.integrand_cost(xstg, u, parameters, th, xad, iphase, workspace);
 
         adouble t1 = t + dt;
-        if (ncontrols > 0 && linear_u)
-            for (int c=0;c<ncontrols;c++) u[c] = (1.0-sb)*u0_[c] + sb*u1_[c];
+        if (varying_u) eval_u(sb);
         for (int j=0;j<nstates;j++) xstg[j] = xw[j] + dt*f3[j];
         problem.dae(f4, pscr, xstg, u, parameters, t1, xad, iphase, workspace);
         if (want_cost && problem.integrand_cost)
@@ -367,9 +389,12 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
             if ( sample_step[q] != s+1 ) continue;
             if (xsamp) for (int j=0;j<nstates;j++) xsamp[q*nstates+j] = xw[j];
             if (tsamp) tsamp[q] = t;
+            // u still holds the control at local coordinate sb, which is this step's end and
+            // therefore the sample time: the fourth RK stage was evaluated there. Copying it
+            // rather than re-deriving it is what stops the sampled control and the integrated
+            // control from being two different functions under a parameterisation added later.
             if (usamp && ncontrols > 0)
-                for (int c=0;c<ncontrols;c++)
-                    usamp[q*ncontrols+c] = linear_u ? ( (1.0-sb)*u0_[c] + sb*u1_[c] ) : u0_[c];
+                for (int c=0;c<ncontrols;c++) usamp[q*ncontrols+c] = u[c];
         }
     }
 

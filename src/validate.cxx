@@ -133,9 +133,10 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        // an integrator and nothing to refine, regularise or bound the residual of. Saying so
        // is better than accepting the option and ignoring it.
        if ( algorithm.ms_control_parameterisation != "constant"
-            && algorithm.ms_control_parameterisation != "linear" )
-          error_message("algorithm.ms_control_parameterisation must be \"constant\" or "
-                        "\"linear\" ");
+            && algorithm.ms_control_parameterisation != "linear"
+            && algorithm.ms_control_parameterisation != "quadratic" )
+          error_message("algorithm.ms_control_parameterisation must be \"constant\", "
+                        "\"linear\" or \"quadratic\" ");
        if ( algorithm.ms_path_samples < 0 )
           error_message("algorithm.ms_path_samples must be zero or positive: it is the number "
                         "of interior points per segment at which the path constraints are also "
@@ -162,6 +163,25 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
                  "\n>>> Note: algorithm.ms_flexible_segments is on and ms_path_samples is zero, so "
                  "\n>>> the path constraints are imposed only at boundaries that are now free to "
                  "\n>>> move. Consider setting ms_path_samples.\n");
+       // The two features are individually sound and interact badly exactly where both are
+       // doing their job. A parabola through three values inside the control's box need not
+       // stay inside it -- it overshoots by a quarter of the second difference -- and the
+       // sharpest second difference a solution can present is a jump, which is precisely what
+       // a moving boundary is there to put a node on. Measured on the minimum-time bang-bang
+       // problem with bounds [-1,2]: with the boundary on the switch the parabola reaches
+       // 2.375, nineteen per cent above its own upper bound, and that is the control the
+       // segment integrator is handed. ms_path_samples does not help; it samples the PATH
+       // constraints, and this is a variable bound.
+       if ( algorithm.ms_flexible_segments && ms_quadratic_controls(algorithm) )
+          psopt_print(workspace,
+                 "\n>>> Note: ms_control_parameterisation = \"quadratic\" with "
+                 "ms_flexible_segments on."
+                 "\n>>> A parabola through three in-bounds control values can leave the bounds "
+                 "between"
+                 "\n>>> them, and it does so most where a moving boundary is most useful -- at a "
+                 "corner"
+                 "\n>>> of the optimal control. Use \"constant\" where the control rides its "
+                 "bounds.\n");
        if ( algorithm.mesh_refinement == "automatic" )
           error_message("algorithm.mesh_refinement = \"automatic\" is not yet supported with "
                         "transcription_method = \"multiple-shooting\": where to put a segment "

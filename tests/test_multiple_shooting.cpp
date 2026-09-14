@@ -89,7 +89,12 @@ void linkages2(adouble* l, adouble* xad, Workspace* w)
     l[2] = get_final_time(xad,1,w) - get_initial_time(xad,2,w);
 }
 
-struct Run { int flag; double J; double tf; double err_est; };
+struct Run {
+    int flag; double J; double tf; double err_est;
+    int nvars;                  // mesh_stats[0].nvars: the decision vector's actual length
+    MatrixXd u_nodes;           // controls at the segment boundaries
+    MatrixXd u_hs, t_hs;        // node and midpoint controls interleaved, and their times
+};
 
 static Run solve(int which, int segments, int steps,
                  const std::string& upar = "constant", int path_samples = 0,
@@ -98,7 +103,7 @@ static Run solve(int which, int segments, int steps,
     g_case = which;
 
     Alg algorithm; Sol solution; Prob problem;
-    Run out; out.flag = -1; out.J = 0.0; out.tf = 0.0; out.err_est = 0.0;
+    Run out; out.flag = -1; out.J = 0.0; out.tf = 0.0; out.err_est = 0.0; out.nvars = 0;
 
     const int nodes = segments + 1;
 
@@ -169,11 +174,112 @@ static Run solve(int which, int segments, int steps,
         out.tf = t(0, (int) t.cols() - 1);
         MatrixXd e = solution.get_relative_local_error_in_phase(1);
         for (int q = 0; q < e.size(); q++) out.err_est = std::max(out.err_est, std::fabs(e(q)));
+        out.nvars   = solution.mesh_stats[0].nvars;
+        out.u_nodes = solution.get_controls_in_phase(1);
+        out.u_hs    = solution.get_hs_controls_in_phase(1);
+        out.t_hs    = solution.get_hs_time_in_phase(1);
     }
     return out;
 }
 
 static double discrete_optimum(double M) { return 6.0*M*M/(M*M - 1.0); }
+
+// The parabola through (u_k, ubar_k, u_{k+1}) at local coordinate x in [0,1] of segment k,
+// read from the interleaved arrays the solution reports. This is the control the segment
+// integrator was handed, so anything asked of the control is asked of this.
+static double quad_control(const Run& r, int k, double x)
+{
+    const double L0 =  2.0*(x-0.5)*(x-1.0);
+    const double Lm = -4.0*x*(x-1.0);
+    const double L1 =  2.0*x*(x-0.5);
+    return L0*r.u_hs(0,2*k) + Lm*r.u_hs(0,2*k+1) + L1*r.u_hs(0,2*k+2);
+}
+
+// ---------------------------------------------------------------------------
+// The minimum-energy TRIPLE integrator, whose optimal control is exactly a
+// parabola. The costates satisfy lam1' = 0, lam2' = -lam1, lam3' = -lam2 and
+// u = -lam3, so u* is quadratic in t; equivalently, the minimiser of int u^2
+// subject to three linear functionals of u lies in the span of their Riesz
+// representers, which are {1, 1-t, (1-t)^2/2} and no higher. A parabola meeting
+// the three terminal conditions is unique, so the two coincide and the
+// continuous optimum is reachable by a piecewise-quadratic control at ANY
+// number of segments.
+// ---------------------------------------------------------------------------
+
+adouble endpoint_cost3(adouble*, adouble*, adouble*, adouble&, adouble&, adouble*,
+                       int, Workspace*) { return (adouble) 0.0; }
+adouble integrand_cost3(adouble*, adouble* u, adouble*, adouble&, adouble*, int, Workspace*)
+{ return 0.5*u[0]*u[0]; }
+void dae3(adouble* d, adouble*, adouble* s, adouble* c, adouble*, adouble&,
+          adouble*, int, Workspace*)
+{ d[0] = s[1]; d[1] = s[2]; d[2] = c[0]; }
+void events3(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
+             adouble*, int, Workspace*)
+{ e[0]=i[0]; e[1]=i[1]; e[2]=i[2]; e[3]=f[0]; e[4]=f[1]; e[5]=f[2]; }
+
+// (0,0,0) -> (1,0,0) on [0,1]: u*(t) = 60 - 360 t + 360 t^2 and J* = 360 exactly.
+const double TRIPLE_JSTAR = 360.0;
+
+static Run solve_triple(int segments, int steps, const std::string& upar)
+{
+    Alg algorithm; Sol solution; Prob problem;
+    Run out; out.flag = -1; out.J = 0.0; out.tf = 0.0; out.err_est = 0.0; out.nvars = 0;
+
+    const int nodes = segments + 1;
+
+    problem.name        = "multiple shooting, triple integrator";
+    problem.outfilename = "test_multiple_shooting_3.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = 3;
+    problem.phases(1).ncontrols = 1;
+    problem.phases(1).nevents   = 6;
+    problem.phases(1).npath     = 0;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    problem.phases(1).bounds.lower.states   << -50.0, -500.0, -5000.0;
+    problem.phases(1).bounds.upper.states   <<  50.0,  500.0,  5000.0;
+    problem.phases(1).bounds.lower.controls(0) = -1.0e5;
+    problem.phases(1).bounds.upper.controls(0) =  1.0e5;
+    problem.phases(1).bounds.lower.events   << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0;
+    problem.phases(1).bounds.upper.events   << 0.0, 0.0, 0.0, 1.0, 0.0, 0.0;
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0; problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &integrand_cost3;
+    problem.endpoint_cost  = &endpoint_cost3;
+    problem.dae            = &dae3;
+    problem.events         = &events3;
+    problem.linkages       = &linkages;
+
+    problem.phases(1).guess.states   = zeros(3, nodes);
+    problem.phases(1).guess.controls = zeros(1, nodes);
+    problem.phases(1).guess.time     = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 2000;
+    algorithm.nlp_tolerance         = 1.0e-12;
+    algorithm.print_level           = 0;
+    algorithm.mesh_refinement       = "manual";
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = "multiple-shooting";
+    algorithm.ms_steps_per_segment  = steps;
+    algorithm.ms_control_parameterisation = upar;
+
+    out.flag = psopt(solution, problem, algorithm);
+    if (out.flag == 0) {
+        out.J     = solution.cost;
+        out.nvars = solution.mesh_stats[0].nvars;
+        out.u_hs  = solution.get_hs_controls_in_phase(1);
+        out.t_hs  = solution.get_hs_time_in_phase(1);
+    }
+    return out;
+}
 
 // The same minimum-energy problem in two phases of `segments` each, joined by a linkage.
 static Run solve_two_phase(int segments, int steps)
@@ -541,5 +647,168 @@ TEST(MultipleShooting, FlexibleSegmentsRemoveTheCoincidence)
         EXPECT_GT(e_fixed, 1.0e-4) << "M = " << segs[q] << ": the uniform partition is "
             << "unexpectedly accurate, so this test is measuring nothing";
         EXPECT_LT(e_flex,  1.0e-7) << "M = " << segs[q] << ": flexible tf = " << flex.tf;
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// The quadratic control parameterisation.
+//
+// With the dynamics integrated to whatever ms_steps_per_segment buys, the
+// accuracy of the answer is capped by the control parameterisation and by
+// nothing else. The order of that approximation is therefore the order of the
+// method, and the test that says so is an exactness test rather than a
+// convergence table: on a problem whose optimal control IS a parabola, a
+// parameterisation that carries parabolas must return the CONTINUOUS optimum at
+// any number of segments, and one that carries ramps cannot.
+//
+// The residue left by the quadratic form is the INTEGRATOR's, not the
+// parameterisation's, and the two are told apart by holding the segment count
+// and refining the step: RK4 on a quadrature is Simpson's rule, exact through
+// cubics, and here x1' = x2 is quartic in t. Refining the step drives the
+// quadratic form's error to round-off and leaves the linear form's exactly
+// where it was.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, AQuadraticControlIsExactWhereTheOptimalControlIsQuadratic)
+{
+    const int segs[3] = { 3, 5, 10 };
+    for (int q = 0; q < 3; q++) {
+        const msh::Run r = msh::solve_triple(segs[q], 80, "quadratic");
+        ASSERT_EQ(r.flag, 0) << "failed at " << segs[q] << " segments";
+        EXPECT_NEAR(r.J, msh::TRIPLE_JSTAR, 1.0e-6)
+            << segs[q] << " segments: got " << r.J << " for a control the "
+            << "parameterisation can represent exactly";
+    }
+}
+
+
+TEST(MultipleShooting, ThreeQuadraticSegmentsBeatTwentyLinearOnes)
+{
+    const msh::Run quad = msh::solve_triple( 3, 80, "quadratic");
+    const msh::Run lin  = msh::solve_triple(20, 80, "linear");
+
+    ASSERT_EQ(quad.flag, 0);
+    ASSERT_EQ(lin.flag,  0);
+
+    const double e_quad = std::fabs(quad.J - msh::TRIPLE_JSTAR)/msh::TRIPLE_JSTAR;
+    const double e_lin  = std::fabs(lin.J  - msh::TRIPLE_JSTAR)/msh::TRIPLE_JSTAR;
+
+    EXPECT_GT(e_lin, 1.0e-6) << "the ramp is unexpectedly accurate here (" << e_lin
+        << "), so this test is measuring nothing";
+    EXPECT_LT(e_quad, e_lin/100.0)
+        << "quadratic at 3 segments: " << e_quad << ";  linear at 20: " << e_lin;
+    EXPECT_LT(quad.nvars, lin.nvars)
+        << "and it should be doing it with fewer variables: " << quad.nvars
+        << " against " << lin.nvars;
+}
+
+
+TEST(MultipleShooting, RefiningTheStepRemovesTheQuadraticFormsErrorAndNotTheRampsError)
+{
+    const msh::Run q_coarse = msh::solve_triple(5,  10, "quadratic");
+    const msh::Run q_fine   = msh::solve_triple(5, 320, "quadratic");
+    const msh::Run l_coarse = msh::solve_triple(5,  10, "linear");
+    const msh::Run l_fine   = msh::solve_triple(5, 320, "linear");
+
+    ASSERT_EQ(q_coarse.flag, 0);  ASSERT_EQ(q_fine.flag, 0);
+    ASSERT_EQ(l_coarse.flag, 0);  ASSERT_EQ(l_fine.flag, 0);
+
+    const double eq_c = std::fabs(q_coarse.J - msh::TRIPLE_JSTAR);
+    const double eq_f = std::fabs(q_fine.J   - msh::TRIPLE_JSTAR);
+    const double el_c = std::fabs(l_coarse.J - msh::TRIPLE_JSTAR);
+    const double el_f = std::fabs(l_fine.J   - msh::TRIPLE_JSTAR);
+
+    EXPECT_LT(eq_f, eq_c/1000.0)
+        << "the quadratic form's error did not fall with the step: "
+        << eq_c << " -> " << eq_f << ", so it is not the integrator's error";
+    EXPECT_GT(el_f, el_c/2.0)
+        << "the ramp's error fell with the step: " << el_c << " -> " << el_f
+        << ", so it is not the parameterisation's error";
+}
+
+
+// The layout written in three places. Adding a block to one of them and not the
+// others does not fail a check; it corrupts the heap. The quadratic form adds
+// exactly one control variable per SEGMENT, so the length of the decision
+// vector has to move by exactly that and by nothing else.
+TEST(MultipleShooting, TheQuadraticFormAddsExactlyOneVariablePerSegment)
+{
+    const int segs[3] = { 5, 10, 20 };
+    for (int q = 0; q < 3; q++) {
+        const msh::Run lin  = msh::solve(0, segs[q], 10, "linear");
+        const msh::Run quad = msh::solve(0, segs[q], 10, "quadratic");
+        ASSERT_EQ(lin.flag,  0);
+        ASSERT_EQ(quad.flag, 0);
+        EXPECT_EQ(quad.nvars - lin.nvars, segs[q])
+            << "M = " << segs[q] << ": linear has " << lin.nvars
+            << " variables and quadratic " << quad.nvars;
+    }
+}
+
+
+// A caller who reads solution.get_controls_in_phase alone under this
+// parameterisation is reading two thirds of the control variables and calling
+// it the control history. The midpoint values are reported through the same
+// interleaved pair Hermite-Simpson uses, and they are genuinely free: on a
+// problem whose optimal control has curvature they differ from the average of
+// the two nodes they sit between, which is what the ramp would have given.
+TEST(MultipleShooting, TheMidpointControlsAreReportedAndAreNotTheNodeAverage)
+{
+    const int M = 6;
+    const msh::Run r = msh::solve_triple(M, 40, "quadratic");
+    ASSERT_EQ(r.flag, 0);
+    ASSERT_EQ(r.u_hs.cols(), 2*M + 1)
+        << "the interleaved control history has " << r.u_hs.cols()
+        << " columns, not the 2M+1 a midpoint control implies";
+    ASSERT_EQ(r.t_hs.cols(), 2*M + 1);
+
+    double gap = 0.0, scale = 0.0;
+    for (int k = 0; k < M; k++) {
+        const double avg = 0.5*( r.u_hs(0,2*k) + r.u_hs(0,2*k+2) );
+        gap   = std::max(gap,   std::fabs(r.u_hs(0,2*k+1) - avg));
+        scale = std::max(scale, std::fabs(r.u_hs(0,2*k+1)));
+    }
+    EXPECT_GT(gap, 0.01*scale)
+        << "every midpoint control is the average of its neighbours (gap " << gap
+        << " against scale " << scale << "), which is what a ramp would give";
+
+    // and the midpoints sit where they say they do
+    for (int k = 0; k < M; k++)
+        EXPECT_NEAR(r.t_hs(0,2*k+1), 0.5*(r.t_hs(0,2*k) + r.t_hs(0,2*k+2)), 1.0e-12);
+}
+
+
+// A limitation, pinned so that it cannot change quietly. The parabola through
+// three values inside the control's box need not stay inside it: it overshoots
+// by a quarter of the second difference. The sharpest second difference a
+// solution can present is a jump -- and putting a segment boundary exactly on a
+// jump is what ms_flexible_segments is FOR, so the two features collide
+// precisely where each is doing its job. On the minimum-time problem with
+// u in [-1,2] the reported control reaches about 2.375, and that is the control
+// the segment integrator is handed, not an artefact of plotting.
+TEST(MultipleShooting, TheParabolaCanLeaveTheControlBounds)
+{
+    const msh::Run r = msh::solve(4, 10, 10, "quadratic", 0, true);
+    ASSERT_EQ(r.flag, 0);
+    ASSERT_EQ(r.u_hs.cols(), 2*10 + 1);
+
+    double worst = 0.0;
+    for (int k = 0; k < 10; k++)
+        for (int q = 0; q <= 100; q++) {
+            const double u = msh::quad_control(r, k, ((double) q)/100.0);
+            worst = std::max(worst, std::max(u - 2.0, -1.0 - u));
+        }
+
+    EXPECT_GT(worst, 0.1)
+        << "the parabola stayed within the control bounds (worst excursion "
+        << worst << ") -- if this holds, the caution in validate.cxx and in the "
+        << "Alg comment is no longer describing the code";
+
+    // and the values it interpolates are themselves inside the bounds, so this
+    // is the interpolant leaving the box and not the solver ignoring it
+    for (int c = 0; c < r.u_hs.cols(); c++) {
+        EXPECT_LE(r.u_hs(0,c),  2.0 + 1.0e-7);
+        EXPECT_GE(r.u_hs(0,c), -1.0 - 1.0e-7);
     }
 }

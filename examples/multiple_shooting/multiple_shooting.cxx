@@ -20,13 +20,13 @@
 ////////                                                               ///
 //////// and configured with ms_steps_per_segment, which sets how many ///
 //////// RK4 steps cross a segment; ms_control_parameterisation, which ///
-//////// is "constant" or "linear"; and ms_path_samples, which sets how ///
-//////// many interior points of a segment the path constraints are    ///
-//////// also enforced at; and ms_flexible_segments, which lets the    ///
-//////// segment boundaries move.                                      ///
+//////// is "constant", "linear" or "quadratic"; ms_path_samples, which ///
+//////// sets how many interior points of a segment the path            ///
+//////// constraints are also enforced at; and ms_flexible_segments,    ///
+//////// which lets the segment boundaries move.                        ///
 ////////                                                               ///
-//////// This example makes five points, each with a number attached,  ///
-//////// and three of them are cautions rather than selling points.    ///
+//////// This example makes six points, each with a number attached,   ///
+//////// and four of them are cautions rather than selling points.     ///
 ////////                                                               ///
 //////// Reference for the method: H. G. Bock and K. J. Plitt, "A      ///
 //////// multiple shooting algorithm for direct solution of optimal    ///
@@ -55,9 +55,26 @@ using namespace PSOPT;
 //    x(0)=0, v(0)=1, x(1)=0, v(1)=-1.  J* = 4.
 // 2: minimum time with u in [-1,2], so the single switch falls at tf/3 and tf is
 //    free.  tf* = sqrt(3).
+// 3: the same minimum-energy problem on an OSCILLATOR, xddot = -w^2 x + u, whose
+//    optimal control is a sinusoid: smooth, and not a polynomial, so no
+//    parameterisation here represents it exactly and the three are measured
+//    against the same unreachable answer.  J* comes from the controllability
+//    Gramian in closed form.
 static int problem_case = 0;
 
 static const double TF_SQRT3 = 1.7320508075688772;
+static const double W_OSC    = 10.0;
+
+// J* = (1/2) x_T' W^-1 x_T for xddot = -w^2 x + u on [0,1] from rest to (1,0).
+static double oscillator_optimum(void)
+{
+    const double w = W_OSC, T = 1.0;
+    const double s2 = T/2.0 - sin(2*w*T)/(4*w);
+    const double c2 = T/2.0 + sin(2*w*T)/(4*w);
+    const double sc = (1.0 - cos(2*w*T))/(4*w);
+    const double W11 = s2/(w*w), W12 = sc/w, W22 = c2;
+    return 0.5*W22/(W11*W22 - W12*W12);
+}
 
 adouble endpoint_cost(adouble* initial_states, adouble* final_states,
                       adouble* parameters, adouble& t0, adouble& tf,
@@ -73,7 +90,8 @@ void dae(adouble* derivatives, adouble* path, adouble* states, adouble* controls
          Workspace* workspace)
 {
     derivatives[0] = states[1];
-    derivatives[1] = controls[0];
+    derivatives[1] = ( problem_case == 3 ) ? ( -W_OSC*W_OSC*states[0] + controls[0] )
+                                           : controls[0];
     if ( problem_case == 1 ) path[0] = states[0];
 }
 
@@ -91,7 +109,7 @@ void linkages(adouble* linkages, adouble* xad, Workspace* workspace) {}
 ///////////////////  One solve  ///////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
-struct Row { int flag; double J; double l1_err; double l2_err; };
+struct Row { int flag; double J; double l1_err; double l2_err; double u_out_of_bounds; };
 
 static Row solve_it(int which, const char* transcription, int segments, int steps,
                     const char* upar, int path_samples, bool costates,
@@ -101,6 +119,7 @@ static Row solve_it(int which, const char* transcription, int segments, int step
 
     Alg algorithm; Sol solution; Prob problem;
     Row out; out.flag = -1; out.J = 0.0; out.l1_err = 0.0; out.l2_err = 0.0;
+    out.u_out_of_bounds = 0.0;
 
     const int nodes = segments + 1;
 
@@ -117,10 +136,18 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     problem.phases(1).nodes     << nodes;
     psopt_level2_setup(problem, algorithm);
 
-    problem.phases(1).bounds.lower.states   << -5.0, -5.0;
-    problem.phases(1).bounds.upper.states   <<  5.0,  5.0;
-    problem.phases(1).bounds.lower.controls(0) = ( which == 2 ) ? -1.0 : -30.0;
-    problem.phases(1).bounds.upper.controls(0) = ( which == 2 ) ?  2.0 :  30.0;
+    if ( which == 3 ) {
+        problem.phases(1).bounds.lower.states   << -50.0, -500.0;
+        problem.phases(1).bounds.upper.states   <<  50.0,  500.0;
+    }
+    else {
+        problem.phases(1).bounds.lower.states   << -5.0, -5.0;
+        problem.phases(1).bounds.upper.states   <<  5.0,  5.0;
+    }
+    problem.phases(1).bounds.lower.controls(0) = ( which == 2 ) ? -1.0
+                                               : ( which == 3 ) ? -2000.0 : -30.0;
+    problem.phases(1).bounds.upper.controls(0) = ( which == 2 ) ?  2.0
+                                               : ( which == 3 ) ?  2000.0 :  30.0;
 
     if ( which == 1 ) {
         problem.phases(1).bounds.lower.path(0) = -5.0;
@@ -144,8 +171,8 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     problem.linkages       = &linkages;
 
     problem.phases(1).guess.states   = zeros(2, nodes);
-    if ( which == 1 ) problem.phases(1).guess.states.row(1) = linspace( 1.0, -1.0, nodes);
-    else              problem.phases(1).guess.states.row(0) = linspace( 0.0,  1.0, nodes);
+    if ( which == 1 )      problem.phases(1).guess.states.row(1) = linspace( 1.0, -1.0, nodes);
+    else if ( which != 3 ) problem.phases(1).guess.states.row(0) = linspace( 0.0,  1.0, nodes);
     problem.phases(1).guess.controls = zeros(1, nodes);
     problem.phases(1).guess.time     = linspace(0.0, ( which == 2 ) ? 1.73 : 1.0, nodes);
 
@@ -153,7 +180,7 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     algorithm.scaling               = "automatic";
     algorithm.derivatives           = "automatic";
     algorithm.nlp_iter_max          = 2000;
-    algorithm.nlp_tolerance         = 1.0e-10;
+    algorithm.nlp_tolerance         = ( which == 3 ) ? 1.0e-12 : 1.0e-10;
     algorithm.print_level           = 0;
     algorithm.mesh_refinement       = "manual";
     algorithm.collocation_method    = "Hermite-Simpson";
@@ -170,6 +197,29 @@ static Row solve_it(int which, const char* transcription, int segments, int step
     if ( which == 2 ) {
         DMatrix T = solution.get_time_in_phase(1);
         out.J = T(0, T.cols()-1);          // the final time is the answer here
+    }
+
+    // How far outside its own bounds does the control the integrator was handed go? The
+    // constant and linear forms cannot leave the box their values lie in; the parabola can.
+    // The interleaved arrays are the whole control history, node and midpoint together, and
+    // they are what get_hs_controls_in_phase reports under this parameterisation too.
+    {
+        DMatrix U  = solution.get_controls_in_phase(1);
+        DMatrix Uh = solution.get_hs_controls_in_phase(1);
+        const double ulo = problem.phases(1).bounds.lower.controls(0);
+        const double uup = problem.phases(1).bounds.upper.controls(0);
+        const int M = (int) U.cols() - 1;
+        if ( Uh.cols() == 2*M + 1 ) {
+            for (int k = 0; k < M; k++)
+                for (int q = 0; q <= 100; q++) {
+                    const double x = ((double) q)/100.0;
+                    const double uu =  2.0*(x-0.5)*(x-1.0)*Uh(0,2*k)
+                                     - 4.0*x*(x-1.0)      *Uh(0,2*k+1)
+                                     + 2.0*x*(x-0.5)      *Uh(0,2*k+2);
+                    out.u_out_of_bounds = fmax(out.u_out_of_bounds,
+                                               fmax(uu - uup, ulo - uu));
+                }
+        }
     }
 
     if (costates) {
@@ -227,6 +277,42 @@ int main(void)
     printf("\n     Compare a shooting method carrying a piecewise-constant control against\n");
     printf("     collocation's piecewise polynomials and it loses, for a reason that has\n");
     printf("     nothing to do with shooting.\n");
+
+    printf("\n     More generally, the control parameterisation is what caps the accuracy of\n");
+    printf("     the answer, because the dynamics are integrated to whatever\n");
+    printf("     ms_steps_per_segment buys and that is independent of the mesh. A control\n");
+    printf("     error of O(h^p) gives a cost error of O(h^2p), the cost being stationary and\n");
+    printf("     quadratic at the optimum, and the three forms are p = 1, 2 and 3. On an\n");
+    printf("     oscillator whose optimal control is a sinusoid -- smooth, and reachable by\n");
+    printf("     none of them -- with a fine segment integrator so that only the\n");
+    printf("     parameterisation is being measured:\n\n");
+    printf("        M      constant u          linear u            quadratic u\n");
+    {
+        const double Jo = oscillator_optimum();
+        double pa = 0.0, pb = 0.0, pc = 0.0;
+        const int osegs[4] = { 10, 20, 40, 80 };
+        for (int q = 0; q < 4; q++) {
+            Row a = solve_it(3, "multiple-shooting", osegs[q], 200, "constant",  0, false);
+            Row b = solve_it(3, "multiple-shooting", osegs[q], 200, "linear",    0, false);
+            Row c = solve_it(3, "multiple-shooting", osegs[q], 200, "quadratic", 0, false);
+            const double ea = fabs(a.J - Jo)/Jo;
+            const double eb = fabs(b.J - Jo)/Jo;
+            const double ec = fabs(c.J - Jo)/Jo;
+            printf("      %3d    %.3e", osegs[q], ea);
+            if (pa > 0.0) printf(" /%5.1f", pa/ea); else printf("       ");
+            printf("   %.3e", eb);
+            if (pb > 0.0) printf(" /%5.1f", pb/eb); else printf("       ");
+            printf("   %.3e", ec);
+            if (pc > 0.0) printf(" /%5.1f", pc/ec); else printf("       ");
+            printf("\n");
+            pa = ea; pb = eb; pc = ec;
+        }
+    }
+    printf("\n     The ratio after each doubling is the order: 4 = 2^2, 16 = 2^4 and 64 = 2^6.\n");
+    printf("     The quadratic form carries one extra control variable per segment, in the\n");
+    printf("     slot Hermite-Simpson uses for its midpoint control, and reports it through\n");
+    printf("     solution.get_hs_controls_in_phase. Reading get_controls_in_phase alone there\n");
+    printf("     gives two thirds of the control variables and none of the curvature.\n");
 
     printf("\n  3. A path constraint imposed only at the segment boundaries is not the path\n");
     printf("     constraint that was written down. Bryson and Denham's problem has J* = 4\n");
@@ -293,6 +379,31 @@ int main(void)
     printf("     degeneracy is complete, and the solve does not converge at any floor --\n");
     printf("     measured, on the problem of point 1 above with the dynamics made\n");
     printf("     oscillatory. This facility is for solutions with corners.\n");
+
+    printf("\n  6. The parabola can leave the control bounds, and it does so worst exactly\n");
+    printf("     where the flexible partition is most useful. A quadratic through three\n");
+    printf("     values inside the box need not stay inside it -- it overshoots by a quarter\n");
+    printf("     of the second difference -- and the sharpest second difference a solution\n");
+    printf("     can present is a jump, which is what a moving boundary is there to sit on.\n");
+    printf("     On the minimum-time problem above, with u in [-1,2]:\n\n");
+    printf("        parameterisation   partition    tf rel. error   u outside [-1,2] by\n");
+    {
+        const char* forms[3] = { "constant", "linear", "quadratic" };
+        for (int f = 0; f < 3; f++)
+            for (int g = 0; g < 2; g++) {
+                Row r = solve_it(2, "multiple-shooting", 10, 10, forms[f], 0, false, g == 1);
+                printf("        %-18s %-12s %.3e       %.2e\n",
+                       forms[f], (g == 1) ? "flexible" : "uniform",
+                       fabs(r.J - TF_SQRT3)/TF_SQRT3, r.u_out_of_bounds);
+            }
+    }
+    printf("\n     The control the segment integrator was handed reached 2.375 in the last\n");
+    printf("     row, nineteen per cent above its own upper bound, and ms_path_samples does\n");
+    printf("     not help: that samples the PATH constraints, and this is a variable bound.\n");
+    printf("     Note also that the two continuous forms are far worse than the constant one\n");
+    printf("     on this problem whatever the partition, because a continuous control cannot\n");
+    printf("     represent a jump. Use \"constant\" where the optimal control has corners or\n");
+    printf("     rides its bounds, and the higher forms where it is smooth and interior.\n");
 
     printf("\n--------------------------------------------------------------------------------\n");
     printf("  What this transcription does not yet have: automatic mesh refinement, which\n");

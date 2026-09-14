@@ -567,8 +567,15 @@ bool need_midpoint_controls(Alg& algorithm, Workspace* workspace)
 // ir_local_order >= 2. psopt_main rejects a mesh whose interval count is not divisible by
 // ir_local_order before any of this is used, so the predicate does not depend on the mesh
 // and the layout cannot change between mesh-refinement iterations of one solve.
+// Multiple shooting's quadratic control parameterisation claims the same block, for the same
+// reason and with the same meaning: one control value at the midpoint of every interval,
+// carrying the parabola through (u_k, ubar_k, u_{k+1}). It is a different transcription, so
+// need_midpoint_controls -- which asks whether the DEFECTS are Hermite-Simpson, and drives
+// the Simpson quadrature and the midpoint path rows as well -- is the wrong question to
+// widen; this one, which asks only whether the variables exist, is the right one.
 bool midpoint_control_vars(Alg& algorithm, Workspace* workspace)
 {
+    if ( ms_quadratic_controls(algorithm) ) return true;
     return need_midpoint_controls(algorithm, workspace) && !ir_local_basis_active(algorithm);
 }
 
@@ -685,10 +692,19 @@ void copy_decision_variables(Sol& solution, MatrixXd& x, Prob& problem, Alg& alg
         // in their own block after the parameters, interleaved with the node controls into
         // one strictly increasing sequence for Sol::get_hs_controls_in_phase. The node
         // arrays above are left exactly as they were, so nothing that reads them changes.
-        // When the phase is not on a Hermite-Simpson mesh the two arrays are emptied, and
-        // the accessors report that.
+        // When the phase carries no midpoint control the two arrays are emptied, and the
+        // accessors report that.
+        //
+        // Multiple shooting's quadratic parameterisation carries one too, with the same
+        // meaning -- the control on interval k is the parabola through (u_k, ubar_k,
+        // u_{k+1}) -- so it is reported the same way. It has to be: a caller who reads only
+        // solution.controls there is reading a third of the control variables and calling it
+        // the control history, which is the mistake this pair of arrays exists to prevent,
+        // and the mistake is worse here than under Hermite-Simpson because the midpoint
+        // value is what the integrator spent most of each segment on.
         if ( solution.controls_hs != NULL ) {
-            if ( need_midpoint_controls(algorithm, workspace) && ncontrols > 0 && norder > 0 ) {
+            if ( ( need_midpoint_controls(algorithm, workspace)
+                   || ms_quadratic_controls(algorithm) ) && ncontrols > 0 && norder > 0 ) {
                 int nhs        = 2*norder + 1;
                 int bar_offset = (nstates+ncontrols)*(norder+1) + nparam;
                 // The variable block is absent under the Nie-Kerrigan representation, so

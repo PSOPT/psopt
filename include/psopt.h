@@ -404,11 +404,24 @@ struct alg_str {
   // The control's shape across a segment. "constant" (default) holds the segment's own
   // control value; "linear" interpolates between the values at the segment's two ends, which
   // uses every control slot, makes the reported control continuous, and converges an order
-  // faster where the optimal control is smooth. Constant is the default because it is the
-  // form in which a shooting method's control bounds are exactly the control's bounds: under
-  // the linear form the interpolant never leaves the interval spanned by its ends, which is
-  // also within the bounds, so both are safe here -- but the constant form is what makes a
-  // bang-bang answer come out as a bang-bang answer rather than as a ramp.
+  // faster where the optimal control is smooth; "quadratic" adds one control variable at the
+  // midpoint of each segment and carries the parabola through the three, which is the
+  // Hermite-Simpson control representation used on a shooting mesh.
+  //
+  // Why the higher forms are worth having, measured rather than argued. With the dynamics
+  // integrated to whatever ms_steps_per_segment buys, the accuracy of the ANSWER is capped by
+  // the control parameterisation and by nothing else -- driving the integrator error to 8e-17
+  // leaves the cost error at 5.5e-06 -- so the order of this approximation is the order of the
+  // method. A control error of O(h^p) gives a cost error of O(h^(2p)), the cost being
+  // stationary and quadratic at the optimum, and the three forms are p = 1, 2, 3.
+  //
+  // Constant is the default for two reasons. It is the form in which a shooting method's
+  // control bounds are exactly the control's bounds -- the higher forms are safe too, the
+  // interpolant of "linear" never leaving the interval spanned by its ends, but "quadratic"
+  // CAN overshoot its three nodal values between them, by at most a quarter of the second
+  // difference, so a control at its bound at all three can leave the bound in between. And it
+  // is the only one of the three that is discontinuous across a segment boundary, which is
+  // what makes a bang-bang answer come out as a bang-bang answer rather than as a ramp.
   string    ms_control_parameterisation;
 
   // Interior points per segment at which the path constraints are also enforced. Zero, the
@@ -1037,8 +1050,14 @@ public:
    // the two branches differ, which they do systematically on a singular or a
    // bang-bang arc: see Sol::get_hs_controls_in_phase. These two arrays interleave
    // node and midpoint values into one strictly increasing sequence, and are empty
-   // when the phase was not discretized by Hermite-Simpson. Appended as the last data
+   // when the phase carries no midpoint control variable. Appended as the last data
    // members so the offsets of all pre-existing ones are unchanged.
+   //
+   // Multiple shooting with ms_control_parameterisation = "quadratic" carries the same
+   // midpoint control, with the same meaning, and fills the same two arrays. The
+   // accessor keeps its Hermite-Simpson name for compatibility; what it reports is the
+   // complete control history of any phase whose control is the parabola through node,
+   // midpoint and node.
    MatrixXd *controls_hs;
    MatrixXd *nodes_hs;
    MatrixXd& get_states_in_phase(int iphase);
@@ -1698,6 +1717,28 @@ inline bool ms_linear_controls(Alg& algorithm)
            && algorithm.ms_control_parameterisation == "linear";
 }
 
+// Is the control across a segment the parabola through (u_k, ubar_k, u_{k+1})?
+//
+// ubar_k is a decision variable of its own, and it is kept in the block the Hermite-Simpson
+// midpoint controls occupy: the same slot in the phase layout, the same size
+// ncontrols*norder, the same bounds, the same guess, the same printed rows, the same
+// interleaved reporting through Sol::get_hs_controls_in_phase, and the same quadratic read
+// back by get_interpolated_control, whose formula is already written for exactly these three
+// values. That is why the whole parameterisation costs a predicate and one branch in the
+// propagator: midpoint_control_vars is the question every one of those sites already asks,
+// and answering it here answers it everywhere.
+//
+// The two cannot collide. Hermite-Simpson allocates that block because
+// workspace->differential_defects is "Hermite-Simpson", and under multiple shooting it is
+// "multiple-shooting"; the Nie-Kerrigan element-boundary controls, which claim the same slot,
+// belong to the integrated-residual transcription, which validate refuses to combine with
+// this one.
+inline bool ms_quadratic_controls(Alg& algorithm)
+{
+    return is_multiple_shooting(algorithm)
+           && algorithm.ms_control_parameterisation == "quadratic";
+}
+
 // Rows a phase spends on path constraints sampled INSIDE its segments. Zero unless multiple
 // shooting is in force with ms_path_samples > 0; the boundary rows are the ordinary
 // npath*(norder+1) block and are counted elsewhere.
@@ -1709,12 +1750,14 @@ inline int ms_interior_path_rows(int norder, int npath, Alg& algorithm)
 }
 
 // The terminal control belongs to no segment under a piecewise-CONSTANT parameterisation and
-// is pinned to its neighbour; under the linear one every slot is read and there is nothing to
-// pin. One row per control, or none.
+// is pinned to its neighbour; under the linear and quadratic ones the last segment reads the
+// terminal node's control as its right-hand value, so every slot is read and there is nothing
+// to pin. One row per control, or none.
 inline int ms_terminal_pin_rows(int ncontrols, Alg& algorithm)
 {
     if ( !is_multiple_shooting(algorithm) ) return 0;
     if ( ms_linear_controls(algorithm) )    return 0;
+    if ( ms_quadratic_controls(algorithm) ) return 0;
     return ncontrols;
 }
 
