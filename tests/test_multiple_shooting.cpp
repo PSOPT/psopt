@@ -1741,3 +1741,197 @@ TEST(MultipleShooting, TheDeclaredDaeConvergesToTheCollocationAnswer)
                               << ratio;
     }
 }
+
+
+// ===========================================================================
+// Choosing the segment integrator's step count automatically, per segment
+// (algorithm.ms_adaptive_steps).
+//
+//   xdot1 = x2,   xdot2 = u + A exp(-((t-1/2)/sigma)^2/2),
+//   min (1/2) int_0^1 u^2 dt,   (0,0) -> (1,0).
+//
+// The forcing is perfectly smooth but its SCALE is sigma, so the integrator's
+// error lives in the two or three segments that cover it and is negligible
+// everywhere else. A uniform step count therefore has to be set by the worst
+// segment and is then paid for by all twenty, which is the case per-segment
+// adaptation exists for -- and it is also the case where a per-PHASE count
+// would buy nothing over a uniform one.
+//
+// The segment refinement is switched off in every run here, by setting
+// ms_refine_tolerance enormous, so that what is under test is the step count
+// and nothing else.
+// ===========================================================================
+namespace msstep {
+
+static const double SIG = 0.02, AMP = 40.0;
+
+adouble endpoint_cost(adouble*, adouble*, adouble*, adouble&, adouble&, adouble*,
+                      int, Workspace*) { return (adouble) 0.0; }
+adouble integrand_cost(adouble*, adouble* c, adouble*, adouble&, adouble*, int, Workspace*)
+{ return 0.5*c[0]*c[0]; }
+
+void dae(adouble* d, adouble*, adouble* s, adouble* c, adouble*, adouble& t,
+         adouble*, int, Workspace*)
+{
+    adouble z = (t - 0.5)/SIG;
+    d[0] = s[1];
+    d[1] = c[0] + AMP*exp(-0.5*z*z);
+}
+
+void events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
+            adouble*, int, Workspace*)
+{ e[0]=i[0]; e[1]=i[1]; e[2]=f[0]; e[3]=f[1]; }
+
+struct Run { int flag; int rc; double J; double eps; int iters; };
+
+static Run solve(int segments, int steps, bool adaptive, const char* integrator,
+                 int max_iter = 8)
+{
+    Alg algorithm; Sol solution; Prob problem;
+    Run out; out.flag = -1; out.rc = -99; out.J = 0.0; out.eps = -1.0; out.iters = 0;
+
+    const int nodes = segments + 1;
+    problem.name        = "multiple shooting, adaptive steps";
+    problem.outfilename = "test_multiple_shooting_steps.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = 2;
+    problem.phases(1).ncontrols = 1;
+    problem.phases(1).nevents   = 4;
+    problem.phases(1).npath     = 0;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    problem.phases(1).bounds.lower.states   << -50.0, -50.0;
+    problem.phases(1).bounds.upper.states   <<  50.0,  50.0;
+    problem.phases(1).bounds.lower.controls(0) = -200.0;
+    problem.phases(1).bounds.upper.controls(0) =  200.0;
+    problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0;
+    problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0;
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0; problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &integrand_cost;
+    problem.endpoint_cost  = &endpoint_cost;
+    problem.dae            = &dae;
+    problem.events         = &events;
+    problem.linkages       = &msh::linkages;
+
+    problem.phases(1).guess.states        = zeros(2, nodes);
+    problem.phases(1).guess.states.row(0) = linspace(0.0, 1.0, nodes);
+    problem.phases(1).guess.controls      = zeros(1, nodes);
+    problem.phases(1).guess.time          = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 3000;
+    algorithm.nlp_tolerance         = 1.0e-10;
+    algorithm.print_level           = 0;
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = "multiple-shooting";
+    algorithm.ms_control_parameterisation = "constant";
+    algorithm.ms_steps_per_segment  = steps;
+    algorithm.ms_integrator         = integrator;
+    algorithm.ode_tolerance         = 1.0e-8;
+    algorithm.ms_refine_tolerance   = 1.0e9;      // segments held fixed: steps under test
+    if ( adaptive ) {
+        algorithm.mesh_refinement   = "automatic";
+        algorithm.mr_max_iterations = max_iter;
+        algorithm.ms_adaptive_steps = true;
+    }
+    else {
+        algorithm.mesh_refinement   = "manual";
+    }
+
+    out.flag = psopt(solution, problem, algorithm);
+    out.rc   = solution.nlp_return_code;
+    if ( out.flag != 0 ) return out;
+    out.J = solution.cost;
+    const int nrows = adaptive ? max_iter : 1;   // mesh_stats is sized by the iteration count
+    int last = 0;
+    for (int q = 0; q < nrows; q++) {
+        if ( solution.mesh_stats[q].nnodes <= 0 ) break;
+        last = q;
+    }
+    out.iters = last + 1;
+    out.eps   = solution.mesh_stats[last].epsilon_max;
+    return out;
+}
+
+} // namespace msstep
+
+
+// ---------------------------------------------------------------------------
+// The step count reaches ode_tolerance on its own, from a starting count that
+// does not.
+//
+// This is the user-facing point of the option: ms_steps_per_segment stops being
+// a number to guess and becomes a starting point, and ode_tolerance -- which is
+// what the user actually cares about -- becomes the thing that is met.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, TheStepCountReachesOdeToleranceOnItsOwn)
+{
+    const msstep::Run fixed = msstep::solve(20, 7, false, "RK4");
+    const msstep::Run adapt = msstep::solve(20, 7, true,  "RK4");
+
+    ASSERT_EQ(fixed.flag, 0) << "IPOPT return code " << fixed.rc;
+    ASSERT_EQ(adapt.flag, 0) << "IPOPT return code " << adapt.rc;
+
+    EXPECT_GT(fixed.eps, 1.0e-8)
+        << "the starting step count is supposed to be too coarse, or this test is not "
+           "measuring what it claims; it reported " << fixed.eps;
+    EXPECT_LE(adapt.eps, 1.0e-8)
+        << "the adaptation is supposed to reach ode_tolerance; it reported " << adapt.eps;
+    EXPECT_GT(adapt.iters, 1)
+        << "reaching it should have taken more than one solve";
+}
+
+// ---------------------------------------------------------------------------
+// And the answer stops depending on the starting count, which is the same
+// property the segment refinement buys for the starting partition. Two starts
+// that differ by half agree to eight figures, and both agree with a uniform
+// count fine enough to settle the question.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, TheAdaptedAnswerDoesNotDependOnTheStartingStepCount)
+{
+    const msstep::Run a    = msstep::solve(20, 7,  true, "RK4");
+    const msstep::Run b    = msstep::solve(20, 14, true, "RK4");
+    const msstep::Run fine = msstep::solve(20, 160, false, "RK4");
+
+    ASSERT_EQ(a.flag,    0) << "IPOPT return code " << a.rc;
+    ASSERT_EQ(b.flag,    0) << "IPOPT return code " << b.rc;
+    ASSERT_EQ(fine.flag, 0) << "IPOPT return code " << fine.rc;
+
+    EXPECT_NEAR(a.J, b.J, 1.0e-6)
+        << "two starting step counts gave different answers: " << a.J << " against " << b.J;
+    EXPECT_NEAR(a.J, fine.J, 1.0e-5)
+        << "the adapted answer disagrees with a uniform count of 160: " << a.J << " against "
+        << fine.J;
+}
+
+// ---------------------------------------------------------------------------
+// It composes with the scheme, and the composition is the point: the step
+// driver asks how many steps of WHATEVER SCHEME IS IN FORCE are needed, so a
+// higher-order table does not need a different tolerance or a different number
+// -- it needs fewer steps, and the driver finds out how many.
+// ---------------------------------------------------------------------------
+
+TEST(MultipleShooting, StepAdaptationComposesWithTheSchemeChoice)
+{
+    const msstep::Run r4 = msstep::solve(20, 7, true, "RK4");
+    const msstep::Run r8 = msstep::solve(20, 2, true, "RK8");
+
+    ASSERT_EQ(r4.flag, 0) << "IPOPT return code " << r4.rc;
+    ASSERT_EQ(r8.flag, 0) << "IPOPT return code " << r8.rc;
+
+    EXPECT_LE(r4.eps, 1.0e-8) << "RK4 adaptation reported " << r4.eps;
+    EXPECT_LE(r8.eps, 1.0e-8) << "RK8 adaptation reported " << r8.eps;
+    EXPECT_NEAR(r4.J, r8.J, 1.0e-5)
+        << "the two schemes, each adapted to the same tolerance, should agree: "
+        << r4.J << " against " << r8.J;
+}

@@ -514,6 +514,34 @@ struct alg_str {
   // like a count that needs to grow and is not.
   int       ms_algebraic_iterations;
 
+  // Choose the segment integrator's step count automatically, PER SEGMENT, from the reported
+  // discretisation error and ode_tolerance. Off by default.
+  //
+  // WHERE THE ADAPTIVITY LIVES IS THE WHOLE DESIGN. A step size that varies with the decision
+  // variables INSIDE the propagation is not merely untapeable: it makes the constraint
+  // function non-smooth in those variables, because a step-acceptance test flipping as the
+  // iterate moves changes the discrete map the matching condition is written on, and Newton is
+  // then given derivatives that do not describe its own residual. That is Bock's reason for
+  // freezing the discretisation, and it is why direct multiple shooting has done so since
+  // 1984. So the step sequence is chosen BETWEEN solves and held fixed within one -- the same
+  // shape as the segment refinement, an estimator between solves and a fixed discretisation
+  // inside one, and for the same reason.
+  //
+  // It needs another solve for a new step count to be used in, so it requires
+  // mesh_refinement = "automatic"; validate says so rather than accepting the option and
+  // doing nothing with it. It composes with the segment refinement rather than competing with
+  // it, because the two chase the separable error sources this transcription is built around:
+  // the segment count controls the CONTROL PARAMETERISATION and the PATH CONSTRAINTS, and the
+  // step count controls the INTEGRATOR. Neither can fix the other's error and neither is
+  // spent on the other's job.
+  bool      ms_adaptive_steps;
+
+  // The ceiling on any one segment's step count under ms_adaptive_steps. A guard against a
+  // problem the explicit scheme cannot resolve at all -- a stiff one, most likely, which this
+  // transcription does not serve -- spending the whole of a machine's memory on tape before
+  // saying so. Default 200.
+  int       ms_max_steps_per_segment;
+
   int       ir_residual_nodes;      // Gauss-Legendre residual-quadrature points per interval
                                     // (integrated-residual transcription; default 4)
   double    ir_regularization;      // weight rho on integral(||xdot-f||^2) added to the
@@ -1230,6 +1258,21 @@ public:
    MatrixXd*  D2;
    unique_ptr<MatrixXd[]>  snodes;
    unique_ptr<MatrixXd[]>  old_snodes;
+
+   // Multiple shooting with ms_adaptive_steps: how many integrator steps each SEGMENT takes,
+   // and the normalised midpoints of the segments the table was built on.
+   //
+   // The midpoints are carried because the table has to survive a change of partition. A
+   // segment refinement splits some segments and not others, and a flexible partition moves
+   // every boundary, so the k-th segment of one iteration is not the k-th of the next and an
+   // index is not an identity. A POSITION is: each new segment takes the step count of
+   // whichever old segment its midpoint fell in. That rule needs to know nothing about what
+   // the refinement did, which is what keeps the two drivers independent of one another.
+   //
+   // Empty means "not in use": every reader then falls back to algorithm.ms_steps_per_segment
+   // and presents exactly the tape it always did.
+   std::vector< std::vector<int> >    ms_seg_steps;
+   std::vector< std::vector<double> > ms_seg_steps_mid;
    unique_ptr<MatrixXd>  xlb;
    unique_ptr<MatrixXd>  xub;
    unique_ptr<MatrixXd>  x0;
@@ -1918,6 +1961,30 @@ inline bool ms_refinement_active(Alg& algorithm)
 {
     return is_multiple_shooting(algorithm) && algorithm.mesh_refinement == "automatic";
 }
+
+// Is the segment integrator's step count being chosen automatically, per segment?
+inline bool ms_step_adaptation_active(Alg& algorithm)
+{
+    return is_multiple_shooting(algorithm) && algorithm.ms_adaptive_steps;
+}
+
+// How many integrator steps segment k of phase iphase_index takes. The one place that answers
+// the question, so that the propagation, the error estimate and the reported statistics cannot
+// disagree about it -- and the fallback is the user's own ms_steps_per_segment, so a problem
+// that does not use the adaptation sees exactly the number it always saw.
+int ms_segment_steps(int iphase_index, int k, Workspace* workspace);
+
+// Choose each segment's step count from the error the last solve reported, and return the
+// worst relative discretisation error over all phases. Standard step-size control on a
+// scheme of order p: the error of a segment scales as n^-p, so a segment reporting e at n
+// steps wants n (e/target)^(1/p) to reach the target. do_adapt = false computes the worst
+// error and writes nothing, which is what the last iteration wants.
+double ms_step_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace,
+                      bool do_adapt);
+
+// Carry the step table onto a partition that has just changed, by position rather than by
+// index. Called after the segment refinement has rewritten snodes.
+void ms_step_remap(Prob& problem, Workspace* workspace);
 
 inline bool ir_element_refinement_active(Alg& algorithm)
 {

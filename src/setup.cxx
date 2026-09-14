@@ -186,6 +186,8 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.ms_flexible_segments        = false;
   algorithm.ms_min_segment_fraction     = 0.8;
   algorithm.ms_algebraic_iterations     = 4;
+  algorithm.ms_adaptive_steps           = false;
+  algorithm.ms_max_steps_per_segment    = 200;
   algorithm.ir_residual_nodes           = 4;
   algorithm.ir_regularization           = 0.0;
   algorithm.ir_objective                = "residual";

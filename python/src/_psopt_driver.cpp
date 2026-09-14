@@ -75,6 +75,8 @@ static void apply_algorithm(Alg& a, py::dict o) {
     D("ms_min_segment_fraction", a.ms_min_segment_fraction);
     D("ms_refine_tolerance", a.ms_refine_tolerance);
     I("ms_algebraic_iterations", a.ms_algebraic_iterations);
+    B("ms_adaptive_steps", a.ms_adaptive_steps);
+    I("ms_max_steps_per_segment", a.ms_max_steps_per_segment);
 }
 
 

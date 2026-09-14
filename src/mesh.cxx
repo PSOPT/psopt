@@ -771,3 +771,193 @@ double ms_refine_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace*
     }
     return worst;
 }
+
+
+// ===========================================================================================
+// The segment integrator's step count, chosen per segment between solves.
+//
+// This is the third thing under this transcription that the word "refinement" could mean, and
+// keeping the three apart is the whole reason it can be written at all. The SEGMENT count
+// controls the control parameterisation and the path constraints' coverage; the flexible
+// partition controls where the boundaries are; the STEP count controls the integrator, and
+// nothing else does. They chase separable error sources, so they compose rather than compete
+// -- which is exactly what the accuracy study's central finding buys, and exactly what the
+// integrated residual's element refinement and flexible mesh could NOT do together until
+// their jobs were made disjoint.
+//
+// The adaptivity is BETWEEN solves. Inside a solve the step sequence is frozen, because a step
+// count that varied with the decision variables would make the constraint function non-smooth
+// in them -- a step-acceptance test flipping as the iterate moves changes the discrete map the
+// matching condition is written on, so the derivative would stop describing the residual. It
+// is not merely that an adaptive integrator cannot be taped; it is that differentiating one
+// answers the wrong question. Bock's internal numerical differentiation is the same argument.
+// ===========================================================================================
+
+int ms_segment_steps(int iphase_index, int k, Workspace* workspace)
+{
+    Alg& algorithm = *workspace->algorithm;
+    const int fallback = ( algorithm.ms_steps_per_segment > 0 )
+                         ? algorithm.ms_steps_per_segment : 1;
+    if ( !ms_step_adaptation_active(algorithm) ) return fallback;
+    if ( iphase_index < 0 || iphase_index >= (int) workspace->ms_seg_steps.size() )
+        return fallback;
+    const std::vector<int>& tab = workspace->ms_seg_steps[iphase_index];
+    if ( k < 0 || k >= (int) tab.size() ) return fallback;
+    return ( tab[k] > 0 ) ? tab[k] : fallback;
+}
+
+
+// The midpoints of the current partition, in the normalised coordinates snodes is written in.
+static void ms_segment_midpoints(Prob& problem, Workspace* workspace, int i,
+                                 std::vector<double>& mid)
+{
+    const int M = problem.phase[i].current_number_of_intervals;
+    mid.assign( (M > 0) ? M : 0, 0.0 );
+    MatrixXd& sn = workspace->snodes[i];
+    for (int k = 0; k < M; k++) mid[k] = 0.5*( sn(k) + sn(k+1) );
+}
+
+
+void ms_step_remap(Prob& problem, Workspace* workspace)
+{
+    Alg& algorithm = *workspace->algorithm;
+    if ( !ms_step_adaptation_active(algorithm) ) return;
+    if ( (int) workspace->ms_seg_steps.size() < problem.nphases ) return;
+
+    for (int i = 0; i < problem.nphases; i++) {
+        const std::vector<int>&    old_tab = workspace->ms_seg_steps[i];
+        const std::vector<double>& old_mid = workspace->ms_seg_steps_mid[i];
+        if ( old_tab.empty() || old_tab.size() != old_mid.size() ) continue;
+
+        std::vector<double> mid;
+        ms_segment_midpoints(problem, workspace, i, mid);
+        const int M = (int) mid.size();
+        if ( M <= 0 ) continue;
+
+        // By POSITION, not by index. A split makes two segments where there was one and a
+        // moving partition renumbers nothing while changing everything, so the k-th segment of
+        // the new partition is not the k-th of the old. Its midpoint, though, lies inside one
+        // old segment, and that segment's step count is the right thing to inherit: a child is
+        // narrower than its parent, so the parent's count is never too few.
+        std::vector<int> tab(M, 0);
+        for (int k = 0; k < M; k++) {
+            int best = 0;
+            double bestd = std::fabs( mid[k] - old_mid[0] );
+            for (int q = 1; q < (int) old_mid.size(); q++) {
+                const double d = std::fabs( mid[k] - old_mid[q] );
+                if ( d < bestd ) { bestd = d; best = q; }
+            }
+            tab[k] = old_tab[best];
+        }
+        workspace->ms_seg_steps[i]     = tab;
+        workspace->ms_seg_steps_mid[i] = mid;
+    }
+}
+
+
+double ms_step_driver(Prob& problem, Alg& algorithm, Sol& solution, Workspace* workspace,
+                      bool do_adapt)
+{
+    double worst = 0.0;
+    if ( !ms_step_adaptation_active(algorithm) ) return worst;
+
+    if ( (int) workspace->ms_seg_steps.size() < problem.nphases ) {
+        workspace->ms_seg_steps.resize(problem.nphases);
+        workspace->ms_seg_steps_mid.resize(problem.nphases);
+    }
+
+    const double p        = (double) ms_integrator_order(algorithm);
+    const double tol      = ( algorithm.ode_tolerance > 0.0 ) ? algorithm.ode_tolerance : 1.0e-6;
+    // Aim a factor of two below the tolerance rather than at it. A segment landing exactly on
+    // the bound is a segment that will cross it again on the next partition, and a run that
+    // oscillates around its own criterion never converges; the same reasoning is why half the
+    // shipped examples finish within a factor of two of 1e-06 and why that is not evidence of
+    // anything. The cost of the margin is one step or two.
+    const double target   = 0.5*tol;
+    const int    nmax     = ( algorithm.ms_max_steps_per_segment > 0 )
+                            ? algorithm.ms_max_steps_per_segment : 200;
+    bool hit_ceiling = false;
+
+    for (int i = 0; i < problem.nphases; i++) {
+
+        const int M = problem.phase[i].current_number_of_intervals;
+        if ( M <= 0 ) continue;
+
+        MatrixXd& eps = solution.relative_errors[i];
+        if ( (int) eps.cols() < M ) continue;
+
+        std::vector<double> mid;
+        ms_segment_midpoints(problem, workspace, i, mid);
+
+        std::vector<int>& tab = workspace->ms_seg_steps[i];
+        if ( (int) tab.size() != M ) {
+            const int n0 = ( algorithm.ms_steps_per_segment > 0 )
+                           ? algorithm.ms_steps_per_segment : 1;
+            tab.assign(M, n0);
+        }
+
+        for (int k = 0; k < M; k++) worst = std::max( worst, eps(0,k) );
+
+        if ( !do_adapt ) { workspace->ms_seg_steps_mid[i] = mid; continue; }
+
+        for (int k = 0; k < M; k++) {
+            const int    n = ( tab[k] > 0 ) ? tab[k] : 1;
+            const double e = eps(0,k);
+
+            double factor;
+            if ( e <= 0.0 ) {
+                // Nothing left to measure: the segment is at round-off, or the state does not
+                // move in it. Halve rather than collapse -- an estimate of zero is a statement
+                // about the estimator's resolution, not a licence to integrate in one step.
+                factor = 0.5;
+            }
+            else {
+                factor = std::pow( e/target, 1.0/p );
+            }
+            // Bounded either way, and the bound on GROWTH is the one that matters. The
+            // estimate is formed on the trajectory of the previous step count; trusting it
+            // across a factor of a hundred is extrapolating a leading-order model far outside
+            // where it was measured, and on a problem where the error does not fall at the
+            // scheme's order -- which is any problem with a corner in it -- that model says
+            // the trouble is solved after one enormous jump. Four at a time, several times.
+            if ( factor > 4.0 ) factor = 4.0;
+            if ( factor < 0.5 ) factor = 0.5;
+
+            int n_new = (int) std::ceil( ((double) n)*factor - 1.0e-12 );
+            if ( n_new < 1 )    n_new = 1;
+            if ( n_new > nmax ) { n_new = nmax; hit_ceiling = true; }
+            tab[k] = n_new;
+        }
+        workspace->ms_seg_steps_mid[i] = mid;
+
+        // What the table now says, in the three numbers that matter. The TOTAL is the one to
+        // watch: the tape is stages x steps x segments long, so it is what the adaptation is
+        // spending, and the spread between the smallest and the largest is what it bought --
+        // a flat table means the problem did not need this and a uniform count would have
+        // done as well.
+        {
+            int lo = tab[0], hi = tab[0], tot = 0;
+            for (int k = 0; k < M; k++) {
+                lo = std::min(lo, tab[k]); hi = std::max(hi, tab[k]); tot += tab[k];
+            }
+            snprintf(workspace->text, sizeof(workspace->text),
+                     "\n>>> Phase %d segment steps: min %d, max %d, total %d over %d segments"
+                     " (%d stage evaluations).\n",
+                     i+1, lo, hi, tot, M, tot*ms_integrator_stages(algorithm));
+            psopt_print(workspace, workspace->text);
+        }
+    }
+
+    if ( hit_ceiling && do_adapt ) {
+        snprintf(workspace->text, sizeof(workspace->text),
+            "\n>>> Note: a segment reached algorithm.ms_max_steps_per_segment (%d) and the "
+            "\n>>> discretisation error is still above ode_tolerance. An explicit scheme that "
+            "\n>>> cannot resolve a segment in that many steps is usually meeting STIFFNESS, "
+            "\n>>> which no step count fixes cheaply and which this transcription does not "
+            "\n>>> serve; ms_integrator = \"RK8\" is the first thing to try, and a shorter "
+            "\n>>> segment the second.\n", nmax);
+        psopt_print(workspace, workspace->text);
+    }
+
+    return worst;
+}

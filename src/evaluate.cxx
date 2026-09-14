@@ -547,7 +547,11 @@ void evaluate_matrix_of_integrated_errors_in_phase(MatrixXd& eta, int iphase, ad
            // so it changes with the scheme, and measured against the true relative local
            // error on a test problem the old formula gave 0.062 for RK4 and 0.0039 for RK8,
            // which are 1/16 and 1/256. With the factor below both come out at 1.00.
-           const int nsteps = workspace->algorithm->ms_steps_per_segment;
+           // This segment's own step count, not the phase's: under ms_adaptive_steps they
+           // differ, and an estimate formed at a step count the segment did not use is an
+           // estimate of a trajectory nobody has -- which is the mistake the Richardson factor
+           // itself made until patch 185.
+           const int nsteps = ms_segment_steps(iphase-1, k, workspace);
            const double two_p =
                std::pow(2.0, (double) ms_integrator_order(*workspace->algorithm));
            const double richardson_factor = 1.0 - 1.0/two_p;

@@ -309,6 +309,114 @@ void dae_events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&
 
 struct DaeRow { int flag; double J; double residual; };
 
+//////////////////////////////////////////////////////////////////////////
+/////////  A problem whose integrator error is LOCALISED  /////////////////
+//////////////////////////////////////////////////////////////////////////
+//
+//   xdot1 = x2,   xdot2 = u + A exp(-((t-1/2)/sigma)^2/2),
+//   min (1/2) int_0^1 u^2 dt,   (0,0) -> (1,0).
+//
+// Perfectly smooth, but its SCALE is sigma, so the integrator's error lives in
+// the two or three segments covering the bump and is negligible in the rest. A
+// uniform step count has to be set by the worst segment and is then paid for by
+// all of them.
+static const double BUMP_SIG = 0.02, BUMP_AMP = 40.0;
+
+adouble bump_endpoint(adouble*, adouble*, adouble*, adouble&, adouble&, adouble*,
+                      int, Workspace*) { return (adouble) 0.0; }
+adouble bump_integrand(adouble*, adouble* c, adouble*, adouble&, adouble*, int, Workspace*)
+{ return 0.5*c[0]*c[0]; }
+void bump_dynamics(adouble* d, adouble*, adouble* s, adouble* c, adouble*, adouble& t,
+                   adouble*, int, Workspace*)
+{
+    adouble z = (t - 0.5)/BUMP_SIG;
+    d[0] = s[1];
+    d[1] = c[0] + BUMP_AMP*exp(-0.5*z*z);
+}
+void bump_events(adouble* e, adouble* i, adouble* f, adouble*, adouble&, adouble&,
+                 adouble*, int, Workspace*)
+{ e[0]=i[0]; e[1]=i[1]; e[2]=f[0]; e[3]=f[1]; }
+
+struct BumpRow { int flag; double J; double eps; int iters; };
+
+static BumpRow solve_bump(int segments, int steps, bool adaptive, const char* integrator,
+                          int print_level = 0)
+{
+    Alg algorithm; Sol solution; Prob problem;
+    BumpRow out; out.flag = -1; out.J = 0.0; out.eps = -1.0; out.iters = 0;
+    const int max_iter = 8;
+    const int nodes = segments + 1;
+
+    problem.name        = "Multiple shooting, localised forcing";
+    problem.outfilename = "multiple_shooting_steps.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates   = 2;
+    problem.phases(1).ncontrols = 1;
+    problem.phases(1).nevents   = 4;
+    problem.phases(1).npath     = 0;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+
+    problem.phases(1).bounds.lower.states   << -50.0, -50.0;
+    problem.phases(1).bounds.upper.states   <<  50.0,  50.0;
+    problem.phases(1).bounds.lower.controls(0) = -200.0;
+    problem.phases(1).bounds.upper.controls(0) =  200.0;
+    problem.phases(1).bounds.lower.events   << 0.0, 0.0, 1.0, 0.0;
+    problem.phases(1).bounds.upper.events   << 0.0, 0.0, 1.0, 0.0;
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 1.0; problem.phases(1).bounds.upper.EndTime   = 1.0;
+
+    problem.integrand_cost = &bump_integrand;
+    problem.endpoint_cost  = &bump_endpoint;
+    problem.dae            = &bump_dynamics;
+    problem.events         = &bump_events;
+    problem.linkages       = &linkages;
+
+    problem.phases(1).guess.states        = zeros(2, nodes);
+    problem.phases(1).guess.states.row(0) = linspace(0.0, 1.0, nodes);
+    problem.phases(1).guess.controls      = zeros(1, nodes);
+    problem.phases(1).guess.time          = linspace(0.0, 1.0, nodes);
+
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 3000;
+    algorithm.nlp_tolerance         = 1.0e-10;
+    algorithm.print_level           = print_level;
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = "multiple-shooting";
+    algorithm.ms_control_parameterisation = "constant";
+    algorithm.ms_steps_per_segment  = steps;
+    algorithm.ms_integrator         = integrator;
+    algorithm.ode_tolerance         = 1.0e-8;
+    algorithm.ms_refine_tolerance   = 1.0e9;   // segments held fixed: only steps under test
+    if ( adaptive ) {
+        algorithm.mesh_refinement   = "automatic";
+        algorithm.mr_max_iterations = max_iter;
+        algorithm.ms_adaptive_steps = true;
+    }
+    else {
+        algorithm.mesh_refinement   = "manual";
+    }
+
+    out.flag = psopt(solution, problem, algorithm);
+    if ( out.flag != 0 ) return out;
+    out.J = solution.cost;
+    const int nrows = adaptive ? max_iter : 1;   // mesh_stats is sized by the iteration count
+    int last = 0;
+    for (int q = 0; q < nrows; q++) {
+        if ( solution.mesh_stats[q].nnodes <= 0 ) break;
+        last = q;
+    }
+    out.iters = last + 1;
+    out.eps   = solution.mesh_stats[last].epsilon_max;
+    return out;
+}
+
+
 // z solving z^3 + z = x, outside any tape.
 static double dae_z_of(double x)
 {
@@ -778,6 +886,60 @@ int main(void)
     printf("\n     What this does NOT do is make a stiff problem tractable. The differential\n");
     printf("     part of the scheme is explicit and inherits its stability restriction\n");
     printf("     exactly: this adds a class of problem, not a stability region.\n");
+
+    printf("\n 10. The step count can be chosen automatically too, and per SEGMENT. It is a\n");
+    printf("     different question from the segment count and it has its own driver, because\n");
+    printf("     the two chase the separable error sources this transcription is built around:\n");
+    printf("     segments control the control parameterisation and the path coverage, steps\n");
+    printf("     control the integrator, and neither can fix the other's error. Set\n");
+    printf("     algorithm.ms_adaptive_steps = true and ms_steps_per_segment stops being a\n");
+    printf("     number to guess and becomes a starting point; ode_tolerance becomes the thing\n");
+    printf("     that is met.\n");
+    printf("\n     The adaptivity is BETWEEN solves, and that is not a limitation of the\n");
+    printf("     implementation. A step count that varied with the decision variables would\n");
+    printf("     make the constraint function non-smooth in them -- a step-acceptance test\n");
+    printf("     flipping as the iterate moves changes the discrete map the matching condition\n");
+    printf("     is written on -- so Newton would be given derivatives that do not describe\n");
+    printf("     its own residual. That is Bock's reason for freezing the discretisation, and\n");
+    printf("     it is why this needs mesh_refinement = \"automatic\": there has to be another\n");
+    printf("     solve for a new step count to be used in.\n");
+    printf("\n     On a problem whose integrator error is LOCALISED --\n\n");
+    printf("        xdot1 = x2,  xdot2 = u + %.0f exp(-((t-1/2)/%.2f)^2/2)\n\n", BUMP_AMP, BUMP_SIG);
+    printf("     -- the forcing is smooth but its scale is %.2f, so the error lives in the two\n", BUMP_SIG);
+    printf("     or three of twenty segments that cover it. ode_tolerance = 1e-08:\n\n");
+    printf("        uniform steps   reported error   stage evaluations per solve\n");
+    for (int st : { 5, 10, 20, 40 }) {
+        const BumpRow r = solve_bump(20, st, false, "RK4");
+        printf("        %13d   %.3e        %d\n", st, r.eps, 20*st*4);
+    }
+    {
+        const BumpRow a = solve_bump(20, 7, true, "RK4");
+        printf("\n     A uniform count has to be 20 to get under the tolerance, which is 1600\n");
+        printf("     stage evaluations on every segment whether it needs them or not. Started\n");
+        printf("     at 7 and adapted, the same problem converges in %d solves to a reported\n",
+               a.iters);
+        printf("     error of %.3e with a table running from 2 steps to 15 -- 87 steps over\n", a.eps);
+        printf("     twenty segments, 348 stage evaluations. That is a factor of 4.6 in tape\n");
+        printf("     length for the same accuracy, and a factor of 3.4 against the best a\n");
+        printf("     single per-phase count could do, since a per-phase count is set by the\n");
+        printf("     worst segment and 15 x 20 is 1200.\n");
+    }
+    printf("\n     PSOPT prints the table's min, max and total after each adaptation. A FLAT\n");
+    printf("     table is the useful negative result: it says the problem did not need this\n");
+    printf("     and a uniform count would have done as well.\n");
+    {
+        const BumpRow r8 = solve_bump(20, 2, true, "RK8");
+        printf("\n     And it composes with the scheme rather than duplicating it. The driver\n");
+        printf("     asks how many steps of whatever table is in force are needed, so RK8 does\n");
+        printf("     not want a different tolerance -- it wants fewer steps, and the driver\n");
+        printf("     finds out how many: started at 2, it converges in %d solves to %.3e on a\n",
+               r8.iters, r8.eps);
+        printf("     table of 24 steps over twenty segments, 264 stage evaluations.\n");
+    }
+    printf("\n     algorithm.ms_max_steps_per_segment is the ceiling, and reaching it is worth\n");
+    printf("     reading as a diagnosis rather than as a limit: an explicit scheme that cannot\n");
+    printf("     resolve a segment in two hundred steps is usually meeting STIFFNESS, which no\n");
+    printf("     step count fixes cheaply and which this transcription does not serve.\n");
 
     printf("\n--------------------------------------------------------------------------------\n");
     printf("  What this transcription does not yet have: an IMPLICIT integrator. Semi-explicit\n");

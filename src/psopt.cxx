@@ -1837,32 +1837,62 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
        // about the segment count. The driver computes the indicator and, unless this is the
        // last iteration, refines on it in the same pass.
        const bool do_refine = ( iter_nodes < number_of_mesh_refinement_iterations );
+
+       // The step count first, because it is measured on the partition that was solved on and
+       // the refinement below is about to change that partition. Two drivers, two currencies,
+       // and they do not overlap: this one reads the reported discretisation error, which is
+       // the INTEGRATOR's and nothing else's, and spends steps on it; the one after it reads
+       // the control representation and the path coverage and spends SEGMENTS on those.
+       const double ode_worst = ms_step_driver( problem, algorithm, solution, workspace,
+                                                do_refine );
+
        const double ms_worst = ms_refine_driver( problem, algorithm, solution, workspace,
                                                  do_refine );
 
-       // The ODE error is still worth reporting, and the knob for it is not this one. Saying
-       // so is the difference between a user who adds steps and a user who adds segments and
-       // wonders why it did not help.
-       {
-           double ode_worst = 0.0;
+       // The partition has just moved under the step table, so carry it across by position.
+       if ( do_refine ) ms_step_remap( problem, workspace );
+
+       // The ODE error is still worth reporting, and when the step count is not being chosen
+       // automatically the knob for it is not the segment count. Saying so is the difference
+       // between a user who adds steps and a user who adds segments and wonders why it did
+       // not help.
+       if ( !ms_step_adaptation_active(algorithm) ) {
+           double reported = 0.0;
            for ( i=0; i< problem.nphases; i++ )
-               ode_worst = std::max( ode_worst,
-                                     workspace->emax_history[i]( iter_nodes-1, 1 ) );
-           if ( ode_worst > algorithm.ode_tolerance ) {
+               reported = std::max( reported,
+                                    workspace->emax_history[i]( iter_nodes-1, 1 ) );
+           if ( reported > algorithm.ode_tolerance ) {
                snprintf(workspace->text, sizeof(workspace->text),
                         "\n>>> Note: the reported discretisation error is %e, above "
                         "ode_tolerance.\n>>> On a shooting mesh that is the segment "
                         "INTEGRATOR's error and more segments will not\n>>> fix it: raise "
-                        "algorithm.ms_steps_per_segment, or set algorithm.ms_integrator\n"
-                        ">>> to \"RK8\".\n", ode_worst);
+                        "algorithm.ms_steps_per_segment, set algorithm.ms_integrator\n"
+                        ">>> to \"RK8\", or set algorithm.ms_adaptive_steps = true and let "
+                        "PSOPT\n>>> choose the step count per segment.\n", reported);
                psopt_print(workspace, workspace->text);
            }
        }
 
-       if ( ms_worst <= algorithm.ms_refine_tolerance ) {
-           snprintf(workspace->text, sizeof(workspace->text),
-                    "\n>>> PSOPT: automatic segment refinement converged; the worst segment "
-                    "indicator is\n>>> %e, below algorithm.ms_refine_tolerance.\n", ms_worst);
+       // Two criteria when both drivers are running, and BOTH have to be met. They bound
+       // different quantities -- one the control parameterisation and the path coverage, the
+       // other the integrator -- so stopping on either alone would be stopping on a question
+       // nobody asked.
+       const bool seg_ok  = ( ms_worst <= algorithm.ms_refine_tolerance );
+       const bool step_ok = ( !ms_step_adaptation_active(algorithm) )
+                            || ( ode_worst <= algorithm.ode_tolerance );
+
+       if ( seg_ok && step_ok ) {
+           if ( ms_step_adaptation_active(algorithm) )
+               snprintf(workspace->text, sizeof(workspace->text),
+                        "\n>>> PSOPT: automatic segment refinement and step adaptation "
+                        "converged; the worst\n>>> segment indicator is %e, below "
+                        "algorithm.ms_refine_tolerance, and the worst\n>>> discretisation "
+                        "error is %e, below algorithm.ode_tolerance.\n", ms_worst, ode_worst);
+           else
+               snprintf(workspace->text, sizeof(workspace->text),
+                        "\n>>> PSOPT: automatic segment refinement converged; the worst "
+                        "segment indicator is\n>>> %e, below algorithm.ms_refine_tolerance.\n",
+                        ms_worst);
            psopt_print(workspace, workspace->text);
            break;
        }

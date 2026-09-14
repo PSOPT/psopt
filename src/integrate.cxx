@@ -332,7 +332,12 @@ void ms_propagate_segment(adouble* xend, adouble* Lint, int k, adouble* xad, int
     const int nstates   = problem.phase[i].nstates;
     const int ncontrols = problem.phase[i].ncontrols;
 
-    int nsteps = ( nsteps_override > 0 ) ? nsteps_override : algorithm.ms_steps_per_segment;
+    // How many steps this SEGMENT takes. Normally the user's ms_steps_per_segment, and under
+    // ms_adaptive_steps whatever the step driver chose for this segment between solves --
+    // frozen for the whole of this solve either way, which is the point of it. The override is
+    // the error estimator asking for the same segment at half the step.
+    int nsteps = ( nsteps_override > 0 ) ? nsteps_override
+                                         : ms_segment_steps(i, k, workspace);
     if ( nsteps < 1 ) nsteps = 1;
 
     // Local scratch, deliberately. Every one of the workspace's per-phase buffers is live in

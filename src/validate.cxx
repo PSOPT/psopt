@@ -144,6 +144,22 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
           error_message("algorithm.ms_path_samples must be zero or positive: it is the number "
                         "of interior points per segment at which the path constraints are also "
                         "enforced ");
+       // A new step count is of no use without another solve to use it in, and the outer
+       // loop that provides one is the mesh-refinement loop. Refusing is better than
+       // accepting the option and silently doing nothing with it, which is the failure mode
+       // that made ps_method worth deleting.
+       if ( algorithm.ms_adaptive_steps && algorithm.mesh_refinement != "automatic" )
+          error_message("algorithm.ms_adaptive_steps needs algorithm.mesh_refinement = "
+                        "\"automatic\": the step count is chosen BETWEEN solves -- it has to "
+                        "be, since a step count that varied with the decision variables would "
+                        "make the constraints non-smooth in them -- so there has to be another "
+                        "solve for a new one to be used in ");
+       if ( algorithm.ms_adaptive_steps && algorithm.ms_max_steps_per_segment < 1 )
+          error_message("algorithm.ms_max_steps_per_segment must be at least 1: it is the "
+                        "ceiling on any one segment's step count under ms_adaptive_steps ");
+       if ( algorithm.ms_adaptive_steps && algorithm.ode_tolerance <= 0.0 )
+          error_message("algorithm.ms_adaptive_steps needs algorithm.ode_tolerance > 0: it is "
+                        "the quantity the step count is chosen to reach ");
        if ( algorithm.ms_algebraic_iterations < 1 )
           error_message("algorithm.ms_algebraic_iterations must be at least 1: it is the fixed, "
                         "unrolled number of Broyden iterations the half-explicit scheme spends "
