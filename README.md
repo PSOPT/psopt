@@ -25,7 +25,28 @@ Introduction
 
 This is the PSOPT library, a software tool for computational [optimal control](http://www.scholarpedia.org/article/Optimal_control)
 
-PSOPT is an open source optimal control package written in C++ that primarily uses [direct collocation methods](https://epubs.siam.org/doi/pdf/10.1137/16M1062569). These methods solve optimal control problems by approximating the time-dependent variables using global or local polynomials. This allows to discretize the differential equations and continuous constraints over a grid of nodes, and to compute any integrals associated with the problem using well known quadrature formulas. [Nonlinear programming](https://en.wikipedia.org/wiki/Nonlinear_programming) then is used to find local optimal solutions. PSOPT is able to deal with problems with the following characteristics:
+PSOPT is an open source optimal control package written in C++. It transcribes an
+optimal control problem into a [nonlinear programming](https://en.wikipedia.org/wiki/Nonlinear_programming)
+problem, which is then solved to find a local optimal solution. Three different
+transcriptions are provided:
+
+- **Direct collocation** (the default). The time-dependent variables are approximated
+  by global or local polynomials, the differential equations and continuous constraints
+  are enforced over a grid of nodes, and any integrals associated with the problem are
+  computed using well known quadrature formulas. See
+  [direct collocation methods](https://epubs.siam.org/doi/pdf/10.1137/16M1062569).
+- **Integrated residuals**. The residual of the dynamics is bounded or minimised in an
+  integral norm over the whole interval, instead of being forced to zero at selected
+  points. This is useful for singular and non-smooth problems, on which collocation can
+  converge to a plausible answer at a cost below the true optimum.
+- **Direct multiple shooting**. The state at a set of segment boundaries becomes a
+  decision variable, the dynamics are integrated across each segment by a fixed-step
+  Runge-Kutta scheme, and continuity is imposed as a constraint. Every iterate therefore
+  holds trajectory pieces that individually satisfy the differential equations, and the
+  conditioning is governed by the growth of the dynamics across one segment rather than
+  across the whole horizon.
+
+PSOPT is able to deal with problems with the following characteristics:
 
 -  Single or multiphase problems
 -  Continuous time nonlinear dynamics
@@ -34,31 +55,35 @@ PSOPT is an open source optimal control package written in C++ that primarily us
 -  Integral constraints
 -  Interior point constraints
 -  Bounds on controls and state variables
--  General cost function with Lagrange and Mayer terms.
+-  General cost function with Lagrange and Mayer terms
 -  Free or fixed initial and final conditions
 -  Linear or nonlinear linkages between phases
 -  Fixed or free initial time
 -  Fixed or free final time
--  Optimal control problems including the optimisation of static parameters, including real and integer (discrete-valued) parameters.
--  Optimal control problems with mixed continuous and integer (discrete-valued) controls.
--  Parameter estimation problems with sampled measurements • Differential equations with delayed variables.
+-  Optimal control problems including the optimisation of static parameters, including real and integer (discrete-valued) parameters
+-  Optimal control problems with mixed continuous and integer (discrete-valued) controls
+-  Parameter estimation problems with sampled measurements
+-  Differential equations with delayed variables
+-  Differential-algebraic systems, including semi-explicit index-1 systems solved in the form in which they are written
 
 The implementation has the following features:
 
 - Choice between Legendre, Chebyshev, Radau, Gauss, trapezoidal, or Hermite-Simpson based collocation
+- An integrated-residual transcription with a residual bound, an alternating feasibility and optimality scheme, and a flexible mesh whose element boundaries are decision variables, so that the optimisation can place one at a switching time
+- Direct multiple shooting, with a choice of explicit and stiffly accurate implicit Runge-Kutta schemes for stiff dynamics, constant, linear or quadratic controls across a segment, and segment boundaries and integrator step counts that can be chosen automatically
 - Automatic scaling
 - Automatic first and second derivatives using the CppAD library
-- Optional numerical differentiation by using sparse finite differences for both Jacobian and Hessian.
-- Bett's automatic mesh refinement for local discretisations
-- HP-adaptive mesh refinement for pseudospectral discretisations (Radau, Gauss, Legendre, Chebyshev).
-- Integrated-residual transcription, useful for singular and non-smooth problems.
-- Automatic identification of the Jacobian and Hessian sparsity.
-- DAE formulation, so that differential and algebraic constraints can be implemented in the same C++ function.
-- A Python interface, enabling users to create models without writing a single line of C++, while benefiting from the speed and power of PSOPT's C++ core computational engine.
+- Optional numerical differentiation by using sparse finite differences for both Jacobian and Hessian
+- Betts's automatic mesh refinement for local discretisations
+- hp-adaptive mesh refinement for pseudospectral discretisations (Radau, Gauss, Legendre, Chebyshev)
+- Automatic identification of the Jacobian and Hessian sparsity
+- DAE formulation, so that differential and algebraic constraints can be implemented in the same C++ function
+- A choice of nonlinear programming solver: IPOPT by default, or PSOPT's own sparse sequential quadratic programming solver, which is optional at build time
+- A Python interface, enabling users to create models without writing a single line of C++, while benefiting from the speed and power of PSOPT's C++ core computational engine
 
 The PSOPT interface uses both Eigen3 (a linear algebra template library) and CppAD (an automatic differentiation library).
 
-The first release of PSOPT was published in 2009. 
+The first release of PSOPT was published in 2009.
 
 The PSOPT website is [http://www.psopt.net](http://www.psopt.net).
 
