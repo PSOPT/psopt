@@ -1,0 +1,115 @@
+name: Linux distributions
+
+# Does PSOPT build, test, install and get consumed on the distributions people
+# actually run?  That is a different question from the one ci.yml asks.  ci.yml
+# runs thirteen examples against reference costs on ONE platform and would call
+# a change of IPOPT version a regression; this workflow runs one image per
+# distribution, each with that distribution's own compiler, libraries and,
+# where it has one, its own IPOPT, and checks only things that cannot move
+# between platforms.
+#
+# Every job does exactly the same thing, in containers/common/build_and_test.sh:
+# build the library, run ctest, install it, build a separate small program
+# against the INSTALLED package, and run three examples whose answers are fixed
+# outside PSOPT.  The only thing that differs between jobs is the dependency
+# stanza at the top of each Dockerfile.
+#
+# The whole run happens inside docker build, on purpose.  A failing test then
+# fails the image build at the layer that caused it, the log names the step, and
+# there is no second phase that can be reached in a different state from the one
+# the build left behind.  The images themselves are thrown away; the log is the
+# product.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, early on Sunday.  Several of these build IPOPT and MUMPS from
+    # source, which takes the better part of a quarter of an hour each, so this
+    # is not a per-commit workflow.
+    - cron: '0 3 * * 0'
+  pull_request:
+    # On a pull request only when something that could change the answer has
+    # changed: the build system, the package configuration file, the shared
+    # scripts, or the images themselves.
+    paths:
+      - 'containers/**'
+      - '.github/workflows/distros.yml'
+      - '.dockerignore'
+      - 'CMakeLists.txt'
+      - 'psopt-config.cmake'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distros-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  distro:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    # Generous, because the images without an IPOPT package build IPOPT, MUMPS
+    # and CppAD from source before PSOPT is compiled at all.
+    timeout-minutes: 120
+
+    strategy:
+      # Every distribution is reported, always.  A matrix that stops at the
+      # first failure answers "does it work everywhere" with "no" and then
+      # declines to say where, which is the one thing this workflow exists to
+      # find out.
+      fail-fast: false
+      matrix:
+        include:
+          - name: Ubuntu 26.04 LTS
+            dockerfile: containers/ubuntu-26.04.Dockerfile
+          - name: Ubuntu 24.04 LTS
+            dockerfile: containers/ubuntu-24.04.Dockerfile
+          - name: Debian 13
+            dockerfile: containers/debian-13.Dockerfile
+          - name: Fedora 44
+            dockerfile: containers/fedora-44.Dockerfile
+          - name: RHEL 10 (UBI)
+            dockerfile: containers/rhel-10.Dockerfile
+          - name: openSUSE Leap 16.0
+            dockerfile: containers/opensuse-leap-16.Dockerfile
+          - name: openSUSE Tumbleweed
+            dockerfile: containers/opensuse-tumbleweed.Dockerfile
+          - name: Arch Linux
+            dockerfile: containers/arch.Dockerfile
+          - name: Manjaro
+            dockerfile: containers/manjaro.Dockerfile
+
+    steps:
+      - name: Check out PSOPT
+        uses: actions/checkout@v4
+
+      - name: Build and test PSOPT on ${{ matrix.name }}
+        run: |
+          # --progress=plain because the default progress display collapses the
+          # output of each step, and the output of each step is what somebody
+          # reading a failed job on a distribution they do not have has to work
+          # from.  No cache: these run weekly and a cached dependency layer
+          # would hide the thing most likely to break, which is the
+          # distribution's own packaging changing under us.
+          DOCKER_BUILDKIT=1 docker build \
+            --progress=plain \
+            --no-cache \
+            -f "${{ matrix.dockerfile }}" \
+            -t "psopt-distro-test:${{ strategy.job-index }}" \
+            .
+
+      - name: What this job established
+        if: always()
+        run: |
+          # Repeated into the job summary so that the two facts most worth
+          # comparing between distributions can be read without opening the log.
+          {
+            echo "### ${{ matrix.name }}"
+            echo
+            echo "Result: ${{ job.status }}"
+            echo
+            echo "Where IPOPT and Eigen came from on this distribution is printed"
+            echo "in the build log, on lines beginning IPOPT-SOURCE, IPOPT-VERSION,"
+            echo "EIGEN-SOURCE and EIGEN-VERSION."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,34 @@
+# What not to send to the Docker daemon as build context.
+#
+# The distribution images in containers/ do COPY . /src, so everything here is
+# copied into every one of them unless it is excluded.  The repository is around
+# 270 MB, of which 105 MB is .git and most of the rest is documentation PDFs and
+# whatever a local build has left behind; none of that is needed to build and
+# test PSOPT, and all of it is transferred once per image.
+#
+# Nothing in containers/common/build_and_test.sh reads the git history, so
+# excluding .git is safe.  If a future step wants the version from git, it will
+# have to be passed in as a build argument instead.
+
+.git
+.gitignore
+.dockerignore
+
+# Local build trees.  Copying one in would not break the build, since the
+# container configures into its own directory, but it is the largest avoidable
+# part of the context and a stale CMakeCache.txt inside it names paths that do
+# not exist in the image.
+build/
+build-*/
+*/build/
+
+# Editor and operating system detritus.
+*~
+.DS_Store
+.vscode/
+.idea/
+
+# Documentation is built and published elsewhere; the PDFs are large and no
+# test reads them.
+doc/*.pdf
+*.pdf
