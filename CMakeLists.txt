@@ -171,8 +171,14 @@ target_include_directories(${PROJECT_NAME}
     $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
 )
 
+# Eigen is a PUBLIC usage requirement, not a private one: include/psopt.h, which
+# is an installed header, does #include <Eigen/Dense>.  Declared PRIVATE it is
+# exported as $<LINK_ONLY:Eigen3::Eigen>, which carries the library but not the
+# include directory, and a consumer of the INSTALLED package then fails to
+# compile on the first line of psopt.h.  In-tree builds never saw it because
+# they inherit the include path from the source tree.
 target_link_libraries(${PROJECT_NAME}
-  PRIVATE Eigen3::Eigen
+  PUBLIC Eigen3::Eigen
   PUBLIC PkgConfig::ipopt
 )
 
