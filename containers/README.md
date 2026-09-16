@@ -140,29 +140,52 @@ distribution inside the shared script means either that the difference belongs
 in the Dockerfile, or that PSOPT has a portability defect that should be fixed
 in PSOPT.
 
+## What the first local run found
+
+The nine images were tried on a Mac Studio before any of this reached GitHub,
+in the dependency-only mode described at the end of this file. Two things came
+out of it that are worth keeping.
+
+**pacman 7 will not download inside a container build unless its sandbox is
+turned off.** Arch failed at the first `pacman -Syu` with `error restricting
+syscalls via seccomp: 22`, followed by `switching to sandbox user 'alpm'
+failed`. pacman 7 fetches packages as an unprivileged user behind a seccomp and
+landlock filter, 22 is EINVAL, and the container could not install the filter at
+all. Both Arch-family Dockerfiles now set `DisableSandbox` in the `[options]`
+section of `pacman.conf` before anything else. Manjaro did not hit this, because
+its base image starts with an older pacman and upgrades to 7 part-way through
+the transaction, which is a good illustration of why both images are in the
+matrix.
+
+**Arch and Manjaro ship Eigen 5.** The Manjaro image reported `eigen3 5.0.1`,
+with `Eigen3Config.cmake` present, where every other distribution here is on
+3.4.x and PSOPT has only ever been built against 3.4. `ensure_eigen.sh` will not
+intervene, since `find_package(Eigen3)` succeeds. So the first full build on
+either of those two images is also the first time PSOPT has met Eigen 5, and a
+compile failure there is a real finding about PSOPT and not about the
+distribution.
+
 ## How far the package names have been checked
 
 None of these images has been built yet, because no Docker daemon was available
 where they were written. The package names are at different levels of
 confidence and it is worth being exact about which is which.
 
-Checked against a live package index: the whole `apt` list, resolved on Ubuntu
-24.04, where `coinor-libipopt-dev` supplies `/usr/lib/pkgconfig/ipopt.pc` at
-version 3.11.9 and `libeigen3-dev` supplies Eigen 3.4.0. `coin-or-Ipopt-devel`
-exists in Fedora 44 at version 3.14.16. The openSUSE spellings `gcc-c++`,
-`lapack-devel` and `eigen3-devel` are the ones other projects' openSUSE
-instructions use.
+Every name in every image has now resolved at least once. The seven images that
+build natively on an arm64 Mac were checked there, and the two Arch-family
+images were checked under x86_64 emulation, where Manjaro installed the whole
+list and Arch reached the same list once the pacman sandbox was turned off.
 
-Not checked: that those `apt` names are unchanged in Ubuntu 26.04 and Debian 13,
-which is likely but not certain; the remaining Fedora and openSUSE names; every
-Arch and Manjaro name; and all of the Red Hat UBI repository identifiers, which
-are the least certain thing in the whole set.
+That is a real result but it is not the same as the workflow passing. It was
+measured on one machine, on one day, with two of the nine emulated, and a rolling
+distribution can rename a package next week. The Red Hat UBI repository
+identifiers remain the least certain thing in the set, since `rhel-10` is written
+so that CodeReady Builder and EPEL may fail without failing the build.
 
-So the first run of this workflow is an experiment about package names before it
-is an experiment about PSOPT. A first run in which several jobs fail inside
-`dnf install` or `pacman -S` is the expected outcome and says nothing about the
-software. Fix the names and run it again. Only once a job has reached the
-configure step does what it reports become a statement about PSOPT.
+So if a job in the first GitHub run dies inside `dnf install` or `pacman -S`,
+that is still a statement about package names and not about PSOPT. Fix the name
+and run it again. Only once a job has reached the configure step does what it
+reports become a statement about the software.
 
 One result is already worth noting in advance. Ubuntu 24.04 packages IPOPT
 3.11.9, released in 2014, while Fedora 44 packages 3.14.16 and the source build

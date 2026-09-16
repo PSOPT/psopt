@@ -14,6 +14,26 @@
 # are identical on every distribution in this matrix.
 FROM manjarolinux/base:latest
 
+# pacman 7 downloads packages as an unprivileged user inside a seccomp and
+# landlock sandbox.  A container build cannot always install that filter, and
+# pacman then stops before it has synchronised anything:
+#
+#   error: error restricting syscalls via seccomp: 22!
+#   error: switching to sandbox user 'alpm' failed!
+#   error: failed to synchronize all databases
+#
+# 22 is EINVAL: the filter was refused, not violated.  The sandbox limits what
+# the download process can do to the machine it runs on, and here that machine
+# is a container built for one test run and then discarded, so the alternative
+# is not a safer build but no build at all.
+#
+# Turned off through pacman.conf and not through the --disable-sandbox flag,
+# because an older pacman does not have that flag and would stop on it, whereas
+# it merely warns about a directive it does not recognise.  The directive has to
+# go inside [options]: appending it to the end of the file would place it in the
+# last repository section, where it does nothing.
+RUN sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
+
 # A rolling distribution has to be brought up to date before anything is
 # installed: a partial upgrade on Arch is not a supported state and produces
 # library version mismatches that look like PSOPT defects.
