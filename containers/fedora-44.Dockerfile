@@ -36,6 +36,7 @@ RUN dnf install -y \
         ninja-build \
         curl \
         coin-or-Ipopt-devel \
+        MUMPS-devel \
     && dnf clean all
 
 # Anything built from source here goes under /usr, and a source build puts its

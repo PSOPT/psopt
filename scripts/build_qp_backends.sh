@@ -389,8 +389,25 @@ if [ "$DO_OSQP" = "1" ]; then
     done
     [ -n "$OSQP_LIB" ] || die "libosqpstatic.a was not installed under any of $(psopt_libdirs "$PREFIX" | tr '\n' ' '). PSOPT's plugin links osqp::osqpstatic."
 
-    OSQP_CONFIG="$(find "$PREFIX" -name 'osqp-config.cmake' -print -quit 2>/dev/null || true)"
-    [ -n "$OSQP_CONFIG" ] || die "osqp-config.cmake was not installed; PSOPT's find_package(osqp) will not see it."
+    # Both spellings. CMake writes <name>-config.cmake or <name>Config.cmake depending on
+    # what the project asked install(EXPORT) for, and a package that changes its mind
+    # between releases should not read as a failed install.
+    OSQP_CONFIG=""
+    for n in osqp-config.cmake osqpConfig.cmake; do
+        OSQP_CONFIG="$(find "$PREFIX" -name "$n" -print -quit 2>/dev/null || true)"
+        [ -n "$OSQP_CONFIG" ] && break
+    done
+    if [ -z "$OSQP_CONFIG" ]; then
+        # Say what IS there. This check failed on openSUSE with the library installed and
+        # the headers installed, which means the install ran and put this one file
+        # somewhere unexpected or not at all -- and the install output is discarded just
+        # above, so the message on its own sends the reader nowhere.
+        info "what the install actually left under $PREFIX:"
+        find "$PREFIX" -name '*osqp*' 2>/dev/null | sed 's/^/        /' || true
+        die "neither osqp-config.cmake nor osqpConfig.cmake was installed under $PREFIX;
+    PSOPT's find_package(osqp) will not see it. The listing above is everything the
+    install left behind with osqp in its name."
+    fi
     info "header          $OSQP_HEADER"
     info "library         $OSQP_LIB"
     info "cmake config    $OSQP_CONFIG"

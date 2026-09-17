@@ -94,9 +94,13 @@ if [ -n "${gala}" ]; then
     ldd "${gala}" 2>&1 | sed 's/^/    /' || true
 fi
 
-# if/fi rather than [ ] && ..., because this script runs under set -e and a bare
-# AND-list whose test fails takes the exit status of the test, which would end the run
-# at the first backend that is absent -- the one case this block exists to survive.
+# if/fi rather than [ ] && ..., for legibility only. An earlier comment here claimed the
+# AND-list form would trip set -e when the test failed, and that is not true: bash
+# exempts every command in a && list except the one after the final &&, so the left
+# operand of && never triggers it, even when the list is the last command of a
+# redirected group. The claim was made without being tested and is corrected rather than
+# quietly deleted, because it was also written into the message of the patch that
+# introduced it.
 n=0
 for f in "${osqp}" "${piqp}" "${clar}" "${gala}"; do
     if [ -n "${f}" ]; then n=$((n+1)); fi

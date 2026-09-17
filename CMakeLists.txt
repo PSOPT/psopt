@@ -253,12 +253,17 @@ if(WITH_SQP)
   # <prefix>/include/coin-or/mumps/dmumps_c.h, so a bare <prefix>/include search misses
   # it. Listing the suffixes also means CMAKE_PREFIX_PATH alone is enough, which is
   # already set to that prefix in the macOS build instructions.
+  #
+  # MUMPS in capitals is Fedora's spelling and Red Hat's: their MUMPS-devel package
+  # installs the header as /usr/include/MUMPS/dmumps_c.h. On a case-sensitive filesystem
+  # the lower-case suffix does not match it, so a Fedora machine with both IPOPT and
+  # MUMPS installed from packages was told to set MUMPS_DIR to a prefix it already had.
   find_path(MUMPS_INCLUDE_DIR dmumps_c.h
             HINTS ${MUMPS_DIR}/include ${MUMPS_DIR}
                   ${IPOPT_DIR}/include
                   ${ipopt_INCLUDE_DIRS}
                   ${PSOPT_EXTRA_PREFIXES_INCLUDE}
-            PATH_SUFFIXES coin-or/mumps coin/mumps mumps coin-or coin)
+            PATH_SUFFIXES coin-or/mumps coin/mumps mumps MUMPS coin-or coin)
   if(NOT MUMPS_INCLUDE_DIR)
     message(FATAL_ERROR
       "WITH_SQP=ON but dmumps_c.h was not found. PSOPT's SQP reads the inertia of the "

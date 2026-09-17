@@ -114,9 +114,9 @@ rm -rf /tmp/cppad
 # is linked as a shared library, its plugin was the one that failed to load on the first
 # run that built it, and belt and braces costs two lines here.
 #
-# if/fi and not [ ] && ..., because this script runs under set -e and an AND-list whose
-# test fails takes the exit status of the test. A prefix with no lib64, which is most of
-# them, would end the run here.
+# if/fi and not [ ] && ..., for legibility only. The patch that added this said the
+# AND-list form would trip set -e on a prefix with no lib64; that was asserted without
+# being tested and it is wrong. Bash exempts the left operand of && from set -e.
 mkdir -p /etc/ld.so.conf.d
 : > /etc/ld.so.conf.d/psopt-qp.conf
 if [ -d "${QP_PREFIX}/lib" ];   then echo "${QP_PREFIX}/lib"   >> /etc/ld.so.conf.d/psopt-qp.conf; fi
