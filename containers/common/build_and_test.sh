@@ -25,7 +25,9 @@ JOBS=${JOBS:-$(nproc)}
 # three costs nothing and removes one way for a job to fail for a reason that
 # has nothing to do with PSOPT.  A source-built CppAD or IPOPT lands in
 # ${PREFIX}/lib even where the distribution's own libraries are in lib64.
-export LD_LIBRARY_PATH="${BUILD}/lib:${PREFIX}/lib:${PREFIX}/lib64:${LD_LIBRARY_PATH:-}"
+QP_PREFIX=${QP_PREFIX:-/opt/qp}
+export QP_PREFIX
+export LD_LIBRARY_PATH="${BUILD}/lib:${PREFIX}/lib:${PREFIX}/lib64:${QP_PREFIX}/lib:${QP_PREFIX}/lib64:${LD_LIBRARY_PATH:-}"
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -82,6 +84,23 @@ cmake --build /tmp/cppad/build -j"${JOBS}"
 cmake --install /tmp/cppad/build
 rm -rf /tmp/cppad
 
+# ------------------------------------------------------- QP backends for the SQP
+# PSOPT's own SQP solver has no QP of its own: every subproblem goes to a backend, so
+# WITH_SQP without one is not a build. Four are installed here through PSOPT's own
+# installer scripts, which the matrix therefore tests as well.
+#
+# This is the expensive part of an image by a wide margin, GALAHAD above all, and it is
+# what buys the SQP any coverage at all across distributions. Without it ctest runs two
+# tests where it could run three, and PSOPT's own solver -- as opposed to IPOPT -- is
+# tested on no distribution whatever.
+"${SRC}/containers/common/ensure_qp_backends.sh"
+
+# What was actually built, as cmake arguments. ensure_qp_backends.sh works this out from
+# the files that exist and writes it down, so that a backend that failed to build leaves
+# the others working instead of failing the configure.
+QP_ARGS="$(cat "${QP_PREFIX}/psopt-qp-backends.args")"
+say "PSOPT will be configured with: ${QP_ARGS}"
+
 # ------------------------------------------------------------------ configure
 say "Configure"
 cmake -S "${SRC}" -B "${BUILD}" \
@@ -90,7 +109,9 @@ cmake -S "${SRC}" -B "${BUILD}" \
       -DBUILD_EXAMPLES=ON \
       -DBUILD_TESTS=ON \
       -DHEADLESS=ON \
-      -DPSOPT_AD_BACKEND=CPPAD
+      -DPSOPT_AD_BACKEND=CPPAD \
+      -DCMAKE_PREFIX_PATH="${PREFIX};${QP_PREFIX}" \
+      ${QP_ARGS}
 
 say "Build"
 cmake --build "${BUILD}" -j"${JOBS}"

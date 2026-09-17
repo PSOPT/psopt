@@ -78,7 +78,7 @@ RUN dnf install -y \
 # built from source: MUMPS is Fortran.  gnuplot's absence costs nothing but a
 # warning on stderr from the plotting routines.
 RUN for p in gcc-gfortran blas-devel lapack-devel eigen3-devel \
-             coin-or-Ipopt-devel gnuplot ; do \
+             coin-or-Ipopt-devel gnuplot meson ninja-build curl ; do \
         dnf install -y "$p" || echo "optional package $p unavailable; continuing" ; \
     done ; dnf clean all
 

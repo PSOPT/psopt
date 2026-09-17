@@ -17,15 +17,18 @@ Every job runs `common/build_and_test.sh`, which is the same file everywhere:
 1. report the distribution, the compilers, glibc, CMake, Python, IPOPT and
    Eigen, before anything is built;
 2. build CppAD from source;
-3. configure and build PSOPT with `-DBUILD_EXAMPLES=ON -DBUILD_TESTS=ON
-   -DHEADLESS=ON -DPSOPT_AD_BACKEND=CPPAD`;
-4. run `ctest`;
-5. install PSOPT;
-6. configure, build and run a **separate** project that does
+3. install the QP backends the SQP solver needs, through PSOPT's own
+   `scripts/build_qp_backends.sh` and `scripts/build_galahad.sh`;
+4. configure and build PSOPT with `-DBUILD_EXAMPLES=ON -DBUILD_TESTS=ON
+   -DHEADLESS=ON -DPSOPT_AD_BACKEND=CPPAD`, plus `-DWITH_SQP=ON` and whichever
+   backends step 3 actually produced;
+5. run `ctest`;
+6. install PSOPT;
+7. configure, build and run a **separate** project that does
    `find_package(PSOPT REQUIRED)` and links against the installed package;
-7. run three examples whose answers are fixed outside PSOPT.
+8. run three examples whose answers are fixed outside PSOPT.
 
-Step 6 is there because nothing else reaches the install rules. Every example
+Step 7 is there because nothing else reaches the install rules. Every example
 and every test in this repository is built inside the source tree and inherits
 its include paths from it, so the installed package can be broken for years
 without a single job going red. It was: `find_package(PSOPT)` had never worked
@@ -80,6 +83,36 @@ portability and not a test of eight distributions' CppAD packaging.
 Google Test is downloaded by `tests/CMakeLists.txt` when the distribution does
 not provide it, so no image installs it and `ctest` runs the same tests
 everywhere.
+
+**The QP backends are built through PSOPT's own installer scripts**, not through
+anything written for the containers. `scripts/build_qp_backends.sh` does OSQP,
+PIQP and Clarabel; `scripts/build_galahad.sh` does GALAHAD. Those are the scripts
+the manual tells a user to run, so the matrix tests them as well, and a job here
+says they have stopped working on some distribution before a user does. Both are
+given `--skip-deps`: left alone they would `apt-get` or `dnf` their own
+prerequisites through `sudo`, which a container has no reason to allow, and
+neither knows `zypper`, so openSUSE would fall through their detection anyway.
+The prerequisites are the Dockerfile's job, like every other distribution
+difference.
+
+This matters more than it sounds. Until it was added, `WITH_SQP` was off in every
+image, `ctest` ran two tests rather than three, and PSOPT's own solver, as
+opposed to IPOPT, was tested on no distribution at all. The thirteen `SQPSolver`
+tests and the second `ctest` pass that GALAHAD's OpenMP requirement needs now run
+everywhere.
+
+Rust, which only Clarabel needs, comes from `rustup` rather than a distribution
+package, for the same reason CppAD is built from source: a distribution's Rust
+can be old enough for Clarabel.cpp to refuse it, and one current toolchain
+everywhere keeps this a test of PSOPT instead of a test of eight distributions'
+Rust packaging. `ensure_qp_backends.sh` prefers a packaged `cargo` if a
+Dockerfile ever installs one, and says which it used.
+
+Not every backend need succeed. `ensure_qp_backends.sh` reports each as
+`QP-BACKEND <name>: <path or NOT BUILT>`, writes the cmake arguments that follow
+from what is actually present, and fails only when none of the four was built,
+because at that point `WITH_SQP` cannot be configured and the SQP would go
+untested while the job stayed green.
 
 ## The images
 

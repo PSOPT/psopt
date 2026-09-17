@@ -57,6 +57,9 @@ RUN pacman -Syu --noconfirm && \
         blas \
         lapack \
         gnuplot \
+        meson \
+        ninja \
+        curl \
     && pacman -Scc --noconfirm
 
 # Anything built from source here goes under /usr.  Arch keeps its own

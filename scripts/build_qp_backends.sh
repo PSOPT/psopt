@@ -60,6 +60,26 @@ USE_SUDO=0
 ASSUME_YES=0
 
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+
+# Where a CMake or meson install may have put its libraries under this prefix.
+#
+# GNUInstallDirs does not always choose "lib": it chooses lib64 on the Red Hat and SUSE
+# families, and when the prefix is /usr on a Debian derivative it chooses the multiarch
+# directory lib/<triplet>, so that a system library lands in /usr/lib/x86_64-linux-gnu.
+# A search that knows only lib and lib64 therefore fails on Debian and Ubuntu with
+# --prefix /usr, AFTER a build that succeeded, which reads as though the build was at
+# fault. The compiler is asked for the triplet rather than it being guessed.
+psopt_libdirs() {
+    prefix="$1"
+    triplet=""
+    if command -v "${CC:-cc}" >/dev/null 2>&1; then
+        triplet="$("${CC:-cc}" -dumpmachine 2>/dev/null || true)"
+    fi
+    printf '%s\n' "$prefix/lib" "$prefix/lib64"
+    [ -n "$triplet" ] && printf '%s\n' "$prefix/lib/$triplet"
+    return 0
+}
+
 info() { printf '    %s\n' "$*"; }
 die()  { printf '\n\033[1;31mError: %s\033[0m\n\n' "$*" >&2; exit 1; }
 
@@ -364,10 +384,10 @@ if [ "$DO_OSQP" = "1" ]; then
     fi
 
     OSQP_LIB=""
-    for d in "$PREFIX/lib" "$PREFIX/lib64"; do
+    for d in $(psopt_libdirs "$PREFIX"); do
         [ -f "$d/libosqpstatic.a" ] && OSQP_LIB="$d/libosqpstatic.a" && break
     done
-    [ -n "$OSQP_LIB" ] || die "libosqpstatic.a was not installed under $PREFIX/lib. PSOPT's plugin links osqp::osqpstatic."
+    [ -n "$OSQP_LIB" ] || die "libosqpstatic.a was not installed under any of $(psopt_libdirs "$PREFIX" | tr '\n' ' '). PSOPT's plugin links osqp::osqpstatic."
 
     OSQP_CONFIG="$(find "$PREFIX" -name 'osqp-config.cmake' -print -quit 2>/dev/null || true)"
     [ -n "$OSQP_CONFIG" ] || die "osqp-config.cmake was not installed; PSOPT's find_package(osqp) will not see it."

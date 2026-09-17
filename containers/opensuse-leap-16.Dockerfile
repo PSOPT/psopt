@@ -35,6 +35,9 @@ RUN zypper --non-interactive refresh && \
         blas-devel \
         lapack-devel \
         gnuplot \
+        meson \
+        ninja \
+        curl \
     && zypper clean --all
 
 # Anything built from source here goes under /usr, and a source build puts its

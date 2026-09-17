@@ -46,6 +46,26 @@ WITH_TESTS=0
 ASSUME_YES=0
 
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+
+# Where a CMake or meson install may have put its libraries under this prefix.
+#
+# GNUInstallDirs does not always choose "lib": it chooses lib64 on the Red Hat and SUSE
+# families, and when the prefix is /usr on a Debian derivative it chooses the multiarch
+# directory lib/<triplet>, so that a system library lands in /usr/lib/x86_64-linux-gnu.
+# A search that knows only lib and lib64 therefore fails on Debian and Ubuntu with
+# --prefix /usr, AFTER a build that succeeded, which reads as though the build was at
+# fault. The compiler is asked for the triplet rather than it being guessed.
+psopt_libdirs() {
+    prefix="$1"
+    triplet=""
+    if command -v "${CC:-cc}" >/dev/null 2>&1; then
+        triplet="$("${CC:-cc}" -dumpmachine 2>/dev/null || true)"
+    fi
+    printf '%s\n' "$prefix/lib" "$prefix/lib64"
+    [ -n "$triplet" ] && printf '%s\n' "$prefix/lib/$triplet"
+    return 0
+}
+
 info() { printf '    %s\n' "$*"; }
 die()  { printf '\n\033[1;31mError: %s\033[0m\n\n' "$*" >&2; exit 1; }
 
@@ -341,6 +361,13 @@ BUILDDIR="$SRCDIR/builddir/psopt"
 
 MESON_OPTS=(
     "--prefix=$PREFIX"
+    # meson picks the library directory the way the distribution does, so on Debian and
+    # Ubuntu it would install into lib/<triplet> and on the Red Hat and SUSE families
+    # into lib64. PSOPT's own cmake looks for libgalahad_double under GALAHAD_DIR/lib and
+    # nowhere else, so the one place it can be put is lib. Naming it here means the
+    # install matches what PSOPT will look for on every distribution instead of on some
+    # of them.
+    "--libdir=lib"
     "--buildtype=release"
     "-Ddefault_library=shared"
     "-Dopenmp=true"
@@ -402,11 +429,11 @@ fi
 say "Checking the install"
 LIBFOUND=""
 for e in so dylib a; do
-    for d in "$PREFIX/lib" "$PREFIX/lib64"; do
+    for d in $(psopt_libdirs "$PREFIX"); do
         [ -f "$d/libgalahad_double.$e" ] && LIBFOUND="$d/libgalahad_double.$e" && break 2
     done
 done
-[ -n "$LIBFOUND" ] || die "libgalahad_double was not installed under $PREFIX/lib. Read the build log above."
+[ -n "$LIBFOUND" ] || die "libgalahad_double was not installed under any of $(psopt_libdirs "$PREFIX" | tr '\n' ' '). Read the build log above."
 [ -f "$PREFIX/include/galahad_qpa.h" ] || die "galahad_qpa.h is missing: GALAHAD was built without the C interface. Rerun; -Dciface=true is set by this script."
 info "library   $LIBFOUND"
 info "header    $PREFIX/include/galahad_qpa.h"
@@ -425,7 +452,7 @@ cat > "$ENVFILE" <<EOF
 export GALAHAD_DIR="$PREFIX"
 
 # So the loader finds libgalahad_double at run time.
-export $LIBVAR="$PREFIX/lib\${$LIBVAR:+:\$$LIBVAR}"
+export $LIBVAR="$(psopt_libdirs "$PREFIX" | tr '\n' ':' | sed 's/:$//')\${$LIBVAR:+:\$$LIBVAR}"
 
 # GALAHAD's QPA uses OpenMP cancellation. The OpenMP runtime reads these once, when it
 # initialises, so they cannot be set from inside a PSOPT program -- they must already be

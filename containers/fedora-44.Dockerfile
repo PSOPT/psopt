@@ -32,6 +32,9 @@ RUN dnf install -y \
         blas-devel \
         lapack-devel \
         gnuplot \
+        meson \
+        ninja-build \
+        curl \
         coin-or-Ipopt-devel \
     && dnf clean all
 

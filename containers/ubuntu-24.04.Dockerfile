@@ -33,6 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libblas-dev \
         liblapack-dev \
         gnuplot-nox \
+        meson \
+        ninja-build \
+        curl \
         coinor-libipopt-dev \
     && rm -rf /var/lib/apt/lists/*
 
