@@ -590,9 +590,33 @@ void print_algorithm_summary(Prob& problem, Alg& algorithm, Sol& solution, Works
     fprintf(outfile,"\n*********************************************************************************************************");
     fprintf(outfile,"\n***************************************** ALGORITHM OPTIONS *********************************************");
     fprintf(outfile,"\n*********************************************************************************************************");
+    // The transcription, first, because it decides what every line below means. It
+    // was not reported at all: a multiple-shooting or integrated-residual run printed
+    // "COLLOCATION METHOD: Legendre" and nothing else, so its own summary file --
+    // which is what the application examples document reproduces verbatim -- said it
+    // had been solved by a method it had not been solved by. The collocation method
+    // is still printed under the other two transcriptions because both are built on
+    // a collocation mesh and it still says which.
+    fprintf(outfile,"\nTRANSCRIPTION METHOD:           %s", algorithm.transcription_method.c_str() );
     fprintf(outfile,"\nCOLLOCATION METHOD:             %s", algorithm.collocation_method.c_str()   );
     if (use_global_collocation(algorithm)) {
     fprintf(outfile,"\nDIFFERENTIATION MATRIX:         %s", algorithm.diff_matrix.c_str()   );
+    }
+    if (algorithm.transcription_method == "multiple-shooting") {
+    fprintf(outfile,"\nMS INTEGRATOR:                  %s", algorithm.ms_integrator.c_str()  );
+    fprintf(outfile,"\nMS STEPS PER SEGMENT:           %i", algorithm.ms_steps_per_segment   );
+    fprintf(outfile,"\nMS CONTROL PARAMETERISATION:    %s", algorithm.ms_control_parameterisation.c_str() );
+    fprintf(outfile,"\nMS PATH SAMPLES:                %i", algorithm.ms_path_samples        );
+    fprintf(outfile,"\nMS FLEXIBLE SEGMENTS:           %s", algorithm.ms_flexible_segments ? "yes" : "no" );
+    }
+    if (algorithm.transcription_method == "integrated-residual") {
+    fprintf(outfile,"\nIR RESIDUAL NODES:              %i", algorithm.ir_residual_nodes      );
+    fprintf(outfile,"\nIR OBJECTIVE:                   %s", algorithm.ir_objective.c_str()   );
+    fprintf(outfile,"\nIR REGULARIZATION:              %e", algorithm.ir_regularization      );
+    if (algorithm.ir_residual_bound >= 0.0) {
+    fprintf(outfile,"\nIR RESIDUAL BOUND:              %e", algorithm.ir_residual_bound      );
+    }
+    fprintf(outfile,"\nIR FLEXIBLE MESH:               %s", algorithm.ir_flexible_mesh ? "yes" : "no" );
     }
     fprintf(outfile,"\nNLP METHOD:                     %s", algorithm.nlp_method.c_str()   );
     if (algorithm.nlp_method == "IPOPT") {
