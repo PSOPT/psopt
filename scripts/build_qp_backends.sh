@@ -370,12 +370,20 @@ if [ "$DO_OSQP" = "1" ]; then
     # install itself is the thing to read, and it was going to /dev/null. It is quiet on
     # success and printed in full by any of the checks below that fail.
     OSQP_INSTALL_LOG="$(mktemp)"
-    "${RUN_INSTALL[@]}" "$OSQP_SRC/build" > "$OSQP_INSTALL_LOG" 2>&1
     osqp_install_log() {
         info "the install said:"
         sed 's/^/        /' "$OSQP_INSTALL_LOG" || true
         info "and left this under $PREFIX:"
         find "$PREFIX" -maxdepth 4 2>/dev/null | sed 's/^/        /' | head -60 || true
+    }
+    # The one case the capture above was added for and did not cover: an install that
+    # FAILS. Its output is redirected, set -e ends the script on the spot, and none of
+    # the checks below ever runs -- so the log that was captured precisely to explain a
+    # missing file would go unread in the one case where nothing was installed at all.
+    # Defining the function first and handling the failure here closes that.
+    "${RUN_INSTALL[@]}" "$OSQP_SRC/build" > "$OSQP_INSTALL_LOG" 2>&1 || {
+        osqp_install_log
+        die "the OSQP install step itself failed; its output is above."
     }
 
     # OSQP 1.x puts its headers in <prefix>/include/osqp, which is what its exported

@@ -245,8 +245,19 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
     // The SQP asks for a subproblem two orders tighter than the NLP's own tolerance.
     // Clarabel's reduced tolerances stay at their defaults, and are what its
     // almost-solved verdict is measured against.
-    settings.tol_gap_abs = std::max(1.0e-10, 1.0e-2*p->tolerance);
-    settings.tol_feas    = std::max(1.0e-10, 1.0e-2*p->tolerance);
+    //
+    // All THREE of the tolerances that gate the solved verdict are set, and that is the
+    // point rather than an excess of care. Clarabel declares a solve finished when the
+    // duality gap is small either in absolute OR in relative terms, so an absolute
+    // tolerance tightened on its own is not a tighter request at all: the relative test,
+    // left at its default of 1.0e-8, answers first on a subproblem whose objective is of
+    // order one and the solver stops exactly where it would have stopped anyway. That is
+    // what was happening, and what it cost is recorded in the comment on
+    // default_backend() in tests/test_sqp.cpp.
+    const double tol = std::max(1.0e-10, 1.0e-2*p->tolerance);
+    settings.tol_gap_abs = tol;
+    settings.tol_gap_rel = tol;
+    settings.tol_feas    = tol;
     // An interior-point method that has not converged in a few hundred iterations is not
     // going to. The caller's budget is an active-set budget and far too generous here.
     settings.max_iter = (uint32_t) std::min(std::max(200, p->max_iter), 500);

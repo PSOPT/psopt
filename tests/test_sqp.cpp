@@ -121,20 +121,29 @@ bool galahad_environment_ok()
 // gives it: 0.785548142492868. Each backend, quasi-Newton model, at a tolerance of
 // 1.0e-8, as the difference from that value and the SQP's return code:
 //
-//     ProxQP     +1.60e-09   converged
-//     OSQP       +1.55e-09   converged, but only since its plugin was made to ask for
-//                            1.0e-4 of the tolerance instead of 1.0e-2; before that it
-//                            cycled and stopped 3.4e-07 BELOW the optimum
-//     PIQP       +4.68e-09   converged
-//     Clarabel   +7.40e-09   reports "no step taken" while landing on that value, which
-//                            is unexplained
+//     ProxQP     +1.60e-09   converged in 138 SQP iterations
+//     OSQP       +1.55e-09   converged in 500, which is the iteration limit, and only
+//                            since its plugin was made to ask for 1.0e-4 of the
+//                            tolerance instead of 1.0e-2; before that it cycled and
+//                            stopped 3.4e-07 BELOW the optimum
+//     Clarabel   +1.66e-09   converged in 113, and only since its plugin was made to set
+//                            tol_gap_rel as well as tol_gap_abs; before that it stalled
+//                            at a dual error of 2.9e-06 and reported "no step taken"
+//                            while landing 7.40e-09 above the optimum
+//     PIQP       +4.68e-09   converged in 109
 //     QPALM      not measured
 //
-// So: the three that converge, in the order they were measured, then the one nobody has
-// measured, then the one with a reporting defect. QPALM is behind the measured ones
-// because an unknown should not outrank a known, and it costs nothing to put it there:
+// All four stop on the acceptable band rather than on the full tolerance -- the
+// constraints are satisfied to 1e-12 or better and the dual error is inside a hundred
+// times the request -- which is a property of a quasi-Newton model on this problem and
+// not of any backend: it is where the iterates stop improving.
+//
+// So: the four that converge, in the order of those figures, then the one nobody has
+// measured. QPALM is behind the measured ones because an unknown should not outrank a
+// known, and it costs nothing to put it there:
 // EveryBackendReachesTheClosedFormInOneProcess exercises every backend the build
-// carries whatever this function returns.
+// carries whatever this function returns -- which is true of that test only since PIQP
+// and Clarabel were added to plugin_backends() below, where they had been left out.
 //
 // GALAHAD stays last, and not for its accuracy: it is an active-set method and the
 // configuration every SQP measurement was made against. It is last because it cannot run
@@ -147,12 +156,12 @@ const char* default_backend()
     return "ProxQP";
 #elif defined(USE_OSQP)
     return "OSQP";
+#elif defined(USE_CLARABEL)
+    return "Clarabel";
 #elif defined(USE_PIQP)
     return "PIQP";
 #elif defined(USE_QPALM)
     return "QPALM";
-#elif defined(USE_CLARABEL)
-    return "Clarabel";
 #elif defined(USE_GALAHAD)
     return "GALAHAD";
 #else
@@ -419,17 +428,31 @@ struct Backend { const char* name; bool enabled; };
 // Built at run time rather than declared as an array: with GALAHAD the only backend
 // compiled in -- which is now a perfectly ordinary way to build PSOPT -- every entry
 // below is conditioned out and an empty array is not valid C++.
+//
+// EVERY backend the build carries belongs here, and the list has twice been left behind
+// by one that was added later. It held ProxQP, QPALM and OSQP while PIQP and Clarabel
+// were built, compiled into this binary, named by default_backend() -- and never reached
+// by the one test whose whole purpose is to load every plugin into a single process. The
+// distribution matrix builds OSQP, PIQP, Clarabel and GALAHAD, so on every image in it
+// this test was covering two backends out of four while its own comment said otherwise.
+// Anything added to CMakeLists.txt as a QP backend is added here in the same patch.
 std::vector<Backend> plugin_backends()
 {
     std::vector<Backend> v;
 #ifdef USE_PROXQP
-    { Backend b = { "ProxQP", true }; v.push_back(b); }
+    { Backend b = { "ProxQP",   true }; v.push_back(b); }
 #endif
 #ifdef USE_QPALM
-    { Backend b = { "QPALM",  true }; v.push_back(b); }
+    { Backend b = { "QPALM",    true }; v.push_back(b); }
 #endif
 #ifdef USE_OSQP
-    { Backend b = { "OSQP",   true }; v.push_back(b); }
+    { Backend b = { "OSQP",     true }; v.push_back(b); }
+#endif
+#ifdef USE_PIQP
+    { Backend b = { "PIQP",     true }; v.push_back(b); }
+#endif
+#ifdef USE_CLARABEL
+    { Backend b = { "Clarabel", true }; v.push_back(b); }
 #endif
     return v;
 }

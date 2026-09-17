@@ -175,10 +175,14 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
     solver.settings().verbose         = false;
     solver.settings().compute_timings = false;
     // The SQP asks for a subproblem two orders tighter than the NLP's own tolerance,
-    // which is what eps_abs carries. eps_rel is left at PIQP's own default rather than
-    // set to zero: an absolute-only test on a badly scaled subproblem is one an
-    // interior-point method may never pass, and the consequence is not a slow solve but
-    // a wrong answer -- see the status mapping below.
+    // which is what eps_abs carries. eps_rel is written out at PIQP's own default value
+    // rather than set to zero: an absolute-only test on a badly scaled subproblem is one
+    // an interior-point method may never pass, and the consequence is not a slow solve
+    // but a wrong answer -- see the status mapping below. It is written out rather than
+    // left alone so that this file says what it is asking for, and so that the request
+    // does not move if PIQP's default does. Both tolerances are set for the reason the
+    // Clarabel plugin gives at more length: a backend that terminates on the looser of
+    // an absolute and a relative test honours only the looser of the two.
     solver.settings().eps_abs         = std::max(1.0e-10, 1.0e-2*p->tolerance);
     solver.settings().eps_rel         = 1.0e-9;
     // An interior-point method that has not converged in a few hundred iterations is
