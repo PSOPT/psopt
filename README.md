@@ -145,8 +145,7 @@ Each Linux page has an executable counterpart in `containers/`: a Dockerfile
 that installs the same packages and then builds PSOPT, runs the tests, installs
 it and builds a separate program against the installed package. Those images run
 every week on GitHub's runners, so the package lists on those pages are the ones
-that were last known to work rather than the ones somebody once typed. There is
-no container for macOS, so that page alone is maintained by hand.
+that were last known to work. There is no container for macOS, so that page alone is maintained by hand.
 
 [doc/install/README.md](doc/install/README.md) collects what is common to all of
 them: what the three dependencies are and why, and what to do when the configure
@@ -156,8 +155,7 @@ step cannot find one.
 uses by default; Eigen, for linear algebra; and CppAD, for automatic
 differentiation. GNUplot is optional and affects only the plotting helpers.
 Ubuntu, Debian and Fedora package IPOPT; openSUSE and Arch do not, so it is
-built from source there, which their pages describe. Boost and ColPack were
-dependencies of older releases and are no longer needed by any build.
+built from source there, which their pages describe. 
 
 PSOPT builds with CMake 3.12 or later and finds IPOPT through `pkg-config`. It
 has been built and tested against IPOPT releases from 3.11.9 to 3.14.19, and
@@ -214,7 +212,7 @@ and it solves the ones they share by roughly one to two orders of magnitude fast
 have no particular reason to want a second solver, IPOPT is the right choice and this
 section is not for you.
 
-The reasons to build it anyway are worth stating, since they are real:
+The reasons to build it anyway are:
 
 - **A second opinion from a different algorithm.** On the examples both solve, the two
   agree to about four significant figures. Two unrelated methods agreeing is a stronger
@@ -223,7 +221,7 @@ The reasons to build it anyway are worth stating, since they are real:
   and every part of the method can be read and changed.
 - **One shipped example is solved by the SQP and not by IPOPT** (`lqr_radau`).
 
-And the caveats, plainly:
+And the caveats:
 
 - **It does not solve everything IPOPT does.** As last measured it fails outright on one of
   the shipped examples and does not finish within a practical time budget on a further
@@ -247,18 +245,6 @@ over the examples both solve it is several times faster at very nearly the same 
 SQP iterations. Between them the two solve every example any backend solves. Clarabel,
 ProxQP, QPALM and OSQP are also supported, and solve nothing those two do not.
 
-SNOPT was supported as a third NLP solver, alongside IPOPT, until 2026, and has been
-removed. It is commercial, so it could never be more than an option a minority of users
-could exercise, and PSOPT's own SQP now occupies the same place -- a sequential quadratic
-programming alternative to an interior-point method -- with no licence to obtain. Its
-removal takes the `snopt-interface` subproject, the `WITH_SNOPT_INTERFACE` option and the
-Fortran dependency that came with it out of the build entirely.
-
-qpOASES was the original backend and has been removed. It was a dense active-set method,
-so its memory was quadratic and its work per subproblem cubic in the number of variables
-however sparse the matrices it was handed, which made it unsuitable for the problems this
-library exists for; it timed out on every large example it was benchmarked against. It is
-no longer a dependency of anything.
 
 *What you need beyond a working PSOPT build*
 
@@ -450,4 +436,4 @@ This automated test is based on seven selected examples from the PSOPT distribut
 [View the full PSOPT CI Test Summary](https://psopt.github.io/psopt/artifacts)
 
 
-Copyright (C) 2009-2025 Victor M. Becerra
+Copyright (C) 2009-2026 Victor M. Becerra
