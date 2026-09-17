@@ -109,36 +109,48 @@ bool galahad_environment_ok()
 // The fallback is therefore compiled in only when GALAHAD is, and a build with no backend
 // at all now says so instead of naming one.
 //
-// The ORDER within the chain is by how accurately the backend solves the subproblem,
-// because that is
-// what these tests depend on. They compare the SQP's converged point against IPOPT's to
-// 1.0e-7 relative, and an SQP cannot be held to that through a backend whose own answers
-// are looser than the gate: it does not merely lose accuracy, it fails to converge at
-// all, cycling on inexact steps.
+// The ORDER within the chain is by how accurately each backend was MEASURED to solve the
+// subproblem, because that is what these tests depend on. They hold the SQP to 1.0e-7
+// relative against IPOPT, and it cannot be held to that through a backend whose own
+// answers are looser than the gate: it does not merely lose accuracy, it fails to
+// converge at all, cycling on inexact steps.
 //
-// PIQP is first of the ones ordinarily built. It is an interior-point method, it is
-// header-only so it costs nothing to install, it needs nothing of the environment, and
-// it reached the right answer on the active-bound problem without any help. OSQP follows
-// it: first-order and, until its plugin was made to ask for 1.0e-4 of the tolerance
-// instead of 1.0e-2, the one backend on which this test did not converge. Clarabel comes
-// after OSQP because it still reports "no step taken" on that problem while landing on a
-// perfectly good value, which is unexplained.
+// The measurement is on the active-bound problem of
+// SQPSolver.AgreesWithIpoptWithAnActiveControlBound, whose discretisation is a convex
+// quadratic program, so its optimal value is unique and IPOPT at a tolerance of 1.0e-12
+// gives it: 0.785548142492868. Each backend, quasi-Newton model, at a tolerance of
+// 1.0e-8, as the difference from that value and the SQP's return code:
 //
-// GALAHAD stays last, and not because of its accuracy: it is an active-set method and is
-// the configuration every SQP measurement was made against. It is last because it cannot
-// run at all unless the process was started with OMP_CANCELLATION set, so a build that
+//     ProxQP     +1.60e-09   converged
+//     OSQP       +1.55e-09   converged, but only since its plugin was made to ask for
+//                            1.0e-4 of the tolerance instead of 1.0e-2; before that it
+//                            cycled and stopped 3.4e-07 BELOW the optimum
+//     PIQP       +4.68e-09   converged
+//     Clarabel   +7.40e-09   reports "no step taken" while landing on that value, which
+//                            is unexplained
+//     QPALM      not measured
+//
+// So: the three that converge, in the order they were measured, then the one nobody has
+// measured, then the one with a reporting defect. QPALM is behind the measured ones
+// because an unknown should not outrank a known, and it costs nothing to put it there:
+// EveryBackendReachesTheClosedFormInOneProcess exercises every backend the build
+// carries whatever this function returns.
+//
+// GALAHAD stays last, and not for its accuracy: it is an active-set method and the
+// configuration every SQP measurement was made against. It is last because it cannot run
+// at all unless the process was started with OMP_CANCELLATION set, so a build that
 // preferred it would skip these tests in the ordinary ctest pass even when it had a
 // usable backend built alongside.
 const char* default_backend()
 {
 #if   defined(USE_PROXQP)
     return "ProxQP";
-#elif defined(USE_QPALM)
-    return "QPALM";
-#elif defined(USE_PIQP)
-    return "PIQP";
 #elif defined(USE_OSQP)
     return "OSQP";
+#elif defined(USE_PIQP)
+    return "PIQP";
+#elif defined(USE_QPALM)
+    return "QPALM";
 #elif defined(USE_CLARABEL)
     return "Clarabel";
 #elif defined(USE_GALAHAD)
