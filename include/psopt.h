@@ -1087,6 +1087,13 @@ public:
       // not yet been through psopt(): no error recorded, fail-fast policy.
       error_flag = 0;
       on_error_fast = true;
+      // Zero rather than indeterminate, so that reading it on a Sol that has not been
+      // through psopt() says "no iterations" instead of naming a count of mesh_stats
+      // entries that do not exist. psopt() assigns the real value at the end of the
+      // solve; before this it was never assigned at all.
+      mesh_refinement_iterations = 0;
+      nlp_return_code = 0;
+      cpu_time = 0.0;
    }
    ~sol_str()
    {

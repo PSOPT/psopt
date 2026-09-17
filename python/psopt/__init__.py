@@ -86,6 +86,14 @@ class Phase:
         self.observation = None # h(x,u,p,t) -> vector length nobserved (param estimation)
         self.observation_nodes = None  # 1 x nsamples sample times
         self.observations = None       # nobserved x nsamples measured data
+        # Weight applied to each scalar residual, nobserved x nsamples. Left as None the
+        # estimation is unweighted, which is what PSOPT fills in; set it to weight
+        # observations that are not equally trustworthy -- the reciprocal of each
+        # measurement's standard deviation is the usual choice.
+        self.residual_weights = None
+        # Tikhonov regularisation of the parameter vector: this multiple of ||p||^2 is
+        # added to the least-squares objective. Zero, the default, is no regularisation.
+        self.regularization_factor = None
         self.bounds = _Bounds()
         self.guess = _Guess()
         # Discrete-valued declarations. Each entry is (index, [admissible values]).
@@ -187,7 +195,19 @@ class Algorithm:
                  ms_path_samples=None, ms_flexible_segments=None,
                  ms_min_segment_fraction=None, ms_refine_tolerance=None,
                  ms_algebraic_iterations=None, ms_adaptive_steps=None,
-                 ms_max_steps_per_segment=None, ms_implicit_iterations=None):
+                 ms_max_steps_per_segment=None, ms_implicit_iterations=None,
+                 # PSOPT's own SQP solver (nlp_method="SQP")
+                 qp_solver=None, qp_restoration=None, sqp_strategy=None,
+                 qp_iter_max=None, trust_region=None, trust_region_radius=None,
+                 elastic_penalty=None,
+                 # parameter estimation
+                 parameter_statistics=None, parameter_estimation_norm=None,
+                 # transcription and solver detail
+                 objective_form=None, defect_scaling=None, diff_matrix=None,
+                 jac_sparsity_ratio=None, hess_sparsity_ratio=None,
+                 save_sparsity_pattern=None, nsteps_error_integration=None,
+                 mr_kappa=None, mr_M1=None, mr_switch_detection=None, switch_order=None,
+                 hessian_verify=None, on_error=None, max_integer_combinations=None):
         self.collocation_method = collocation_method
         self.nlp_method = nlp_method
         self.derivatives = derivatives
@@ -231,6 +251,29 @@ class Algorithm:
         self.ms_adaptive_steps = ms_adaptive_steps
         self.ms_max_steps_per_segment = ms_max_steps_per_segment
         self.ms_implicit_iterations = ms_implicit_iterations
+        self.qp_solver = qp_solver
+        self.qp_restoration = qp_restoration
+        self.sqp_strategy = sqp_strategy
+        self.qp_iter_max = qp_iter_max
+        self.trust_region = trust_region
+        self.trust_region_radius = trust_region_radius
+        self.elastic_penalty = elastic_penalty
+        self.parameter_statistics = parameter_statistics
+        self.parameter_estimation_norm = parameter_estimation_norm
+        self.objective_form = objective_form
+        self.defect_scaling = defect_scaling
+        self.diff_matrix = diff_matrix
+        self.jac_sparsity_ratio = jac_sparsity_ratio
+        self.hess_sparsity_ratio = hess_sparsity_ratio
+        self.save_sparsity_pattern = save_sparsity_pattern
+        self.nsteps_error_integration = nsteps_error_integration
+        self.mr_kappa = mr_kappa
+        self.mr_M1 = mr_M1
+        self.mr_switch_detection = mr_switch_detection
+        self.switch_order = switch_order
+        self.hessian_verify = hessian_verify
+        self.on_error = on_error
+        self.max_integer_combinations = max_integer_combinations
 
 
 def _col(a):
@@ -261,6 +304,12 @@ def _phase_dict(ph):
         "guess_parameters": _col(ph.guess.parameters) if ph.guess.parameters is not None else _col([[]]),
         "observation_nodes": _col(ph.observation_nodes) if ph.observation_nodes is not None else _col([[]]),
         "observations": _col(ph.observations) if ph.observations is not None else _col([[]]),
+        "residual_weights": (_col(ph.residual_weights)
+                             if getattr(ph, "residual_weights", None) is not None
+                             else _col([[]])),
+        "regularization_factor": (float(ph.regularization_factor)
+                                  if getattr(ph, "regularization_factor", None) is not None
+                                  else 0.0),
         "integer_controls": [{"index": i, "values": v} for (i, v) in ph.integer_controls],
         "integer_parameters": [{"index": i, "values": v} for (i, v) in ph.integer_parameters],
     }
@@ -285,7 +334,15 @@ def _alg_dict(a):
                 "ms_path_samples", "ms_flexible_segments",
                 "ms_min_segment_fraction", "ms_refine_tolerance",
                 "ms_algebraic_iterations", "ms_adaptive_steps",
-                "ms_max_steps_per_segment", "ms_implicit_iterations"]
+                "ms_max_steps_per_segment", "ms_implicit_iterations",
+                "qp_solver", "qp_restoration", "sqp_strategy", "qp_iter_max",
+                "trust_region", "trust_region_radius", "elastic_penalty",
+                "parameter_statistics", "parameter_estimation_norm",
+                "objective_form", "defect_scaling", "diff_matrix",
+                "jac_sparsity_ratio", "hess_sparsity_ratio",
+                "save_sparsity_pattern", "nsteps_error_integration",
+                "mr_kappa", "mr_M1", "mr_switch_detection", "switch_order",
+                "hessian_verify", "on_error", "max_integer_combinations"]
     for k in optional:
         v = getattr(a, k, None)
         if v is not None:
@@ -310,13 +367,109 @@ class IntegerControlResult:
         self.n_switches = int(d["n_switches"])
 
 
-class Solution:
+class _Status:
+    """What the solve did, as opposed to what it found.
+
+    ``objective`` comes back whatever happened, so a script that reads only the
+    objective cannot tell a converged solve from one that hit its iteration limit.
+    These four say which, and ``success`` is the one-line answer.
+
+    nlp_return_code  the NLP solver's own code. From IPOPT, 0 is "solved" and 1 is
+                     "solved to acceptable level"; both are successes. From PSOPT's
+                     own SQP, 0 is converged and 1 is the iteration limit reached,
+                     which is NOT a success -- SQP_interface reclassifies a
+                     budget-exhausted run that is nonetheless acceptable to 0 before
+                     returning, so a 1 that survives means the result was not.
+    error_flag       non-zero for a set-up failure or a thrown exception, which is a
+                     different thing from the NLP not converging.
+    error_msg        what that failure was, empty when there was none.
+    cpu_time         seconds.
+    """
+    def __init__(self, d, nlp_method):
+        self.nlp_return_code = int(d.get("nlp_return_code", 0))
+        self.error_flag = int(d.get("error_flag", 0))
+        self.error_msg = d.get("error_msg", "")
+        self.cpu_time = float(d.get("cpu_time", 0.0))
+        self.mesh_refinement_iterations = int(d.get("mesh_refinement_iterations", 0))
+        self.mesh_stats = list(d.get("mesh_stats", []))
+        self._nlp_method = nlp_method
+
+    @property
+    def success(self):
+        if self.error_flag != 0:
+            return False
+        if self.nlp_return_code == 0:
+            return True
+        # See the note above: code 1 means different things in the two solvers.
+        return self.nlp_return_code == 1 and str(self._nlp_method).upper() == "IPOPT"
+
+    def __repr__(self):
+        return ("<PSOPT status success=%s nlp_return_code=%d error_flag=%d "
+                "cpu_time=%.3gs%s>" % (self.success, self.nlp_return_code,
+                                       self.error_flag, self.cpu_time,
+                                       (" msg=%r" % self.error_msg) if self.error_msg else ""))
+
+
+class _PhaseDuals:
+    """The multipliers and diagnostics of one phase.
+
+    costates              discrete adjoint, one row per state. This is what a solution
+                          is checked against the maximum principle with.
+    hamiltonian           the Hamiltonian along the trajectory; constant on an
+                          autonomous problem with free final time, which is a useful
+                          independent check on a converged solve.
+    dual_path             multiplier of each path constraint, when the phase has any.
+    dual_events           multiplier of each event constraint, when the phase has any.
+    terminal_state        the state at the final node.
+    terminal_costate      the costate there, which is the transversality condition.
+    relative_local_error  relative local discretisation error per mesh interval, which
+                          is what mesh refinement drives down.
+    """
     def __init__(self, d):
+        def g(k):
+            return np.asarray(d[k]) if k in d else None
+        self.costates = g("costates")
+        self.hamiltonian = g("hamiltonian")
+        self.dual_path = g("dual_path")
+        self.dual_events = g("dual_events")
+        self.terminal_state = g("terminal_state")
+        self.terminal_costate = g("terminal_costate")
+        self.relative_local_error = g("relative_local_error")
+
+
+class ParameterStatistics:
+    """Covariance and confidence intervals of an estimated parameter vector.
+
+    Present only when algorithm.parameter_statistics = "yes" was asked for and PSOPT
+    could form them; otherwise Solution.parameter_statistics is None. A covariance
+    that could not be formed and one that happens to be zero are different things, so
+    this object's absence is the solver's own verdict rather than an inference.
+    """
+    def __init__(self, d):
+        self.covariance = np.asarray(d["covariance"])
+        self.confidence_low = np.asarray(d["confidence_low"]).ravel()
+        self.confidence_high = np.asarray(d["confidence_high"]).ravel()
+        self.residuals = np.asarray(d["residuals"]).ravel()
+        self.sigma_hat = float(d["sigma_hat"])
+
+    @property
+    def standard_errors(self):
+        """Square roots of the diagonal of the covariance."""
+        return np.sqrt(np.clip(np.diag(np.atleast_2d(self.covariance)), 0.0, None))
+
+
+class Solution:
+    def __init__(self, d, nlp_method="IPOPT"):
         self.objective = d["objective"]
         self.states = np.asarray(d["states"])
         self.controls = np.asarray(d["controls"]) if "controls" in d else None
         self.time = np.asarray(d["time"]).ravel()
         self.parameters = np.asarray(d["parameters"]).ravel() if "parameters" in d else None
+        self.status = _Status(d, nlp_method)
+        self.duals = _PhaseDuals(d)
+        self.costates = self.duals.costates
+        self.parameter_statistics = (ParameterStatistics(d["parameter_statistics"])
+                                     if "parameter_statistics" in d else None)
         # One entry per declared integer control, in declaration order. Note that
         # self.controls is in the weights layout when integer controls are declared:
         # the trailing rows are the product-mode weights, and the rounded controls are
@@ -331,11 +484,21 @@ class Solution:
 
 
 class MultiSolution:
-    def __init__(self, d):
+    def __init__(self, d, nlp_method="IPOPT"):
         self.objective = d["objective"]
         self.states = [np.asarray(s) for s in d["states"]]
         self.controls = [np.asarray(c) for c in d["controls"]]
         self.time = [np.asarray(t).ravel() for t in d["time"]]
+        self.parameters = [None if p is None else np.asarray(p).ravel()
+                           for p in d.get("parameters", [])]
+        self.status = _Status(d, nlp_method)
+        # One _PhaseDuals per phase, in phase order.
+        self.duals = [_PhaseDuals(x) for x in d.get("duals", [])]
+        self.costates = [x.costates for x in self.duals]
+        self.dual_linkages = (np.asarray(d["dual_linkages"]).ravel()
+                              if "dual_linkages" in d else None)
+        self.parameter_statistics = (ParameterStatistics(d["parameter_statistics"])
+                                     if "parameter_statistics" in d else None)
         # Per phase, one entry per declared integer control / parameter.
         self.integer_controls = [[IntegerControlResult(r) for r in ph]
                                  for ph in d.get("integer_controls", [])]
@@ -375,7 +538,7 @@ class Problem:
         spec = {"outfilename": self.name + ".txt", "so_path": so}
         spec.update(_phase_dict(ph))
         spec["algorithm"] = _alg_dict(algorithm)
-        return Solution(_psopt.solve_single_phase(spec))
+        return Solution(_psopt.solve_single_phase(spec), algorithm.nlp_method)
 
     def _solve_multi(self, algorithm):
         phase_funcs, nstates_by_phase = [], []
@@ -390,4 +553,4 @@ class Problem:
                 "nphases": len(self._phases), "nlinkages": nlinkages,
                 "phases": [_phase_dict(ph) for ph in self._phases],
                 "algorithm": _alg_dict(algorithm)}
-        return MultiSolution(_psopt.solve_multiphase(spec))
+        return MultiSolution(_psopt.solve_multiphase(spec), algorithm.nlp_method)

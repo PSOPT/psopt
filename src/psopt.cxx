@@ -1945,6 +1945,17 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
   solution.cpu_time = PSOPT_extras::toc();
 
+  // How many mesh-refinement iterations were actually performed, which is what
+  // solution.mesh_stats is indexed by. The field has existed on Sol since the array did
+  // and was never assigned anywhere: a caller who read it got whatever was on the stack,
+  // and the only reliable count lived in the workspace, which is not part of the
+  // solution a caller is handed. print.cxx reads the workspace field for exactly this
+  // reason. Found by exposing mesh_stats through the Python interface, where reading
+  // mesh_refinement_iterations entries of the array walked off the end of it and threw
+  // std::bad_alloc out of a std::string copy -- intermittently, as uninitialised memory
+  // does.
+  solution.mesh_refinement_iterations = workspace->current_mesh_refinement_iteration;
+
   get_local_time( solution.end_date_and_time );
 
   if (algorithm.diagnostic_level > 0) {

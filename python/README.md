@@ -82,6 +82,99 @@ sol.integer_parameters[j]        # {'index': ..., 'value': ...}
 
 Multiphase problems expose the same fields per phase on `MultiSolution`.
 
+## What the solver gives back
+
+`Problem.solve` returns a `Solution` (single phase) or a `MultiSolution` (several).
+Both carry the trajectory and, since the interface was brought level with the C++
+one, everything else the solve produced.
+
+**Did it work.** `sol.objective` comes back whatever happened, so it cannot answer
+this on its own:
+
+```python
+sol = prob.solve(alg)
+if not sol.status.success:
+    raise RuntimeError(sol.status.error_msg or
+                       "NLP return code %d" % sol.status.nlp_return_code)
+print(sol.status)     # success, nlp_return_code, error_flag, cpu_time
+```
+
+`nlp_return_code` means different things in the two NLP solvers and `success`
+accounts for it: from IPOPT, 0 is "solved" and 1 is "solved to acceptable level",
+both successes; from PSOPT's own SQP, 1 is the iteration limit reached and is a
+failure.
+
+**Multipliers and diagnostics.** `sol.costates` is the discrete adjoint — the thing
+a solution is checked against the maximum principle with — and the rest sit on
+`sol.duals`:
+
+```python
+sol.costates                     # (nstates, nnodes); list of these on a MultiSolution
+sol.duals.hamiltonian            # constant on an autonomous free-final-time problem
+sol.duals.dual_path              # one multiplier per path constraint, if any
+sol.duals.dual_events            # one per event constraint, if any
+sol.duals.relative_local_error   # what mesh refinement drives down
+sol.duals.terminal_state         # Gauss collocation only; empty otherwise
+sol.duals.terminal_costate       # the transversality condition, likewise
+sol.dual_linkages                # MultiSolution only
+```
+
+**Work done.** `sol.status.mesh_stats` is one dict per mesh-refinement iteration —
+method, nodes, variables, constraints, evaluation counts, the discretisation error
+reached and the CPU time — which is the table PSOPT prints at the end of a run.
+
+**Estimation statistics.** For a problem with an observation function, and with
+`parameter_statistics="yes"` (the default):
+
+```python
+ps = sol.parameter_statistics        # None if PSOPT could not form them
+ps.covariance, ps.standard_errors, ps.confidence_low, ps.confidence_high
+ps.sigma_hat, ps.residuals
+```
+
+Residuals can be weighted and the parameter vector regularised, per phase:
+
+```python
+ph.residual_weights = 1.0 / sigma          # (nobserved, nsamples)
+ph.regularization_factor = 1.0e-4          # adds this multiple of ||p||^2
+```
+
+## Algorithm options
+
+`psopt.Algorithm` accepts every field of the C++ `Alg` structure. Beyond the core
+four (`collocation_method`, `nlp_method`, `derivatives`, `scaling`) that means:
+
+* **mesh refinement** — `mesh_refinement`, `mr_max_iterations`, `ode_tolerance`,
+  `mr_max_growth_factor`, `mr_min_order`, `mr_max_order`, `mr_kappa`, `mr_M1`,
+  `mr_switch_detection`, `switch_order`
+* **integrated residuals** — `transcription_method="integrated-residual"` plus the
+  `ir_*` family, including `ir_flexible_mesh` and `ir_element_local_controls`
+* **multiple shooting** — `transcription_method="multiple-shooting"` plus the `ms_*`
+  family: integrator, steps per segment, control parameterisation, path sampling,
+  flexible segments and the index-1 DAE settings
+* **PSOPT's own SQP** — `nlp_method="SQP"` plus `qp_solver`, `sqp_strategy`,
+  `qp_restoration`, `qp_iter_max`, `trust_region`, `trust_region_radius`,
+  `elastic_penalty`
+* **the rest** — `hessian`, `objective_form`, `defect_scaling`, `diff_matrix`,
+  `ipopt_linear_solver`, `ipopt_max_cpu_time`, `constraint_scaling`,
+  `jac_sparsity_ratio`, `hess_sparsity_ratio`, `save_sparsity_pattern`,
+  `nsteps_error_integration`, `parameter_statistics`, `parameter_estimation_norm`,
+  `hessian_verify`, `on_error`, `max_integer_combinations`, `print_level`,
+  `diagnostic_level`
+
+An option left at `None` is not sent, so PSOPT's own default applies.
+
+## What the code generator will not emit
+
+The maths is traced from CasADi and emitted as C++ that CppAD tapes, so an
+operation has to be one CppAD can differentiate. Branches on a symbolic value --
+`ca.if_else`, comparisons -- are refused with a message saying so, because a tape
+records the branch taken when it was made and then uses it everywhere. Use a smooth
+transition, or split the problem into phases at the switching instant. `floor`,
+`ceil`, `fmod`, `sign` and `copysign` are refused for the same reason: they are not
+differentiable. Anything else that is missing is a gap rather than a refusal, and
+the error says which of the two you have met.
+
 ## Examples and validation
 
 Each example reproduces its native C++ baseline:

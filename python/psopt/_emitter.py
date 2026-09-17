@@ -13,6 +13,9 @@ BINARY = {
     ca.OP_POW: "pow({a}, {b})", ca.OP_CONSTPOW: "pow({a}, {b})",
     ca.OP_FMIN: "fmin({a}, {b})", ca.OP_FMAX: "fmax({a}, {b})",
     ca.OP_ATAN2: "atan2({a}, {b})",
+    # hypot is written out rather than called, because CppAD has no hypot for its AD
+    # type and sqrt(a^2+b^2) is what a user writing it by hand would put.
+    ca.OP_HYPOT: "sqrt(({a}) * ({a}) + ({b}) * ({b}))",
 }
 UNARY = {
     ca.OP_NEG: "-({a})", ca.OP_EXP: "exp({a})", ca.OP_LOG: "log({a})",
@@ -21,12 +24,43 @@ UNARY = {
     ca.OP_ASIN: "asin({a})", ca.OP_ACOS: "acos({a})", ca.OP_ATAN: "atan({a})",
     ca.OP_TANH: "tanh({a})", ca.OP_SINH: "sinh({a})", ca.OP_COSH: "cosh({a})",
     ca.OP_FABS: "fabs({a})", ca.OP_INV: "1.0 / ({a})", ca.OP_ASSIGN: "{a}",
+    # OP_TWICE is what CasADi folds x + x into. It was not here, so any model that
+    # contained a doubled expression -- which is most of them, since 2*x, x+x and the
+    # derivative of x^2 all reach it -- failed to generate, with a message naming only
+    # the opcode number. The shipped multi-phase example launch.py was one of them.
+    ca.OP_TWICE: "2.0 * ({a})",
+    # Verified against CppAD's AD<double> as well as double: value and first derivative
+    # both agree with the double implementation.
+    ca.OP_ERF: "erf({a})", ca.OP_LOG1P: "log1p({a})", ca.OP_EXPM1: "expm1({a})",
+    ca.OP_ASINH: "asinh({a})", ca.OP_ACOSH: "acosh({a})", ca.OP_ATANH: "atanh({a})",
 }
 STD_FUNCS = {ca.OP_EXP:"exp",ca.OP_LOG:"log",ca.OP_SQRT:"sqrt",ca.OP_SIN:"sin",
     ca.OP_COS:"cos",ca.OP_TAN:"tan",ca.OP_ASIN:"asin",ca.OP_ACOS:"acos",
     ca.OP_ATAN:"atan",ca.OP_TANH:"tanh",ca.OP_SINH:"sinh",ca.OP_COSH:"cosh",
     ca.OP_FABS:"fabs",ca.OP_POW:"pow",ca.OP_CONSTPOW:"pow",ca.OP_FMIN:"fmin",
-    ca.OP_FMAX:"fmax",ca.OP_ATAN2:"atan2"}
+    ca.OP_FMAX:"fmax",ca.OP_ATAN2:"atan2",ca.OP_HYPOT:"sqrt",
+    ca.OP_ERF:"erf",ca.OP_LOG1P:"log1p",ca.OP_EXPM1:"expm1",
+    ca.OP_ASINH:"asinh",ca.OP_ACOSH:"acosh",ca.OP_ATANH:"atanh"}
+
+# Operations this emitter deliberately refuses, and why. They are separated from the
+# merely unimplemented so that the message can say which of the two a user has met:
+# "not supported and here is the reason" is actionable, "opcode 32 not mapped" is not.
+REFUSED = {
+    ca.OP_IF_ELSE_ZERO: "if_else / if_else_zero: a branch on a symbolic value cannot be "
+        "taped by CppAD -- the tape records the branch that was taken when the tape was "
+        "made, and then uses it at every other point. Replace the switch with a smooth "
+        "one (a tanh or logistic transition), or split the problem into phases at the "
+        "switching instant, which is what PSOPT's multi-phase support is for",
+    ca.OP_LT: "a comparison (<, <=, ==, !=, and, or, not)", ca.OP_LE: "a comparison",
+    ca.OP_EQ: "a comparison", ca.OP_NE: "a comparison", ca.OP_NOT: "a comparison",
+    ca.OP_AND: "a comparison", ca.OP_OR: "a comparison",
+    ca.OP_FLOOR: "floor: not differentiable", ca.OP_CEIL: "ceil: not differentiable",
+    ca.OP_FMOD: "fmod: not differentiable", ca.OP_SIGN: "sign: not differentiable",
+    ca.OP_COPYSIGN: "copysign: not differentiable",
+    ca.OP_REMAINDER: "remainder: not differentiable",
+}
+
+_OPNAMES = {getattr(ca, n): n for n in dir(ca) if n.startswith("OP_")}
 
 def emit_instructions(f, input_names, out_writer, indent="    "):
     lines, used = [], set()
@@ -46,8 +80,20 @@ def emit_instructions(f, input_names, out_writer, indent="    "):
         elif op in BINARY:
             if op in STD_FUNCS: used.add(STD_FUNCS[op])
             lines.append(f"{indent}w[{oo[0]}] = {BINARY[op].format(a=f'w[{ii[0]}]', b=f'w[{ii[1]}]')};")
+        elif op in REFUSED:
+            raise NotImplementedError(
+                "this model uses %s (CasADi %s), which the PSOPT code generator does "
+                "not emit: %s."
+                % (_OPNAMES.get(op, "opcode %d" % op).replace("OP_", "").lower(),
+                   _OPNAMES.get(op, "opcode %d" % op), REFUSED[op]))
         else:
-            raise NotImplementedError(f"CasADi opcode {op} not mapped")
+            raise NotImplementedError(
+                "this model uses CasADi %s, which the PSOPT code generator does not "
+                "emit yet. It is not a refusal, only a gap: the operation has to be "
+                "written as C++ that CppAD can tape and added to BINARY or UNARY in "
+                "psopt/_emitter.py. Please report it, with the expression that produced "
+                "it, at https://github.com/PSOPT/psopt/issues."
+                % _OPNAMES.get(op, "opcode %d" % op))
     return lines, used
 
 def _using(used, indent="    "):
