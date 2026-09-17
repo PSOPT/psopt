@@ -102,6 +102,29 @@ rm -rf /tmp/cppad
 # tested on no distribution whatever.
 "${SRC}/containers/common/ensure_qp_backends.sh"
 
+# Register the QP prefix with the dynamic loader, as well as putting it on
+# LD_LIBRARY_PATH above. The two are not the same thing and the difference is the point:
+# LD_LIBRARY_PATH is inherited and any process in between can drop or replace it, while
+# /etc/ld.so.conf.d is a property of the image and applies to every lookup, including the
+# transitive ones that a RUNPATH does NOT cover -- DT_RUNPATH resolves only an object's
+# own direct dependencies, not its dependencies' dependencies.
+#
+# Only GALAHAD's plugin needs this. OSQP and Clarabel are static archives and PIQP and
+# ProxQP are header-only, so those plugins carry no external dependency at all. GALAHAD
+# is linked as a shared library, its plugin was the one that failed to load on the first
+# run that built it, and belt and braces costs two lines here.
+#
+# if/fi and not [ ] && ..., because this script runs under set -e and an AND-list whose
+# test fails takes the exit status of the test. A prefix with no lib64, which is most of
+# them, would end the run here.
+mkdir -p /etc/ld.so.conf.d
+: > /etc/ld.so.conf.d/psopt-qp.conf
+if [ -d "${QP_PREFIX}/lib" ];   then echo "${QP_PREFIX}/lib"   >> /etc/ld.so.conf.d/psopt-qp.conf; fi
+if [ -d "${QP_PREFIX}/lib64" ]; then echo "${QP_PREFIX}/lib64" >> /etc/ld.so.conf.d/psopt-qp.conf; fi
+ldconfig || true
+echo "registered with the loader:"
+cat /etc/ld.so.conf.d/psopt-qp.conf
+
 # What was actually built, as cmake arguments. ensure_qp_backends.sh works this out from
 # the files that exist and writes it down, so that a backend that failed to build leaves
 # the others working instead of failing the configure.

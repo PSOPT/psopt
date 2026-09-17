@@ -85,6 +85,15 @@ printf 'QP-BACKEND piqp     : %s\n' "${piqp:-NOT BUILT}"
 printf 'QP-BACKEND clarabel : %s\n' "${clar:-NOT BUILT}"
 printf 'QP-BACKEND galahad  : %s\n' "${gala:-NOT BUILT}"
 
+# GALAHAD is the only backend installed as a SHARED library, so it is the only one whose
+# own dependencies can be incomplete, and a plugin linking it then fails to load for a
+# reason that has nothing to do with the plugin. Its dependencies are listed here, where
+# they can be read, rather than left to be inferred from a load failure later.
+if [ -n "${gala}" ]; then
+    echo "--- ldd ${gala}"
+    ldd "${gala}" 2>&1 | sed 's/^/    /' || true
+fi
+
 # if/fi rather than [ ] && ..., because this script runs under set -e and a bare
 # AND-list whose test fails takes the exit status of the test, which would end the run
 # at the first backend that is absent -- the one case this block exists to survive.
