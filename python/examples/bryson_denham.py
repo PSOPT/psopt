@@ -1,8 +1,7 @@
 """bryson_denham via the PSOPT Python API (B-1 acceptance test).
 Target objective (matches the hand-written C++ example): 3.999539e+00."""
-import sys, numpy as np, casadi as ca
-sys.path.insert(0, "/tmp/psopt_py")
-import psopt
+import numpy as np, casadi as ca
+from _common import psopt
 
 prob = psopt.Problem(name="bryson_denham")
 ph = prob.add_phase(nstates=3, ncontrols=1, nevents=5, npath=0)

@@ -1,9 +1,8 @@
 """cracking (parameter estimation) via the PSOPT Python API (B-3 acceptance test).
 3 parameters in the dynamics, 0 controls, an observation function fitting 21 noisy
 samples of both states. Target objective (least-squares residual): 4.319519e-03."""
-import sys, numpy as np, casadi as ca
-sys.path.insert(0, "/tmp/psopt_py")
-import psopt
+import numpy as np, casadi as ca
+from _common import psopt
 
 # ---- measured data (from cracking.cxx) ----
 y1meas = [1.0,0.8105,0.6208,0.5258,0.4345,0.3903,0.3342,0.3034,0.2735,0.2405,0.2283,

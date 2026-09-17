@@ -20,7 +20,7 @@ parameter switches the driver to psopt_solve_integer automatically.
 """
 import numpy as np
 import casadi as ca
-import psopt
+from _common import psopt
 
 TARGET = 2.3
 ADMISSIBLE = [0.0, 1.0, 2.0, 3.0]

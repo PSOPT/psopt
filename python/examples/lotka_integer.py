@@ -16,7 +16,7 @@ approaches Phi* from above as the mesh is refined.
 """
 import numpy as np
 import casadi as ca
-import psopt
+from _common import psopt
 
 C0, C1 = 0.4, 0.2
 PHI_STAR = 1.34408

@@ -8,7 +8,7 @@ the control cost.
 
 Native reference (a C++ driver with the same options): 3.498289481767e-04."""
 import numpy as np, casadi as ca
-import psopt
+from _common import psopt
 
 prob = psopt.Problem(name="bryson_ir")
 ph = prob.add_phase(nstates=3, ncontrols=1, nevents=5, npath=0)

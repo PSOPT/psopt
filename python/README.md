@@ -177,18 +177,48 @@ the error says which of the two you have met.
 
 ## Examples and validation
 
-Each example reproduces its native C++ baseline:
+Fourteen examples, in `examples/`. Run one directly, or all of them:
 
-| example            | what it exercises                         | result            | native baseline   |
-|--------------------|-------------------------------------------|-------------------|-------------------|
-| `bryson_denham.py` | single phase                              | 3.9995386676223115| 3.999539e+00 (bit-identical) |
-| `launch.py`        | 4 phases, 24 linkages (Delta-III ascent)  | −7529.6612513     | −7.529661e+03 (within NLP tol) |
-| `cracking.py`      | parameters + observation (estimation)     | 4.319519e-03      | 4.319519e-03 (bit-identical) |
-| `bryson_ir.py`     | integrated-residual transcription         | 3.498289481767e-04| 3.498289481767e-04 (bit-identical) |
-| `bryson_mesh.py`   | hp mesh refinement (10→29 nodes)          | 3.9999969175      | 3.999997e+00      |
-| `lotka_integer.py` | binary integer control, sum-up rounding   | 1.348104 / 1.351850, 4 switches (40 nodes) | 1.348103 / 1.351850, 4 switches |
-| `integer_parameter.py` | integer static parameter by enumeration | p = 2, J = 0.09  | closed form p = 2, J = 0.09 |
-| `rv2oe_casadi.py`  | CasADi orbital-element dynamics helper     | (used by launch)  | —                 |
+```
+cd python/examples
+python3 obstacle.py
+python3 run_all.py            # every example, with a pass/fail table
+python3 run_all.py bryson     # just the ones whose name matches
+```
+
+Each runs from a source checkout with nothing installed: `_common.py` puts the
+package on `sys.path` if it is not already importable. The examples that check
+themselves exit non-zero when the answer does not match their reference, which is
+what `run_all.py` reports.
+
+| example | what it exercises | checked against |
+|---|---|---|
+| `brachistochrone.py` | free final time, costates, the Hamiltonian | the cycloid, in closed form (agrees to 3e-10); C++ `brac1` |
+| `breakwell.py` | a state bound, and the costate jump at a boundary arc | 4/(9l) exactly; C++ `breakwell` |
+| `obstacle.py` | path constraints and their multipliers | C++ `obstacle`, 9.970637e-01 |
+| `multiple_shooting.py` | multiple shooting against collocation | J* = 6 and u* = 6 - 12t, in closed form |
+| `integrated_residual.py` | integrated residuals on a singular arc | J* = 10/3, tf* = 4, in closed form |
+| `hypersensitive.py` | hp mesh refinement and `mesh_stats` | C++ `hypersensitive`, 1.330826e+00 |
+| `weighted_estimation.py` | residual weights, regularisation, covariance | C++ `cracking`, 4.319519e-03 |
+| `cracking.py` | parameters and an observation function | C++ `cracking`, 4.319519e-03 |
+| `bryson_denham.py` | the simplest single phase | C++ `bryson_denham`, 3.999539e+00 |
+| `launch.py` | 4 phases, 24 linkages (Delta-III ascent) | C++ `launch`, -7.529661e+03 |
+| `bryson_mesh.py` | hp mesh refinement, 10 -> 29 nodes | 3.999997e+00 |
+| `bryson_ir.py` | integrated-residual pass-through | see the note below |
+| `lotka_integer.py` | a binary integer control, sum-up rounding | 1.348104 / 1.351850, 4 switches |
+| `integer_parameter.py` | an integer static parameter, by enumeration | closed form p = 2, J = 0.09 |
+| `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
+
+All fourteen were run together on 17 September 2026 and passed.
+
+One figure has moved and is flagged rather than quietly updated. `bryson_ir.py`
+reports the integrated residual, which is a feasibility measure rather than a
+cost, and this README previously recorded 3.498289481767e-04 for it, matching a
+native C++ driver with the same options. It now returns 5.116118039065e-05. The
+integrated-residual transcription has changed repeatedly since that figure was
+taken, so the likeliest explanation is that the old number is simply stale -- but
+the pass-through comparison against a native driver has not been repeated, so
+that is an inference and not a measurement.
 
 ## Provenance
 

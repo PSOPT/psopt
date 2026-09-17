@@ -1,9 +1,8 @@
 """launch (4-phase Delta-III ascent) via the PSOPT Python API (B-2 acceptance test).
 Target objective (matches hand-written C++ / CI reference): -7.529661e+03."""
-import sys, math, numpy as np, casadi as ca
-sys.path.insert(0, "/tmp/psopt_py")
-sys.path.insert(0, "/tmp/psopt_py/examples")
-import psopt
+import os, sys, math, numpy as np, casadi as ca
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _common import psopt
 import rv2oe_casadi as R
 
 # ---------------- constants (folded from launch.cxx user_data) ----------------

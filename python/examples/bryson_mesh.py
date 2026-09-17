@@ -1,9 +1,8 @@
 """bryson_denham with hp-adaptive mesh refinement via the Python API (B-4).
 Starts from a coarse 10-node mesh; PSOPT refines to meet ode_tolerance.
 Native reference (same options): 7 iterations, 10->29 nodes, objective 3.999997e+00."""
-import sys, numpy as np, casadi as ca
-sys.path.insert(0, "/tmp/psopt_py")
-import psopt
+import numpy as np, casadi as ca
+from _common import psopt
 
 prob = psopt.Problem(name="bryson_mesh")
 ph = prob.add_phase(nstates=3, ncontrols=1, nevents=5, npath=0)
