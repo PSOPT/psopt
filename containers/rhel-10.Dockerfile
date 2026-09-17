@@ -55,6 +55,8 @@ RUN dnf install -y \
         which \
         tar \
         gzip \
+        diffutils \
+        findutils \
     && dnf clean all
 
 # The part that is allowed to fail.  CodeReady Builder carries the -devel

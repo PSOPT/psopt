@@ -25,6 +25,14 @@
 # Dockerfile with a sentence saying which, rather than three steps later as a phantom
 # defect in something else.
 #
+# It earned its place on its first run. The patch that introduced it said that findutils
+# and diffutils were absent from the openSUSE base images and present in every other image
+# in this matrix; that was reasoned rather than measured, and Fedora immediately failed the
+# check on cmp and diff. Fedora had been passing because it installs IPOPT from a package
+# and so never reached the configure scripts that want them -- which is exactly the state
+# this check exists to make visible, since ensure_ipopt.sh builds from source the moment
+# that package is unavailable.
+#
 set -euo pipefail
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -82,8 +90,8 @@ if [ -n "${missing}" ]; then
     echo
     echo "They are the Dockerfile's job, like every other distribution difference. Add the"
     echo "package that carries each one to this image's dependency stanza. find and xargs"
-    echo "are findutils; cmp and diff are diffutils; both are absent from the openSUSE"
-    echo "base images and present in every other image in this matrix, which is how this"
-    echo "check came to exist."
+    echo "are findutils; cmp and diff are diffutils. Two images in this matrix were short"
+    echo "of one or the other and neither was noticed until this check existed: both"
+    echo "openSUSE images had neither package, and Fedora had no diffutils."
     exit 1
 fi

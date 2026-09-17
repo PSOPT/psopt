@@ -13,7 +13,11 @@
 FROM fedora:44
 
 # 'which' is here because configure scripts inside the IPOPT source build use
-# it and a Fedora container does not have it by default.
+# it and a Fedora container does not have it by default.  'diffutils' is here
+# for the same reason and was missed: the base image has no cmp and no diff,
+# which went unnoticed for as long as Fedora installed IPOPT from a package
+# and so never ran those configure scripts.  containers/common/check_tools.sh
+# found it on its first run.
 RUN dnf install -y \
         gcc \
         gcc-c++ \
@@ -28,6 +32,7 @@ RUN dnf install -y \
         unzip \
         file \
         which \
+        diffutils \
         eigen3-devel \
         blas-devel \
         lapack-devel \

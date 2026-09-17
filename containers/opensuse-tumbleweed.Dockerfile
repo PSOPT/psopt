@@ -16,9 +16,9 @@
 # are identical on every distribution in this matrix.
 FROM opensuse/tumbleweed
 
-# findutils and diffutils are named here and in no other image in this matrix.
-# Every other base image carries them; the openSUSE ones do not, and what that
-# cost is worth recording.  IPOPT's configure ran without cmp, diff or xargs,
+# findutils is named here and in no other image in this matrix; diffutils here
+# and in Fedora.  The openSUSE base images carry neither, and what that cost is
+# worth recording.  IPOPT's configure ran without cmp, diff or xargs,
 # reported each as "command not found" eleven times and produced a working
 # IPOPT anyway, and then build_qp_backends.sh could not find osqp-config.cmake
 # -- because find was not there either, and every call to it in the shared

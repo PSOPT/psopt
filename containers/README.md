@@ -287,6 +287,15 @@ went into the wrong question. `common/check_tools.sh` now names every tool the
 later steps assume and fails in the Dockerfile, by name, before anything uses
 one.
 
+It justified itself immediately. The patch that added it said that findutils and
+diffutils were absent from the openSUSE images and present everywhere else,
+which was reasoned and not measured: **Fedora has no diffutils either**, and
+failed the check on `cmp` and `diff` on the first run that included it. Fedora
+had been passing because it installs IPOPT from a package and so never reaches
+the configure scripts that want them — which is the state the check exists to
+make visible, since `ensure_ipopt.sh` builds from source the moment a package is
+unavailable.
+
 ## How far the package names have been checked
 
 Every name in every image has resolved, on two architectures and two machines.
