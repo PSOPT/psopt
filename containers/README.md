@@ -211,7 +211,7 @@ and Manjaro, where every other distribution here is on 3.4.x. This was the open
 question when the Arch probe first reported it, and the answer is that it makes
 no difference.
 
-Two things the runs found that needed fixing or recording:
+Two things those runs found that needed fixing or recording:
 
 **pacman 7 will not download inside a container build unless its sandbox is
 turned off.** Arch failed at the first `pacman -Syu` with `error restricting
@@ -235,12 +235,66 @@ unrelated I/O error. Build one image at a time with
 that deleting Docker's disk image while Docker Desktop is still running frees
 nothing, because the process holds the descriptor open.
 
+## What the SQP runs established
+
+Adding the four QP backends to every image put PSOPT's own solver on a
+distribution for the first time, and three things came back that had nothing to
+do with any distribution.
+
+**GALAHAD asks for an executable stack, and current glibc refuses it.**
+`libgalahad_double.so` was marked as requiring an executable stack, and glibc
+2.41 stopped granting that at `dlopen`:
+
+```
+libgalahad_double.so: cannot enable executable stack as shared object requires:
+Invalid argument
+```
+
+The matrix split exactly on that line. Ubuntu 24.04, on glibc 2.39, loaded the
+plugin; Debian 13, Fedora 44, Ubuntu 26.04, Arch and Manjaro, on 2.41 to 2.44,
+all refused it, and the message a user got said the plugin was missing.
+`scripts/build_galahad.sh` now links with `-Wl,-z,noexecstack`, and the run of
+17 September 2026 loaded and used the GALAHAD plugin on every image from glibc
+2.39 to 2.44. **This reached well past the containers**: any user on a current
+distribution who had built GALAHAD with that script and set
+`algorithm.qp_solver = "GALAHAD"` had been meeting it.
+
+**Two backends were honouring only the looser of their two tolerances.** OSQP
+was asked for an absolute residual and returned steps 480 times looser, and the
+SQP cycled for 1725 iterations and stopped slightly infeasible; Clarabel was
+asked for an absolute duality gap while its relative one stayed at its default,
+decided every solve on the relative test, and stalled at a dual error of
+2.9e-06 reporting a failure it had all but not had. Both are fixed in their
+plugins, and the lesson generalises: a backend that stops on the looser of an
+absolute and a relative test honours only the looser one, so a plugin must set
+both. Neither defect was visible from a build log; both were found because the
+SQP was finally being run somewhere.
+
+**A tool missing from the image is the failure that disguises itself.** Both
+openSUSE images had neither `findutils` nor `diffutils`. IPOPT's configure ran
+without `cmp`, `diff` and `xargs`, said so eleven times, and produced a working
+IPOPT anyway; then `build_qp_backends.sh` reported that `osqp-config.cmake` had
+not been installed, in a log whose preceding lines showed cmake installing
+exactly that file. The reason is the shape of the call --
+
+```
+find "$PREFIX" -name osqp-config.cmake -print -quit 2>/dev/null || true
+```
+
+-- which cannot tell "no such file" from "no such program", so an absent `find`
+answered "not installed" for everything it was asked about. Two rounds of work
+went into the wrong question. `common/check_tools.sh` now names every tool the
+later steps assume and fails in the Dockerfile, by name, before anything uses
+one.
+
 ## How far the package names have been checked
 
 Every name in every image has resolved, on two architectures and two machines.
-That question is closed for now.
+The one thing the names did *not* cover was tools that no package list
+mentioned because every other base image happens to carry them, which is what
+`common/check_tools.sh` is for.
 
-It is worth remembering what it is not. These are eight distributions on one
+It is worth remembering what this is not. These are eight distributions on one
 day, three of them rolling releases that can rename a package next week, which
 is what the weekly schedule is for. If a job dies inside `apt-get`, `dnf`,
 `zypper` or `pacman`, that remains a statement about package names and not about

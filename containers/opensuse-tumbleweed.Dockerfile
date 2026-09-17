@@ -16,6 +16,17 @@
 # are identical on every distribution in this matrix.
 FROM opensuse/tumbleweed
 
+# findutils and diffutils are named here and in no other image in this matrix.
+# Every other base image carries them; the openSUSE ones do not, and what that
+# cost is worth recording.  IPOPT's configure ran without cmp, diff or xargs,
+# reported each as "command not found" eleven times and produced a working
+# IPOPT anyway, and then build_qp_backends.sh could not find osqp-config.cmake
+# -- because find was not there either, and every call to it in the shared
+# scripts discards stderr so that an empty prefix reads as an empty answer.  An
+# absent find therefore answered "not installed" for every file it was asked
+# about, and the install log directly above the failure showed cmake writing
+# the very file the check said did not exist.  containers/common/check_tools.sh
+# now names the tools before anything uses one.
 RUN zypper --non-interactive refresh && \
     zypper --non-interactive install --no-recommends \
         gcc \
@@ -33,6 +44,8 @@ RUN zypper --non-interactive refresh && \
         which \
         tar \
         gzip \
+        findutils \
+        diffutils \
         eigen3-devel \
         blas-devel \
         lapack-devel \
@@ -49,8 +62,8 @@ RUN zypper --non-interactive refresh && \
 ENV PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/lib64/pkgconfig
 ENV LD_LIBRARY_PATH=/usr/lib:/usr/lib64
 
-COPY containers/common/ensure_eigen.sh containers/common/ensure_ipopt.sh /opt/
-RUN /opt/ensure_eigen.sh && /opt/ensure_ipopt.sh
+COPY containers/common/check_tools.sh containers/common/ensure_eigen.sh containers/common/ensure_ipopt.sh /opt/
+RUN /opt/check_tools.sh && /opt/ensure_eigen.sh && /opt/ensure_ipopt.sh
 
 COPY . /src
 RUN /src/containers/common/build_and_test.sh

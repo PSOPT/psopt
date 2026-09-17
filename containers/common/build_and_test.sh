@@ -39,6 +39,14 @@ export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:${PKG_
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 
+# ------------------------------------------------------------------ the tools
+# Run again here, although every Dockerfile has already run it before building
+# IPOPT.  It costs a fraction of a second, it is the only check in this file
+# that a Dockerfile could have skipped, and a tool missing from the image is the
+# one failure that disguises itself as a failure in something else -- see the
+# script's own header, and the comment at the top of the openSUSE Dockerfiles.
+"${SRC}/containers/common/check_tools.sh"
+
 # ---------------------------------------------------------------- environment
 say "Environment"
 ( . /etc/os-release && echo "distribution : $PRETTY_NAME" ) || true

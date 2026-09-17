@@ -48,8 +48,8 @@ ENV LD_LIBRARY_PATH=/usr/lib:/usr/lib64
 # Before the source tree is copied, so that editing PSOPT does not rebuild
 # IPOPT.  Each script reports where its dependency came from and neither fails
 # merely because the distribution does not package it.
-COPY containers/common/ensure_eigen.sh containers/common/ensure_ipopt.sh /opt/
-RUN /opt/ensure_eigen.sh && /opt/ensure_ipopt.sh
+COPY containers/common/check_tools.sh containers/common/ensure_eigen.sh containers/common/ensure_ipopt.sh /opt/
+RUN /opt/check_tools.sh && /opt/ensure_eigen.sh && /opt/ensure_ipopt.sh
 
 COPY . /src
 RUN /src/containers/common/build_and_test.sh
