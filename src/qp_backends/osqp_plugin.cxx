@@ -145,7 +145,21 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
 
     osqp_set_default_settings(settings);
     settings->verbose        = 0;
-    settings->eps_abs        = std::max(1.0e-10, 1.0e-2*p->tolerance);
+    // Ask for far more accuracy than the SQP's own tolerance, because eps_abs is a
+    // request and not a guarantee. Asked for 1.0e-10 on the subproblems of a
+    // linear-quadratic problem with an active control bound, OSQP stops and reports
+    // OSQP_SOLVED with a primal residual of 4.8e-08 -- looser than the 1.0e-08 the SQP
+    // was itself working to. Fed steps that inaccurate the SQP cannot converge: it
+    // cycles, recurring on the same objective and constraint violation, and stops after
+    // 1725 iterations at a point 3.4e-07 BELOW the optimum of a convex QP, which is to
+    // say slightly infeasible. Asked for 1.0e-12 on the same subproblems OSQP returns a
+    // primal residual of 6.1e-16 and the same SQP converges in 654 iterations to the
+    // value IPOPT and the exact-Hessian path both reach.
+    //
+    // 1.0e-4 rather than 1.0e-2 of the tolerance is therefore the ratio, and the floor
+    // goes down with it. The cost is more ADMM iterations per subproblem and it is more
+    // than repaid by needing a third as many SQP iterations.
+    settings->eps_abs        = std::max(1.0e-14, 1.0e-4*p->tolerance);
     settings->eps_rel        = 0.0;
     settings->max_iter       = std::max(200, 20*p->max_iter);
     settings->polishing      = 1;    // a cheap Newton step on the identified active set,
@@ -173,8 +187,16 @@ int psopt_qp_solve(const psopt_qp_problem* p, psopt_qp_solution* s)
             // general constraint and are turned back into bound multipliers.
             for (int j = 0; j < n; j++) s->z[j]      = -solver->solution->y[m + j];
 
-            s->status = (solver->info->status_val == OSQP_SOLVED)
-                            ? PSOPT_QP_SOLVED : PSOPT_QP_APPROXIMATE;
+            // Judged by the residual actually achieved rather than by the status
+            // word, which is wrong in both directions here. OSQP reports OSQP_SOLVED
+            // having missed the eps_abs it was given by two orders of magnitude, and
+            // reports OSQP_MAX_ITER_REACHED on a step whose residual is 1.0e-16. What
+            // the SQP needs to know is whether the step it is about to take solves the
+            // subproblem, and that is this, not the status.
+            const double want  = settings->eps_abs;
+            const double achieved = std::max((double) solver->info->prim_res,
+                                             (double) solver->info->dual_res);
+            s->status = (achieved <= 10.0*want) ? PSOPT_QP_SOLVED : PSOPT_QP_APPROXIMATE;
         }
     }
 
