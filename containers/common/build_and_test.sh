@@ -19,14 +19,21 @@ BUILD=${BUILD:-/build}
 PREFIX=${PREFIX:-/usr}
 JOBS=${JOBS:-$(nproc)}
 
-# The build tree's own library directory, and both library directories under the
-# prefix.  The examples are run after the install, so they would find the
-# library anyway on a distribution whose loader searches the prefix; naming all
-# three costs nothing and removes one way for a job to fail for a reason that
-# has nothing to do with PSOPT.  A source-built CppAD or IPOPT lands in
-# ${PREFIX}/lib even where the distribution's own libraries are in lib64.
+# Where the QP backends go.  Their own prefix rather than ${PREFIX}, so that they stay
+# separable from the distribution's files and so that GNUInstallDirs does not send them
+# to the multiarch directory, which it does for a CMake install whose prefix is /usr on
+# a Debian derivative.
 QP_PREFIX=${QP_PREFIX:-/opt/qp}
 export QP_PREFIX
+
+# The build tree's own library directory, both library directories under the
+# prefix, and both under the QP prefix.  The examples run after the install, so
+# they would find the library anyway on a distribution whose loader searches the
+# prefix; naming them all costs nothing and removes one way for a job to fail for
+# a reason that has nothing to do with PSOPT.  A source-built CppAD or IPOPT lands
+# in ${PREFIX}/lib even where the distribution's own libraries are in lib64, and
+# GALAHAD's plugin needs ${QP_PREFIX}/lib at load time because the backend it links
+# is a shared library.
 export LD_LIBRARY_PATH="${BUILD}/lib:${PREFIX}/lib:${PREFIX}/lib64:${QP_PREFIX}/lib:${QP_PREFIX}/lib64:${LD_LIBRARY_PATH:-}"
 export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 
@@ -115,6 +122,23 @@ cmake -S "${SRC}" -B "${BUILD}" \
 
 say "Build"
 cmake --build "${BUILD}" -j"${JOBS}"
+
+# --------------------------------------------------- the QP plugins that were built
+# Loading a backend plugin sits between a successful build and a working SQP, and it is
+# invisible in a build log until it fails. Three of the four plugins link their backend
+# statically or are header-only, so they carry no dependency and cannot fail this way.
+# GALAHAD's is built against a SHARED libgalahad_double and is the only one that can be
+# present and unloadable, which is exactly what happened on the first run that built it.
+# Listing them with their dependencies costs a second and is the difference between
+# reading such a failure and guessing at it.
+say "QP backend plugins"
+echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"
+ls -l "${BUILD}/qp_plugins/" 2>/dev/null || echo "no qp_plugins directory: no backend was enabled"
+for so in "${BUILD}"/qp_plugins/*.so; do
+    [ -e "${so}" ] || continue
+    echo "--- ${so}"
+    ldd "${so}" 2>&1 | sed 's/^/    /' || true
+done
 
 # ------------------------------------------------------------------ unit tests
 say "Unit tests"

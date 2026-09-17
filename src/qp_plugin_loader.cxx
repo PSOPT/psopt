@@ -55,6 +55,7 @@ e-mail:    vmbecerra@vmb1.com
 #include "psopt_qp_plugin.h"
 
 #include <dlfcn.h>
+#include <sys/stat.h>
 #include <cctype>
 #include <map>
 #include <string>
@@ -135,20 +136,58 @@ LoadedPlugin& open_plugin(const std::string& backend)
         tag[k] = (char) tolower((unsigned char) tag[k]);
     const std::string file = "libpsopt_qp_" + tag + ".so";
 
+    // Two failures wear the same face here and must not. A plugin that was never built
+    // is absent; a plugin that was built but cannot be loaded -- because a shared library
+    // it needs is not on the loader's path -- is present and broken. Only the second
+    // names the real cause, in dlerror's text, and only the second is what a user with a
+    // GALAHAD build and no LD_LIBRARY_PATH will meet.
+    //
+    // Reporting the LAST dlerror confuses them permanently. The last candidate tried is
+    // the bare file name, left to the loader's own search, and its failure is always
+    // "cannot open shared object file: No such file or directory" whatever went wrong
+    // earlier. That message was once reported for a plugin sitting in the build tree
+    // whose only problem was a missing libgalahad_double.so, and it sent the reader
+    // looking for a file that was already there.
+    //
+    // So each candidate's error is kept as it happens, and the one from a candidate that
+    // EXISTS is preferred over the rest.
     const std::vector<std::string> paths = candidate_paths(file);
+    std::string existed_but_failed;
+    std::string looked_in;
+
     for (size_t k = 0; k < paths.size() && p.handle == NULL; k++) {
         // RTLD_LOCAL is the whole point; RTLD_NOW so that a plugin missing a symbol
         // says so on load rather than in the middle of a solve.
         p.handle = dlopen(paths[k].c_str(), RTLD_NOW | RTLD_LOCAL);
-        if (p.handle != NULL) p.path = paths[k];
+        if (p.handle != NULL) { p.path = paths[k]; break; }
+
+        // dlerror() must be read now: it is cleared by the next call, so an error kept
+        // until after the loop is not the error of the attempt one means.
+        const char* why = dlerror();
+
+        if (!looked_in.empty()) looked_in += ", ";
+        looked_in += paths[k];
+
+        struct stat st;
+        if (existed_but_failed.empty() && stat(paths[k].c_str(), &st) == 0 && why != NULL)
+            existed_but_failed = paths[k] + ": " + why;
     }
 
     if (p.handle == NULL) {
-        const char* why = dlerror();
-        p.error = "could not load the QP backend plugin " + file
-                + (why ? std::string(" (") + why + ")" : std::string())
-                + ". Set PSOPT_QP_PLUGIN_PATH to the directory containing it, or build "
-                  "PSOPT with that backend enabled.";
+        if (!existed_but_failed.empty()) {
+            p.error = "the QP backend plugin " + file + " is present but could not be "
+                      "loaded (" + existed_but_failed + "). A plugin that links a SHARED "
+                      "backend library -- GALAHAD is the one that does -- needs that "
+                      "library on the loader's path: set LD_LIBRARY_PATH to the "
+                      "directory holding it, or source the env file the backend's build "
+                      "script wrote.";
+        }
+        else {
+            p.error = "could not find the QP backend plugin " + file + ". Looked in: "
+                    + looked_in
+                    + ". Set PSOPT_QP_PLUGIN_PATH to the directory containing it, or "
+                      "build PSOPT with that backend enabled.";
+        }
     }
     else {
         p.abi   = (int (*)(void)) dlsym(p.handle, "psopt_qp_abi_version");
