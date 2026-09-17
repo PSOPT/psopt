@@ -364,7 +364,19 @@ if [ "$DO_OSQP" = "1" ]; then
     cmake --build "$OSQP_SRC/build" -j "$JOBS"
 
     info "installing into $PREFIX"
-    "${RUN_INSTALL[@]}" "$OSQP_SRC/build" >/dev/null
+    # Kept rather than discarded. The openSUSE images reported that no osqp-config.cmake
+    # had been installed AND that nothing under the prefix had osqp in its name, which
+    # cannot both be true of a successful install and a passing header check -- so the
+    # install itself is the thing to read, and it was going to /dev/null. It is quiet on
+    # success and printed in full by any of the checks below that fail.
+    OSQP_INSTALL_LOG="$(mktemp)"
+    "${RUN_INSTALL[@]}" "$OSQP_SRC/build" > "$OSQP_INSTALL_LOG" 2>&1
+    osqp_install_log() {
+        info "the install said:"
+        sed 's/^/        /' "$OSQP_INSTALL_LOG" || true
+        info "and left this under $PREFIX:"
+        find "$PREFIX" -maxdepth 4 2>/dev/null | sed 's/^/        /' | head -60 || true
+    }
 
     # OSQP 1.x puts its headers in <prefix>/include/osqp, which is what its exported
     # cmake target points at; 0.6.x put them a directory up. The plugin tries both
@@ -373,7 +385,10 @@ if [ "$DO_OSQP" = "1" ]; then
     for h in "$PREFIX/include/osqp/osqp.h" "$PREFIX/include/osqp.h"; do
         [ -f "$h" ] && OSQP_HEADER="$h" && break
     done
-    [ -n "$OSQP_HEADER" ] || die "osqp.h was not installed under $PREFIX/include. Read the log above."
+    if [ -z "$OSQP_HEADER" ]; then
+        osqp_install_log
+        die "osqp.h was not installed under $PREFIX/include."
+    fi
 
     OSQP_API="$(dirname "$OSQP_HEADER")/osqp_api_functions.h"
     if ! grep -q "OSQPCscMatrix_new" "$OSQP_API" 2>/dev/null; then
@@ -387,7 +402,10 @@ if [ "$DO_OSQP" = "1" ]; then
     for d in $(psopt_libdirs "$PREFIX"); do
         [ -f "$d/libosqpstatic.a" ] && OSQP_LIB="$d/libosqpstatic.a" && break
     done
-    [ -n "$OSQP_LIB" ] || die "libosqpstatic.a was not installed under any of $(psopt_libdirs "$PREFIX" | tr '\n' ' '). PSOPT's plugin links osqp::osqpstatic."
+    if [ -z "$OSQP_LIB" ]; then
+        osqp_install_log
+        die "libosqpstatic.a was not installed under any of $(psopt_libdirs "$PREFIX" | tr '\n' ' '). PSOPT's plugin links osqp::osqpstatic."
+    fi
 
     # Both spellings. CMake writes <name>-config.cmake or <name>Config.cmake depending on
     # what the project asked install(EXPORT) for, and a package that changes its mind
@@ -398,15 +416,10 @@ if [ "$DO_OSQP" = "1" ]; then
         [ -n "$OSQP_CONFIG" ] && break
     done
     if [ -z "$OSQP_CONFIG" ]; then
-        # Say what IS there. This check failed on openSUSE with the library installed and
-        # the headers installed, which means the install ran and put this one file
-        # somewhere unexpected or not at all -- and the install output is discarded just
-        # above, so the message on its own sends the reader nowhere.
-        info "what the install actually left under $PREFIX:"
-        find "$PREFIX" -name '*osqp*' 2>/dev/null | sed 's/^/        /' || true
+        osqp_install_log
         die "neither osqp-config.cmake nor osqpConfig.cmake was installed under $PREFIX;
-    PSOPT's find_package(osqp) will not see it. The listing above is everything the
-    install left behind with osqp in its name."
+    PSOPT's find_package(osqp) will not see it. The install output and the directory
+    listing above are what actually happened."
     fi
     info "header          $OSQP_HEADER"
     info "library         $OSQP_LIB"

@@ -175,16 +175,17 @@ LoadedPlugin& open_plugin(const std::string& backend)
 
     if (p.handle == NULL) {
         if (!existed_but_failed.empty()) {
-            p.error = "the QP backend plugin " + file + " is present but could not be "
-                      "loaded (" + existed_but_failed + "). A plugin that links a SHARED "
-                      "backend library -- GALAHAD is the one that does -- needs that "
-                      "library on the loader's path: set LD_LIBRARY_PATH to the "
-                      "directory holding it, or source the env file the backend's build "
-                      "script wrote.";
+            p.error = "could not load the QP backend plugin " + file
+                    + ", which is present but will not open (" + existed_but_failed
+                    + "). The parenthesis is the loader's own words and is the thing to "
+                      "read: a missing shared library means the backend is not on the "
+                      "loader's path, and an executable-stack refusal means the backend "
+                      "was built asking for one, which glibc no longer grants at dlopen "
+                      "and which the backend has to be rebuilt without.";
         }
         else {
-            p.error = "could not find the QP backend plugin " + file + ". Looked in: "
-                    + looked_in
+            p.error = "could not load the QP backend plugin " + file
+                    + ", which was not found. Looked in: " + looked_in
                     + ". Set PSOPT_QP_PLUGIN_PATH to the directory containing it, or "
                       "build PSOPT with that backend enabled.";
         }

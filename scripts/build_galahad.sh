@@ -382,6 +382,31 @@ MESON_OPTS=(
 )
 if [ "$WITH_TESTS" = "1" ]; then MESON_OPTS+=("-Dtests=true"); else MESON_OPTS+=("-Dtests=false"); fi
 
+# Do not ask for an executable stack.
+#
+# Built without this, libgalahad_double.so comes out marked as requiring one, and on any
+# system with glibc 2.41 or newer dlopen refuses it outright:
+#
+#   libgalahad_double.so: cannot enable executable stack as shared object requires:
+#   Invalid argument
+#
+# which is what PSOPT's GALAHAD plugin met on Debian 13, Fedora 44, Arch, Manjaro and
+# Ubuntu 26.04, while the same build worked on Ubuntu 24.04 and its older glibc. Making
+# the stack executable at dlopen time was always a security hole and glibc has closed it,
+# so this is not a distribution quirk to wait out: every distribution arrives here.
+#
+# The marking is usually inherited from one object that carries no .note.GNU-stack rather
+# than from anything that needs the stack executable, and -z noexecstack settles it for
+# the whole library. If some part of GALAHAD genuinely needs trampolines on the stack it
+# will fault at run time instead, loudly, and the tests are what would catch that.
+#
+# Linux only: Apple's linker has no -z and would reject the flag.
+if [ "$OS" != "Darwin" ]; then
+    MESON_OPTS+=("-Dc_link_args=-Wl,-z,noexecstack"
+                 "-Dcpp_link_args=-Wl,-z,noexecstack"
+                 "-Dfortran_link_args=-Wl,-z,noexecstack")
+fi
+
 if [ "$USE_OPENBLAS" = "1" ]; then
     MESON_OPTS+=("-Dlibblas=openblas" "-Dliblapack=openblas")
     # MacPorts and Homebrew are not on meson's default library search path.
