@@ -124,322 +124,76 @@ Please consult the [PSOPT User Manual (in PDF format)](https://github.com/PSOPT/
 
 There is also a [PSOPT Application Examples Document (in PDF format)](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Application_Examples_Document_RR.pdf), which contains several application examples in various engineering/scientific domains, including their C++ code and results. 
 
-Installation instructions are given below.
+Installation instructions are in [doc/install/](doc/install/), one page per platform.
 
 
 Installing PSOPT
 ----------------
 
-Please consult the [PSOPT User Manual](https://github.com/PSOPT/psopt/blob/master/doc/PSOPT_Manual_RR.pdf) for further details on the software functionality and how to use it. 
+**The instructions for your platform are in [doc/install/](doc/install/).**
 
-PSOPT relies on three main software packages to perform a number of tasks: IPOPT, CppAD and EIGEN3. Some of these packages have their own dependencies.
+| platform | page |
+|---|---|
+| Ubuntu 26.04 LTS, Ubuntu 24.04 LTS | [doc/install/ubuntu.md](doc/install/ubuntu.md) |
+| Debian 13 | [doc/install/debian.md](doc/install/debian.md) |
+| Fedora 44 | [doc/install/fedora.md](doc/install/fedora.md) |
+| openSUSE Leap 16.0, Tumbleweed | [doc/install/opensuse.md](doc/install/opensuse.md) |
+| Arch Linux, Manjaro | [doc/install/arch.md](doc/install/arch.md) |
+| macOS (Apple Silicon and Intel) | [doc/install/macos.md](doc/install/macos.md) |
 
+Each Linux page has an executable counterpart in `containers/`: a Dockerfile
+that installs the same packages and then builds PSOPT, runs the tests, installs
+it and builds a separate program against the installed package. Those images run
+every week on GitHub's runners, so the package lists on those pages are the ones
+that were last known to work rather than the ones somebody once typed. There is
+no container for macOS, so that page alone is maintained by hand.
 
+[doc/install/README.md](doc/install/README.md) collects what is common to all of
+them: what the three dependencies are and why, and what to do when the configure
+step cannot find one.
 
-**IPOPT**
+**What PSOPT needs.** IPOPT, the interior-point nonlinear programming solver it
+uses by default; Eigen, for linear algebra; and CppAD, for automatic
+differentiation. GNUplot is optional and affects only the plotting helpers.
+Ubuntu, Debian and Fedora package IPOPT; openSUSE and Arch do not, so it is
+built from source there, which their pages describe. Boost and ColPack were
+dependencies of older releases and are no longer needed by any build.
 
-IPOPT is an open-source C++ package for large-scale nonlinear optimization, which uses an interior point method. It is the default nonlinear programming algorithm used by PSOPT. IPOPT can be easily installed using a package manager in some, but not all, Linux distributions.
+PSOPT builds with CMake 3.12 or later and finds IPOPT through `pkg-config`. It
+has been built and tested against IPOPT releases from 3.11.9 to 3.14.19, and
+against both Eigen 3.4 and Eigen 5.0.
 
-​	•	IPOPT repository:
-
-​	https://github.com/coin-or/Ipopt
-
-​	•	Version 3.12.12 is tested, but other versions may work.
-
-​	https://www.coin-or.org/download/source/Ipopt/
-
-​	•	Installation guide:
-
-​	https://coin-or.github.io/Ipopt/INSTALL.html
-
-
-
-**EIGEN3**
-
-[Eigen](http://eigen.tuxfamily.org/) is a lightweight, powerful linear algebra package for C++. Eigen is available on most major Linux distributions.
-
-
-
-If necessary, Eigen can also be installed using CMake:
-
-```
-wget --continue https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.gz
-tar zxvf eigen-3.3.7.tar.gz
-cd eigen-3.3.7
-mkdir build
-cd build
-cmake ..
-sudo make install
-```
-
-
-
-The following optional libraries can be employed for additional functionality.
-
-**GNUplot**
-
-
-
-[GNUplot](http://www.gnuplot.info) is a portable, interactive data and function plotting utility. GNU plot is available on most Linux distributions. PSOPT includes a number of functions that allow to easily plot results using GNUplot.
-
-
-
-**Building PSOPT**
-
-
-
-PSOPT relies on [CMake](https://cmake.org/download/)  and '[pkg-config](https://en.wikipedia.org/wiki/Pkg-config)' for configuring builds, and on 'make' for managing compilation and linking.
-
-CMake is an open-source tool for managing software builds. PSOPT requires CMake 3.12 or later. 
-
-pkg-config is a helper tool used to provide the necessary details for compiling and linking a program to a library. It ensures that PSOPT’s dependencies are found correctly. pkg-config is available on most major Linux distributions. In particular, the build process expects to see pkg-config configuration files for IPOPT, ColPack and CppAD. These configuration files are usually installed under /usr/local/lib/pkgconfig or /usr/lib/pkgconfig. If these configuration files are not created during the build process for the above libraries, they can be created manually and be placed at the correct folder. If the pkg-config configuration files are being created manually, the contents of these files on the authors' computer are provided below as examples. Please note that the paths that are given in these files depend on the actual location where the different libraries have been installed.
-
-For IPOPT (filename: ipopt.pc):
-
-	prefix=/usr/local
-	exec_prefix=${prefix}
-	libdir=${exec_prefix}/lib
-	includedir=${prefix}/include/coin-or
-	Name: IPOPT
-	Description: Interior Point Optimizer
-	URL: https://github.com/coin-or/Ipopt
-	Version: 3.13.2
-	Cflags: -I${includedir}
-	Libs: -L${libdir} -lipopt
-	Requires.private: coinhsl coinmumps 
-
-
-	
-For EIGEN3 (filename: eigen3.pc):
+**Building it**, once the dependencies are in place, is the same everywhere:
 
 ```
-prefix=/usr/local
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-
-Name: Eigen3
-Version: 3.3.77
-Description: Numerical linear algebra library for C++
-Requires: 
-Libs:  -Wl,-rpath,${libdir} -L$${libdir}  
-Cflags: -I${includedir} -std=c++11
-```
-
-**Tested Platforms**
-
-PSOPT has been successfully compiled on:
-
-​	•	Ubuntu Linux 24.04 LTS
-
-​	•	OpenSUSE Linux 15.5 Leap and Tumbleweed
-
-​	•	Arch Linux (latest versions as of 2025)
-
-​	•	Manjaro Linux  (latest versions as of 2025)
-
-​	•	MacOS Tahoe version 26.4.1 (MacPorts on Intel CPU)
-
-
-
-**Installing Dependencies**
-
-
-
-For **Ubuntu 24.04**:
-
-```
-sudo apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
-  coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev libcppad-dev
-```
-
-
-For **Debian 12.9.0**:
-
-```
-su
-apt-get install git cmake gfortran g++ libboost-dev libboost-system-dev \
-  coinor-libipopt-dev gnuplot libeigen3-dev libblas-dev liblapack-dev libcppad-dev
-```
-
-
-For **OpenSUSE Leap 15.5 and Tumbleweed**:
-
-```
-sudo zypper install git gnuplot libboost_system1_66_0-devel eigen3-devel \
-  blas-devel lapack-devel Ipopt-devel cmake gcc-c++
-
-git clone https://github.com/coin-or/CppAD.git cppad.git
-cd cppad.git
-mkdir build && cd build
-cmake -D cppad_prefix=/usr/local ..
-make
-sudo make install
-```
-That installs CppAD headers to /usr/local/include/cppad/ and the library to /usr/local/lib/, both of which PSOPT's CMake finds on the default search path — no extra flags needed.
-If you install CppAD to a non-standard prefix, point PSOPT at it when configuring, e.g.:
-```
-export CPPAD_DIR=/your/prefix      # or: cmake -DCPPAD_INCLUDE_DIR=... -DCPPAD_LIBRARY=...
-```
-
-
-For **Arch Linux / Manjaro**:
-
-```
-sudo pacman -Syu
-sudo pacman -S git base-devel cmake gnuplot eigen boost blas lapack yay
-yay -S coin-or-ipopt colpack cppad
-```
-
-
-
-The use of the tool **yay** requires AUR support to be enabled on the package manager. On ARM64, it may be necessary to install [Anaconda]([https://www.anaconda.com/download), which provides gklib and IPOPT, as the installation script for IPOPT provided by AUR currently fails to build using yay.
-
-
-
-For **MacOS**
-
-PSOPT can be built on macOS using [MacPorts](https://www.macports.org/install.php) for most
-of its dependencies. **Do not** install IPOPT from MacPorts, however: on Apple Silicon
-(M1/M2/M3/M4) the MacPorts `ipopt` package is built against a *parallel* (MPICH) build of
-MUMPS that calls `MPI_Init` at library-load time and crashes when an example is run directly.
-Instead, build IPOPT and MUMPS yourself, as a *sequential* solver, with the steps below. This
-procedure has been used successfully on Apple Silicon (M2 Max, M4 Pro) and on Intel Macs.
-
-*1. Install MacPorts*
-
-Download and install MacPorts from https://www.macports.org/install.php
-
-*2. Install the dependencies (via MacPorts)*
-
-```
-sudo port install cmake
-sudo port install eigen3
-sudo port install git
-sudo port install gnuplot
-sudo port install pkgconfig
-sudo port install gcc15        # provides gfortran (/opt/local/bin/gfortran-mp-15)
-```
-
-Notes:
-- The MacPorts `ipopt` port is deliberately **omitted** — it is built in step 3 instead.
-- `gcc15` is needed only for its Fortran compiler, `gfortran`, which is required to compile
-  MUMPS. It installs as `/opt/local/bin/gfortran-mp-15`. If you install a different GCC
-  version, adjust the `-mp-NN` suffix accordingly in step 3.
-
-
-_3. Build IPOPT + MUMPS (sequential) with coinbrew_
-
-```
-git clone https://github.com/coin-or/coinbrew ~/coinbrew
-cd ~/coinbrew
-./coinbrew fetch Ipopt --no-prompt
-
-export CC=/usr/bin/clang
-export CXX=/usr/bin/clang++
-export FC=/opt/local/bin/gfortran-mp-15
-
-./coinbrew build Ipopt --prefix=$HOME/coin/dist --no-prompt \
-      ADD_FFLAGS=-fallow-argument-mismatch
-```
-
-_4. Build CppAD_
-
-```
-git clone https://github.com/coin-or/CppAD.git cppad.git
-cd cppad.git
-mkdir build && cd build
-cmake -D cppad_prefix=/usr/local ..
-make
-sudo make install
-```
-That installs headers to /usr/local/include/cppad/ and the library to /usr/local/lib/, both of which PSOPT's CMake finds on the default search path — no extra flags needed.
-
-If you install CppAD to a non-standard prefix, point PSOPT at it when configuring, e.g.:
-```
-export CPPAD_DIR=/your/prefix      # or: cmake -DCPPAD_INCLUDE_DIR=... -DCPPAD_LIBRARY=...
-```
-
-Why these settings matter:
-- **`CC`/`CXX` = Apple clang** make IPOPT use the `libc++` C++ standard library, matching PSOPT
-  and the MacPorts libraries. Building IPOPT with the MacPorts `g++` instead links `libstdc++`,
-  whose `std::string` is binary-incompatible with `libc++` and causes a segmentation fault as
-  soon as PSOPT passes options to IPOPT.
-- **`FC` = gfortran** compiles MUMPS; `ADD_FFLAGS=-fallow-argument-mismatch` lets recent gfortran
-  accept MUMPS's legacy Fortran.
-- coinbrew builds MUMPS with its **sequential MPI stub**, so there is no MPICH and no load-time
-  `MPI_Init` — the root cause of the MacPorts crash.
-- Apple's **Accelerate** framework is detected automatically and used as a fast BLAS/LAPACK
-  (excellent on Apple Silicon); no extra flag is needed.
-
-If the build stops at the IPOPT **Java** unit test (this is harmless — it only fails when your
-system `java` is an Intel/x86_64 JVM that cannot load the arm64 library), finish the install
-manually:
-
-```
-cd ~/coinbrew/build/Ipopt/*/ && make install
-```
-
-_4. Verify the build_
-
-```
-otool -L ~/coin/dist/lib/libipopt.3.dylib | grep -iE 'mpi|c\+\+|stdc'
-```
-
-You should see `/usr/lib/libc++.1.dylib` and **no** `libmpi`, `libpmpi`, or `libstdc++`. That
-confirms IPOPT is sequential (no MPI) and on the correct C++ standard library.
-
-_5. Build PSOPT against your IPOPT_
-
-```
-export PKG_CONFIG_PATH=$HOME/coin/dist/lib/pkgconfig:$PKG_CONFIG_PATH
-
-cd /path/to/psopt
-rm -rf build
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON \
-      -DCMAKE_PREFIX_PATH=$HOME/coin/dist \
-      -DCMAKE_BUILD_RPATH=$HOME/coin/dist/lib \
-      -DCMAKE_INSTALL_RPATH=$HOME/coin/dist/lib
+git clone https://github.com/PSOPT/psopt.git
+cd psopt
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON
 cmake --build build -j
+sudo cmake --install build
 ```
 
-Add the `PKG_CONFIG_PATH` line to your `~/.zshrc` so that future reconfigures continue to find
-this IPOPT (and place `~/coin/dist/lib/pkgconfig` *before* `/opt/local/lib/pkgconfig`).
-
-_6. Run an example_
+Add `-DCMAKE_BUILD_TYPE=Debug` for a debug build, or `-DHEADLESS=ON` on a
+machine with no display. Then run an example, which is the check that matters:
 
 ```
 cd build/examples/launch && ./launch
 ```
 
+Configuring with `-DBUILD_TESTS=ON` also builds the unit tests, which are run
+with `ctest --test-dir build --output-on-failure`. They check costates against
+closed-form adjoints, stationarity residuals, the constancy of the Hamiltonian
+and much else, and are the strongest evidence that a build is sound.
 
-**Building and Installing PSOPT**
-
-Once all dependencies are installed, PSOPT can be downloaded from GitHub, and built using CMake using the following commands.
-
-```
-git clone --tags https://github.com/PSOPT/psopt.git
-cd psopt
-mkdir build
-cd build
-cmake -DBUILD_EXAMPLES=ON ..
-make
-sudo make install
-```
-
-For debugging:
-
-```
-cmake -DBUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Debug ..
-```
-
-After installation, run at least one example to check that the build is working correctly:
-
-```
-cd build/examples/launch
-./launch
-```
-
+**Tested platforms.** Eight images are built and tested weekly, and on every
+push: Ubuntu 26.04 LTS, Ubuntu 24.04 LTS, Debian 13, Fedora 44, openSUSE Leap
+16.0, openSUSE Tumbleweed, Arch Linux and Manjaro. Each builds PSOPT with that
+distribution's own compiler and libraries, runs the full unit test suite,
+installs the library, builds a separate project against the installed package,
+and runs three examples whose reference answers come from outside PSOPT
+altogether. macOS is tested by hand on Apple Silicon and Intel. What those jobs
+do, and what they deliberately do not check, is in
+[containers/README.md](containers/README.md).
 
 Building PSOPT's own SQP solver
 ----------------
@@ -513,9 +267,10 @@ no longer a dependency of anything.
 | MUMPS | the SQP reads the inertia of the KKT matrix from MUMPS, which IPOPT already links as its default linear solver -- so this is almost always a matter of pointing at what you have, not installing anything | `MUMPS_DIR`, `CMAKE_PREFIX_PATH`, pkg-config's IPOPT dirs; `MUMPS_LIBRARY` to name the library directly |
 | GALAHAD | the sparse QP backend | `GALAHAD_DIR` |
 
-If you built IPOPT and MUMPS yourself with coinbrew, as the macOS instructions above
-describe, MUMPS is already in your `~/coin/dist` prefix and the `CMAKE_PREFIX_PATH` those
-instructions set is enough to find both the header and the library. Nothing further to do.
+If you built IPOPT and MUMPS yourself with coinbrew, as the [macOS](doc/install/macos.md),
+[openSUSE](doc/install/opensuse.md) and [Arch](doc/install/arch.md) pages describe, MUMPS is
+already in your `~/coin/dist` prefix and the `CMAKE_PREFIX_PATH` those pages set is enough to
+find both the header and the library. Nothing further to do.
 
 Both halves are needed and they are found separately. On Debian and Ubuntu
 `pkg-config --libs ipopt` lists `-ldmumps_seq` itself, so the library resolves whether or
@@ -619,7 +374,7 @@ The following are opportunities provided by the use of docker containers with PS
 
 -**Reproducible Environments:** A Docker container ensures PSOPT is run with the same OS libraries, compiler, and dependencies, eliminating configuration mismatches, regardless of the host OS.
 
--**Easier Setup:** Users avoid manually installing IPOPT, COLPACK, EIGEN3, and other dependencies. A single docker build command spins up a ready-to-run PSOPT environment.
+-**Easier Setup:** Users avoid manually installing IPOPT, EIGEN3, CppAD and other dependencies. A single docker build command spins up a ready-to-run PSOPT environment.
 
 -**Continuous Integration (CI) Testing:** Automated pipelines (e.g. GitHub Actions) can pull and test PSOPT in a Docker image, allowing fast and consistent builds.
 
