@@ -1,29 +1,41 @@
 # Red Hat Enterprise Linux 10, through the Universal Base Image.
 #
-# This is the hardest image in the matrix and the one whose result needs the
-# most careful reading.  redhat/ubi10 is the freely redistributable RHEL 10
-# base, and it is RHEL: the same glibc, the same compilers, the same runtime a
-# user on a supported RHEL subscription has.  What it does NOT have is the same
-# set of repositories.  The UBI repositories are deliberately narrow, so
-# packages an ordinary RHEL installation reaches through CodeReady Builder,
-# and everything from EPEL, are not there until they are enabled.
+# NOT IN THE MATRIX, and kept anyway.
 #
-# Two consequences follow, and both are wanted rather than tolerated:
+# .github/workflows/distros.yml does not build this image.  It was in the matrix
+# for the first run and it was the only job that did not pass, and chasing it
+# further was judged not to be worth the effort it was taking.  The file stays
+# because it is a working starting point for anyone who needs PSOPT on RHEL and
+# because throwing it away would discard what writing it established.  It is not
+# a supported target and nothing checks it.  By hand, from the top of the
+# repository:
 #
-#   - the CodeReady Builder and EPEL steps below are allowed to fail.  If they
-#     succeed, BLAS, LAPACK and Eigen come from packages and this is a test of
-#     PSOPT against RHEL's own libraries.  If they do not, the ensure_ scripts
-#     build Eigen and IPOPT from source and this is a test of PSOPT against a
-#     bare RHEL, which is what a user inside an air-gapped or subscription
-#     limited estate actually has.  Either way the log says which happened.
+#     docker build --progress=plain -f containers/rhel-10.Dockerfile .
 #
-#   - a green job here does not prove that a subscribed RHEL 10 installation
-#     behaves identically, only that nothing in PSOPT depends on what the wider
-#     repository set adds.  That is the honest claim and it is the one to make.
+# containers/README.md says more about why it is out.
+#
+# What makes this image hard is worth recording for whoever picks it up.
+# redhat/ubi10 really is RHEL 10: the same glibc, the same compilers, the same
+# runtime a user on a supported subscription has.  What it does not have is the
+# same set of REPOSITORIES.  The UBI repositories are deliberately narrow, so
+# packages an ordinary RHEL installation reaches through CodeReady Builder, and
+# everything from EPEL, are absent until they are enabled, and enabling them
+# from inside a container is the part that does not reliably work.
+#
+# Hence the shape below.  The CodeReady Builder and EPEL steps are allowed to
+# fail: where they succeed, BLAS, LAPACK and Eigen come from packages and this
+# tests PSOPT against RHEL's own libraries; where they do not, the ensure_
+# scripts build what is missing from source and this tests PSOPT against a bare
+# RHEL, which is what a user inside an air-gapped or subscription-limited estate
+# actually has.  The log says which happened.
+#
+# And the claim to make if it ever does pass: nothing in PSOPT depends on what
+# the wider repository set adds.  Not that a subscribed RHEL 10 behaves
+# identically, which this cannot show.
 #
 # Only the dependency stanza belongs in this file.  The build, the tests, the
-# install and the consumer check are containers/common/build_and_test.sh and
-# are identical on every distribution in this matrix.
+# install and the consumer check are containers/common/build_and_test.sh and are
+# identical on every distribution that uses them.
 FROM redhat/ubi10
 
 # The part that must work.  If this fails there is no point continuing: there

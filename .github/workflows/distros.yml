@@ -69,8 +69,9 @@ jobs:
             dockerfile: containers/debian-13.Dockerfile
           - name: Fedora 44
             dockerfile: containers/fedora-44.Dockerfile
-          - name: RHEL 10 (UBI)
-            dockerfile: containers/rhel-10.Dockerfile
+          # RHEL 10 is deliberately absent.  containers/rhel-10.Dockerfile is
+          # still here and can be built by hand; the reasons it is not in the
+          # matrix are in containers/README.md.
           - name: openSUSE Leap 16.0
             dockerfile: containers/opensuse-leap-16.Dockerfile
           - name: openSUSE Tumbleweed

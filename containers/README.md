@@ -75,7 +75,7 @@ CppAD is built from source on every distribution, without exception. PSOPT
 links both the CppAD headers and the compiled `libcppad_lib`, and a package
 that ships only the headers satisfies the compiler and then fails at link time.
 Building it identically everywhere also keeps this a test of PSOPT's
-portability and not a test of nine distributions' CppAD packaging.
+portability and not a test of eight distributions' CppAD packaging.
 
 Google Test is downloaded by `tests/CMakeLists.txt` when the distribution does
 not provide it, so no image installs it and `ctest` runs the same tests
@@ -89,19 +89,29 @@ everywhere.
 | `ubuntu-24.04.Dockerfile` | `ubuntu:24.04` | previous LTS, still supported; the older toolchain is where a use of something later than C++17 shows up |
 | `debian-13.Dockerfile` | `debian:13` | Debian's IPOPT is usually a different version from Ubuntu's, which is the point of having both |
 | `fedora-44.Dockerfile` | `fedora:44` | newest GCC in the Red Hat family; IPOPT packaged as `coin-or-Ipopt-devel` |
-| `rhel-10.Dockerfile` | `redhat/ubi10` | see the caveat below |
 | `opensuse-leap-16.Dockerfile` | `opensuse/leap:16.0` | same sources as SUSE Linux Enterprise; conservative package set |
 | `opensuse-tumbleweed.Dockerfile` | `opensuse/tumbleweed` | rolling; an early warning about dependencies that will reach the LTS distributions later |
 | `arch.Dockerfile` | `archlinux:latest` | the distribution the published `psopt-ci` image is built on |
 | `manjaro.Dockerfile` | `manjarolinux/base:latest` | Arch with updates held back a few weeks; when Arch fails and Manjaro passes, the cause changed in the last fortnight |
 
-**The RHEL caveat.** `redhat/ubi10` is RHEL 10: the same glibc, compilers and
-runtime. What it is not is the same set of *repositories*. The UBI repository
-set is deliberately narrow, so CodeReady Builder and EPEL have to be enabled and
-may not be reachable. That Dockerfile therefore allows those steps to fail and
-lets the `ensure_` scripts build what is missing. A green job here says nothing
-in PSOPT depends on what the wider repository set adds; it does not prove that a
-subscribed RHEL 10 installation behaves identically.
+**RHEL 10 is not in the matrix**, and `containers/rhel-10.Dockerfile` is kept
+all the same. It was in the first run and it was the only job that did not pass;
+it is out because the effort of chasing it further was not matched by what it
+would establish, and not because PSOPT is known to have a problem on RHEL.
+
+The difficulty is not RHEL, it is the image. `redhat/ubi10` really is RHEL 10,
+with the same glibc, compilers and runtime, but it does not have the same set of
+*repositories*: the UBI set is deliberately narrow, so CodeReady Builder and EPEL
+have to be enabled from inside the container and that is the part that does not
+reliably work. The Dockerfile is written to tolerate their absence and let the
+`ensure_` scripts build what is missing, which is a fair test of PSOPT against a
+bare RHEL, and a useful one for anyone inside an air-gapped or
+subscription-limited estate. It can be built by hand, and the file says how.
+
+Worth keeping straight if it is ever revived: a green job there would say that
+nothing in PSOPT depends on what the wider repository set adds. It would not say
+that a subscribed RHEL 10 installation behaves identically, which this image
+cannot show either way.
 
 **IPOPT on Arch and Manjaro** is built from source here, although `coin-or-ipopt`
 is in the AUR and the published CI image uses it. An AUR build needs an
@@ -140,11 +150,35 @@ distribution inside the shared script means either that the difference belongs
 in the Dockerfile, or that PSOPT has a portability defect that should be fixed
 in PSOPT.
 
-## What the first local run found
+## What the first runs established
 
-The nine images were tried on a Mac Studio before any of this reached GitHub,
-in the dependency-only mode described at the end of this file. Two things came
-out of it that are worth keeping.
+The images were tried on a Mac Studio first, natively on arm64 except the two
+Arch-family ones which were run under x86_64 emulation, and then on GitHub's
+x86_64 runners. **Eight of the nine passed on GitHub; RHEL 10 was the exception
+and is no longer in the matrix.** Four also passed a full local build on arm64,
+which is the only evidence there is that PSOPT works on aarch64 Linux at all.
+
+The versions those four reported are the argument for everything in the section
+on what is checked:
+
+| distribution | IPOPT | Eigen |
+|---|---|---|
+| Ubuntu 26.04 | 3.14.19, packaged | 3.4.0, packaged |
+| Ubuntu 24.04 | 3.11.9, packaged | 3.4.0, packaged |
+| Debian 13 | 3.14.17, packaged | 3.4.0, packaged |
+| Fedora 44 | 3.14.16, packaged | 5.0.1, packaged |
+
+Eleven years of IPOPT releases, and all three externally-fixed examples matched
+their references in every one. A matrix comparing costs against values an
+earlier PSOPT run produced would have been reporting those version differences
+as regressions.
+
+**PSOPT builds and passes against Eigen 5.** Fedora 44 ships 5.0.1, as do Arch
+and Manjaro, where every other distribution here is on 3.4.x. This was the open
+question when the Arch probe first reported it, and the answer is that it makes
+no difference.
+
+Two things the runs found that needed fixing or recording:
 
 **pacman 7 will not download inside a container build unless its sandbox is
 turned off.** Arch failed at the first `pacman -Syu` with `error restricting
@@ -152,43 +186,30 @@ syscalls via seccomp: 22`, followed by `switching to sandbox user 'alpm'
 failed`. pacman 7 fetches packages as an unprivileged user behind a seccomp and
 landlock filter, 22 is EINVAL, and the container could not install the filter at
 all. Both Arch-family Dockerfiles now set `DisableSandbox` in the `[options]`
-section of `pacman.conf` before anything else. Manjaro did not hit this, because
-its base image starts with an older pacman and upgrades to 7 part-way through
-the transaction, which is a good illustration of why both images are in the
-matrix.
+section of `pacman.conf` before anything else. Manjaro did not hit it, because
+its base image starts on an older pacman and upgrades to 7 part-way through the
+same transaction. Below the `FROM` line those two Dockerfiles are byte for byte
+identical, so one passing and the other failing was itself the diagnosis: the
+package names had to be fine and the difference had to be the base image or
+pacman. That is the argument for carrying both images, arriving sooner than
+expected.
 
-**Arch and Manjaro ship Eigen 5.** The Manjaro image reported `eigen3 5.0.1`,
-with `Eigen3Config.cmake` present, where every other distribution here is on
-3.4.x and PSOPT has only ever been built against 3.4. `ensure_eigen.sh` will not
-intervene, since `find_package(Eigen3)` succeeds. So the first full build on
-either of those two images is also the first time PSOPT has met Eigen 5, and a
-compile failure there is a real finding about PSOPT and not about the
-distribution.
+**A full local run wants more disk than a Mac usually has spare.** Seven full
+builds in one pass exhausted the Docker Desktop virtual disk, and an out-of-space
+write left the containerd content store inconsistent, which then looked like an
+unrelated I/O error. Build one image at a time with
+`docker image prune -af && docker builder prune -af` between them. Note also
+that deleting Docker's disk image while Docker Desktop is still running frees
+nothing, because the process holds the descriptor open.
 
 ## How far the package names have been checked
 
-None of these images has been built yet, because no Docker daemon was available
-where they were written. The package names are at different levels of
-confidence and it is worth being exact about which is which.
+Every name in every image has resolved, on two architectures and two machines.
+That question is closed for now.
 
-Every name in every image has now resolved at least once. The seven images that
-build natively on an arm64 Mac were checked there, and the two Arch-family
-images were checked under x86_64 emulation, where Manjaro installed the whole
-list and Arch reached the same list once the pacman sandbox was turned off.
-
-That is a real result but it is not the same as the workflow passing. It was
-measured on one machine, on one day, with two of the nine emulated, and a rolling
-distribution can rename a package next week. The Red Hat UBI repository
-identifiers remain the least certain thing in the set, since `rhel-10` is written
-so that CodeReady Builder and EPEL may fail without failing the build.
-
-So if a job in the first GitHub run dies inside `dnf install` or `pacman -S`,
-that is still a statement about package names and not about PSOPT. Fix the name
-and run it again. Only once a job has reached the configure step does what it
-reports become a statement about the software.
-
-One result is already worth noting in advance. Ubuntu 24.04 packages IPOPT
-3.11.9, released in 2014, while Fedora 44 packages 3.14.16 and the source build
-here uses 3.14.19. That eight-year spread across distributions is not a defect
-in any of them and it is the main reason this matrix reports which IPOPT each
-job used before it reports anything else.
+It is worth remembering what it is not. These are eight distributions on one
+day, three of them rolling releases that can rename a package next week, which
+is what the weekly schedule is for. If a job dies inside `apt-get`, `dnf`,
+`zypper` or `pacman`, that remains a statement about package names and not about
+PSOPT: fix the name and run it again. Only once a job has reached the configure
+step does what it reports become a statement about the software.
