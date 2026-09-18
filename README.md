@@ -246,107 +246,8 @@ SQP iterations. Between them the two solve every example any backend solves. Cla
 ProxQP, QPALM and OSQP are also supported, and solve nothing those two do not.
 
 
-*What you need beyond a working PSOPT build*
+Instructions to install dependencies and build PSOPT with its own sparse SQP solver can be found at [doc/install/sqp.md](doc/install/sqp.md).
 
-| dependency | why | where CMake looks |
-|---|---|---|
-| MUMPS | the SQP reads the inertia of the KKT matrix from MUMPS, which IPOPT already links as its default linear solver -- so this is almost always a matter of pointing at what you have, not installing anything | `MUMPS_DIR`, `CMAKE_PREFIX_PATH`, pkg-config's IPOPT dirs; `MUMPS_LIBRARY` to name the library directly |
-| GALAHAD | the sparse QP backend | `GALAHAD_DIR` |
-
-If you built IPOPT and MUMPS yourself with coinbrew, as the [macOS](doc/install/macos.md),
-[openSUSE](doc/install/opensuse.md) and [Arch](doc/install/arch.md) pages describe, MUMPS is
-already in your `~/coin/dist` prefix and the `CMAKE_PREFIX_PATH` those pages set is enough to
-find both the header and the library. Nothing further to do.
-
-Both halves are needed and they are found separately. On Debian and Ubuntu
-`pkg-config --libs ipopt` lists `-ldmumps_seq` itself, so the library resolves whether or
-not CMake looks for it; a coinbrew IPOPT records the dependency inside `libipopt` instead,
-and macOS will not resolve a symbol through an indirect dylib. If a link fails with an
-undefined `dmumps_c`, point `MUMPS_LIBRARY` at the library holding it -- `libcoinmumps`
-for a coinbrew build.
-
-*GALAHAD*
-
-`scripts/build_galahad.sh` does the whole of this: it installs the build tools, clones
-GALAHAD, configures it with the options PSOPT needs, builds and installs it, and writes
-an environment file to source.
-
-```
-./scripts/build_galahad.sh                        # installs under ~/galahad-install
-./scripts/build_galahad.sh --prefix /opt/galahad --sudo
-./scripts/build_galahad.sh --help
-```
-
-It works on macOS with either MacPorts or Homebrew, and on Debian/Ubuntu, Fedora and
-Arch. On MacPorts it also runs `port select` so that a plain `gfortran` exists, since
-MacPorts installs the compiler as `gfortran-mp-14` and meson looks for the plain name.
-
-If you would rather do it by hand, follow the instructions at
-https://github.com/ralna/GALAHAD; the options that matter are `-Dopenmp=true` (QPA's
-linear solver needs OpenMP cancellation) and `-Dciface=true` (PSOPT includes
-`galahad_qpa.h`). GALAHAD is a Fortran package, so it needs `gfortran` (MacPorts:
-`sudo port install gcc14`). PSOPT links the Fortran runtime by asking CMake's Fortran
-compiler for its own implicit link line, so a MacPorts or Homebrew gcc in a versioned
-directory is found without help.
-
-GALAHAD's QPA uses OpenMP cancellation, which the OpenMP runtime reads **once**, when it
-initialises. It cannot be set from inside the process, so it has to be in the environment
-before the program starts:
-
-```
-export OMP_CANCELLATION=TRUE
-export OMP_PROC_BIND=TRUE
-```
-
-Without these the QP subproblems fail and the solver makes no progress. Put them in your
-shell profile.
-
-*Configuring*
-
-```
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=ON \
-      -DWITH_SQP=ON -DWITH_GALAHAD=ON \
-      -DGALAHAD_DIR=/path/to/galahad/prefix
-cmake --build build -j
-```
-
-Each backend is built as a separate loadable module under `build/qp_plugins` and opened at
-run time with `RTLD_LOCAL`. That is not tidiness: every one of these libraries carries its
-own AMD/COLAMD ordering code under the same C symbol names, and linked into one image they
-bind to each other's and corrupt the result. `include/psopt_qp_plugin.h` has the details.
-A CTest case, `qp_plugins_export_nothing_else`, checks that each module exports only the
-four ABI entry points and nothing more; run it with `ctest -R qp_plugins` after building
-with `-DBUILD_TESTS=ON`.
-
-*Running an example under a different solver without editing it*
-
-Comparing solvers across many examples means running one binary many ways, which
-otherwise means editing each example's source. Configuring with
-`-DPSOPT_ALLOW_ENV_OVERRIDES=ON` -- off by default -- lets the environment override
-`algorithm` settings instead:
-
-```
-PSOPT_NLP_METHOD=SQP PSOPT_HESSIAN=exact PSOPT_QP_SOLVER=GALAHAD ./brac1
-```
-
-`PSOPT_SQP_STRATEGY`, `PSOPT_QP_RESTORATION`, `PSOPT_ELASTIC_PENALTY` and
-`PSOPT_QP_ITER_MAX` work the same way. Every override is announced on stdout, naming the
-setting the source asked for and the one being used instead: a program that quietly
-disregards its own source is an unpleasant thing to debug, and worse than the convenience
-is worth. In a build without the option the variables are ignored entirely.
-
-*Using it*
-
-```cpp
-algorithm.nlp_method  = "SQP";
-algorithm.hessian     = "exact";       // sparse exact Hessian of the Lagrangian
-algorithm.derivatives = "automatic";   // required by "exact"
-```
-
-`qp_solver` defaults to `"GALAHAD"` and `sqp_strategy` to `"FM"`, so neither needs setting
-unless you want something else. The other options -- `qp_restoration`, `elastic_penalty`
-and `qp_iter_max` -- have defaults that are the measured best across the example set;
-`include/psopt.h` documents each of them and says what is known about when to change it.
 
 
 Running PSOPT within a Docker container
@@ -368,33 +269,9 @@ The following are opportunities provided by the use of docker containers with PS
 
 As it is not easy to get a docker to display graphical output (such as GNUplot plots), it is best to run PSOPT in headless mode (no graphical output) within the docker container, and visualise any graphical output from the host operating system (e.g. by opening any PDF files that PSOPT may have produced).
 
-The steps to create a docker container and run PSOPT on the container are as follows:
+The steps to create a docker container and run PSOPT on the container can be found at [doc/install/docker.md](doc/install/docker.md)
 
-1. Download [Dockerfile](https://github.com/PSOPT/psopt/blob/master/Dockerfile) from the PSOPT distribution, and place it in a folder. This Dockerfile uses [archlinux](https://hub.docker.com/_/archlinux/) as the base. This file clones the latest source code for PSOPT available from GitHub. If you have created your own version (for instance, to include your own examples or cases), you can modify the Dockerfile to copy your own source tree.
 
-2. In your terminal, cd to the same folder where the Dockerfile is. The command to build the docker container (including PSOPT) is as follows: 
-```
-docker build -t psopt-archlinux:latest .
-```
-The above command reuses a previous container with the same name, if it exists. If you want to rebuild the whole container use the following command:
-```
-docker build --no-cache -t psopt-archlinux:latest .
-```
-3. Issue the following command to run the docker container interactively:
-```
-docker run -it psopt-archlinux:latest 
-```
-This will land you in the main 'psopt' folder. From there cd to 'build/examples' to run particular examples, etc.
-
-4. Alternatively, you can use the following command to run the docker container interactively with a data connection to the host 
-
-```
-docker run -it --rm -v "$HOME/data:/data" psopt-archlinux:latest 
-```
-Here, the shared folder is "$HOME/data" as seen from the host, and "/data" as seen from the container.
-
-From within the container, cd to 'build/examples' to run particular examples, etc.
-Any output files must be manually copied to the folder /data from within the container. The copied files (e.g. PDFs or .txt files) appear within the corresponding directory of the host ($HOME/data). The host can send files to the container via the same folder.
 
 Getting help
 ------------
@@ -402,7 +279,7 @@ Getting help
 * **[PSOPT Documentation](https://github.com/PSOPT/psopt/blob/master/doc/)** with information about the functionality and use of the software, background theory, examples, and more.
  * **[Issue tracking system](https://github.com/PSOPT/psopt/issues/)**: If you believe you found a **bug** in the code, please use the issue tracking system.
    Please include as much information as possible, and if possible some example code so that we can reproduce the error.
- * **[Mailing list](http://groups.google.com/group/psopt-users-group)**: subscribe to receive notifications about updates and to post questions and comments about PSOPT.
+
 
 
 Please acknowledge this work
