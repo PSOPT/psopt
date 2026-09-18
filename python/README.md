@@ -88,8 +88,32 @@ Multiphase problems expose the same fields per phase on `MultiSolution`.
 Both carry the trajectory and, since the interface was brought level with the C++
 one, everything else the solve produced.
 
-**Did it work.** `sol.objective` comes back whatever happened, so it cannot answer
-this on its own:
+**Did it work.** Two different questions, and the interface answers them
+differently.
+
+A problem PSOPT *refuses* — an invalid option, a bad dimension, a guess of the
+wrong shape — raises `psopt.PSOPTError`, carrying PSOPT's own diagnostic and the
+Solution it came from:
+
+```python
+try:
+    sol = prob.solve(alg)
+except psopt.PSOPTError as e:
+    print(e)                  # e.g. algorithm.ms_integrator must be "RK4", ...
+    print(e.solution.status)  # the return codes; e.details has the full banner
+```
+
+This is the Python interface departing from PSOPT's own default on purpose.
+`algorithm.on_error` defaults to `"fail-soft"` here, where the C++ default is
+`"fail-fast"` and calls `exit()`. In C++ that is defensible; inside a Python
+process it terminates the interpreter — no traceback, nothing to catch, a dead
+kernel in a notebook — and with `print_level=0` it does so in silence. Passing
+`on_error="fail-fast"` restores PSOPT's own behaviour, `exit()` included.
+
+A solve that *runs* but does not converge is a result rather than an error: it
+returns normally and says so, so that a non-converged trajectory can still be
+looked at. `sol.objective` comes back whatever happened, so it cannot answer this
+on its own:
 
 ```python
 sol = prob.solve(alg)

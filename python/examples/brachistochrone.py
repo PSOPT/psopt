@@ -57,13 +57,13 @@ print("costates       : %s   (one row per state)" % (sol.costates.shape,))
 # or the cost, so their adjoint equations are lambda' = 0. That is a statement about
 # the problem, not about PSOPT, which makes it a fair check on the solver.
 lam = sol.costates
-print("lambda_x       : %+.6e ... %+.6e  (constant: x is absent from f and L)"
-      % (lam[0, 0], lam[0, -1]))
-print("lambda_y       : %+.6e ... %+.6e  (constant, likewise)" % (lam[1, 0], lam[1, -1]))
+print("lambda_x       : %+.6e ... %+.6e" % (lam[0, 0], lam[0, -1]))
+print("lambda_y       : %+.6e ... %+.6e" % (lam[1, 0], lam[1, -1]))
+print("                 both constant: neither x nor y appears in f or L")
 
 H = sol.duals.hamiltonian.ravel()
-print("Hamiltonian    : mean %+.6f, spread %.2e   (theory: identically -1)"
-      % (H.mean(), H.max() - H.min()))
+print("Hamiltonian    : mean %+.6f, spread %.2e" % (H.mean(), H.max() - H.min()))
+print("                 theory: identically -1")
 # The gate is 1e-3 rather than the NLP tolerance. The Hamiltonian is reconstructed
 # from the discrete adjoint on 40 nodes, so what it agrees with -1 to is set by the
 # discretisation, not by how tightly the NLP was solved. On this mesh it comes out
@@ -78,7 +78,7 @@ from scipy.optimize import brentq                                   # noqa: E402
 th = brentq(lambda s: (s - np.sin(s)) - (1.0 - np.cos(s)), 1.0, 2.0 * np.pi - 1.0e-9)
 a = 2.0 / (1.0 - np.cos(th))
 tf_exact = np.sqrt(a / 9.8) * th
-print("closed form    : tf = %.9g s  (cycloid through (0,0) and (2,2))" % tf_exact)
+print("closed form    : tf = %.9g s   (cycloid, (0,0) to (2,2))" % tf_exact)
 print("difference     : %.2e" % abs(sol.time[-1] - tf_exact))
 ok = ok and abs(sol.time[-1] - tf_exact) < 1.0e-6
 

@@ -51,7 +51,8 @@ def build(nodes):
     return prob
 
 
-print("Minimum-energy double integrator.  Exact optimum J* = 6, u*(t) = 6 - 12t.")
+print("Minimum-energy double integrator.")
+print("Exact optimum: J* = 6, u*(t) = 6 - 12t.")
 
 # ---- collocation, for comparison -------------------------------------------------
 prob = build(40)

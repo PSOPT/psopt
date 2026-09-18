@@ -18,6 +18,42 @@ from . import _psopt
 _sys.setdlopenflags(_flags)
 
 
+class PSOPTError(RuntimeError):
+    """PSOPT refused the problem, or something went wrong setting it up.
+
+    Raised when the solve came back with a non-zero error_flag: an invalid option,
+    a bad dimension, a guess of the wrong shape, an exception thrown inside the
+    solve. It is NOT raised when the NLP merely fails to converge -- that is a
+    result rather than an error, it comes back through sol.status.success, and a
+    script that wants to look at a non-converged trajectory can.
+
+    The exception carries the Solution it came from as .solution, so that
+    sol.status and whatever the solve did produce are still reachable:
+
+        try:
+            sol = prob.solve(alg)
+        except psopt.PSOPTError as e:
+            print(e)                      # what PSOPT said
+            print(e.solution.status)      # the return codes
+
+    Why this exists. PSOPT's own default is algorithm.on_error = "fail-fast",
+    which calls exit(). In C++ that is a defensible default. Inside a Python
+    process it terminates the interpreter: no traceback, no exception to catch,
+    nothing in a notebook but a dead kernel -- and with print_level = 0 it does
+    so in silence, because the diagnostic goes through PSOPT's own printing.
+    Three of the examples in python/examples were written to a wrong option value
+    during development and each time the script simply stopped with exit status 1
+    and no output at all.
+
+    So the Python interface defaults on_error to "fail-soft" and raises this
+    instead. Passing on_error="fail-fast" to Algorithm restores PSOPT's own
+    behaviour, exit() included.
+    """
+    def __init__(self, message, solution=None):
+        RuntimeError.__init__(self, message)
+        self.solution = solution
+
+
 # ---- guess helpers -------------------------------------------------------------
 def ramp(pairs, n):
     """Build an (len(pairs) x n) guess matrix; row i is linspace(start_i, end_i, n).
@@ -207,7 +243,8 @@ class Algorithm:
                  jac_sparsity_ratio=None, hess_sparsity_ratio=None,
                  save_sparsity_pattern=None, nsteps_error_integration=None,
                  mr_kappa=None, mr_M1=None, mr_switch_detection=None, switch_order=None,
-                 hessian_verify=None, on_error=None, max_integer_combinations=None):
+                 hessian_verify=None, on_error="fail-soft",
+                 max_integer_combinations=None):
         self.collocation_method = collocation_method
         self.nlp_method = nlp_method
         self.derivatives = derivatives
@@ -404,10 +441,14 @@ class _Status:
         return self.nlp_return_code == 1 and str(self._nlp_method).upper() == "IPOPT"
 
     def __repr__(self):
-        return ("<PSOPT status success=%s nlp_return_code=%d error_flag=%d "
-                "cpu_time=%.3gs%s>" % (self.success, self.nlp_return_code,
-                                       self.error_flag, self.cpu_time,
-                                       (" msg=%r" % self.error_msg) if self.error_msg else ""))
+        # Deliberately short and on one line. The error message can be several
+        # lines of PSOPT's own banner, and putting it in here made the repr wider
+        # than a page -- which is visible in any transcript that prints it, and
+        # was visible in the application examples document, where the line ran
+        # outside its box. It is still on .error_msg.
+        return ("<PSOPT %s rc=%d flag=%d cpu=%.3gs>"
+                % ("converged" if self.success else "NOT converged",
+                   self.nlp_return_code, self.error_flag, self.cpu_time))
 
 
 class _PhaseDuals:
@@ -530,6 +571,31 @@ class Problem:
             return self._solve_single(self._phases[0], algorithm)
         return self._solve_multi(algorithm)
 
+    @staticmethod
+    def _check(sol):
+        """Raise if the solve reported a set-up failure; otherwise hand it back.
+
+        error_flag is PSOPT's own distinction: non-zero means the problem was
+        refused or something threw, and zero means the solve ran -- whether or not
+        the NLP converged, which sol.status.success reports separately.
+        """
+        if sol.status.error_flag != 0:
+            full = sol.status.error_msg or ""
+            # PSOPT wraps its diagnostic in a banner that tells a C++ user to put a
+            # breakpoint on error_message() and take a backtrace. That is not advice a
+            # Python caller can act on, and in a traceback it buries the one line that
+            # matters, so the exception carries the diagnostic itself and keeps the
+            # banner on .details.
+            core = full
+            if "====>" in full and "<====" in full:
+                core = full.split("====>", 1)[1].rsplit("<====", 1)[0]
+            core = " ".join(core.split()) or (
+                "PSOPT reported error_flag %d with no message" % sol.status.error_flag)
+            err = PSOPTError(core, sol)
+            err.details = full.strip()
+            raise err
+        return sol
+
     def _solve_single(self, ph, algorithm):
         dae_f, L_f, phi_f, ev_f, obs_f = ph._build_functions()
         dims = dict(nx=ph.nstates, nu=ph.ncontrols, npar=ph.nparameters,
@@ -538,7 +604,8 @@ class Problem:
         spec = {"outfilename": self.name + ".txt", "so_path": so}
         spec.update(_phase_dict(ph))
         spec["algorithm"] = _alg_dict(algorithm)
-        return Solution(_psopt.solve_single_phase(spec), algorithm.nlp_method)
+        return self._check(Solution(_psopt.solve_single_phase(spec),
+                                    algorithm.nlp_method))
 
     def _solve_multi(self, algorithm):
         phase_funcs, nstates_by_phase = [], []
@@ -553,4 +620,5 @@ class Problem:
                 "nphases": len(self._phases), "nlinkages": nlinkages,
                 "phases": [_phase_dict(ph) for ph in self._phases],
                 "algorithm": _alg_dict(algorithm)}
-        return MultiSolution(_psopt.solve_multiphase(spec), algorithm.nlp_method)
+        return self._check(MultiSolution(_psopt.solve_multiphase(spec),
+                                         algorithm.nlp_method))

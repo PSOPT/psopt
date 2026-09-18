@@ -72,20 +72,20 @@ x, y = sol.states[0], sol.states[1]
 d1 = np.sqrt((x - 0.4) ** 2 + (y - 0.5) ** 2)
 d2 = np.sqrt((x - 0.8) ** 2 + (y - 1.5) ** 2)
 r = np.sqrt(0.1)
-print("closest to #1  : %.6f   (radius %.6f, clearance %+.2e)" % (d1.min(), r, d1.min() - r))
-print("closest to #2  : %.6f   (radius %.6f, clearance %+.2e)" % (d2.min(), r, d2.min() - r))
+print("closest to #1  : %.6f  radius %.6f  clearance %+.2e" % (d1.min(), r, d1.min() - r))
+print("closest to #2  : %.6f  radius %.6f  clearance %+.2e" % (d2.min(), r, d2.min() - r))
 ok = ok and d1.min() >= r - 1.0e-6 and d2.min() >= r - 1.0e-6
 
 # Complementary slackness: the multiplier is non-zero only where the constraint is
 # active. Summing |mu| over each obstacle says which one actually shapes the path.
 mu = sol.duals.dual_path
-print("path multipliers: obstacle #1 sum|mu| = %.4f, obstacle #2 sum|mu| = %.4f"
-      % (np.abs(mu[0]).sum(), np.abs(mu[1]).sum()))
-print("                : a constraint that is never active has multiplier zero")
+print("multiplier #1  : sum|mu| = %.4f" % np.abs(mu[0]).sum())
+print("multiplier #2  : sum|mu| = %.4f" % np.abs(mu[1]).sum())
+print("                 a constraint never active has multiplier zero")
 
 # A straight line would take this long; the detour is the price of the obstacles.
 straight = np.hypot(1.2, 1.6) / V
-print("straight-line   : %.6f s (infeasible); detour costs %+.2f%%"
+print("straight line  : %.6f s, infeasible; detour costs %+.2f%%"
       % (straight, 100.0 * (sol.objective - straight) / straight))
 
 print("\nRESULT: %s" % ("PASS" if ok else "FAIL"))
