@@ -69,7 +69,7 @@ PSOPT is able to deal with problems with the following characteristics:
 The implementation has the following features:
 
 - Choice between Legendre, Chebyshev, Radau, Gauss, trapezoidal, or Hermite-Simpson based collocation
-- An integrated-residual transcription with a residual bound, an alternating feasibility and optimality scheme, and a flexible mesh whose element boundaries are decision variables, so that the optimisation can place one at a switching time
+- An integrated residual transcription with a residual bound, an alternating feasibility and optimality scheme, and a flexible mesh whose element boundaries are decision variables, so that the optimisation can place one at a switching time
 - Direct multiple shooting, with a choice of explicit and stiffly accurate implicit Runge-Kutta schemes for stiff dynamics, constant, linear or quadratic controls across a segment, and segment boundaries and integrator step counts that can be chosen automatically
 - Automatic scaling
 - Automatic first and second derivatives using the CppAD library
