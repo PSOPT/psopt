@@ -135,9 +135,14 @@ class Gaussian(Uncertainty):
 
     The set is {theta : (theta-mu)' inv(cov) (theta-mu) <= truncate^2}, which for
     one parameter is the familiar mu +- k sigma and in n dimensions covers rather
-    less probability than the same k does in one --- 3 sigma is 99.73% on a line
-    and 97.07% in the plane. The driver reports how much mass is outside, because
-    that is what the design is not promising anything about.
+    less probability than the same k does in one. The coverage is the chi-square
+    distribution with n degrees of freedom at k^2, which for k = 3 runs
+
+        99.73% in one dimension, 98.89% in two, 97.07% in three,
+
+    so a habit formed on scalar uncertainty truncates a three-parameter posterior
+    at a set holding only 97% of it. The driver reports how much of the sample
+    fell outside, because that is the part the design promises nothing about.
     """
 
     def __init__(self, mean, cov, truncate=3.0):

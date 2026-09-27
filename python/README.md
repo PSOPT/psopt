@@ -201,7 +201,7 @@ the error says which of the two you have met.
 
 ## Examples and validation
 
-Eighteen examples, in `examples/`. Run one directly, or all of them:
+Nineteen examples, in `examples/`. Run one directly, or all of them:
 
 ```
 cd python/examples
@@ -235,11 +235,12 @@ what `run_all.py` reports.
 | `robust_driver_arm.py` | the same problem through `psopt.robust` | the driver must certify the design over the whole set |
 | `robust_driver_vdp.py` | two uncertain parameters, a state constraint, an expected cost | the robust design must hold the barrier for every plant |
 | `robust_driver_risk.py` | expectation, mean-variance and CVaR on one problem | each objective is recomputed from the per-scenario costs |
+| `robust_driver_estimate.py` | estimate the plant, then design against its covariance | the design must hold at the true plant, which it never saw |
 | `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
 
 The first fourteen were run together on 17 September 2026 and passed;
-`robust_arm.py` and the three driver examples were added on 27 September 2026
-and all eighteen were run together then, in just under five minutes.
+`robust_arm.py` and the four driver examples were added on 27 September 2026 and
+all nineteen were run together then, in under six minutes.
 
 The three robust examples are the slow ones, at ten to sixty seconds each,
 because each calls `prob.solve` once per iteration of a scenario-generation loop
@@ -291,6 +292,18 @@ is not the integral of anything — so the driver carries an extra state per
 scenario for it, and needs `.cost_bounds`. CVaR is written by the
 Rockafellar–Uryasev device with a slack static parameter per scenario rather than
 a smoothed hinge, so the constraints are exact.
+
+**Where the uncertainty should come from.** A covariance somebody chose is the
+weakest part of a robust design. PSOPT's own parameter estimation returns one —
+`sol.parameter_statistics.covariance` — and that is the distribution the design
+ought to run against. `robust_driver_estimate.py` closes that loop inside one
+model: estimate two arm parameters from noisy observations of a prescribed
+manoeuvre, hand the covariance to the driver, and check the result on the true
+plant, which nothing in the estimate or the design ever saw. The estimated
+posterior is strongly correlated, and the example shows that discarding the
+off-diagonal term is not a conservative simplification — it points the
+uncertainty set along the wrong axes and leaves the design exposed in the one
+direction the data did not determine.
 
 Two cautions about the risk measures, both measured rather than asserted in
 `robust_driver_risk.py`. A **tail measure needs a scenario set that resolves the
