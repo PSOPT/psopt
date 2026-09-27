@@ -417,6 +417,9 @@ class RobustPhase(object):
         # state needs bounds, and a bound that turned out to be active would
         # silently change the risk measure into something else.
         self.cost_bounds = None
+        # Ancillary feedback gain, ncontrols x nstates, or None for open loop.
+        # See the FEEDBACK section of RobustProblem._augment.
+        self.feedback = None
 
 
 class RobustSolution(object):
@@ -451,6 +454,12 @@ class RobustSolution(object):
         printer("                                  integrator; nothing worse was")
         printer("                                  found, which is not a proof that")
         printer("                                  nothing worse exists")
+        if c.get("feedback"):
+            printer("  realised control beyond bounds: %.2e  (the ancillary gain's"
+                    % c["control_excess"])
+            printer("                                  demand on the actuator,")
+            printer("                                  sampled between the nodes")
+            printer("                                  where nothing constrains it)")
         printer("  search vs adaptive integrator : %.2e  (%d fixed steps per node"
                 % (c["integrator_drift"], c["nsub"]))
         printer("                                  interval against DOP853; if this")
@@ -501,6 +510,8 @@ class RobustProblem(object):
         # norm, which is right only when the constraints share units.
         self.event_scale = None
         self.path_scale = None
+        # Accepted here as well as on the phase, for the same reason cost_bounds is.
+        self.feedback = None
         # Accepted here as well as on the phase, because the phase is where it
         # belongs and the problem is where a reader reaches for it first. A plain
         # Python object accepts any attribute silently, so offering only one of the
@@ -577,8 +588,24 @@ class RobustProblem(object):
                 "the per-scenario cost is certainly inside. It is asked for rather "
                 "than guessed because a bound that turns out to be active silently "
                 "changes the risk measure into something else." % (risk,))
+        if rp.feedback is None and self.feedback is not None:
+            rp.feedback = self.feedback
+        K = None
+        if rp.feedback is not None and M > 1:
+            K = np.atleast_2d(np.asarray(rp.feedback, dtype=float))
+            if K.shape != (m, n):
+                raise ValueError(
+                    "RobustProblem: feedback gain is %s, expected (%d, %d) --- one "
+                    "row per control, one column per state."
+                    % (K.shape, m, n))
+
         nx = n * M + (M if use_cost else 0)
         npar = npu + (M + 1 if risk == "cvar" else 0)
+        # Under feedback the REALISED control differs from scenario to scenario, so
+        # its bounds are no longer the decision variable's bounds and have to be
+        # imposed as path constraints. They are inequalities, so they cost no
+        # degrees of freedom -- see _dof.
+        nu_rows = m * (M - 1) if K is not None else 0
 
         w = (np.ones(M) / M if weights is None else np.asarray(weights, dtype=float))
         if len(w) != M:
@@ -588,26 +615,65 @@ class RobustProblem(object):
         nev = ne * M + (M if use_cost else 0) + (M if risk == "cvar" else 0)
         prob = Problem(name=self.name)
         ph = prob.add_phase(nstates=nx, ncontrols=m, nevents=nev,
-                            npath=npth * M, nparameters=npar)
+                            npath=npth * M + nu_rows, nparameters=npar)
         ph.nodes = list(rp.nodes)
 
         th_list = [np.asarray(t, dtype=float) for t in thetas]
         xs = lambda x, k: x[n * k:n * (k + 1)]          # noqa: E731  scenario k
         cs = lambda x, k: x[n * M + k]                  # noqa: E731  its cost state
 
+        # FEEDBACK
+        #
+        # Open loop, every scenario is driven by the same control history and the
+        # design has to find one history that serves them all. That is what makes
+        # an open-loop robust design expensive: the arm pays a factor of nearly
+        # three in final time for it.
+        #
+        # With an ancillary gain the scenarios are driven by
+        #
+        #     u_k(t) = u_bar(t) + K ( x_k(t) - x_ref(t) )
+        #
+        # where u_bar is still the only decision variable and x_ref is the
+        # REFERENCE trajectory -- scenario 0, the centre of every scenario rule the
+        # driver offers. Scenario 0 therefore runs open loop by construction, since
+        # its deviation from itself is zero, and every other scenario is corrected
+        # towards it. The design is still here-and-now: u_bar and K are both fixed
+        # before the uncertainty is revealed, and nothing adapts to theta. What the
+        # feedback does is stop one history from having to serve every plant
+        # unaided.
+        #
+        # The gain is given, not designed. Co-designing K with the trajectory would
+        # make the problem bilinear in the decision variables, and a fixed
+        # ancillary gain is the standard first step -- see the note in the
+        # examples on where to get one.
+        def uk(x, u, k):
+            if K is None or k == 0:
+                return u
+            return u + ca.mtimes(ca.DM(K), xs(x, k) - xs(x, 0))
+
         def dynamics(x, u, p, t):
-            rows = [rp.dynamics(xs(x, k), u, p[0:npu], t, th_list[k])
+            rows = [rp.dynamics(xs(x, k), uk(x, u, k), p[0:npu], t, th_list[k])
                     for k in range(M)]
             if use_cost:
-                rows += [rp.integrand(xs(x, k), u, p[0:npu], t)
+                rows += [rp.integrand(xs(x, k), uk(x, u, k), p[0:npu], t)
                          if rp.integrand is not None else ca.SX(0.0)
                          for k in range(M)]
             return ca.vertcat(*rows)
 
         ph.dynamics = dynamics
-        if npth:
-            ph.path = lambda x, u, p, t: ca.vertcat(
-                *[rp.path(xs(x, k), u, p[0:npu], t, th_list[k]) for k in range(M)])
+        if npth or nu_rows:
+            def path(x, u, p, t):
+                rows = [rp.path(xs(x, k), uk(x, u, k), p[0:npu], t, th_list[k])
+                        for k in range(M)] if npth else []
+                # The realised control of every corrected scenario, so that its own
+                # bounds can be imposed on it. Without this the ancillary gain is
+                # free to ask for torque the actuator has not got, and the design
+                # would be one no plant could execute.
+                if K is not None:
+                    rows += [uk(x, u, k) for k in range(1, M)]
+                return ca.vertcat(*rows)
+
+            ph.path = path
 
         def J_of(xi, xf, p, t0, tf, k):
             """Scenario k's total cost, as a function of the final state."""
@@ -639,8 +705,8 @@ class RobustProblem(object):
                 ph.endpoint = lambda xi, xf, p, t0, tf: rp.endpoint(
                     xs(xi, 0), xs(xf, 0), p[0:npu], t0, tf)
             if rp.integrand is not None:
-                ph.integrand = lambda x, u, p, t: rp.integrand(xs(x, 0), u,
-                                                               p[0:npu], t)
+                ph.integrand = lambda x, u, p, t: rp.integrand(
+                    xs(x, 0), uk(x, u, 0), p[0:npu], t)
         elif risk == "expectation":
             # A weighted sum of per-scenario costs is itself a sum, so it goes
             # straight into the integrand and the endpoint and needs no cost state.
@@ -650,7 +716,7 @@ class RobustProblem(object):
                     for k in range(M))
             if rp.integrand is not None:
                 ph.integrand = lambda x, u, p, t: sum(
-                    float(w[k]) * rp.integrand(xs(x, k), u, p[0:npu], t)
+                    float(w[k]) * rp.integrand(xs(x, k), uk(x, u, k), p[0:npu], t)
                     for k in range(M))
         elif risk == "mean-variance":
             lam = float(mv_lambda)
@@ -706,11 +772,21 @@ class RobustProblem(object):
             elo, ehi = elo + [0.0] * M, ehi + [chi - clo] * M
         if nev:
             ph.bounds.lower.events, ph.bounds.upper.events = elo, ehi
+        plo, phi = [], []
         if npth:
             lo, hi = _shrink(rp.bounds.lower.path, rp.bounds.upper.path,
                              margins["path"])
-            ph.bounds.lower.path = _tile(lo, M)
-            ph.bounds.upper.path = _tile(hi, M)
+            plo, phi = _tile(lo, M), _tile(hi, M)
+        if nu_rows:
+            # The user's own control bounds, applied to each corrected scenario's
+            # realised control. No margin: these are the actuator's limits, not a
+            # requirement the design is being asked to meet with room to spare.
+            plo = plo + list(np.tile(np.asarray(rp.bounds.lower.controls,
+                                                dtype=float), M - 1))
+            phi = phi + list(np.tile(np.asarray(rp.bounds.upper.controls,
+                                                dtype=float), M - 1))
+        if plo:
+            ph.bounds.lower.path, ph.bounds.upper.path = plo, phi
 
         N = ph.nodes[-1]
         if guess is not None:
@@ -891,6 +967,10 @@ class RobustProblem(object):
         """
         rp = self._phases[0]
         thetas = np.atleast_2d(np.asarray(thetas, dtype=float))
+        Kg = self._gain()
+        nreal = len(thetas)
+        if Kg is not None:
+            thetas = np.vstack([np.atleast_2d(self._theta_ref), thetas])
         K = len(thetas)
         nsub = self._nsub if nsub is None else nsub
         mp = self._maps(K)
@@ -901,6 +981,9 @@ class RobustProblem(object):
         X0 = X.copy()
         J = np.zeros(K)
         N = len(t_nodes)
+
+        def realise(Ubar, Xc):
+            return Ubar if Kg is None else Ubar + Kg @ (Xc - Xc[:, 0:1])
 
         def LL(Xc, Uc, tt):
             if mp["L"] is None:
@@ -914,29 +997,33 @@ class RobustProblem(object):
             for sstep in range(nsub):
                 w0, wh, w1 = (sstep / float(nsub), (sstep + 0.5) / float(nsub),
                               (sstep + 1.0) / float(nsub))
-                UA = np.tile(ua + w0 * (ub - ua), (1, K))
-                UH = np.tile(ua + wh * (ub - ua), (1, K))
-                UB = np.tile(ua + w1 * (ub - ua), (1, K))
+                BA = np.tile(ua + w0 * (ub - ua), (1, K))
+                BH = np.tile(ua + wh * (ub - ua), (1, K))
+                BB = np.tile(ua + w1 * (ub - ua), (1, K))
                 tA = ta + sstep * h
                 tH = ta + (sstep + 0.5) * h
                 tB = ta + (sstep + 1) * h
+                UA = realise(BA, X)
                 k1 = np.asarray(mp["f"](X, UA, P, np.full((1, K), tA), TH))
                 l1 = LL(X, UA, tA)
                 X2 = X + 0.5 * h * k1
-                k2 = np.asarray(mp["f"](X2, UH, P, np.full((1, K), tH), TH))
-                l2 = LL(X2, UH, tH)
+                UH2 = realise(BH, X2)
+                k2 = np.asarray(mp["f"](X2, UH2, P, np.full((1, K), tH), TH))
+                l2 = LL(X2, UH2, tH)
                 X3 = X + 0.5 * h * k2
-                k3 = np.asarray(mp["f"](X3, UH, P, np.full((1, K), tH), TH))
-                l3 = LL(X3, UH, tH)
+                UH3 = realise(BH, X3)
+                k3 = np.asarray(mp["f"](X3, UH3, P, np.full((1, K), tH), TH))
+                l3 = LL(X3, UH3, tH)
                 X4 = X + h * k3
-                k4 = np.asarray(mp["f"](X4, UB, P, np.full((1, K), tB), TH))
-                l4 = LL(X4, UB, tB)
+                UB4 = realise(BB, X4)
+                k4 = np.asarray(mp["f"](X4, UB4, P, np.full((1, K), tB), TH))
+                l4 = LL(X4, UB4, tB)
                 X = X + (h / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
                 J = J + (h / 6.0) * (l1 + 2 * l2 + 2 * l3 + l4)
         if mp["phi"] is not None:
             J = J + np.asarray(mp["phi"](X0, X, P, np.full((1, K), t_nodes[0]),
                                          np.full((1, K), t_nodes[-1]))).ravel()
-        return J
+        return J[1:] if Kg is not None else J[:nreal]
 
     def _x0_of(self, thetas):
         """Initial states, one column per parameter vector."""
@@ -946,17 +1033,47 @@ class RobustProblem(object):
         x0 = np.asarray(self.initial_state, dtype=float)
         return np.tile(x0.reshape(-1, 1), (1, len(thetas)))
 
+    def _gain(self):
+        """The ancillary gain in force, or None."""
+        rp = self._phases[0]
+        g = rp.feedback if rp.feedback is not None else self.feedback
+        return None if g is None else np.atleast_2d(np.asarray(g, dtype=float))
+
     def _violation_many(self, thetas, t_nodes, u_nodes, params, nsub=None,
-                        want_nodes=False):
+                        want_nodes=False, want_uexcess=False):
         """Violation at every parameter in `thetas`, by one vectorised sweep.
 
         Integrates all K plants together with fixed-step RK4, `nsub` steps per node
         interval, accumulating the largest path excess as it goes rather than
         storing the trajectories -- the running maximum is all the measure needs
         and it keeps the memory flat in K.
+
+        UNDER FEEDBACK this integrates a CLOSED loop, and it has to, because an
+        open-loop verification of a closed-loop design checks a controller nobody
+        is going to build. The reference trajectory is carried as an extra column
+        of the same sweep: column 0 is the nominal plant under u_bar alone, and
+        every other column is driven by u_bar + K (x_k - x_0). That makes the
+        reference an integration of the nominal plant rather than a table
+        interpolated between nodes, which is an assumption about the
+        implementation and is stated as one: the controller is taken to regenerate
+        the reference by integrating the nominal model, not to store it at the
+        design's node spacing. Storing it instead would add an interpolation error
+        of its own, and at this node count that error is not negligible beside the
+        tolerances being certified.
+
+        With want_uexcess it also returns, per scenario, how far the REALISED
+        control went outside its bounds. The design imposes those bounds at the
+        segment boundaries; between them nothing does, and a gain that quietly
+        asks for more actuator than exists is a design no plant can execute.
         """
         rp = self._phases[0]
         thetas = np.atleast_2d(np.asarray(thetas, dtype=float))
+        Kg = self._gain()
+        nreal = len(thetas)
+        # Column 0 is the reference when there is feedback; otherwise there is no
+        # reference and every column is its own plant.
+        if Kg is not None:
+            thetas = np.vstack([np.atleast_2d(self._theta_ref), thetas])
         K = len(thetas)
         nsub = self._nsub if nsub is None else nsub
         self._nver += K
@@ -973,6 +1090,22 @@ class RobustProblem(object):
         if want_nodes:
             nodes[:, 0, :] = X
         worst = np.zeros(K)
+        uex = np.zeros(K)
+
+        ulo = (np.asarray(rp.bounds.lower.controls, dtype=float).reshape(-1, 1)
+               if rp.bounds.lower.controls is not None else None)
+        uhi = (np.asarray(rp.bounds.upper.controls, dtype=float).reshape(-1, 1)
+               if rp.bounds.upper.controls is not None else None)
+
+        def realise(Ubar, Xc):
+            """The control each column actually applies."""
+            if Kg is None:
+                return Ubar
+            U = Ubar + Kg @ (Xc - Xc[:, 0:1])
+            if want_uexcess and ulo is not None:
+                np.maximum(uex, np.maximum(np.maximum(ulo - U, U - uhi),
+                                           0.0).max(axis=0), out=uex)
+            return U
 
         def path_excess(Xc, Uc, tt):
             if not rp.npath:
@@ -990,22 +1123,26 @@ class RobustProblem(object):
                 w0 = sstep / float(nsub)
                 wh = (sstep + 0.5) / float(nsub)
                 w1 = (sstep + 1.0) / float(nsub)
-                UA = np.tile(ua + w0 * (ub - ua), (1, K))
-                UH = np.tile(ua + wh * (ub - ua), (1, K))
-                UB = np.tile(ua + w1 * (ub - ua), (1, K))
+                BA = np.tile(ua + w0 * (ub - ua), (1, K))
+                BH = np.tile(ua + wh * (ub - ua), (1, K))
+                BB = np.tile(ua + w1 * (ub - ua), (1, K))
                 tA, tH, tB = ta + sstep * h, ta + (sstep + 0.5) * h, ta + (sstep + 1) * h
+                UA = realise(BA, X)
                 path_excess(X, UA, tA)
                 k1 = np.asarray(mp["f"](X, UA, P, np.full((1, K), tA), TH))
-                k2 = np.asarray(mp["f"](X + 0.5 * h * k1, UH, P,
+                X2 = X + 0.5 * h * k1
+                k2 = np.asarray(mp["f"](X2, realise(BH, X2), P,
                                         np.full((1, K), tH), TH))
-                k3 = np.asarray(mp["f"](X + 0.5 * h * k2, UH, P,
+                X3 = X + 0.5 * h * k2
+                k3 = np.asarray(mp["f"](X3, realise(BH, X3), P,
                                         np.full((1, K), tH), TH))
-                k4 = np.asarray(mp["f"](X + h * k3, UB, P,
+                X4 = X + h * k3
+                k4 = np.asarray(mp["f"](X4, realise(BB, X4), P,
                                         np.full((1, K), tB), TH))
                 X = X + (h / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
             if want_nodes:
                 nodes[:, i + 1, :] = X
-        path_excess(X, np.tile(u_nodes[:, -1:], (1, K)), t_nodes[-1])
+        path_excess(X, realise(np.tile(u_nodes[:, -1:], (1, K)), X), t_nodes[-1])
 
         if rp.nevents:
             ev = np.asarray(mp["e"](self._x0_of(thetas), X, P,
@@ -1014,7 +1151,21 @@ class RobustProblem(object):
             np.maximum(worst, _bound_excess_many(ev, rp.bounds.lower.events,
                                                  rp.bounds.upper.events,
                                                  self.event_scale), out=worst)
-        return (worst, nodes) if want_nodes else worst
+
+        # Drop the reference column: it is scenario 0 of the design and is scored
+        # in its own right when it appears in `thetas`.
+        if Kg is not None:
+            worst, uex = worst[1:], uex[1:]
+            if want_nodes:
+                nodes = nodes[:, :, 1:]
+        assert len(worst) == nreal
+        if want_nodes and want_uexcess:
+            return worst, nodes, uex
+        if want_nodes:
+            return worst, nodes
+        if want_uexcess:
+            return worst, uex
+        return worst
 
     def _violation(self, theta, t_nodes, u_nodes, params):
         """Violation at a single parameter, by the vectorised path."""
@@ -1029,16 +1180,32 @@ class RobustProblem(object):
         """
         from scipy.integrate import solve_ivp
         rp = self._phases[0]
+        n = rp.nstates
         th = np.asarray(theta, dtype=float)
+        thr = np.asarray(self._theta_ref, dtype=float)
+        Kg = self._gain()
         params = np.asarray(params, dtype=float).ravel()[:rp.nparameters]
+        # Under feedback the reference is part of the state being integrated, so
+        # this carries 2n equations: the nominal plant under u_bar, and the
+        # scenario under u_bar + K(x - x_ref). Same closed loop as the vectorised
+        # sweep, different integrator -- which is the whole point of having both.
         x = self._x0_of(np.atleast_2d(th))[:, 0]
+        if Kg is not None:
+            x = np.concatenate([self._x0_of(np.atleast_2d(thr))[:, 0], x])
         x0 = x.copy()
         v = 0.0
+
+        def split(xx):
+            return (xx[n:], xx[:n]) if Kg is not None else (xx, None)
+
+        def applied(ubar, xx):
+            xk, xr = split(xx)
+            return ubar if Kg is None else ubar + Kg @ (xk - xr)
 
         def excess_path(xx, uu, tt):
             if not rp.npath:
                 return 0.0
-            pv = np.asarray(self._vg(xx, uu, params, tt, th)).ravel()
+            pv = np.asarray(self._vg(split(xx)[0], uu, params, tt, th)).ravel()
             return _bound_excess(pv, rp.bounds.lower.path, rp.bounds.upper.path,
                                  self.path_scale)
 
@@ -1047,9 +1214,14 @@ class RobustProblem(object):
             ua, ub = u_nodes[:, i], u_nodes[:, i + 1]
 
             def rhs(tt, xx, ta=ta, tb=tb, ua=ua, ub=ub):
-                w = 0.0 if tb == ta else (tt - ta) / (tb - ta)
-                return np.asarray(self._vf(xx, ua + w * (ub - ua), params, tt,
-                                           th)).ravel()
+                ubar = ua + (0.0 if tb == ta else (tt - ta) / (tb - ta)) * (ub - ua)
+                xk, xr = split(xx)
+                dk = np.asarray(self._vf(xk, applied(ubar, xx), params, tt,
+                                         th)).ravel()
+                if Kg is None:
+                    return dk
+                dr = np.asarray(self._vf(xr, ubar, params, tt, thr)).ravel()
+                return np.concatenate([dr, dk])
 
             grid = np.linspace(ta, tb, nsub + 1)[1:]
             r = solve_ivp(rhs, (ta, tb), x, t_eval=grid, method="DOP853",
@@ -1058,12 +1230,13 @@ class RobustProblem(object):
                 raise RuntimeError("robust verifier: integration failed at theta = %s"
                                    % _fmt(th))
             for j, tt in enumerate(grid):
-                w = 0.0 if tb == ta else (tt - ta) / (tb - ta)
-                v = max(v, excess_path(r.y[:, j], ua + w * (ub - ua), tt))
+                ww = 0.0 if tb == ta else (tt - ta) / (tb - ta)
+                ubar = ua + ww * (ub - ua)
+                v = max(v, excess_path(r.y[:, j], applied(ubar, r.y[:, j]), tt))
             x = r.y[:, -1]
         if rp.nevents:
-            ev = np.asarray(self._ve(x0, x, params, t_nodes[0], t_nodes[-1],
-                                     th)).ravel()
+            ev = np.asarray(self._ve(split(x0)[0], split(x)[0], params,
+                                     t_nodes[0], t_nodes[-1], th)).ravel()
             v = max(v, _bound_excess(ev, rp.bounds.lower.events,
                                      rp.bounds.upper.events, self.event_scale))
         return v
@@ -1213,6 +1386,10 @@ class RobustProblem(object):
 
         thetas, weights = self._initial_scenarios(scenarios, n_scenarios)
         weights = list(weights)
+        # The reference for any ancillary feedback is scenario 0 of the rule, which
+        # is its centre. It is fixed here and never changes: the generated
+        # scenarios are appended, so scenario 0 stays what it was.
+        self._theta_ref = np.asarray(thetas[0], dtype=float)
         out = RobustSolution()
 
         if verbose:
@@ -1336,6 +1513,20 @@ class RobustProblem(object):
         drift = self._check_steps(check_at, t_nodes, u_nodes, params)
         v_ref = self._violation_ref(th_worst, t_nodes, u_nodes, params)
         v = max(v, v_ref)
+
+        # Under feedback, how much actuator does the ancillary gain actually ask
+        # for? The design imposes the control bounds on the realised control at the
+        # segment boundaries; between them nothing does, and the verification
+        # samples far more finely. A design whose corrections saturate is one no
+        # plant can execute, whatever its certificate says about the states.
+        u_excess = 0.0
+        if self._gain() is not None:
+            probe = np.vstack([np.array(thetas),
+                               self.uncertainty.boundary_points(),
+                               self.uncertainty.quasi_random(n_seed, seed=seed + 7)])
+            _wv, uex = self._violation_many(probe, t_nodes, u_nodes, params,
+                                            want_uexcess=True)
+            u_excess = float(uex.max())
         out.design = design
         out.scenarios = np.array(thetas)
         out.time = t_nodes
@@ -1343,7 +1534,9 @@ class RobustProblem(object):
         out.objective = float(design.objective)
         out.certificate = dict(violation=v, theta=th_worst,
                                evaluations=self._nver, slack=slack,
-                               integrator_drift=drift, nsub=nsub)
+                               integrator_drift=drift, nsub=nsub,
+                               control_excess=u_excess,
+                               feedback=self._gain() is not None)
         out.converged = out.converged and v <= slack
 
         if out_of_sample:

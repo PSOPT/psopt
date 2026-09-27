@@ -201,7 +201,7 @@ the error says which of the two you have met.
 
 ## Examples and validation
 
-Nineteen examples, in `examples/`. Run one directly, or all of them:
+Twenty examples, in `examples/`. Run one directly, or all of them:
 
 ```
 cd python/examples
@@ -236,11 +236,14 @@ what `run_all.py` reports.
 | `robust_driver_vdp.py` | two uncertain parameters, a state constraint, an expected cost | the robust design must hold the barrier for every plant |
 | `robust_driver_risk.py` | expectation, mean-variance and CVaR on one problem | each objective is recomputed from the per-scenario costs |
 | `robust_driver_estimate.py` | estimate the plant, then design against its covariance | the design must hold at the true plant, which it never saw |
+| `robust_driver_tube.py` | an ancillary feedback gain against open loop | the closed loop is checked against an independent implementation |
 | `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
 
 The first fourteen were run together on 17 September 2026 and passed;
-`robust_arm.py` and the four driver examples were added on 27 September 2026 and
-all nineteen were run together then, in under six minutes.
+`robust_arm.py` and the five driver examples were added on 27 September 2026 and
+all twenty were run together then. The suite now takes about nine minutes, most
+of it in the robust examples; `run_all.py` takes a name filter if you want a
+subset.
 
 The three robust examples are the slow ones, at ten to sixty seconds each,
 because each calls `prob.solve` once per iteration of a scenario-generation loop
@@ -292,6 +295,30 @@ is not the integral of anything — so the driver carries an extra state per
 scenario for it, and needs `.cost_bounds`. CVaR is written by the
 Rockafellar–Uryasev device with a slack static parameter per scenario rather than
 a smoothed hinge, so the constraints are exact.
+
+**Feedback.** By default a design is open loop: one control history, committed
+before the uncertainty is revealed, serving every plant in the set unaided. That
+is honest and it is expensive — on the arm it costs a factor of about three in
+final time. Setting `.feedback` to a gain `K` turns the design into a tube,
+
+    u_k(t) = u_bar(t) + K ( x_k(t) - x_ref(t) )
+
+where `u_bar` is still the only decision variable and the reference is scenario 0
+of the rule, which runs open loop by construction. The design remains
+here-and-now: both `u_bar` and `K` are fixed before the uncertainty is revealed.
+On the arm the price of robustness falls from +192% to +13% and half as many
+scenarios are needed to certify it.
+
+Three things come with it. The realised control differs from scenario to
+scenario, so its bounds become path constraints and the driver adds them — set
+`ms_path_samples` so they hold *inside* the segments too, or the correction
+breaches the actuator limits between the nodes, which `certificate["control_excess"]`
+reports. The verification integrates the closed loop, carrying the reference as
+an extra column of the same sweep, so it assumes the controller regenerates the
+reference by integrating the nominal model rather than storing it at the design's
+node spacing. And the gain needs the state to be measurable, which the open-loop
+design does not. The gain is given rather than co-designed: co-designing it makes
+the problem bilinear, and a fixed ancillary gain is the standard first step.
 
 **Where the uncertainty should come from.** A covariance somebody chose is the
 weakest part of a robust design. PSOPT's own parameter estimation returns one —
@@ -350,8 +377,10 @@ tolerance, since an inequality event costs nothing here. The count is a lower
 bound, because an equality event can be linearly dependent on the defects, so it
 is used to explain a failure and never to refuse in advance.
 
-Not implemented: scenario-dependent static parameters, feedback of any kind, and
-multi-phase problems, which are refused rather than quietly mishandled.
+Not implemented: scenario-dependent static parameters, a time-varying ancillary
+gain from a Riccati sweep along the nominal trajectory (the obvious next step
+after the fixed gain), co-design of the gain with the trajectory, and multi-phase
+problems, which are refused rather than quietly mishandled.
 
 One figure has moved and is flagged rather than quietly updated. `bryson_ir.py`
 reports the integrated residual, which is a feasibility measure rather than a
