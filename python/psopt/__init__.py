@@ -622,3 +622,9 @@ class Problem:
                 "algorithm": _alg_dict(algorithm)}
         return self._check(MultiSolution(_psopt.solve_multiphase(spec),
                                          algorithm.nlp_method))
+
+
+# The robust optimal control driver. Imported here so that `import psopt` is
+# enough to reach `psopt.robust.RobustProblem`; it is at the foot of the file
+# because it imports Problem and Algorithm from this one.
+from . import robust                                              # noqa: E402

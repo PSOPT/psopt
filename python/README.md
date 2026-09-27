@@ -201,7 +201,7 @@ the error says which of the two you have met.
 
 ## Examples and validation
 
-Fifteen examples, in `examples/`. Run one directly, or all of them:
+Seventeen examples, in `examples/`. Run one directly, or all of them:
 
 ```
 cd python/examples
@@ -232,15 +232,81 @@ what `run_all.py` reports.
 | `lotka_integer.py` | a binary integer control, sum-up rounding | 1.348104 / 1.351850, 4 switches |
 | `integer_parameter.py` | an integer static parameter, by enumeration | closed form p = 2, J = 0.09 |
 | `robust_arm.py` | robust optimal control by scenario augmentation | the nominal design must fail out of sample and the generated one must not |
+| `robust_driver_arm.py` | the same problem through `psopt.robust` | the driver must certify the design over the whole set |
+| `robust_driver_vdp.py` | two uncertain parameters, a state constraint, an expected cost | the robust design must hold the barrier for every plant |
 | `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
 
 The first fourteen were run together on 17 September 2026 and passed;
-`robust_arm.py` was added on 27 September 2026 and all fifteen were run together
-then.
+`robust_arm.py` and the two driver examples were added on 27 September 2026 and
+all seventeen were run together then, in two and a half minutes.
 
-`robust_arm.py` is the slowest of them, at about fifteen seconds, because it calls
-`prob.solve` once per iteration of a scenario-generation loop. Its C++
+The three robust examples are the slow ones, at ten to sixty seconds each,
+because each calls `prob.solve` once per iteration of a scenario-generation loop
+and integrates thousands of trajectories to verify the result. The C++
 counterpart, `examples/robust_arm/`, is the fuller study and takes minutes.
+
+## Robust optimal control
+
+`psopt.robust` turns a problem whose dynamics, path constraints and events depend
+on an uncertain parameter into one deterministic problem --- M copies of the
+state against one copy of the control, which is what makes the design
+non-anticipative --- and wraps an outer loop around it. Nothing in the library is
+modified; the driver assembles, calls `Problem.solve`, verifies, and calls it
+again.
+
+```python
+from psopt.robust import RobustProblem, Gaussian
+
+rp = RobustProblem(name="arm")
+ph = rp.add_phase(nstates=4, ncontrols=2, nevents=8)
+ph.dynamics = lambda x, u, p, t, th: ...        # th is the uncertain parameter
+ph.events   = lambda xi, xf, p, t0, tf, th: ...
+rp.uncertainty   = Gaussian(mean=[0.5], cov=[[0.15 ** 2]], truncate=3.0)
+rp.initial_state = [0.0, 0.0, 0.5, 0.0]
+
+out = rp.solve(alg, slack=0.0, risk="expectation", generate=True)
+out.certificate      # the worst violation found anywhere in the set, and where
+out.out_of_sample    # scored on parameters that took no part in the design
+out.wait_and_see     # E[min] <= min E[.], the value of knowing theta in advance
+```
+
+`slack` is how much violation **of the bounds you declared** a design may leave,
+not the constraint itself. A terminal ball of radius 0.02 belongs in the event
+bounds; passing 0.02 as `slack` as well would quietly ask for a ball of radius
+0.04. Zero demands the declared bounds hold everywhere in the set, which the
+inward `margin` on the design is what makes attainable.
+
+Scenario sets come from an unscented rule (`scenarios="sigma-points"`), a
+low-discrepancy sequence (`"qmc"`), or a list (`Explicit`). With `generate=True`
+the driver then adds scenarios where the design is actually failing, which is a
+cutting plane on the semi-infinite constraint and is what lets it finish with a
+certificate rather than a statistic.
+
+Three properties are worth knowing before relying on it.
+
+*The verification does not use the design's integrator.* It builds CasADi
+functions from the same user equations and integrates them separately: a
+vectorised fixed-step RK4 for the search, SciPy's adaptive DOP853 for the
+reported numbers, and the disagreement between the two is measured and printed.
+
+*A certificate is a claim about a search.* For one uncertain parameter the seeding
+is effectively exhaustive; in more than one it is not, and `out.certificate` says
+"nothing worse was found" rather than "nothing worse exists". The inner problem is
+not concave.
+
+*Not every problem can be robustified open-loop.* If the sensitivity of the
+constrained state to the uncertain parameter obeys a linear equation whose
+homogeneous part the control cannot shape --- a linear plant with an uncertain
+gain and a pinned terminal state, or a kinematic vehicle with an uncertain speed
+--- then that sensitivity is fixed by the boundary conditions and no control
+reduces it. `robust_driver_vdp.py` sets out the argument. Check for it before
+reaching for the driver.
+
+Not implemented: CVaR and mean-variance (the variance of a Lagrange cost across
+scenarios is not the integral of anything, so each scenario needs its running cost
+carried as an extra state first), scenario-dependent static parameters, feedback
+of any kind, and multi-phase problems, which are refused rather than quietly
+mishandled.
 
 One figure has moved and is flagged rather than quietly updated. `bryson_ir.py`
 reports the integrated residual, which is a feasibility measure rather than a
