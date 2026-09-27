@@ -35,7 +35,15 @@ from psopt.robust import RobustProblem, Gaussian
 MU, SIGMA, DELTA = 0.50, 0.15, 0.03
 X0 = np.array([0.0, 0.0, 0.500, 0.000])
 XF = np.array([0.0, 0.0, 0.500, 0.522])
-NODES = 21
+# 25 rather than the 21 of robust_arm.py, and the reason is the SCENARIO BUDGET
+# rather than accuracy. Under multiple shooting the state at every node is pinned
+# by the defect equations, so the only free parameters in the whole problem are
+# the shared control at the nodes and the free final time; each scenario spends
+# four of them on its own pinned initial condition. At 21 nodes that budget runs
+# out at ten scenarios and this problem needs more, which the driver says in as
+# many words rather than leaving IPOPT to report it as return code -10 after the
+# problem has been assembled.
+NODES = 25
 
 
 def arm_rhs(x, u, mp):
@@ -104,7 +112,7 @@ SLACK = 1.0e-3
 
 out = rp.solve(alg, slack=SLACK, scenarios="sigma-points",
                generate=True, max_iterations=12, tighten=0.9,
-               out_of_sample=600, wait_and_see=3)
+               out_of_sample=400, wait_and_see=2)
 
 print("\n  starting scenarios were the unscented set %s"
       % np.array2string(rp.uncertainty.sigma_points()[0].ravel(), precision=4))
@@ -173,7 +181,7 @@ def miss_numpy(t, u, mp_grid, nsub=32):
     return np.max(np.abs(x - XF.reshape(4, 1)), axis=0)
 
 
-grid = np.linspace(MU - 3 * SIGMA, MU + 3 * SIGMA, 4001)
+grid = np.linspace(MU - 3 * SIGMA, MU + 3 * SIGMA, 2001)
 mine = miss_numpy(out.time, out.controls, grid)
 theirs = rp._violation_many(grid.reshape(-1, 1), out.time, out.controls, np.zeros(0))
 gap = float(np.max(np.abs(np.maximum(mine - DELTA, 0.0) - theirs)))

@@ -201,7 +201,7 @@ the error says which of the two you have met.
 
 ## Examples and validation
 
-Seventeen examples, in `examples/`. Run one directly, or all of them:
+Eighteen examples, in `examples/`. Run one directly, or all of them:
 
 ```
 cd python/examples
@@ -234,11 +234,12 @@ what `run_all.py` reports.
 | `robust_arm.py` | robust optimal control by scenario augmentation | the nominal design must fail out of sample and the generated one must not |
 | `robust_driver_arm.py` | the same problem through `psopt.robust` | the driver must certify the design over the whole set |
 | `robust_driver_vdp.py` | two uncertain parameters, a state constraint, an expected cost | the robust design must hold the barrier for every plant |
+| `robust_driver_risk.py` | expectation, mean-variance and CVaR on one problem | each objective is recomputed from the per-scenario costs |
 | `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
 
 The first fourteen were run together on 17 September 2026 and passed;
-`robust_arm.py` and the two driver examples were added on 27 September 2026 and
-all seventeen were run together then, in two and a half minutes.
+`robust_arm.py` and the three driver examples were added on 27 September 2026
+and all eighteen were run together then, in just under five minutes.
 
 The three robust examples are the slow ones, at ten to sixty seconds each,
 because each calls `prob.solve` once per iteration of a scenario-generation loop
@@ -282,6 +283,22 @@ the driver then adds scenarios where the design is actually failing, which is a
 cutting plane on the semi-infinite constraint and is what lets it finish with a
 certificate rather than a statistic.
 
+`risk=` selects what is minimised: `"nominal"`, `"expectation"`,
+`"mean-variance"` or `"cvar"`. The first two are weighted sums of per-scenario
+costs and go straight into the integrand. The other two need each scenario's cost
+as a quantity in its own right — the variance of a Lagrange cost across scenarios
+is not the integral of anything — so the driver carries an extra state per
+scenario for it, and needs `.cost_bounds`. CVaR is written by the
+Rockafellar–Uryasev device with a slack static parameter per scenario rather than
+a smoothed hinge, so the constraints are exact.
+
+Two cautions about the risk measures, both measured rather than asserted in
+`robust_driver_risk.py`. A **tail measure needs a scenario set that resolves the
+tail**: CVaR over the five-point unscented rule is a worst-case measure over
+those five plants, because the rule matches a mean and a covariance and says
+nothing about a tail. And the scenario set is limited by the transcription — see
+below.
+
 Three properties are worth knowing before relying on it.
 
 *The verification does not use the design's integrator.* It builds CasADi
@@ -302,11 +319,26 @@ gain and a pinned terminal state, or a kinematic vehicle with an uncertain speed
 reduces it. `robust_driver_vdp.py` sets out the argument. Check for it before
 reaching for the driver.
 
-Not implemented: CVaR and mean-variance (the variance of a Lagrange cost across
-scenarios is not the integral of anything, so each scenario needs its running cost
-carried as an extra state first), scenario-dependent static parameters, feedback
-of any kind, and multi-phase problems, which are refused rather than quietly
-mishandled.
+**How many scenarios will fit.** Under multiple shooting the state at every node
+is pinned by the defect equations, so the only free parameters in the augmented
+problem are the shared control at the nodes, the free time endpoints and any free
+static parameters. Every scenario brings its own *equality* events — its pinned
+initial condition above all — out of that same budget:
+
+    degrees of freedom  =  ncontrols * nodes + free times + free parameters
+                           - equality events
+
+Each scenario therefore costs as many degrees of freedom as it has pinned events,
+and the scenario count is limited by the node count rather than by memory or time.
+Left to IPOPT this arrives as return code -10 after the whole problem has been
+assembled; the driver recognises it and prints the arithmetic with the two
+remedies, which differ — raise the node count, or relax pinned events to a
+tolerance, since an inequality event costs nothing here. The count is a lower
+bound, because an equality event can be linearly dependent on the defects, so it
+is used to explain a failure and never to refuse in advance.
+
+Not implemented: scenario-dependent static parameters, feedback of any kind, and
+multi-phase problems, which are refused rather than quietly mishandled.
 
 One figure has moved and is flagged rather than quietly updated. `bryson_ir.py`
 reports the integrated residual, which is a feasibility measure rather than a

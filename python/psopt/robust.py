@@ -407,6 +407,11 @@ class RobustPhase(object):
         self.events = None      # e(xi, xf, p, t0, tf, theta)
         self.bounds = _Bounds()
         self.guess = _Guess()
+        # Range the per-scenario cost is certainly inside. Required by the risk
+        # measures that carry it as a state -- mean-variance and CVaR -- because a
+        # state needs bounds, and a bound that turned out to be active would
+        # silently change the risk measure into something else.
+        self.cost_bounds = None
 
 
 class RobustSolution(object):
@@ -425,6 +430,9 @@ class RobustSolution(object):
         self.n_solves = 0
         self.n_verifications = 0
         self.converged = False
+        # True when the loop stopped because the transcription could not carry
+        # another scenario, rather than because the design was good enough.
+        self.budget_exhausted = False
 
     def report(self, printer=print):
         """Print what was found, in the order it should be read."""
@@ -450,12 +458,22 @@ class RobustSolution(object):
                     "%.1f%% within slack" % (o["mean"], o["worst"], o["within"]))
             printer("  drawn outside the set         : %d of %d (%.2f%%), worst %.3e"
                     % (o["n_out"], o["n"], 100.0 * o["n_out"] / o["n"], o["worst_out"]))
+            if o.get("cost"):
+                c2 = o["cost"]
+                printer("  realised cost out of sample   : mean %.5f, s.d. %.5f, "
+                        "90th %.5f, worst %.5f"
+                        % (c2["mean"], c2["sd"], c2["p90"], c2["worst"]))
         if self.wait_and_see is not None:
             printer("  wait-and-see lower bound      : %.6f  (the value of knowing"
                     % self.wait_and_see)
             printer("                                  theta in advance: %.1f%%)"
                     % (100.0 * (self.objective - self.wait_and_see)
                        / abs(self.wait_and_see)))
+        if self.budget_exhausted:
+            printer("  STOPPED EARLY                 : the transcription could not")
+            printer("                                  carry another scenario; see")
+            printer("                                  the message above for the two")
+            printer("                                  remedies")
         printer("  calls to psopt()              : %d" % self.n_solves)
 
 
@@ -478,6 +496,11 @@ class RobustProblem(object):
         # norm, which is right only when the constraints share units.
         self.event_scale = None
         self.path_scale = None
+        # Accepted here as well as on the phase, because the phase is where it
+        # belongs and the problem is where a reader reaches for it first. A plain
+        # Python object accepts any attribute silently, so offering only one of the
+        # two spellings would mean the other quietly did nothing.
+        self.cost_bounds = None
 
     def add_phase(self, nstates, ncontrols, nevents=0, npath=0, nparameters=0):
         if self._phases:
@@ -492,91 +515,192 @@ class RobustProblem(object):
 
     # -- assembly ------------------------------------------------------------------
 
-    def _augment(self, thetas, margins, guess=None, weights=None, risk="nominal"):
+    def _augment(self, thetas, margins, guess=None, weights=None, risk="nominal",
+                 cvar_alpha=0.9, mv_lambda=1.0):
         """Build the deterministic psopt.Problem for a given scenario set.
 
         The scenario set does two jobs and the driver keeps them apart. As a
         CONSTRAINT SET every member is a plant the design must serve, and every
         member counts equally --- there is no such thing as a constraint that holds
-        with weight one sixth. As a QUADRATURE RULE it estimates the expected cost,
+        with weight one sixth. As a QUADRATURE RULE it estimates the risk measure,
         and there the weights are the rule's and matter.
 
         So the scenarios added by the generation loop enter the constraints and
         carry weight zero in the objective. They are not quadrature nodes; they are
         the places the design was failing, which is a biased sample of the
-        uncertainty by construction. Letting them into the expectation would be
-        quietly replacing the risk measure with a worst-case-weighted one.
+        uncertainty by construction. Letting them into the risk measure would be
+        quietly replacing it with a worst-case-weighted one.
+
+        CARRYING THE COST OF EACH SCENARIO
+
+        "nominal" and "expectation" are sums of per-scenario costs, so they can be
+        written straight into the integrand and cost nothing. Mean-variance and
+        CVaR cannot: both need each scenario's cost J_k as a quantity in its own
+        right, and the variance of a Lagrange cost across scenarios is not the
+        integral of anything. So for those two the augmentation carries an extra
+        state per scenario whose derivative is that scenario's integrand and whose
+        initial value is pinned to zero. J_k is then its final value plus the
+        scenario's endpoint term, available to any function of the final state.
+
+        CVaR is written by the Rockafellar-Uryasev device,
+
+            CVaR_alpha = min over eta of  eta + 1/(1-alpha) * sum_k w_k [J_k - eta]+
+
+        with the positive part carried by a slack static parameter per scenario
+        rather than by a smoothed hinge: s_k >= 0 and s_k >= J_k - eta, both exact,
+        where a smoothed max would put an arbitrary rounding radius between the
+        answer and the risk measure that was asked for. PSOPT has static parameters
+        and this is what they are for.
         """
         rp = self._phases[0]
         M = len(thetas)
         n, m = rp.nstates, rp.ncontrols
         ne, npth = rp.nevents, rp.npath
+        npu = rp.nparameters                       # the USER's static parameters
 
+        if risk not in ("nominal", "expectation", "mean-variance", "cvar"):
+            raise ValueError(
+                "RobustProblem: risk=%r. Implemented: 'nominal', 'expectation', "
+                "'mean-variance', 'cvar'." % (risk,))
+        use_cost = risk in ("mean-variance", "cvar")
+        if rp.cost_bounds is None and self.cost_bounds is not None:
+            rp.cost_bounds = self.cost_bounds
+        if use_cost and rp.cost_bounds is None:
+            raise ValueError(
+                "RobustProblem: risk=%r carries each scenario's cost as a state, "
+                "and a state needs bounds. Set .cost_bounds = (lo, hi) to a range "
+                "the per-scenario cost is certainly inside. It is asked for rather "
+                "than guessed because a bound that turns out to be active silently "
+                "changes the risk measure into something else." % (risk,))
+        nx = n * M + (M if use_cost else 0)
+        npar = npu + (M + 1 if risk == "cvar" else 0)
+
+        w = (np.ones(M) / M if weights is None else np.asarray(weights, dtype=float))
+        if len(w) != M:
+            raise ValueError("RobustProblem: %d weights for %d scenarios"
+                             % (len(w), M))
+
+        nev = ne * M + (M if use_cost else 0) + (M if risk == "cvar" else 0)
         prob = Problem(name=self.name)
-        ph = prob.add_phase(nstates=n * M, ncontrols=m, nevents=ne * M,
-                            npath=npth * M, nparameters=rp.nparameters)
+        ph = prob.add_phase(nstates=nx, ncontrols=m, nevents=nev,
+                            npath=npth * M, nparameters=npar)
         ph.nodes = list(rp.nodes)
 
         th_list = [np.asarray(t, dtype=float) for t in thetas]
+        xs = lambda x, k: x[n * k:n * (k + 1)]          # noqa: E731  scenario k
+        cs = lambda x, k: x[n * M + k]                  # noqa: E731  its cost state
 
         def dynamics(x, u, p, t):
-            return ca.vertcat(*[rp.dynamics(x[n * k:n * (k + 1)], u, p, t, th_list[k])
-                                for k in range(M)])
+            rows = [rp.dynamics(xs(x, k), u, p[0:npu], t, th_list[k])
+                    for k in range(M)]
+            if use_cost:
+                rows += [rp.integrand(xs(x, k), u, p[0:npu], t)
+                         if rp.integrand is not None else ca.SX(0.0)
+                         for k in range(M)]
+            return ca.vertcat(*rows)
 
         ph.dynamics = dynamics
         if npth:
             ph.path = lambda x, u, p, t: ca.vertcat(
-                *[rp.path(x[n * k:n * (k + 1)], u, p, t, th_list[k]) for k in range(M)])
-        if ne:
-            ph.events = lambda xi, xf, p, t0, tf: ca.vertcat(
-                *[rp.events(xi[n * k:n * (k + 1)], xf[n * k:n * (k + 1)], p, t0, tf,
-                            th_list[k]) for k in range(M)])
+                *[rp.path(xs(x, k), u, p[0:npu], t, th_list[k]) for k in range(M)])
+
+        def J_of(xi, xf, p, t0, tf, k):
+            """Scenario k's total cost, as a function of the final state."""
+            term = (rp.endpoint(xs(xi, k), xs(xf, k), p[0:npu], t0, tf)
+                    if rp.endpoint is not None else ca.SX(0.0))
+            return term + (cs(xf, k) if use_cost else ca.SX(0.0))
+
+        def events(xi, xf, p, t0, tf):
+            rows = []
+            if ne:
+                rows += [rp.events(xs(xi, k), xs(xf, k), p[0:npu], t0, tf, th_list[k])
+                         for k in range(M)]
+            if use_cost:
+                rows += [cs(xi, k) for k in range(M)]        # each cost starts at 0
+            if risk == "cvar":
+                eta = p[npu]
+                rows += [p[npu + 1 + k] - (J_of(xi, xf, p, t0, tf, k) - eta)
+                         for k in range(M)]                  # s_k >= J_k - eta
+            return ca.vertcat(*rows)
+
+        if nev:
+            ph.events = events
+
         if risk == "nominal":
             # The cost of the first scenario, which is the quadrature rule's centre
             # for every rule the driver offers. Feasibility is robust; the objective
             # is the nominal one, and saying so is the whole of the honesty here.
             if rp.endpoint is not None:
                 ph.endpoint = lambda xi, xf, p, t0, tf: rp.endpoint(
-                    xi[0:n], xf[0:n], p, t0, tf)
+                    xs(xi, 0), xs(xf, 0), p[0:npu], t0, tf)
             if rp.integrand is not None:
-                ph.integrand = lambda x, u, p, t: rp.integrand(x[0:n], u, p, t)
+                ph.integrand = lambda x, u, p, t: rp.integrand(xs(x, 0), u,
+                                                               p[0:npu], t)
         elif risk == "expectation":
-            w = (np.ones(M) / M if weights is None
-                 else np.asarray(weights, dtype=float))
-            if len(w) != M:
-                raise ValueError("RobustProblem: %d weights for %d scenarios"
-                                 % (len(w), M))
+            # A weighted sum of per-scenario costs is itself a sum, so it goes
+            # straight into the integrand and the endpoint and needs no cost state.
             if rp.endpoint is not None:
                 ph.endpoint = lambda xi, xf, p, t0, tf: sum(
-                    float(w[k]) * rp.endpoint(xi[n * k:n * (k + 1)],
-                                              xf[n * k:n * (k + 1)], p, t0, tf)
+                    float(w[k]) * rp.endpoint(xs(xi, k), xs(xf, k), p[0:npu], t0, tf)
                     for k in range(M))
             if rp.integrand is not None:
                 ph.integrand = lambda x, u, p, t: sum(
-                    float(w[k]) * rp.integrand(x[n * k:n * (k + 1)], u, p, t)
+                    float(w[k]) * rp.integrand(xs(x, k), u, p[0:npu], t)
                     for k in range(M))
-        else:
-            raise ValueError(
-                "RobustProblem: risk=%r. 'nominal' and 'expectation' are "
-                "implemented. Mean-variance and CVaR are not, and they are not "
-                "one-liners: the variance of a Lagrange cost across scenarios is "
-                "not the integral of anything, so each scenario needs its running "
-                "cost carried as an extra state before either can be written."
-                % (risk,))
+        elif risk == "mean-variance":
+            lam = float(mv_lambda)
+
+            def mv(xi, xf, p, t0, tf):
+                J = [J_of(xi, xf, p, t0, tf, k) for k in range(M)]
+                mean = sum(float(w[k]) * J[k] for k in range(M))
+                second = sum(float(w[k]) * J[k] * J[k] for k in range(M))
+                return mean + lam * (second - mean * mean)
+
+            ph.endpoint = mv
+        else:                                                   # cvar
+            a = float(cvar_alpha)
+            if not 0.0 <= a < 1.0:
+                raise ValueError("RobustProblem: cvar_alpha must be in [0, 1)")
+
+            def cvar(xi, xf, p, t0, tf):
+                return p[npu] + (1.0 / (1.0 - a)) * sum(
+                    float(w[k]) * p[npu + 1 + k] for k in range(M))
+
+            ph.endpoint = cvar
 
         ph.bounds.lower.states = _tile(rp.bounds.lower.states, M)
         ph.bounds.upper.states = _tile(rp.bounds.upper.states, M)
+        if use_cost:
+            clo, chi = rp.cost_bounds
+            ph.bounds.lower.states = list(ph.bounds.lower.states) + [clo] * M
+            ph.bounds.upper.states = list(ph.bounds.upper.states) + [chi] * M
         ph.bounds.lower.controls = rp.bounds.lower.controls
         ph.bounds.upper.controls = rp.bounds.upper.controls
         ph.bounds.lower.parameters = rp.bounds.lower.parameters
         ph.bounds.upper.parameters = rp.bounds.upper.parameters
+        if risk == "cvar":
+            clo, chi = rp.cost_bounds
+            plo = list(rp.bounds.lower.parameters or [])
+            phi = list(rp.bounds.upper.parameters or [])
+            # eta lives on the same scale as the cost; each slack is a positive
+            # part of a difference of two costs, so it cannot exceed their range.
+            ph.bounds.lower.parameters = plo + [clo] + [0.0] * M
+            ph.bounds.upper.parameters = phi + [chi] + [chi - clo] * M
         ph.bounds.t0 = rp.bounds.t0
         ph.bounds.tf = rp.bounds.tf
+
+        elo, ehi = [], []
         if ne:
             lo, hi = _shrink(rp.bounds.lower.events, rp.bounds.upper.events,
                              margins["events"])
-            ph.bounds.lower.events = _tile(lo, M)
-            ph.bounds.upper.events = _tile(hi, M)
+            elo, ehi = _tile(lo, M), _tile(hi, M)
+        if use_cost:
+            elo, ehi = elo + [0.0] * M, ehi + [0.0] * M
+        if risk == "cvar":
+            clo, chi = rp.cost_bounds
+            elo, ehi = elo + [0.0] * M, ehi + [chi - clo] * M
+        if nev:
+            ph.bounds.lower.events, ph.bounds.upper.events = elo, ehi
         if npth:
             lo, hi = _shrink(rp.bounds.lower.path, rp.bounds.upper.path,
                              margins["path"])
@@ -588,7 +712,7 @@ class RobustProblem(object):
             t_g, u_g, x_per = guess
             ph.guess.time = np.asarray(t_g).reshape(1, N)
             ph.guess.controls = np.asarray(u_g).reshape(m, N)
-            ph.guess.states = np.vstack(x_per)
+            rows = list(x_per)
         else:
             ph.guess.time = (np.asarray(rp.guess.time).reshape(1, N)
                              if rp.guess.time is not None
@@ -598,9 +722,97 @@ class RobustProblem(object):
                                  else np.zeros((m, N)))
             base = (np.asarray(rp.guess.states) if rp.guess.states is not None
                     else np.zeros((n, N)))
-            ph.guess.states = np.vstack([base] * M)
-        ph.guess.parameters = rp.guess.parameters
+            rows = [base] * M
+        if use_cost:
+            rows = list(rows) + [self._cost_guess(rows[k],
+                                                  np.asarray(ph.guess.controls),
+                                                  np.asarray(ph.guess.time).ravel())
+                                 for k in range(M)]
+        ph.guess.states = np.vstack(rows)
+        pg = (np.asarray(rp.guess.parameters, dtype=float).ravel()
+              if rp.guess.parameters is not None else np.zeros(npu))
+        if risk == "cvar":
+            pg = np.concatenate([pg, np.zeros(M + 1)])
+        ph.guess.parameters = pg.reshape(-1, 1) if npar else None
         return prob
+
+    @staticmethod
+    def _dof(ph):
+        """Degrees of freedom the transcription has left, as a LOWER bound.
+
+        Under multiple shooting the state at every node is pinned by the defect
+        equations, so the state count cancels and what remains is
+
+            dof = ncontrols * N + free times + free static parameters
+                  - equality events
+
+        Every scenario brings its own equality events -- its pinned initial
+        condition above all -- and they come out of a budget the shared control
+        fixes. Inequality events cost nothing, which is a second reason to relax a
+        terminal condition rather than pin it.
+
+        It is a LOWER bound because equality events can be linearly dependent on
+        the defect equations, and a dependent constraint removes no freedom. So a
+        non-positive count does not prove the problem is over-determined, and this
+        is used to EXPLAIN a failure rather than to refuse in advance -- refusing
+        on it would block problems that solve perfectly well.
+        """
+        N = ph.nodes[-1]
+        nfree_t = ((1 if ph.bounds.t0[0] != ph.bounds.t0[1] else 0)
+                   + (1 if ph.bounds.tf[0] != ph.bounds.tf[1] else 0))
+        npar_free = 0
+        if ph.bounds.lower.parameters is not None:
+            plo = np.asarray(ph.bounds.lower.parameters, dtype=float)
+            phi = np.asarray(ph.bounds.upper.parameters, dtype=float)
+            npar_free = int(np.sum(phi > plo))
+        neq = 0
+        if ph.bounds.lower.events is not None:
+            elo = np.asarray(ph.bounds.lower.events, dtype=float)
+            ehi = np.asarray(ph.bounds.upper.events, dtype=float)
+            neq = int(np.sum(ehi <= elo))
+        return (ph.ncontrols * N + nfree_t + npar_free - neq, nfree_t, npar_free,
+                neq, N)
+
+    def _dof_message(self, ph, M, risk):
+        """Why a solve with this many scenarios had nothing left to move."""
+        dof, nfree_t, npar_free, neq, N = self._dof(ph)
+        per = max(1, neq // max(1, M))
+        room = ph.ncontrols * N + nfree_t + npar_free
+        most = max(1, (room - 1) // per)
+        extra = ("\n      risk=%r adds one pinned event per scenario of its own, "
+                 "for the cost state's zero initial value." % risk
+                 if risk in ("mean-variance", "cvar") else "")
+        return (
+            "%d scenarios leave the transcription about %d degrees of freedom: %d "
+            "control(s) at %d nodes, %d free time endpoint(s) and %d free static "
+            "parameter(s), against %d equality events -- some %d per scenario.\n"
+            "      Multiple shooting pins the state at every node through its "
+            "defect equations, so the shared control is the only thing left to "
+            "satisfy them with, and each scenario spends its own pinned events out "
+            "of that budget.\n"
+            "      Two remedies, and they differ: raise the node count, which buys "
+            "%d per node and would carry roughly %d scenarios at this mesh shape; "
+            "or relax pinned events to a tolerance, which costs nothing per "
+            "scenario because an inequality event takes no degree of freedom at "
+            "all.%s"
+            % (M, dof, ph.ncontrols, N, nfree_t, npar_free, neq, per,
+               ph.ncontrols, most, extra))
+
+    def _cost_guess(self, x_rows, u_rows, t_row):
+        """A running-cost guess, by integrating the integrand along a guessed arc.
+
+        Zero would do and would be worse: the cost state's terminal value IS the
+        objective under mean-variance and CVaR, so a guess of zero starts the
+        solver with an objective estimate that is wrong by the whole of the cost.
+        """
+        if self._vL is None:
+            return np.zeros((1, len(t_row)))
+        npu = self._phases[0].nparameters
+        L = np.array([float(self._vL(x_rows[:, j], u_rows[:, j], np.zeros(npu),
+                                     t_row[j]))
+                      for j in range(len(t_row))])
+        c = np.concatenate([[0.0], np.cumsum(0.5 * (L[1:] + L[:-1]) * np.diff(t_row))])
+        return c.reshape(1, -1)
 
     # -- the verification, at two levels -------------------------------------------
     #
@@ -644,7 +856,12 @@ class RobustProblem(object):
         e = (ca.Function("e", [xi, xf, p, t0, tf, th],
                          [ca.vertcat(rp.events(xi, xf, p, t0, tf, th))])
              if rp.nevents else None)
-        return f, g, e
+        L = (ca.Function("L", [x, u, p, t], [rp.integrand(x, u, p, t)])
+             if rp.integrand is not None else None)
+        phi = (ca.Function("phi", [xi, xf, p, t0, tf],
+                           [rp.endpoint(xi, xf, p, t0, tf)])
+               if rp.endpoint is not None else None)
+        return f, g, e, L, phi
 
     def _maps(self, K):
         """Mapped versions of the verifier functions, cached by width."""
@@ -653,8 +870,68 @@ class RobustProblem(object):
                 K=K,
                 f=self._vf.map(K),
                 g=self._vg.map(K) if self._vg is not None else None,
-                e=self._ve.map(K) if self._ve is not None else None)
+                e=self._ve.map(K) if self._ve is not None else None,
+                L=self._vL.map(K) if self._vL is not None else None,
+                phi=self._vphi.map(K) if self._vphi is not None else None)
         return self._map_cache
+
+    def _costs_many(self, thetas, t_nodes, u_nodes, params, nsub=None):
+        """The realised cost J at every parameter in `thetas`, in one sweep.
+
+        The same vectorised RK4 as the violation sweep, carrying the integrand
+        alongside the state, plus the endpoint term at the finish. This is what
+        makes the out-of-sample COST distribution reportable rather than merely
+        the out-of-sample feasibility, and the difference between a design chosen
+        for its mean and one chosen for its tail shows up here and nowhere else.
+        """
+        rp = self._phases[0]
+        thetas = np.atleast_2d(np.asarray(thetas, dtype=float))
+        K = len(thetas)
+        nsub = self._nsub if nsub is None else nsub
+        mp = self._maps(K)
+        TH = thetas.T
+        P = np.tile(np.asarray(params, dtype=float).ravel()[:rp.nparameters]
+                    .reshape(-1, 1), (1, K))
+        X = self._x0_of(thetas)
+        X0 = X.copy()
+        J = np.zeros(K)
+        N = len(t_nodes)
+
+        def LL(Xc, Uc, tt):
+            if mp["L"] is None:
+                return np.zeros(K)
+            return np.asarray(mp["L"](Xc, Uc, P, np.full((1, K), tt))).ravel()
+
+        for i in range(N - 1):
+            ta, tb = t_nodes[i], t_nodes[i + 1]
+            h = (tb - ta) / nsub
+            ua, ub = u_nodes[:, i:i + 1], u_nodes[:, i + 1:i + 2]
+            for sstep in range(nsub):
+                w0, wh, w1 = (sstep / float(nsub), (sstep + 0.5) / float(nsub),
+                              (sstep + 1.0) / float(nsub))
+                UA = np.tile(ua + w0 * (ub - ua), (1, K))
+                UH = np.tile(ua + wh * (ub - ua), (1, K))
+                UB = np.tile(ua + w1 * (ub - ua), (1, K))
+                tA = ta + sstep * h
+                tH = ta + (sstep + 0.5) * h
+                tB = ta + (sstep + 1) * h
+                k1 = np.asarray(mp["f"](X, UA, P, np.full((1, K), tA), TH))
+                l1 = LL(X, UA, tA)
+                X2 = X + 0.5 * h * k1
+                k2 = np.asarray(mp["f"](X2, UH, P, np.full((1, K), tH), TH))
+                l2 = LL(X2, UH, tH)
+                X3 = X + 0.5 * h * k2
+                k3 = np.asarray(mp["f"](X3, UH, P, np.full((1, K), tH), TH))
+                l3 = LL(X3, UH, tH)
+                X4 = X + h * k3
+                k4 = np.asarray(mp["f"](X4, UB, P, np.full((1, K), tB), TH))
+                l4 = LL(X4, UB, tB)
+                X = X + (h / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+                J = J + (h / 6.0) * (l1 + 2 * l2 + 2 * l3 + l4)
+        if mp["phi"] is not None:
+            J = J + np.asarray(mp["phi"](X0, X, P, np.full((1, K), t_nodes[0]),
+                                         np.full((1, K), t_nodes[-1]))).ravel()
+        return J
 
     def _x0_of(self, thetas):
         """Initial states, one column per parameter vector."""
@@ -681,7 +958,10 @@ class RobustProblem(object):
 
         mp = self._maps(K)
         TH = thetas.T                                     # (d, K)
-        P = np.tile(np.asarray(params, dtype=float).reshape(-1, 1), (1, K))
+        # A risk measure may have appended static parameters of its own -- CVaR's
+        # eta and its slacks -- and the user's equations know nothing about them.
+        P = np.tile(np.asarray(params, dtype=float).ravel()[:rp.nparameters]
+                    .reshape(-1, 1), (1, K))
         X = self._x0_of(thetas)                           # (n, K)
         N = len(t_nodes)
         nodes = np.empty((rp.nstates, N, K)) if want_nodes else None
@@ -745,7 +1025,7 @@ class RobustProblem(object):
         from scipy.integrate import solve_ivp
         rp = self._phases[0]
         th = np.asarray(theta, dtype=float)
-        params = np.asarray(params, dtype=float)
+        params = np.asarray(params, dtype=float).ravel()[:rp.nparameters]
         x = self._x0_of(np.atleast_2d(th))[:, 0]
         x0 = x.copy()
         v = 0.0
@@ -857,6 +1137,7 @@ class RobustProblem(object):
     # -- the solve ------------------------------------------------------------------
 
     def solve(self, algorithm=None, slack=0.0, risk="nominal",
+              cvar_alpha=0.9, mv_lambda=1.0,
               scenarios="sigma-points",
               n_scenarios=None, generate=True, max_iterations=12,
               tighten=0.9, margin=None, n_seed=None, n_refine=3,
@@ -874,8 +1155,14 @@ class RobustProblem(object):
                        positive value allows for the resolution of the search and
                        of the integrator, and is what the margin exists to make
                        attainable.
-        risk           "nominal" (the cost of the central scenario) or
-                       "expectation" (the quadrature rule's estimate of E[J])
+        risk           "nominal" (the cost of the central scenario), "expectation"
+                       (the quadrature rule's estimate of E[J]), "mean-variance"
+                       (E[J] + mv_lambda * Var[J]) or "cvar" (the conditional
+                       value at risk at level cvar_alpha, by Rockafellar-Uryasev).
+                       The last two carry each scenario's cost as a state and need
+                       .cost_bounds set.
+        cvar_alpha     the CVaR level: 0.9 averages the worst tenth
+        mv_lambda      the weight on the variance in mean-variance
         scenarios      "sigma-points", "qmc" or "explicit"
         n_scenarios    how many, for "qmc"
         generate       add the worst parameter found and re-solve, iteratively
@@ -905,7 +1192,8 @@ class RobustProblem(object):
         rp = self._phases[0]
         alg = algorithm if algorithm is not None else Algorithm()
         self._check_algorithm(alg)
-        self._vf, self._vg, self._ve = self._build_verifier()
+        (self._vf, self._vg, self._ve, self._vL,
+         self._vphi) = self._build_verifier()
         self._map_cache = {}
         self._nsub = nsub
         self._nver = 0
@@ -932,22 +1220,39 @@ class RobustProblem(object):
         guess = None
         design = None
         for it in range(max_iterations):
-            prob = self._augment(thetas, margins, guess, weights, risk)
+            prob = self._augment(thetas, margins, guess, weights, risk,
+                                 cvar_alpha, mv_lambda)
             sol = prob.solve(alg)
             out.n_solves += 1
             if not sol.status.success:
+                # A failed solve with no freedom left is the scenario budget
+                # running out, and that is worth saying in as many words: left to
+                # IPOPT it arrives as return code -10 with no indication of which
+                # remedy is wanted, and neither of them is obvious.
+                dof = self._dof(prob._phases[0])[0]
+                starved = dof <= 0
                 if design is None:
                     raise RuntimeError(
                         "RobustProblem: the first solve failed (%s). Nothing below "
-                        "would be meaningful." % (sol.status.error_msg or
-                                                  "NLP return code %d"
-                                                  % sol.status.nlp_return_code))
+                        "would be meaningful.%s"
+                        % (sol.status.error_msg or "NLP return code %d"
+                           % sol.status.nlp_return_code,
+                           ("\n      " + self._dof_message(prob._phases[0],
+                                                           len(thetas), risk))
+                           if starved else ""))
                 if verbose:
-                    printer("  %3d %4d   adding theta = %s made the problem "
-                            "unsolvable; keeping the previous design"
-                            % (it, len(thetas), _fmt(thetas[-1])))
+                    if starved:
+                        printer("  %3d %4d  cannot carry another scenario.\n      %s"
+                                % (it, len(thetas),
+                                   self._dof_message(prob._phases[0],
+                                                     len(thetas), risk)))
+                    else:
+                        printer("  %3d %4d   adding theta = %s made the problem "
+                                "unsolvable; keeping the previous design"
+                                % (it, len(thetas), _fmt(thetas[-1])))
                 thetas = thetas[:-1]
                 weights = weights[:-1]
+                out.budget_exhausted = starved
                 break
 
             design = sol
@@ -984,7 +1289,8 @@ class RobustProblem(object):
         # cold solve of the final set answers the question "was the path to it
         # costing anything?" -- and reports the answer either way.
         if polish:
-            cold = self._augment(thetas, margins, None, weights, risk)
+            cold = self._augment(thetas, margins, None, weights, risk,
+                                     cvar_alpha, mv_lambda)
             csol = cold.solve(alg)
             out.n_solves += 1
             better = None
@@ -1043,7 +1349,7 @@ class RobustProblem(object):
             # computed from a harder problem than the one being bounded is not a
             # lower bound.
             out.wait_and_see = self._wait_and_see(
-                alg, dict(events=None, path=None), wait_and_see, seed, risk)
+                alg, dict(events=None, path=None), wait_and_see, seed)
             out.n_solves += wait_and_see
         out.n_verifications = self._nver
         if verbose:
@@ -1115,7 +1421,11 @@ class RobustProblem(object):
         elif scenarios == "qmc":
             if n_scenarios is None:
                 n_scenarios = 2 * U.dim + 1
-            pts = U.quasi_random(n_scenarios, seed=1)
+            # Sobol' balances only on powers of two, so the generator rounds the
+            # count up and the surplus is dropped here. Returning more points than
+            # were asked for would be a surprise, and with a scenario budget as
+            # tight as multiple shooting's it would be an expensive one.
+            pts = U.quasi_random(n_scenarios, seed=1)[:n_scenarios]
             w = np.full(len(pts), 1.0 / len(pts))
         elif scenarios == "explicit":
             pts, w = U.sigma_points()
@@ -1136,20 +1446,34 @@ class RobustProblem(object):
         v = self._violation_many(draws, t_nodes, u_nodes, params)
         mask = np.array([self.uncertainty.contains(th) for th in draws])
         inside, outside = v[mask], v[~mask]
+        cost = None
+        if self._vL is not None or self._vphi is not None:
+            Jd = self._costs_many(draws[mask], t_nodes, u_nodes, params)
+            if len(Jd):
+                cost = dict(mean=float(Jd.mean()), sd=float(Jd.std()),
+                            p90=float(np.percentile(Jd, 90.0)),
+                            worst=float(Jd.max()))
         return dict(n=m, n_out=len(outside),
                     mean=float(inside.mean()) if len(inside) else float("nan"),
                     worst=float(inside.max()) if len(inside) else float("nan"),
                     within=(100.0 * float(np.mean(inside <= slack))
                             if len(inside) else float("nan")),
-                    worst_out=float(outside.max()) if len(outside) else 0.0)
+                    worst_out=float(outside.max()) if len(outside) else 0.0,
+                    cost=cost)
 
-    def _wait_and_see(self, alg, margins, k, seed, risk="nominal"):
+    def _wait_and_see(self, alg, margins, k, seed):
         """The average of k problems each solved knowing its own parameter.
 
-        E[min] <= min E[.], so this is a lower bound on any implementable design
-        and the gap to it is the value of knowing the uncertainty in advance. It is
-        not a design: the controls it produces are all different and their average
-        solves nothing.
+        E[min] <= min E[.], so this is a lower bound on the best achievable EXPECTED
+        cost, and hence on any risk measure that dominates the mean -- which
+        mean-variance with a non-negative weight and CVaR both do. The gap to it is
+        the value of knowing the uncertainty in advance. It is not a design: the
+        controls it produces are all different and their average solves nothing.
+
+        Each subproblem is solved with the plain per-scenario cost, because that is
+        what "knowing theta in advance" means. Applying a risk measure to a single
+        known parameter would be applying it to a degenerate distribution, where
+        CVaR and mean-variance both collapse to the cost itself anyway.
 
         It is an average over k draws and therefore itself a random quantity; with
         k small it is a noisy bound, and the driver reports it as a diagnostic
@@ -1158,7 +1482,7 @@ class RobustProblem(object):
         rng = np.random.default_rng(seed + 2)
         vals = []
         for th in self.uncertainty.sample(k, rng):
-            prob = self._augment([th], margins, None, [1.0], risk)
+            prob = self._augment([th], margins, None, [1.0], "nominal")
             sol = prob.solve(alg)
             if sol.status.success:
                 vals.append(float(sol.objective))
