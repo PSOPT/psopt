@@ -201,7 +201,7 @@ the error says which of the two you have met.
 
 ## Examples and validation
 
-Fourteen examples, in `examples/`. Run one directly, or all of them:
+Fifteen examples, in `examples/`. Run one directly, or all of them:
 
 ```
 cd python/examples
@@ -231,9 +231,16 @@ what `run_all.py` reports.
 | `bryson_ir.py` | integrated-residual pass-through | see the note below |
 | `lotka_integer.py` | a binary integer control, sum-up rounding | 1.348104 / 1.351850, 4 switches |
 | `integer_parameter.py` | an integer static parameter, by enumeration | closed form p = 2, J = 0.09 |
+| `robust_arm.py` | robust optimal control by scenario augmentation | the nominal design must fail out of sample and the generated one must not |
 | `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
 
-All fourteen were run together on 17 September 2026 and passed.
+The first fourteen were run together on 17 September 2026 and passed;
+`robust_arm.py` was added on 27 September 2026 and all fifteen were run together
+then.
+
+`robust_arm.py` is the slowest of them, at about fifteen seconds, because it calls
+`prob.solve` once per iteration of a scenario-generation loop. Its C++
+counterpart, `examples/robust_arm/`, is the fuller study and takes minutes.
 
 One figure has moved and is flagged rather than quietly updated. `bryson_ir.py`
 reports the integrated residual, which is a feasibility measure rather than a
