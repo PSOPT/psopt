@@ -273,12 +273,23 @@ void initialize_solution(Sol& solution, Prob& problem, Alg& algorithm, Workspace
    if (algorithm.diagnostic_level >= 2)
       solution.stationarity_residual = new MatrixXd[nphases];
 
-   // Allocated whenever Hermite-Simpson could be used, which includes local
-   // collocation started on the trapezoidal method, since the automatic refinement
-   // switches to Hermite-Simpson after the first iteration. The arrays stay empty
-   // until a Hermite-Simpson mesh actually fills them, and the accessors report that
-   // by returning an empty matrix.
-   if ( use_local_collocation(algorithm) ) {
+   // Allocated whenever a midpoint control could be carried, which is Hermite-Simpson,
+   // local collocation started on the trapezoidal method (the automatic refinement
+   // switches to Hermite-Simpson after the first iteration), AND multiple shooting with a
+   // quadratic parameterisation, whose control on an interval is the parabola through
+   // (u_k, ubar_k, u_{k+1}). The arrays stay empty until a mesh actually fills them, and
+   // the accessors report that by returning an empty matrix.
+   //
+   // The quadratic parameterisation was missing from this condition while
+   // copy_decision_variables already filled the arrays for it, so the complete control
+   // history it is documented to report came back EMPTY unless the caller had also set
+   // collocation_method to a local scheme -- which under multiple shooting selects nothing
+   // and so is not a thing anyone would think to set. A caller reading solution.controls
+   // there is reading a third of the control variables and calling it the control history,
+   // which is the mistake this pair of arrays exists to prevent, and it is worse here than
+   // under Hermite-Simpson because the midpoint value is what the segment integrator spends
+   // most of each segment on.
+   if ( use_local_collocation(algorithm) || ms_quadratic_controls(algorithm) ) {
       solution.controls_hs = new MatrixXd[nphases];
       solution.nodes_hs    = new MatrixXd[nphases];
    }

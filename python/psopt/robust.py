@@ -1148,13 +1148,12 @@ class RobustProblem(object):
         for i in range(N - 1):
             ta, tb = t_nodes[i], t_nodes[i + 1]
             h = (tb - ta) / nsub
-            ua, ub = u_nodes[:, i:i + 1], u_nodes[:, i + 1:i + 2]
             for sstep in range(nsub):
                 w0, wh, w1 = (sstep / float(nsub), (sstep + 0.5) / float(nsub),
                               (sstep + 1.0) / float(nsub))
-                BA = np.tile(ua + w0 * (ub - ua), (1, K))
-                BH = np.tile(ua + wh * (ub - ua), (1, K))
-                BB = np.tile(ua + w1 * (ub - ua), (1, K))
+                BA = np.tile(self._u_between(u_nodes, i, w0), (1, K))
+                BH = np.tile(self._u_between(u_nodes, i, wh), (1, K))
+                BB = np.tile(self._u_between(u_nodes, i, w1), (1, K))
                 tA = ta + sstep * h
                 tH = ta + (sstep + 0.5) * h
                 tB = ta + (sstep + 1) * h
@@ -1427,6 +1426,108 @@ class RobustProblem(object):
                     else None)
         return None
 
+    # -- the control the DESIGN means, between two nodes ----------------------------
+    #
+    # A transcription decides not only where the control is a decision variable but what
+    # the control IS between those points, and a verification integrator has to use the
+    # same reading or it is measuring a different controller. Three readings cover
+    # everything PSOPT offers.
+    #
+    # "constant" is multiple shooting with ms_control_parameterisation = "constant". The
+    # segment integrator holds u_k across segment k, so a linear reading is simply
+    # wrong, and the table is a staircase whose last step is duplicated, the
+    # terminal control slot being PINNED to its neighbour.
+    #
+    # "linear" is multiple shooting with "linear", where the segment integrator uses
+    # exactly that ramp, so the reading is exact by CONSTRUCTION. And trapezoidal
+    # collocation, where it is exact by CONVENTION: the trapezoid defect is what a
+    # linearly varying integrand gives, nothing in the transcription pins the control
+    # between nodes, and linear is the reading the scheme's own quadrature implies.
+    # Nothing better is defined there.
+    #
+    # "quadratic" is Hermite-Simpson, and multiple shooting with "quadratic". Both carry
+    # a control variable at the midpoint of every interval and both mean the parabola
+    # through (u_k, ubar_k, u_{k+1}). A reading that uses only the nodal values misses a
+    # third of the control variables, and on this problem class it misses the ones that
+    # matter: measured on the arm's scenario sweep, Hermite-Simpson designs verified as
+    # violating by 1.4 to 18 where multiple shooting verified at 0.06 to 0.3, and that
+    # gap was the reading and not the design.
+    #
+    # The global Lobatto schemes are the case left over. Their control is the degree-N
+    # polynomial through the nodal values, which straight lines approach only as the
+    # mesh grows, so the verification there measures a control CLOSE TO the designed one
+    # rather than the designed one. They cannot carry a replicated state anyway (see
+    # _dof), so the driver warns and names a transcription that can.
+    @staticmethod
+    def _control_shape(alg):
+        """How the transcription reads the control between two nodes."""
+        if getattr(alg, "transcription_method", "collocation") == "multiple-shooting":
+            par = getattr(alg, "ms_control_parameterisation", None) or "constant"
+            return {"constant": "constant", "linear": "linear",
+                    "quadratic": "quadratic"}.get(par, "constant")
+        if getattr(alg, "collocation_method", "Legendre") == "Hermite-Simpson":
+            return "quadratic"
+        # Trapezoidal by its own quadrature; the global schemes as the best reading
+        # available of a polynomial the nodal table does not carry.
+        return "linear"
+
+    def _set_control_reading(self, alg, design, n_nodes):
+        """Fix the reading once, from the algorithm and what the solve handed back.
+
+        The midpoint values come from the solution's COMPLETE control table, which PSOPT
+        fills for exactly the two discretizations that carry midpoint controls. If the
+        reading wants them and they are absent, the driver falls back to linear and says
+        so rather than quietly verifying a parabola as a chord.
+        """
+        self._u_shape = self._control_shape(alg)
+        self._u_mid = None
+        if self._u_shape != "quadratic":
+            return
+        uf = getattr(design, "controls_full", None)
+        if uf is None:
+            self._u_shape = "linear"
+            warnings.warn(
+                "RobustProblem: this transcription carries a control at the midpoint "
+                "of every interval and the solution reported none, so the verifier is "
+                "reading the control as a chord between the nodes rather than as the "
+                "parabola the design used. The difference is charged to the design, "
+                "and on this problem class it is not small.", stacklevel=4)
+            return
+        uf = np.asarray(uf, dtype=float)
+        if uf.shape[1] != 2 * n_nodes - 1:
+            self._u_shape = "linear"
+            return
+        # The convention is node, midpoint, node, ..., so the even columns must BE the
+        # nodal table. Checked rather than assumed: if the interleaving ever changed,
+        # the midpoints would be read off by one and the verifier would integrate a
+        # control nobody designed, which is the one failure this reading exists to
+        # prevent.
+        un = np.asarray(design.controls, dtype=float).reshape(-1, n_nodes)
+        k = min(un.shape[0], uf.shape[0])
+        if not np.allclose(uf[:k, 0::2], un[:k, :], rtol=1e-8, atol=1e-10):
+            self._u_shape = "linear"
+            warnings.warn(
+                "RobustProblem: the complete control table does not interleave node "
+                "and midpoint values the way this driver reads it, so the midpoints "
+                "cannot be trusted and the control is read as a chord between the "
+                "nodes. Report this: PSOPT's convention has changed.", stacklevel=4)
+            return
+        self._u_mid = uf[:, 1::2]             # the midpoints, one per interval
+
+    def _u_between(self, u_nodes, i, w):
+        """The control on interval i at fraction w of it, as the design means it."""
+        ua, ub = u_nodes[:, i:i + 1], u_nodes[:, i + 1:i + 2]
+        shape = getattr(self, "_u_shape", "linear")
+        if shape == "constant":
+            return ua
+        mid = getattr(self, "_u_mid", None)
+        if shape == "linear" or mid is None or i >= mid.shape[1]:
+            return ua + w * (ub - ua)
+        um = mid[:u_nodes.shape[0], i:i + 1]
+        # Lagrange through (0, ua), (1/2, um), (1, ub).
+        return ((2.0*w - 1.0)*(w - 1.0)*ua - 4.0*w*(w - 1.0)*um
+                + w*(2.0*w - 1.0)*ub)
+
     def _violation_many(self, thetas, t_nodes, u_nodes, params, nsub=None,
                         want_nodes=False, want_uexcess=False):
         """Violation at every parameter in `thetas`, by one vectorised sweep.
@@ -1519,14 +1620,13 @@ class RobustProblem(object):
         for i in range(N - 1):
             ta, tb = t_nodes[i], t_nodes[i + 1]
             h = (tb - ta) / nsub
-            ua, ub = u_nodes[:, i:i + 1], u_nodes[:, i + 1:i + 2]
             for sstep in range(nsub):
                 w0 = sstep / float(nsub)
                 wh = (sstep + 0.5) / float(nsub)
                 w1 = (sstep + 1.0) / float(nsub)
-                BA = np.tile(ua + w0 * (ub - ua), (1, K))
-                BH = np.tile(ua + wh * (ub - ua), (1, K))
-                BB = np.tile(ua + w1 * (ub - ua), (1, K))
+                BA = np.tile(self._u_between(u_nodes, i, w0), (1, K))
+                BH = np.tile(self._u_between(u_nodes, i, wh), (1, K))
+                BB = np.tile(self._u_between(u_nodes, i, w1), (1, K))
                 tA, tH, tB = ta + sstep * h, ta + (sstep + 0.5) * h, ta + (sstep + 1) * h
                 UA = realise(BA, X, tA)
                 path_excess(X, UA, tA)
@@ -1636,10 +1736,14 @@ class RobustProblem(object):
 
         for i in range(len(t_nodes) - 1):
             ta, tb = t_nodes[i], t_nodes[i + 1]
-            ua, ub = u_nodes[:, i], u_nodes[:, i + 1]
+            # The same reading of the control the vectorised sweep uses, so that the two
+            # integrators differ in their STEP CONTROL and in nothing else. See
+            # _u_between.
+            uof = lambda tt, i=i, ta=ta, tb=tb: self._u_between(     # noqa: E731
+                u_nodes, i, 0.0 if tb == ta else (tt - ta) / (tb - ta)).ravel()
 
-            def rhs(tt, xx, ta=ta, tb=tb, ua=ua, ub=ub):
-                ubar = ua + (0.0 if tb == ta else (tt - ta) / (tb - ta)) * (ub - ua)
+            def rhs(tt, xx, uof=uof):
+                ubar = uof(tt)
                 xk, xr = split(xx)
                 dk = np.asarray(self._vf(xk, applied(ubar, xx, tt), params,
                                          tt, th)).ravel()
@@ -1656,8 +1760,7 @@ class RobustProblem(object):
                 raise RuntimeError("robust verifier: integration failed at theta = %s"
                                    % _fmt(th))
             for j, tt in enumerate(grid):
-                ww = 0.0 if tb == ta else (tt - ta) / (tb - ta)
-                ubar = ua + ww * (ub - ua)
+                ubar = uof(tt)
                 v = max(v, excess_path(r.y[:, j], applied(ubar, r.y[:, j], tt),
                                        tt))
             x = r.y[:, -1]
@@ -1802,6 +1905,9 @@ class RobustProblem(object):
         self._map_cache = {}
         self._nsub = nsub
         self._nver = 0
+        # The reading of the control between nodes, refreshed from each solve because
+        # the midpoint values come back with the design. Linear until then.
+        self._u_shape, self._u_mid = "linear", None
         U = self.uncertainty
         if n_seed is None:
             n_seed = 128 if U.dim == 1 else 64 * 2 ** U.dim
@@ -1866,6 +1972,7 @@ class RobustProblem(object):
                 break
 
             design = sol
+            self._set_control_reading(alg, sol, len(np.asarray(sol.time).ravel()))
             # Every static parameter the AUGMENTED problem carries, not only the
             # user's: a co-designed constant gain lives in the trailing entries,
             # and the guard used to read rp.nparameters, so on a problem with no
@@ -1920,10 +2027,12 @@ class RobustProblem(object):
                 # wrongly.
                 cparams = (np.asarray(csol.parameters, dtype=float).ravel()
                            if csol.parameters is not None else params)
+                self._set_control_reading(alg, csol, len(ct))
                 cv, _cth = self._worst_case(ct, cu, cparams, n_seed, n_refine,
                                             seed + 4242)
                 dt = np.asarray(design.time).ravel()
                 du = np.asarray(design.controls).reshape(-1, len(dt))
+                self._set_control_reading(alg, design, len(dt))
                 dv, _dth = self._worst_case(dt, du, params, n_seed, n_refine,
                                             seed + 4242)
                 # Prefer a certified design; among certified ones, the cheaper.
@@ -1945,6 +2054,7 @@ class RobustProblem(object):
 
         t_nodes = np.asarray(design.time).ravel()
         u_nodes = np.asarray(design.controls).reshape(-1, len(t_nodes))
+        self._set_control_reading(alg, design, len(t_nodes))
         v, th_worst = self._worst_case(t_nodes, u_nodes, params, n_seed,
                                        n_refine, seed + 9999)
         # The certificate is reported from the ADAPTIVE integrator at the worst
@@ -2053,17 +2163,23 @@ class RobustProblem(object):
                 "scenarios whatever the mesh, where multiple shooting and trapezoidal "
                 "collocation carry eighty. Use one of those for a large scenario set."
                 % (getattr(alg, "collocation_method", "Legendre"),), stacklevel=3)
-        ms = getattr(alg, "transcription_method", None) == "multiple-shooting"
-        lin = getattr(alg, "ms_control_parameterisation", None) == "linear"
-        if not (ms and lin):
+        # What the verifier can say about the control it is about to integrate. It reads
+        # the control the way the transcription means it -- held, ramped or parabolic
+        # (see _u_between) -- so for five of the six choices there is nothing to warn
+        # about, and saying so is worth more than a blanket caution that trains the
+        # reader to ignore it. The global Lobatto schemes are the exception, and the
+        # warning is theirs.
+        if self._collocates_every_node(alg):
             warnings.warn(
-                "RobustProblem: the verifier interpolates the returned control "
-                "table linearly between nodes, which reproduces the designed "
-                "control exactly only for transcription_method='multiple-shooting' "
-                "with ms_control_parameterisation='linear'. With any other choice "
-                "the verification measures a slightly different control from the "
-                "one designed, and the difference is charged to the design.",
-                stacklevel=3)
+                "RobustProblem: under %r the control is the degree-N polynomial "
+                "through the nodal values, and the verifier reads it as straight lines "
+                "between them. The two agree only as the mesh grows, so the "
+                "verification measures a control CLOSE TO the designed one rather than "
+                "the designed one, and the difference is charged to the design. "
+                "transcription_method='multiple-shooting' reproduces its control "
+                "exactly at any mesh, and so does collocation_method='trapezoidal', "
+                "whose own quadrature is what makes the straight line right there."
+                % (getattr(alg, "collocation_method", "Legendre"),), stacklevel=3)
 
     def _check_equalities(self, rp, M):
         """Warn about a PINNED TERMINAL event, which no robust design can meet.

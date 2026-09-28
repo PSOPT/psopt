@@ -375,6 +375,18 @@ static py::dict solve_single_phase(py::dict spec) {
     out["states"]    = Eigen::MatrixXd(solution.get_states_in_phase(1));
     if (ph.ncontrols > 0)
         out["controls"] = Eigen::MatrixXd(solution.get_controls_in_phase(1));
+    // The COMPLETE control history, where the discretization has one: Hermite-Simpson and
+    // multiple shooting with a quadratic parameterisation both carry a control variable at
+    // the midpoint of every interval, and "controls" above holds only the nodal values,
+    // which is what a caller expecting a state-sized array wants. Reading a control
+    // trajectory from those alone is a mistake wherever the two differ, and anything that
+    // has to REPRODUCE the designed control -- a verification integrator above all -- needs
+    // the midpoints. Absent for every other discretization, where the nodal table is the
+    // whole of it.
+    if (ph.ncontrols > 0 && solution.get_hs_controls_in_phase(1).size() > 0) {
+        out["controls_full"] = Eigen::MatrixXd(solution.get_hs_controls_in_phase(1));
+        out["time_full"]     = Eigen::MatrixXd(solution.get_hs_time_in_phase(1));
+    }
     out["time"]      = Eigen::MatrixXd(solution.get_time_in_phase(1));
     if (ph.nparameters > 0)
         out["parameters"] = Eigen::MatrixXd(solution.get_parameters_in_phase(1));
@@ -494,11 +506,17 @@ static py::dict solve_multiphase(py::dict spec) {
 
     py::dict out;
     out["objective"] = solution.get_cost();
-    py::list st, ct, tm, ic, ip, pr, du;
+    py::list st, ct, tm, ic, ip, pr, du, cf, tf;
     for (int k = 1; k <= N; ++k) {
         auto& ph = problem.phases(k);
         st.append(Eigen::MatrixXd(solution.get_states_in_phase(k)));
         ct.append(Eigen::MatrixXd(solution.get_controls_in_phase(k)));
+        cf.append(solution.get_hs_controls_in_phase(k).size() > 0
+                  ? py::object(py::cast(Eigen::MatrixXd(solution.get_hs_controls_in_phase(k))))
+                  : py::none());
+        tf.append(solution.get_hs_time_in_phase(k).size() > 0
+                  ? py::object(py::cast(Eigen::MatrixXd(solution.get_hs_time_in_phase(k))))
+                  : py::none());
         tm.append(Eigen::MatrixXd(solution.get_time_in_phase(k)));
         ic.append(pack_integer_controls(solution, problem, k));
         ip.append(pack_integer_parameters(solution, problem, k));
@@ -510,6 +528,7 @@ static py::dict solve_multiphase(py::dict spec) {
         du.append(d);
     }
     out["states"] = st; out["controls"] = ct; out["time"] = tm;
+    out["controls_full"] = cf; out["time_full"] = tf;
     out["integer_controls"] = ic; out["integer_parameters"] = ip;
     out["parameters"] = pr;
     out["duals"] = du;

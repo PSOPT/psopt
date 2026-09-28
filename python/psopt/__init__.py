@@ -513,6 +513,17 @@ class Solution:
         self.objective = d["objective"]
         self.states = np.asarray(d["states"])
         self.controls = np.asarray(d["controls"]) if "controls" in d else None
+        # The COMPLETE control history, where the discretization has one. Hermite-Simpson
+        # and multiple shooting with a quadratic parameterisation carry a control variable
+        # at the midpoint of every interval; `controls` above holds only the nodal values,
+        # so the two differ systematically on a singular or bang-bang arc. None for every
+        # other discretization, where the nodal table IS the control history. Anything that
+        # has to reproduce the designed control -- a verification integrator above all --
+        # should prefer these.
+        self.controls_full = (np.asarray(d["controls_full"])
+                              if d.get("controls_full") is not None else None)
+        self.time_full = (np.asarray(d["time_full"]).ravel()
+                          if d.get("time_full") is not None else None)
         self.time = np.asarray(d["time"]).ravel()
         self.parameters = np.asarray(d["parameters"]).ravel() if "parameters" in d else None
         self.status = _Status(d, nlp_method)
@@ -538,6 +549,12 @@ class MultiSolution:
         self.objective = d["objective"]
         self.states = [np.asarray(s) for s in d["states"]]
         self.controls = [np.asarray(c) for c in d["controls"]]
+        # Per phase, and None where that phase has no midpoint control; see the note on
+        # the single-phase Solution.
+        self.controls_full = [None if c is None else np.asarray(c)
+                              for c in d.get("controls_full", [None] * len(d["controls"]))]
+        self.time_full = [None if t is None else np.asarray(t).ravel()
+                          for t in d.get("time_full", [None] * len(d["controls"]))]
         self.time = [np.asarray(t).ravel() for t in d["time"]]
         self.parameters = [None if p is None else np.asarray(p).ravel()
                            for p in d.get("parameters", [])]

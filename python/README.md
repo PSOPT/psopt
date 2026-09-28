@@ -441,10 +441,46 @@ on the arm at 25 nodes, one cold solve per cell:
 | `Legendre` | refused above 12 | refused above 12 — genuinely |
 
 Hermite-Simpson reached twenty before because its midpoint controls pay for the
-phantom rows; its verification is the worst of the four, because the designed
-control is piecewise quadratic and the verifier interpolates linearly. Trapezoidal
-is the cheap choice for a large set and the one whose control representation the
-verifier reproduces.
+phantom rows. Trapezoidal is the cheap choice for a large set.
+
+**What control the verifier integrates.** A transcription decides not only where the
+control is a decision variable but what the control *is* between those points, and the
+verification integrator has to use the same reading or it is measuring a different
+controller. The driver now reads it the way the transcription means it:
+
+| transcription | reading | exact? |
+|---|---|---|
+| multiple shooting, `"constant"` | held across the segment | by construction |
+| multiple shooting, `"linear"` | the ramp the integrator used | by construction |
+| multiple shooting, `"quadratic"` | the parabola through node, midpoint, node | by construction |
+| `Hermite-Simpson` | the same parabola | by construction |
+| `trapezoidal` | straight lines | by convention — the scheme's own quadrature |
+| `Legendre`, `Chebyshev` | straight lines | no: a degree-N polynomial read as chords |
+
+The midpoint values come from `solution.controls_full`, the complete control history,
+which PSOPT fills for exactly the two discretizations that carry a midpoint control. The
+driver checks that its even columns are the nodal table before trusting them, and falls
+back to straight lines with a warning if they are not.
+
+What it is worth, on the arm at 25 nodes with five sigma points — one design per
+transcription, each verified twice, once with the matched reading and once with the
+blanket straight line the driver used before:
+
+| transcription | matched | as a line | ratio |
+|---|---|---|---|
+| multiple shooting, `"constant"` | 1.511e+00 | 3.475e+00 | 2.3 |
+| multiple shooting, `"linear"` | 1.380e+00 | 1.380e+00 | **1.0** |
+| multiple shooting, `"quadratic"` | 2.947e+00 | 1.843e+00 | **0.6** |
+| `Hermite-Simpson` | **8.301e-02** | 2.631e+00 | **31.7** |
+| `trapezoidal` | 2.827e+00 | 2.827e+00 | **1.0** |
+
+Hermite-Simpson designs were being charged thirty-two times the violation they have.
+The two rows at 1.0 are the check that the change is a no-op where the old reading was
+already right, which is every shipped example. And the row at **0.6** is the reason this
+matters more than accuracy: reading a parabola as a chord *flatters* a design as easily
+as it damns one, the parabola overshooting outside the chord, so the old reading was not
+conservatively pessimistic — it was optimistic for the quadratic parameterisation. A
+verifier that can flatter a design is worse than one that penalises it.
 
 **What the density buys, on the risk measures.** The wall mattered most where a
 scenario set has to resolve a *tail*. On the van der Pol problem of
