@@ -396,23 +396,74 @@ gain and a pinned terminal state, or a kinematic vehicle with an uncertain speed
 reduces it. `robust_driver_vdp.py` sets out the argument. Check for it before
 reaching for the driver.
 
-**How many scenarios will fit.** Under multiple shooting the state at every node
-is pinned by the defect equations, so the only free parameters in the augmented
-problem are the shared control at the nodes, the free time endpoints and any free
-static parameters. Every scenario brings its own *equality* events — its pinned
-initial condition above all — out of that same budget:
+**How many scenarios will fit.**
 
-    degrees of freedom  =  ncontrols * nodes + free times + free parameters
-                           - equality events
+    degrees of freedom  =  free initial states + ncontrols * nodes + free times
+                           + free parameters - equality events
 
-Each scenario therefore costs as many degrees of freedom as it has pinned events,
-and the scenario count is limited by the node count rather than by memory or time.
-Left to IPOPT this arrives as return code -10 after the whole problem has been
-assembled; the driver recognises it and prints the arithmetic with the two
-remedies, which differ — raise the node count, or relax pinned events to a
-tolerance, since an inequality event costs nothing here. The count is a lower
-bound, because an equality event can be linearly dependent on the defects, so it
-is used to explain a failure and never to refuse in advance.
+A scenario brings `nstates` values at t0 that the defect equations do not
+determine, and `nstates` pinned initial conditions that determine them. **Those
+cancel**, so a scenario is free of itself, and what costs one is an equality event
+*beyond* its initial condition — a pinned terminal state above all, which one
+open-loop control cannot meet for several different plants anyway. Relaxing such an
+event to a tolerance costs nothing at all, an inequality event taking no degree of
+freedom. The count is a lower bound, because an equality event can be linearly
+dependent on the defects, so it is used to explain a failure and never to refuse in
+advance; left to IPOPT the failure arrives as return code -10 after the whole
+problem has been assembled and taped.
+
+There is one exception, and it is real: a transcription that collocates **every**
+stored node holds one defect condition per stored state value, and the initial
+condition is one more. The global Lobatto schemes — `Legendre` and `Chebyshev` — are
+in that position, so a replicated state costs them `nstates` per scenario whatever
+the mesh. On the arm they are refused above twelve scenarios at any node count,
+where multiple shooting and `trapezoidal` collocation carry eighty. Use one of those
+for a large scenario set; the driver warns if you do not.
+
+**What this said until 28 September 2026, and why it was wrong.** The free initial
+states were missing from the sum, and the formula nevertheless predicted the
+observed wall exactly — the arm at 25 nodes refused above twelve scenarios, a
+two-state problem at 31 nodes above fifteen. Both were phantom. PSOPT's defect block
+holds `nstates * nodes` rows and a scheme with `nodes - 1` intervals fills only
+`nstates * (nodes - 1)` of them; the rest were written as zeros with bounds
+`[0, 0]`, and IPOPT counts equality rows against variables. The arm had 51 degrees
+of freedom at every scenario count and was refused for having -9. `Alg`'s
+`free_padded_defect_rows` frees those rows; it is off by default in PSOPT, because
+it moves the iterate path on problems that are already rank-deficient, and **the
+driver turns it on**, the phantom wall being the whole of what limited it. Measured
+on the arm at 25 nodes, one cold solve per cell:
+
+| transcription | before | after |
+|---|---|---|
+| multiple shooting, RK4 x 12, linear | refused above 12 | 80 scenarios, 305 s |
+| `trapezoidal` | refused above 12 | 80 scenarios, 125 s |
+| `Hermite-Simpson` | refused above 20 | 80 scenarios, 97 s |
+| `Legendre` | refused above 12 | refused above 12 — genuinely |
+
+Hermite-Simpson reached twenty before because its midpoint controls pay for the
+phantom rows; its verification is the worst of the four, because the designed
+control is piecewise quadratic and the verifier interpolates linearly. Trapezoidal
+is the cheap choice for a large set and the one whose control representation the
+verifier reproduces.
+
+**What the density buys, on the risk measures.** The wall mattered most where a
+scenario set has to resolve a *tail*. On the van der Pol problem of
+`robust_driver_risk.py`, CVaR at α = 0.95 — the worst one plant in twenty — scored on
+2872 plants no design saw:
+
+| scenarios | E[J] design's out-of-sample CVaR | CVaR design's |
+|---|---|---|
+| 8 | 5.070 | 5.311 |
+| 16 | 5.061 | 5.327 |
+| 24 | 5.019 | **4.690** |
+| 32 | 4.810 | **4.648** |
+| 48 | 5.185 | **4.645** |
+
+The CVaR design is *worse* than the expectation design until the set reaches about
+twenty-four scenarios, then better and monotonically improving, while the expectation
+design's tail wanders with the sample. Under the old counting this problem carried
+twenty-one scenarios at most, CVaR's cost state and slacks included. The measure
+begins to earn its name just past the point where the arithmetic refused it.
 
 Not implemented: scenario-dependent static parameters, and multi-phase problems,
 which are refused rather than quietly mishandled. A given schedule `K(t)` is

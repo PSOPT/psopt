@@ -192,25 +192,40 @@ long robust_worst_case_evaluations(const RobustUncertainty& U, int n_seed,
 
 // Degrees of freedom the transcription has left, as a LOWER bound.
 //
-// Under multiple shooting the state at every node is pinned by the defect
-// equations, so the state count cancels and what remains is
+//     dof = free initial states + ncontrols * nodes + free time endpoints
+//           + free static parameters - equality events
 //
-//     dof = ncontrols * nodes + free time endpoints + free static parameters
-//           - equality events
+// A scenario brings nstates values at t0 that the defect equations do not determine,
+// and nstates pinned initial conditions that determine them. THOSE CANCEL, so a
+// scenario is free of itself, and what costs one is an equality event beyond its
+// initial condition -- a pinned TERMINAL state above all, which one open-loop control
+// cannot meet for several different plants anyway. Relaxing such an event to a
+// tolerance costs nothing at all, an inequality event taking no degree of freedom.
 //
-// Every scenario brings its own equality events -- its pinned initial condition
-// above all -- out of a budget the shared control fixes. So the scenario count is
-// limited by the NODE count, and not by memory or by time. An inequality event
-// costs nothing, which is a second reason to relax a terminal condition to a
-// tolerance rather than pin it.
+// The exception is a transcription that collocates every stored node, which the global
+// Lobatto schemes (Legendre, Chebyshev) do and nothing else does. There the defect
+// block holds one condition per stored value per state and the initial condition is
+// one more, so the over-determination is real, it costs nstates per scenario, and no
+// node count rescues it. Measured on the two-link arm: refused above twelve scenarios
+// whatever the mesh. Multiple shooting and trapezoidal collocation carry eighty on the
+// same problem.
 //
-// It is a lower bound because an equality event can be linearly dependent on the
-// defect equations, and a dependent constraint removes no freedom. So a
-// non-positive count does not prove the problem is over-determined: use it to
-// EXPLAIN a failure, never to refuse in advance. Left to IPOPT the failure arrives
-// as Not_Enough_Degrees_Of_Freedom, return code -10, after the whole problem has
-// been assembled and taped, and the message names neither of the two remedies.
-int robust_degrees_of_freedom(Prob& problem, int iphase);
+// WHAT THIS SAID BEFORE, AND WHY IT WAS WRONG. The free initial states were missing
+// from the sum, and the formula nevertheless predicted the observed wall exactly -- the
+// arm at 25 nodes refused above twelve scenarios, a two-state problem at 31 nodes above
+// fifteen. Both were phantom. PSOPT's defect block holds nstates*(norder+1) rows and a
+// scheme with norder intervals fills only nstates*norder of them; the rest were written
+// as zeros with bounds [0,0], and IPOPT counts equality rows against variables. The arm
+// had 51 degrees of freedom at every scenario count and was refused for having -9.
+// NLP_bounds now frees those rows, and this is the honest arithmetic.
+//
+// It remains a lower bound because an equality event can be linearly dependent on the
+// defect equations, and a dependent constraint removes no freedom. So a non-positive
+// count does not prove the problem is over-determined: use it to EXPLAIN a failure,
+// never to refuse in advance. Left to IPOPT the failure arrives as
+// Not_Enough_Degrees_Of_Freedom, return code -10, after the whole problem has been
+// assembled and taped, and the message names no remedy at all.
+int robust_degrees_of_freedom(Prob& problem, int iphase, Alg& algorithm);
 
 // Is every entry of the initial guess a finite number?
 //
@@ -227,9 +242,9 @@ int robust_degrees_of_freedom(Prob& problem, int iphase);
 // On failure `offender` is set to "states", "controls", "time" or "parameters".
 bool robust_guess_is_finite(Prob& problem, int iphase, const char** offender);
 
-// The same arithmetic written out, with both remedies, into a caller's buffer.
+// The same arithmetic written out, with the remedy that fits, into a caller's buffer.
 // `nscenarios` is used only to report the cost per scenario.
-void robust_dof_message(Prob& problem, int iphase, int nscenarios,
+void robust_dof_message(Prob& problem, int iphase, int nscenarios, Alg& algorithm,
                         char* buffer, size_t buffer_size);
 
 //////////////////////////////////////////////////////////////////////////
@@ -253,6 +268,15 @@ struct RobustSpec {
     int      n_refine;         // cloud centres kept during refinement
     unsigned seed;             // reproducibility
     bool     verbose;
+
+    // Decline the driver's one change to the caller's Alg. psopt_solve_robust sets
+    // algorithm.free_padded_defect_rows, because the rows it frees are nstates per
+    // SCENARIO of counted equalities holding no dynamics and they are the whole of what
+    // caps the scenario count. Set this to keep them, and read the note on
+    // Alg::free_padded_defect_rows first: keeping them means IPOPT refuses the augmented
+    // problem with Not_Enough_Degrees_Of_Freedom at about
+    // (ncontrols * nodes) / nstates scenarios, whatever freedom the design still has.
+    bool     keep_padded_defect_rows;
 
     // ---- what the user supplies -------------------------------------------
 
@@ -290,7 +314,8 @@ struct RobustSpec {
 
     RobustSpec()
         : slack(0.0), max_iterations(12), n_seed(128), n_refine(3), seed(20260927u),
-          verbose(true), setup(0), violation(0), user_data(0),
+          verbose(true), keep_padded_defect_rows(false),
+          setup(0), violation(0), user_data(0),
           certificate(0.0), evaluations(0), n_solves(0), converged(false),
           budget_exhausted(false) {}
 };

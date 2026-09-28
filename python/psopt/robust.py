@@ -916,25 +916,54 @@ class RobustProblem(object):
         return prob
 
     @staticmethod
-    def _dof(ph):
+    def _collocates_every_node(alg):
+        """Does this transcription impose a defect at every stored node?
+
+        The global Lobatto schemes do, and nothing else does. It decides whether a
+        scenario's own initial state costs a degree of freedom or not, so it is the
+        one question the budget below turns on.
+        """
+        if getattr(alg, "transcription_method", "collocation") == "multiple-shooting":
+            return False
+        return (getattr(alg, "collocation_method", "Legendre")
+                in ("Legendre", "Chebyshev"))
+
+    @staticmethod
+    def _dof(ph, alg=None):
         """Degrees of freedom the transcription has left, as a LOWER bound.
 
-        Under multiple shooting the state at every node is pinned by the defect
-        equations, so the state count cancels and what remains is
+            dof = free initial states + ncontrols * nodes + free times
+                  + free static parameters - equality events
 
-            dof = ncontrols * N + free times + free static parameters
-                  - equality events
+        A scenario brings n state values at t0 that the defect equations do not
+        determine, and n pinned initial conditions that determine them. THOSE CANCEL.
+        So a scenario is free, and what costs one is an equality event BEYOND its
+        initial condition --- a pinned terminal state above all, which is why
+        _check_equalities warns about exactly that and why relaxing a terminal
+        condition to a tolerance is the remedy that works.
 
-        Every scenario brings its own equality events -- its pinned initial
-        condition above all -- and they come out of a budget the shared control
-        fixes. Inequality events cost nothing, which is a second reason to relax a
-        terminal condition rather than pin it.
+        The exception is a transcription that collocates every stored node, which the
+        global Lobatto schemes do: there the defect block holds nodes conditions per
+        state against nodes stored values, the initial condition pins one of them, and
+        the over-determination is real. Legendre and Chebyshev therefore cannot carry a
+        replicated state and no amount of node count rescues them --- measured, on the
+        arm, before and after the PSOPT fix described below: refused above twelve
+        scenarios either way.
 
-        It is a LOWER bound because equality events can be linearly dependent on
-        the defect equations, and a dependent constraint removes no freedom. So a
-        non-positive count does not prove the problem is over-determined, and this
-        is used to EXPLAIN a failure rather than to refuse in advance -- refusing
-        on it would block problems that solve perfectly well.
+        WHAT THIS USED TO SAY, AND WHY IT WAS WRONG
+
+        Until PSOPT freed them, the defect block's padded rows --- nstates per phase,
+        the rows a scheme with `nodes - 1` intervals cannot fill --- were equality rows
+        of zeros, and IPOPT counts equality rows against variables. So the budget read
+        `ncontrols * nodes + ... - equality events`, without the free initial states,
+        and predicted the observed wall exactly: the arm at 25 nodes refused above
+        twelve scenarios, a two-state problem at 31 nodes above fifteen. Both were
+        phantom. The problems had 51 and 32 degrees of freedom respectively at every
+        scenario count; what refused them was nstates*M rows holding no dynamics.
+
+        It remains a LOWER bound, because an equality event can be linearly dependent
+        on the defects and then removes no freedom, so it is used to EXPLAIN a failure
+        and never to refuse in advance.
         """
         N = ph.nodes[-1]
         nfree_t = ((1 if ph.bounds.t0[0] != ph.bounds.t0[1] else 0)
@@ -949,33 +978,52 @@ class RobustProblem(object):
             elo = np.asarray(ph.bounds.lower.events, dtype=float)
             ehi = np.asarray(ph.bounds.upper.events, dtype=float)
             neq = int(np.sum(ehi <= elo))
-        return (ph.ncontrols * N + nfree_t + npar_free - neq, nfree_t, npar_free,
-                neq, N)
+        freed = alg is None or getattr(alg, "free_padded_defect_rows", True)
+        free_x = 0 if (alg is not None
+                       and (RobustProblem._collocates_every_node(alg) or not freed)
+                       ) else ph.nstates
+        return (free_x + ph.ncontrols * N + nfree_t + npar_free - neq,
+                nfree_t, npar_free, neq, N, free_x)
 
-    def _dof_message(self, ph, M, risk):
+    def _dof_message(self, ph, M, risk, alg=None):
         """Why a solve with this many scenarios had nothing left to move."""
-        dof, nfree_t, npar_free, neq, N = self._dof(ph)
+        dof, nfree_t, npar_free, neq, N, free_x = self._dof(ph, alg)
         per = max(1, neq // max(1, M))
-        room = ph.ncontrols * N + nfree_t + npar_free
-        most = max(1, (room - 1) // per)
         extra = ("\n      risk=%r adds one pinned event per scenario of its own, "
-                 "for the cost state's zero initial value." % risk
-                 if risk in ("mean-variance", "cvar") else "")
+                 "for the cost state's zero initial value, and one state to match it."
+                 % risk if risk in ("mean-variance", "cvar") else "")
+        if free_x:
+            room = free_x + ph.ncontrols * N + nfree_t + npar_free
+            return (
+                "%d scenarios leave the transcription about %d degrees of freedom: %d "
+                "free initial state(s), %d control(s) at %d nodes, %d free time "
+                "endpoint(s) and %d free static parameter(s), against %d equality "
+                "event(s) -- some %d per scenario.\n"
+                "      A scenario's own initial condition is FREE: it pins the n "
+                "state values at t0 that the defect equations leave undetermined, and "
+                "the two cancel. What costs a scenario is an equality event beyond "
+                "that, and a "
+                "pinned TERMINAL state is the one to look for -- one open-loop control "
+                "cannot steer several different plants to the same point, so relax it "
+                "to a tolerance, which costs nothing at all because an inequality "
+                "event takes no degree of freedom.%s"
+                % (M, dof, free_x, ph.ncontrols, N, nfree_t, npar_free, neq, per,
+                   extra))
         return (
             "%d scenarios leave the transcription about %d degrees of freedom: %d "
             "control(s) at %d nodes, %d free time endpoint(s) and %d free static "
-            "parameter(s), against %d equality events -- some %d per scenario.\n"
-            "      Multiple shooting pins the state at every node through its "
-            "defect equations, so the shared control is the only thing left to "
-            "satisfy them with, and each scenario spends its own pinned events out "
-            "of that budget.\n"
-            "      Two remedies, and they differ: raise the node count, which buys "
-            "%d per node and would carry roughly %d scenarios at this mesh shape; "
-            "or relax pinned events to a tolerance, which costs nothing per "
-            "scenario because an inequality event takes no degree of freedom at "
-            "all.%s"
+            "parameter(s), against %d equality event(s) -- some %d per scenario.\n"
+            "      This transcription collocates EVERY stored node, so each scenario's "
+            "initial condition is not free: the defect block already holds one "
+            "condition per stored value and the initial condition is one more. A "
+            "replicated state therefore costs %d degrees of freedom per scenario "
+            "whatever the node count, and raising the mesh does not help.\n"
+            "      Use transcription_method='multiple-shooting', or "
+            "collocation_method='trapezoidal', neither of which has this deficit: on "
+            "the arm both carry eighty scenarios where this one is refused above "
+            "twelve.%s"
             % (M, dof, ph.ncontrols, N, nfree_t, npar_free, neq, per,
-               ph.ncontrols, most, extra))
+               ph.nstates // max(1, M), extra))
 
     def _cost_guess(self, x_rows, u_rows, t_row):
         """A running-cost guess, by integrating the integrand along a guessed arc.
@@ -1791,7 +1839,7 @@ class RobustProblem(object):
                 # running out, and that is worth saying in as many words: left to
                 # IPOPT it arrives as return code -10 with no indication of which
                 # remedy is wanted, and neither of them is obvious.
-                dof = self._dof(prob._phases[0])[0]
+                dof = self._dof(prob._phases[0], alg)[0]
                 starved = dof <= 0
                 if design is None:
                     raise RuntimeError(
@@ -1800,14 +1848,14 @@ class RobustProblem(object):
                         % (sol.status.error_msg or "NLP return code %d"
                            % sol.status.nlp_return_code,
                            ("\n      " + self._dof_message(prob._phases[0],
-                                                           len(thetas), risk))
+                                                           len(thetas), risk, alg))
                            if starved else ""))
                 if verbose:
                     if starved:
                         printer("  %3d %4d  cannot carry another scenario.\n      %s"
                                 % (it, len(thetas),
                                    self._dof_message(prob._phases[0],
-                                                     len(thetas), risk)))
+                                                     len(thetas), risk, alg)))
                     else:
                         printer("  %3d %4d   adding theta = %s made the problem "
                                 "unsolvable; keeping the previous design"
@@ -1976,6 +2024,35 @@ class RobustProblem(object):
     # -- pieces of the solve --------------------------------------------------------
 
     def _check_algorithm(self, alg):
+        # Free the defect rows the transcription cannot fill. They are equality rows of
+        # zeros, IPOPT counts equality rows against variables, and there are nstates of
+        # them per phase -- which on an augmented problem is nstates PER SCENARIO, so
+        # the count refuses a design that has plenty of freedom. On the arm at 25 nodes
+        # it refused above twelve scenarios where the problem has 51 degrees of freedom
+        # at every count; with the rows freed the same problem carries eighty. The
+        # option is off by default in PSOPT because it changes the iterate path on
+        # problems that are already rank-deficient; here it is the difference between a
+        # scenario budget of tens and one of hundreds, so the driver turns it on and
+        # says so rather than leaving the caller to discover the wall.
+        if getattr(alg, "free_padded_defect_rows", None) is None:
+            alg.free_padded_defect_rows = True
+        if not alg.free_padded_defect_rows:
+            warnings.warn(
+                "RobustProblem: free_padded_defect_rows is off, so the defect rows "
+                "the transcription cannot fill are counted as equality constraints -- "
+                "nstates of them per SCENARIO. IPOPT will refuse the augmented problem "
+                "with Not_Enough_Degrees_Of_Freedom long before the design runs out of "
+                "anything, at about (ncontrols * nodes) / nstates scenarios.",
+                stacklevel=3)
+        if self._collocates_every_node(alg):
+            warnings.warn(
+                "RobustProblem: %r collocates every stored node, so it holds one "
+                "defect condition per stored state value and each scenario's initial "
+                "condition is one more. The over-determination is real and no node "
+                "count removes it: on the two-link arm this refuses more than twelve "
+                "scenarios whatever the mesh, where multiple shooting and trapezoidal "
+                "collocation carry eighty. Use one of those for a large scenario set."
+                % (getattr(alg, "collocation_method", "Legendre"),), stacklevel=3)
         ms = getattr(alg, "transcription_method", None) == "multiple-shooting"
         lin = getattr(alg, "ms_control_parameterisation", None) == "linear"
         if not (ms and lin):

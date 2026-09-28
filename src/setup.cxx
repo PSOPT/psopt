@@ -188,6 +188,7 @@ void psopt_level2_setup(Prob& problem, Alg& algorithm)
   algorithm.ms_algebraic_iterations     = 4;
   algorithm.ms_implicit_iterations      = 4;
   algorithm.ms_adaptive_steps           = false;
+  algorithm.free_padded_defect_rows     = false;
   algorithm.ms_max_steps_per_segment    = 200;
   algorithm.ir_residual_nodes           = 4;
   algorithm.ir_regularization           = 0.0;

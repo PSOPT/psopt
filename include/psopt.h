@@ -553,6 +553,42 @@ struct alg_str {
   // spent on the other's job.
   bool      ms_adaptive_steps;
 
+  // Should a defect row the transcription cannot fill be counted as an equality?
+  //
+  // The defect block holds nstates*(norder+1) rows for every transcription, because every
+  // transcription reuses the collocation layout, and only the global Lobatto schemes fill all
+  // of it: multiple shooting has norder matching conditions, trapezoidal and Hermite-Simpson
+  // have norder intervals, Radau does not collocate its terminal node, Gauss collocates no
+  // breakpoint. The rest are written as literal zeros -- see defect_padded_nodes -- and a row
+  // of zeros with bounds [0,0] is an equality constraint on nothing that IPOPT nevertheless
+  // counts against the variables, refusing outright when there are more of the former:
+  // "Too few degrees of freedom (n_x, n_c)".
+  //
+  // On an ordinary problem the count is nstates per phase and the refusal never arrives. On a
+  // problem whose state has been REPLICATED it is decisive: a scenario-augmented robust design
+  // carries M copies of the state against one copy of the control, so the phantom deficit grows
+  // with M and caps it. Measured on the two-link arm at 25 nodes, 2 controls, 4 states: 51
+  // genuine degrees of freedom at every scenario count, refused above twelve because n_c
+  // counted 4M rows holding no dynamics. With this true the same problem carries EIGHTY
+  // scenarios under multiple shooting and under trapezoidal collocation.
+  //
+  // Default FALSE, and the reason is measured rather than cautious. Freeing the rows changes
+  // no answer to seven significant figures on any of the 77 shipped examples, which is what it
+  // ought to do, the rows constraining nothing. But it changes the number of equality rows
+  // IPOPT sees, hence its regularisation, hence the iterate path -- and on a problem that is
+  // ALREADY rank-deficient that decides which local minimum is reached. On
+  // examples/bryson_max_range with a control-only equality path constraint under a held
+  // control, whose terminal path row duplicates its neighbour, it moves the segment counts
+  // that solve from {6,8,10,12} to {12,24}: four winners either way, different tickets. So it
+  // is offered rather than imposed, and psopt_solve_robust turns it on because the phantom
+  // wall is the whole of what limits it.
+  //
+  // Global Lobatto collocation pads nothing, so this has no effect there. Those schemes hold
+  // norder+1 conditions per state against norder+1 stored values, one of which the initial
+  // condition pins, and their deficit on a replicated state is real: Legendre is refused above
+  // twelve scenarios on the arm with this option either way.
+  bool      free_padded_defect_rows;
+
   // The ceiling on any one segment's step count under ms_adaptive_steps. A guard against a
   // problem the explicit scheme cannot resolve at all -- a stiff one, most likely, which this
   // transcription does not serve -- spending the whole of a machine's memory on tape before
@@ -1631,6 +1667,34 @@ bool check_for_equidistributed_error(Prob& problem,Alg& algorithm,Sol& solution)
 bool use_local_collocation(Alg & algorithm);
 
 bool use_global_collocation(Alg & algorithm);
+
+// Which of a phase's stored nodes carry a defect row that the transcription writes as a
+// literal zero, and which therefore constrain nothing. One entry per stored node, 1 if the
+// row is padded.
+//
+// The defect block holds nstates*(norder+1) rows for every transcription, because every
+// transcription reuses the collocation layout, and only the differentiation-matrix schemes
+// fill all of it. Multiple shooting has norder matching conditions; trapezoidal and
+// Hermite-Simpson have norder intervals; Radau does not collocate its terminal node; Gauss
+// collocates no breakpoint, its breakpoint states being fixed by the quadrature rows written
+// after the defect block. Each of those writes 0.0 into the rows it cannot fill --- see the
+// branches of NLP_constraints.cxx, which this function is the single statement of.
+//
+// A row of zeros whose bounds are [0,0] is an equality constraint that constrains nothing,
+// and it is not harmless. IPOPT counts the equality constraints and refuses outright when
+// there are more of them than there are variables: "Too few degrees of freedom (n_x, n_c)".
+// The padded rows number nstates per phase, so on a problem whose state has been REPLICATED
+// --- a scenario-augmented robust design carries M copies of the state against one copy of
+// the control --- the phantom deficit grows with the replication and caps it. Measured on the
+// two-link arm at 25 nodes, 2 controls, 4 states: 51 genuine degrees of freedom at every
+// scenario count, and a refusal above twelve scenarios because n_c counted 4M rows that hold
+// no dynamics. The multipliers of such a row are undetermined as well, the row contributing
+// nothing to the dual equations.
+//
+// NLP_bounds frees these rows to +/- infinity, which is the same remedy, for the same reason,
+// that the integrated-residual transcription has always applied to its whole defect block.
+void defect_padded_nodes(Prob& problem, int iphase_index, Workspace* workspace,
+                         std::vector<char>& padded);
 
 void bilinear_interpolation(adouble* z, adouble& x, adouble& y, MatrixXd& X, MatrixXd& Y, MatrixXd& Z);
 

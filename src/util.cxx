@@ -534,6 +534,54 @@ bool use_global_collocation(Alg & algorithm)
 }
 
 
+// See the note on the declaration in psopt.h. The branches below mirror, one for one, the
+// branches of the defect loop in NLP_constraints.cxx that write 0.0; a scheme added there
+// wants a line here, and tests/test_defect_padding.cpp is what says so if it does not get one.
+void defect_padded_nodes(Prob& problem, int iphase_index, Workspace* workspace,
+                         std::vector<char>& padded)
+{
+     const int norder = problem.phase[iphase_index].current_number_of_intervals;
+     padded.assign(norder+1, 0);
+
+     // The integrated-residual transcription pads the WHOLE block and NLP_bounds frees it on
+     // its own path, which predates this function; nothing is claimed for it here.
+     if ( workspace->transcription_method == "integrated-residual" ) return;
+
+     const string& scheme = workspace->differential_defects;
+
+     if ( scheme == "Gauss" ) {
+          // One non-collocated breakpoint per interval, at the left end of each.
+          int K = 1;
+          std::vector<int> gn;
+          if ( hp_mesh_active(problem.phase[iphase_index]) ) {
+               K = hp_num_intervals(problem.phase[iphase_index]);
+               gn.resize(K);
+               for (int j=0; j<K; j++) gn[j] = hp_interval_order(problem.phase[iphase_index], j);
+          }
+          else {
+               gn.assign(1, norder);
+          }
+          int gidx = 0;
+          for (int j=0; j<K && gidx < norder+1; j++) {
+               padded[gidx] = 1;
+               gidx += 1 + gn[j];
+          }
+          return;
+     }
+
+     if ( scheme == "multiple-shooting" || scheme == "Radau"
+          || scheme == "trapezoidal"    || scheme == "Hermite-Simpson" ) {
+          padded[norder] = 1;      // the terminal stored node
+          return;
+     }
+
+     // Legendre and Chebyshev collocate every stored node, so nothing is padded and their
+     // count is the honest one. Their defect block genuinely holds norder+1 conditions per
+     // state against norder+1 stored values, one of which the initial condition pins, so the
+     // deficit those schemes show on a replicated state is real mathematics and not this.
+}
+
+
 
 
 bool need_midpoint_controls(Alg& algorithm, Workspace* workspace)

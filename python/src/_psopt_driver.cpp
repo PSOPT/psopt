@@ -76,6 +76,7 @@ static void apply_algorithm(Alg& a, py::dict o) {
     D("ms_refine_tolerance", a.ms_refine_tolerance);
     I("ms_algebraic_iterations", a.ms_algebraic_iterations);
     B("ms_adaptive_steps", a.ms_adaptive_steps);
+    B("free_padded_defect_rows", a.free_padded_defect_rows);
     I("ms_max_steps_per_segment", a.ms_max_steps_per_segment);
     I("ms_implicit_iterations", a.ms_implicit_iterations);
     // PSOPT's own SQP solver. nlp_method = "SQP" was already reachable from Python and

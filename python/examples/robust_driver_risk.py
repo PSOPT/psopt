@@ -60,6 +60,17 @@ ALPHA, LAM = 0.75, 1.00
 # in the tail than the one that minimised the mean. Sixteen is where the measure
 # starts doing what it says. That threshold is a property of this problem and this
 # alpha, not a universal number; the point is that there IS one.
+#
+# And it rises steeply with alpha, which is the reason the scenario budget matters.
+# At alpha = 0.95 the tail is the worst one plant in twenty, and measured on 2872
+# plants none of the designs saw, the CVaR design's own out-of-sample CVaR is WORSE
+# than the expectation design's at sixteen scenarios (5.33 against 5.06) and better
+# at twenty-four (4.69 against 5.02), improving to 4.65 at thirty-two and at
+# forty-eight. The threshold at this level is therefore past twenty -- and until
+# PSOPT stopped counting its padded defect rows as equality constraints, twenty-one
+# was the most this problem could carry. The measure only starts doing its job just
+# past the point where the arithmetic used to refuse it. See
+# Alg::free_padded_defect_rows, which the driver now sets.
 QMC_N = 16
 
 rp = RobustProblem(name="robust_driver_risk")

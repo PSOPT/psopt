@@ -468,9 +468,19 @@ double robust_worst_case(const RobustUncertainty& U,
 //////////////////////////////////////////////////////////////////////////
 
 namespace {
-struct DofParts { int dof, ncontrols, nodes, free_times, free_params, neq; };
+struct DofParts { int dof, ncontrols, nodes, free_times, free_params, neq, free_x; };
 
-DofParts dof_parts(Prob& problem, int iphase)
+// Does this transcription impose a defect at every stored node? The global Lobatto
+// schemes do and nothing else does, and it is the one question the budget turns on: it
+// decides whether a scenario's own initial state costs a degree of freedom.
+bool collocates_every_node(Alg& algorithm)
+{
+    if ( is_multiple_shooting(algorithm) ) return false;
+    return ( algorithm.collocation_method == "Legendre"
+             || algorithm.collocation_method == "Chebyshev" );
+}
+
+DofParts dof_parts(Prob& problem, int iphase, Alg& algorithm)
 {
     DofParts d;
     d.ncontrols = problem.phases(iphase).ncontrols;
@@ -488,14 +498,17 @@ DofParts dof_parts(Prob& problem, int iphase)
     for (int i = 0; i < problem.phases(iphase).nevents; ++i)
         if (b.upper.events(i) <= b.lower.events(i)) ++d.neq;
 
-    d.dof = d.ncontrols*d.nodes + d.free_times + d.free_params - d.neq;
+    d.free_x = collocates_every_node(algorithm)
+             ? 0 : problem.phases(iphase).nstates;
+
+    d.dof = d.free_x + d.ncontrols*d.nodes + d.free_times + d.free_params - d.neq;
     return d;
 }
 }
 
-int robust_degrees_of_freedom(Prob& problem, int iphase)
+int robust_degrees_of_freedom(Prob& problem, int iphase, Alg& algorithm)
 {
-    return dof_parts(problem, iphase).dof;
+    return dof_parts(problem, iphase, algorithm).dof;
 }
 
 bool robust_guess_is_finite(Prob& problem, int iphase, const char** offender)
@@ -521,29 +534,46 @@ bool robust_guess_is_finite(Prob& problem, int iphase, const char** offender)
     return true;
 }
 
-void robust_dof_message(Prob& problem, int iphase, int nscenarios,
+void robust_dof_message(Prob& problem, int iphase, int nscenarios, Alg& algorithm,
                         char* buffer, size_t buffer_size)
 {
     if (!buffer || buffer_size == 0) return;
-    const DofParts d   = dof_parts(problem, iphase);
+    const DofParts d   = dof_parts(problem, iphase, algorithm);
     const int      M   = std::max(1, nscenarios);
     const int      per = std::max(1, d.neq/M);
-    const int      room = d.ncontrols*d.nodes + d.free_times + d.free_params;
-    const int      most = std::max(1, (room - 1)/per);
+
+    if ( d.free_x > 0 ) {
+        snprintf(buffer, buffer_size,
+            "%d scenarios leave the transcription about %d degrees of freedom: "
+            "%d free initial state(s), %d control(s) at %d nodes, %d free time "
+            "endpoint(s) and %d free static parameter(s), against %d equality "
+            "events -- some %d per scenario.\n"
+            "  A scenario's own initial condition is FREE: it pins the state values "
+            "at t0 that the defect equations leave undetermined, and the two cancel. "
+            "What costs a scenario is an equality event beyond that, and a pinned "
+            "TERMINAL state is the one to look for -- one open-loop control cannot "
+            "steer several different plants to the same point, so relax it to a "
+            "tolerance, which costs nothing at all because an inequality event takes "
+            "no degree of freedom.",
+            nscenarios, d.dof, d.free_x, d.ncontrols, d.nodes, d.free_times,
+            d.free_params, d.neq, per);
+        return;
+    }
 
     snprintf(buffer, buffer_size,
         "%d scenarios leave the transcription about %d degrees of freedom: "
         "%d control(s) at %d nodes, %d free time endpoint(s) and %d free static "
         "parameter(s), against %d equality events -- some %d per scenario.\n"
-        "  Multiple shooting pins the state at every node through its defect "
-        "equations, so the shared control is the only thing left to satisfy them "
-        "with, and each scenario spends its own pinned events out of that budget.\n"
-        "  Two remedies, and they differ: raise the node count, which buys %d per "
-        "node and would carry roughly %d scenarios at this mesh shape; or relax "
-        "pinned events to a tolerance, which costs nothing per scenario because an "
-        "inequality event takes no degree of freedom at all.",
+        "  This transcription collocates EVERY stored node, so a scenario's initial "
+        "condition is not free: the defect block already holds one condition per "
+        "stored value and the initial condition is one more. A replicated state "
+        "therefore costs %d degrees of freedom per scenario whatever the node count, "
+        "and raising the mesh does not help.\n"
+        "  Use transcription_method = \"multiple-shooting\", or collocation_method "
+        "= \"trapezoidal\", neither of which has this deficit: on the two-link arm "
+        "both carry eighty scenarios where this one is refused above twelve.",
         nscenarios, d.dof, d.ncontrols, d.nodes, d.free_times, d.free_params,
-        d.neq, per, d.ncontrols, most);
+        d.neq, per, problem.phases(iphase).nstates/M);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -597,6 +627,23 @@ RobustDesign design_of(Sol& solution, Prob& problem)
         error_message("psopt_solve_robust: both spec.setup and spec.violation "
                       "must be supplied");
         return -1;
+    }
+
+    // Free the defect rows the transcription cannot fill. They are equality rows of
+    // zeros, IPOPT counts equality rows against variables, and there are nstates of them
+    // per phase -- which on an augmented problem is nstates PER SCENARIO, so the count
+    // refuses a design with plenty of freedom left. On the two-link arm at 25 nodes it
+    // refused above twelve scenarios where the problem has 51 degrees of freedom at
+    // every count; freed, the same problem carries eighty. The option is off by default
+    // in PSOPT because it moves the iterate path on problems that are already
+    // rank-deficient; here it is the difference between a budget of tens and one of
+    // hundreds. A caller who has set it explicitly keeps their choice.
+    if (!algorithm.free_padded_defect_rows && !spec.keep_padded_defect_rows) {
+        algorithm.free_padded_defect_rows = true;
+        if (spec.verbose)
+            printf("\npsopt_solve_robust: freeing the padded defect rows, which are "
+                   "nstates per scenario\n  of counted equalities holding no dynamics. "
+                   "Set spec.keep_padded_defect_rows to decline.\n");
     }
 
     // The starting scenario set: the caller's, if it filled one, otherwise the
@@ -654,11 +701,11 @@ RobustDesign design_of(Sol& solution, Prob& problem)
         ++spec.n_solves;
 
         if (!robust_trial_succeeded(solution)) {
-            const int  dof     = robust_degrees_of_freedom(problem, 1);
+            const int  dof     = robust_degrees_of_freedom(problem, 1, algorithm);
             const bool starved = (dof <= 0);
             char       buf[1400];
             if (starved)
-                robust_dof_message(problem, 1, (int) scenarios.size(),
+                robust_dof_message(problem, 1, (int) scenarios.size(), algorithm,
                                    buf, sizeof buf);
             if (!best.valid) {
                 if (starved)

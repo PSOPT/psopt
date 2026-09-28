@@ -95,6 +95,31 @@ void validate_user_input(Prob& problem, Alg& algorithm, Workspace* workspace)
        error_message("algorithm.ir_local_order must be 0 (cubic Hermite) or at least 2 "
                      "(Nie-Kerrigan): no other local order is defined ");
 
+    // free_padded_defect_rows has no effect on a transcription that collocates every stored
+    // node, and a user who set it to escape a degrees-of-freedom refusal on one of those is
+    // owed the reason rather than left to wonder why nothing changed.
+    if ( algorithm.free_padded_defect_rows
+         && !is_multiple_shooting(algorithm)
+         && ( algorithm.collocation_method == "Legendre"
+              || algorithm.collocation_method == "Chebyshev" ) ) {
+       snprintf(workspace->text, sizeof(workspace->text),
+          "\n>>> Note: algorithm.free_padded_defect_rows has no effect with "
+          "collocation_method = \"%s\".\n"
+          ">>> That scheme collocates EVERY stored node, so it pads no defect row and there "
+          "is nothing\n"
+          ">>> to free. If a Not_Enough_Degrees_Of_Freedom refusal is what prompted the "
+          "option, the\n"
+          ">>> deficit is real there: norder+1 conditions per state against norder+1 stored "
+          "values,\n"
+          ">>> one of which the initial condition pins. It bites when the state is replicated "
+          "-- a\n"
+          ">>> scenario-augmented robust design above all -- and no node count removes it. "
+          "Multiple\n"
+          ">>> shooting and the local collocation schemes have no such deficit.\n",
+          algorithm.collocation_method.c_str());
+       psopt_print(workspace, workspace->text);
+    }
+
     if ( flexible_partition_active(algorithm) &&
          ( min_partition_fraction(algorithm) <= 0.0 || min_partition_fraction(algorithm) >= 1.0 ) )
        error_message("the minimum element or segment fraction must lie strictly between 0 and 1: "

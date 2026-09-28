@@ -35,14 +35,16 @@ from psopt.robust import RobustProblem, Gaussian
 MU, SIGMA, DELTA = 0.50, 0.15, 0.03
 X0 = np.array([0.0, 0.0, 0.500, 0.000])
 XF = np.array([0.0, 0.0, 0.500, 0.522])
-# 25 rather than the 21 of robust_arm.py, and the reason is the SCENARIO BUDGET
-# rather than accuracy. Under multiple shooting the state at every node is pinned
-# by the defect equations, so the only free parameters in the whole problem are
-# the shared control at the nodes and the free final time; each scenario spends
-# four of them on its own pinned initial condition. At 21 nodes that budget runs
-# out at ten scenarios and this problem needs more, which the driver says in as
-# many words rather than leaving IPOPT to report it as return code -10 after the
-# problem has been assembled.
+# 25 rather than the 21 of robust_arm.py. The reason WAS the scenario budget: the
+# driver used to run out of degrees of freedom at ten scenarios on a 21-node mesh,
+# and this problem needs more. That budget turned out to be phantom -- PSOPT's
+# defect block holds nstates*(nodes) rows and multiple shooting fills only
+# nstates*(nodes-1) of them, the rest being equality rows of zeros that IPOPT
+# counts against the variables, nstates of them PER SCENARIO. The driver now sets
+# algorithm.free_padded_defect_rows, the problem has 51 degrees of freedom at every
+# scenario count, and the arm carries eighty scenarios where it used to be refused
+# above twelve. 25 nodes is left as it stands because every number printed below
+# was measured on it; 21 would now do.
 NODES = 25
 
 

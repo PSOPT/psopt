@@ -298,6 +298,11 @@ void gg_ad( adouble* xad, adouble* gad, Workspace* workspace )
    // are all non-collocated. Mark the breakpoint storage indices (zero-padded defect rows)
    // and record per-interval Gauss orders/left-breakpoint indices for the K defining
    // constraints. Single-block Gauss => K=1, one breakpoint at node 0 (the initial node).
+   //
+   // The set of nodes whose defect row is written as 0.0 below -- this scheme's breakpoints,
+   // and the terminal node of multiple shooting, Radau, trapezoidal and Hermite-Simpson -- is
+   // stated once, in defect_padded_nodes, because NLP_bounds has to free exactly those rows.
+   // A branch added here wants a line there.
    std::vector<char> gauss_is_bp;
    std::vector<int>  gauss_bp_idx;     // storage index of each interval's left breakpoint
    std::vector<int>  gauss_n;          // per-interval Gauss order

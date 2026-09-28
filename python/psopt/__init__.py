@@ -231,6 +231,7 @@ class Algorithm:
                  ms_path_samples=None, ms_flexible_segments=None,
                  ms_min_segment_fraction=None, ms_refine_tolerance=None,
                  ms_algebraic_iterations=None, ms_adaptive_steps=None,
+                 free_padded_defect_rows=None,
                  ms_max_steps_per_segment=None, ms_implicit_iterations=None,
                  # PSOPT's own SQP solver (nlp_method="SQP")
                  qp_solver=None, qp_restoration=None, sqp_strategy=None,
@@ -286,6 +287,13 @@ class Algorithm:
         self.ms_refine_tolerance = ms_refine_tolerance
         self.ms_algebraic_iterations = ms_algebraic_iterations
         self.ms_adaptive_steps = ms_adaptive_steps
+        # A defect row the transcription cannot fill is written as a literal zero, and
+        # with bounds [0,0] it is an equality constraint on nothing that IPOPT counts
+        # against the variables. True frees those rows. It matters only where the state
+        # is REPLICATED -- see psopt.robust, which turns it on -- and the default is
+        # False because it changes the iterate path on a problem that is already
+        # rank-deficient. See the note on Alg::free_padded_defect_rows.
+        self.free_padded_defect_rows = free_padded_defect_rows
         self.ms_max_steps_per_segment = ms_max_steps_per_segment
         self.ms_implicit_iterations = ms_implicit_iterations
         self.qp_solver = qp_solver
@@ -371,6 +379,7 @@ def _alg_dict(a):
                 "ms_path_samples", "ms_flexible_segments",
                 "ms_min_segment_fraction", "ms_refine_tolerance",
                 "ms_algebraic_iterations", "ms_adaptive_steps",
+                "free_padded_defect_rows",
                 "ms_max_steps_per_segment", "ms_implicit_iterations",
                 "qp_solver", "qp_restoration", "sqp_strategy", "qp_iter_max",
                 "trust_region", "trust_region_radius", "elastic_penalty",

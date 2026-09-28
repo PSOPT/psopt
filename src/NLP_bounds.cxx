@@ -245,9 +245,19 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 		}
 	}
 	else {
+	// The defect rows a transcription cannot fill are written as literal zeros, and an
+	// equality row of zeros is a constraint on nothing that IPOPT nevertheless counts
+	// against the variables. Free them, exactly as the integrated-residual branch above
+	// frees its whole block and for the same reason. See defect_padded_nodes.
+	std::vector<char> padded;
+	if ( algorithm->free_padded_defect_rows )
+		defect_padded_nodes(*problem, i, workspace, padded);
+	else
+		padded.assign(norder+1, 0);
 	for (k=0;k<nstates*(norder+1);k++) {
-		g_l[lam_phase_offset+k] = 0.0;
-		g_u[lam_phase_offset+k] = 0.0;
+		const bool free_row = padded[k/nstates];
+		g_l[lam_phase_offset+k] = free_row ? -1.0e20 : 0.0;
+		g_u[lam_phase_offset+k] = free_row ?  1.0e20 : 0.0;
 	}
 	}
 
