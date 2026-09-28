@@ -417,9 +417,20 @@ class RobustPhase(object):
         # state needs bounds, and a bound that turned out to be active would
         # silently change the risk measure into something else.
         self.cost_bounds = None
-        # Ancillary feedback gain, ncontrols x nstates, or None for open loop.
+        # Ancillary feedback gain. One of:
+        #   None                  open loop
+        #   array (ncontrols, nstates)   a constant gain
+        #   callable(t) -> rows   a gain scheduled on time, returned as nested
+        #                         sequences of CasADi expressions
+        #   "co-design"           the entries become static parameters and are
+        #                         optimised with the trajectory
         # See the FEEDBACK section of RobustProblem._augment.
         self.feedback = None
+        # (lo, hi) for a co-designed gain's entries. Each may be a scalar, or an
+        # (ncontrols, nstates) array, which is how a co-design is confined to a
+        # neighbourhood of a gain already known to stabilise the family.
+        self.feedback_bounds = None
+        self.feedback_guess = None     # a gain to start a co-design from
 
 
 class RobustSolution(object):
@@ -441,6 +452,8 @@ class RobustSolution(object):
         # True when the loop stopped because the transcription could not carry
         # another scenario, rather than because the design was good enough.
         self.budget_exhausted = False
+        # A co-designed gain schedule, (ncontrols*nstates, N), or None.
+        self.gain_schedule = None
 
     def report(self, printer=print):
         """Print what was found, in the order it should be read."""
@@ -460,6 +473,17 @@ class RobustSolution(object):
             printer("                                  demand on the actuator,")
             printer("                                  sampled between the nodes")
             printer("                                  where nothing constrains it)")
+        if c.get("gain_on_bound"):
+            printer("  CO-DESIGNED GAIN ON ITS BOUND : %d of %d entries, largest"
+                    % (c["gain_on_bound"], c["gain_entries"]))
+            printer("                                  |K| %.3g. The bound, not the"
+                    % c["gain_norm"])
+            printer("                                  problem, is choosing the")
+            printer("                                  gain: the design is buying")
+            printer("                                  cost with stability it is not")
+            printer("                                  being charged for, and the")
+            printer("                                  worst violation above is")
+            printer("                                  where that is charged")
         printer("  search vs adaptive integrator : %.2e  (%d fixed steps per node"
                 % (c["integrator_drift"], c["nsub"]))
         printer("                                  interval against DOP853; if this")
@@ -512,6 +536,8 @@ class RobustProblem(object):
         self.path_scale = None
         # Accepted here as well as on the phase, for the same reason cost_bounds is.
         self.feedback = None
+        self.feedback_bounds = None
+        self.feedback_guess = None
         # Accepted here as well as on the phase, because the phase is where it
         # belongs and the problem is where a reader reaches for it first. A plain
         # Python object accepts any attribute silently, so offering only one of the
@@ -532,7 +558,7 @@ class RobustProblem(object):
     # -- assembly ------------------------------------------------------------------
 
     def _augment(self, thetas, margins, guess=None, weights=None, risk="nominal",
-                 cvar_alpha=0.9, mv_lambda=1.0):
+                 cvar_alpha=0.9, mv_lambda=1.0, pguess=None):
         """Build the deterministic psopt.Problem for a given scenario set.
 
         The scenario set does two jobs and the driver keeps them apart. As a
@@ -581,6 +607,10 @@ class RobustProblem(object):
         use_cost = risk in ("mean-variance", "cvar")
         if rp.cost_bounds is None and self.cost_bounds is not None:
             rp.cost_bounds = self.cost_bounds
+        if rp.feedback_bounds is None and self.feedback_bounds is not None:
+            rp.feedback_bounds = self.feedback_bounds
+        if rp.feedback_guess is None and self.feedback_guess is not None:
+            rp.feedback_guess = self.feedback_guess
         if use_cost and rp.cost_bounds is None:
             raise ValueError(
                 "RobustProblem: risk=%r carries each scenario's cost as a state, "
@@ -590,22 +620,42 @@ class RobustProblem(object):
                 "changes the risk measure into something else." % (risk,))
         if rp.feedback is None and self.feedback is not None:
             rp.feedback = self.feedback
-        K = None
-        if rp.feedback is not None and M > 1:
-            K = np.atleast_2d(np.asarray(rp.feedback, dtype=float))
-            if K.shape != (m, n):
-                raise ValueError(
-                    "RobustProblem: feedback gain is %s, expected (%d, %d) --- one "
-                    "row per control, one column per state."
-                    % (K.shape, m, n))
+        fb = _feedback_kind(rp.feedback, m, n) if M > 1 else ("none", None)
+        fb_kind, fb_value = fb
+        # A co-designed gain's entries ARE decision variables: m*n static
+        # parameters, optimised alongside the nominal control. Nothing about that
+        # is structurally hard -- the problem was already nonconvex, and a product
+        # of two decision variables is just another nonlinear term -- but the gain
+        # must be bounded, because nothing else stops it growing.
+        n_gain = m*n if fb_kind == "co-design" else 0
+        # A TIME-VARYING co-designed gain is carried as extra CONTROLS, not as
+        # parameters and not as a polynomial in t. The transcription already gives
+        # a control a time profile -- piecewise linear within a segment, under
+        # multiple shooting -- so the gain inherits one for free, at exactly the
+        # resolution the trajectory itself has, with no basis to choose and no
+        # branch to refuse. A polynomial in t was tried first and is not practical:
+        # see the note in examples/robust_driver_gain.py.
+        n_gainu = m*n if fb_kind == "co-design-schedule" else 0
+        mu_ = m + n_gainu                      # controls the augmented problem has
+        if (n_gain or n_gainu) and rp.feedback_bounds is None \
+                and self.feedback_bounds is None:
+            raise ValueError(
+                "RobustProblem: a co-designed gain needs .feedback_bounds = "
+                "(lo, hi). The entries are decision variables and nothing else "
+                "bounds them; an unbounded gain runs away into saturation, where "
+                "the realised control is not the control that was designed.")
 
         nx = n * M + (M if use_cost else 0)
-        npar = npu + (M + 1 if risk == "cvar" else 0)
+        # Parameter layout: the user's, then any co-designed gain, then CVaR's eta
+        # and slacks. Fixed here once, because three places read it back.
+        gain_off = npu
+        cvar_off = npu + n_gain
+        npar = cvar_off + (M + 1 if risk == "cvar" else 0)
         # Under feedback the REALISED control differs from scenario to scenario, so
         # its bounds are no longer the decision variable's bounds and have to be
         # imposed as path constraints. They are inequalities, so they cost no
         # degrees of freedom -- see _dof.
-        nu_rows = m * (M - 1) if K is not None else 0
+        nu_rows = m * (M - 1) if fb_kind != "none" else 0
 
         w = (np.ones(M) / M if weights is None else np.asarray(weights, dtype=float))
         if len(w) != M:
@@ -614,7 +664,7 @@ class RobustProblem(object):
 
         nev = ne * M + (M if use_cost else 0) + (M if risk == "cvar" else 0)
         prob = Problem(name=self.name)
-        ph = prob.add_phase(nstates=nx, ncontrols=m, nevents=nev,
+        ph = prob.add_phase(nstates=nx, ncontrols=mu_, nevents=nev,
                             npath=npth * M + nu_rows, nparameters=npar)
         ph.nodes = list(rp.nodes)
 
@@ -642,20 +692,32 @@ class RobustProblem(object):
         # feedback does is stop one history from having to serve every plant
         # unaided.
         #
-        # The gain is given, not designed. Co-designing K with the trajectory would
-        # make the problem bilinear in the decision variables, and a fixed
-        # ancillary gain is the standard first step -- see the note in the
-        # examples on where to get one.
-        def uk(x, u, k):
-            if K is None or k == 0:
-                return u
-            return u + ca.mtimes(ca.DM(K), xs(x, k) - xs(x, 0))
+        # The gain, in whichever of its three forms was asked for. It is a function
+        # of time and of the static parameters so that one expression covers all of
+        # them: a constant ignores both, a scheduled gain reads the first, and a
+        # co-designed gain reads the second.
+        def gain_at(u, p, t):
+            if fb_kind == "constant":
+                return ca.DM(fb_value)
+            if fb_kind == "scheduled":
+                return ca.reshape(ca.vertcat(*[ca.vertcat(*r)
+                                               for r in _rows_of(fb_value(t))]),
+                                  m, n)
+            if fb_kind == "co-design-schedule":
+                return ca.reshape(u[m:m + n_gainu], m, n)
+            return ca.reshape(p[gain_off:gain_off + n_gain], m, n)
+
+        def uk(x, u, p, t, k):
+            ub = u[0:m]
+            if fb_kind == "none" or k == 0:
+                return ub
+            return ub + ca.mtimes(gain_at(u, p, t), xs(x, k) - xs(x, 0))
 
         def dynamics(x, u, p, t):
-            rows = [rp.dynamics(xs(x, k), uk(x, u, k), p[0:npu], t, th_list[k])
+            rows = [rp.dynamics(xs(x, k), uk(x, u, p, t, k), p[0:npu], t, th_list[k])
                     for k in range(M)]
             if use_cost:
-                rows += [rp.integrand(xs(x, k), uk(x, u, k), p[0:npu], t)
+                rows += [rp.integrand(xs(x, k), uk(x, u, p, t, k), p[0:npu], t)
                          if rp.integrand is not None else ca.SX(0.0)
                          for k in range(M)]
             return ca.vertcat(*rows)
@@ -663,14 +725,16 @@ class RobustProblem(object):
         ph.dynamics = dynamics
         if npth or nu_rows:
             def path(x, u, p, t):
-                rows = [rp.path(xs(x, k), uk(x, u, k), p[0:npu], t, th_list[k])
+                rows = [rp.path(xs(x, k), uk(x, u, p, t, k), p[0:npu], t, th_list[k])
                         for k in range(M)] if npth else []
                 # The realised control of every corrected scenario, so that its own
                 # bounds can be imposed on it. Without this the ancillary gain is
                 # free to ask for torque the actuator has not got, and the design
-                # would be one no plant could execute.
-                if K is not None:
-                    rows += [uk(x, u, k) for k in range(1, M)]
+                # would be one no plant could execute. It matters more for a
+                # co-designed gain than for a given one, because there the
+                # optimiser is actively pushing the gain around.
+                if fb_kind != "none":
+                    rows += [uk(x, u, p, t, k) for k in range(1, M)]
                 return ca.vertcat(*rows)
 
             ph.path = path
@@ -689,8 +753,8 @@ class RobustProblem(object):
             if use_cost:
                 rows += [cs(xi, k) for k in range(M)]        # each cost starts at 0
             if risk == "cvar":
-                eta = p[npu]
-                rows += [p[npu + 1 + k] - (J_of(xi, xf, p, t0, tf, k) - eta)
+                eta = p[cvar_off]
+                rows += [p[cvar_off + 1 + k] - (J_of(xi, xf, p, t0, tf, k) - eta)
                          for k in range(M)]                  # s_k >= J_k - eta
             return ca.vertcat(*rows)
 
@@ -706,7 +770,7 @@ class RobustProblem(object):
                     xs(xi, 0), xs(xf, 0), p[0:npu], t0, tf)
             if rp.integrand is not None:
                 ph.integrand = lambda x, u, p, t: rp.integrand(
-                    xs(x, 0), uk(x, u, 0), p[0:npu], t)
+                    xs(x, 0), uk(x, u, p, t, 0), p[0:npu], t)
         elif risk == "expectation":
             # A weighted sum of per-scenario costs is itself a sum, so it goes
             # straight into the integrand and the endpoint and needs no cost state.
@@ -716,7 +780,8 @@ class RobustProblem(object):
                     for k in range(M))
             if rp.integrand is not None:
                 ph.integrand = lambda x, u, p, t: sum(
-                    float(w[k]) * rp.integrand(xs(x, k), uk(x, u, k), p[0:npu], t)
+                    float(w[k]) * rp.integrand(xs(x, k), uk(x, u, p, t, k),
+                                               p[0:npu], t)
                     for k in range(M))
         elif risk == "mean-variance":
             lam = float(mv_lambda)
@@ -734,8 +799,8 @@ class RobustProblem(object):
                 raise ValueError("RobustProblem: cvar_alpha must be in [0, 1)")
 
             def cvar(xi, xf, p, t0, tf):
-                return p[npu] + (1.0 / (1.0 - a)) * sum(
-                    float(w[k]) * p[npu + 1 + k] for k in range(M))
+                return p[cvar_off] + (1.0 / (1.0 - a)) * sum(
+                    float(w[k]) * p[cvar_off + 1 + k] for k in range(M))
 
             ph.endpoint = cvar
 
@@ -745,14 +810,26 @@ class RobustProblem(object):
             clo, chi = rp.cost_bounds
             ph.bounds.lower.states = list(ph.bounds.lower.states) + [clo] * M
             ph.bounds.upper.states = list(ph.bounds.upper.states) + [chi] * M
-        ph.bounds.lower.controls = rp.bounds.lower.controls
-        ph.bounds.upper.controls = rp.bounds.upper.controls
+        ph.bounds.lower.controls = list(rp.bounds.lower.controls)
+        ph.bounds.upper.controls = list(rp.bounds.upper.controls)
+        if n_gainu:
+            glo, ghi = _gain_box(rp.feedback_bounds if rp.feedback_bounds is not None
+                                 else self.feedback_bounds, m, n)
+            ph.bounds.lower.controls = ph.bounds.lower.controls + list(glo)
+            ph.bounds.upper.controls = ph.bounds.upper.controls + list(ghi)
         ph.bounds.lower.parameters = rp.bounds.lower.parameters
         ph.bounds.upper.parameters = rp.bounds.upper.parameters
+        plo = list(rp.bounds.lower.parameters or [])
+        phi = list(rp.bounds.upper.parameters or [])
+        if n_gain:
+            glo, ghi = _gain_box(rp.feedback_bounds if rp.feedback_bounds is not None
+                                 else self.feedback_bounds, m, n)
+            plo = plo + list(glo)
+            phi = phi + list(ghi)
+            ph.bounds.lower.parameters = plo
+            ph.bounds.upper.parameters = phi
         if risk == "cvar":
             clo, chi = rp.cost_bounds
-            plo = list(rp.bounds.lower.parameters or [])
-            phi = list(rp.bounds.upper.parameters or [])
             # eta lives on the same scale as the cost; each slack is a positive
             # part of a difference of two costs, so it cannot exceed their range.
             ph.bounds.lower.parameters = plo + [clo] + [0.0] * M
@@ -792,15 +869,17 @@ class RobustProblem(object):
         if guess is not None:
             t_g, u_g, x_per = guess
             ph.guess.time = np.asarray(t_g).reshape(1, N)
-            ph.guess.controls = np.asarray(u_g).reshape(m, N)
+            ph.guess.controls = _widen_controls(np.asarray(u_g), mu_, N,
+                                                self._gain_guess(rp, m, n))
             rows = list(x_per)
         else:
             ph.guess.time = (np.asarray(rp.guess.time).reshape(1, N)
                              if rp.guess.time is not None
                              else np.linspace(0.0, 1.0, N).reshape(1, N))
-            ph.guess.controls = (np.asarray(rp.guess.controls).reshape(m, N)
-                                 if rp.guess.controls is not None
-                                 else np.zeros((m, N)))
+            base_u = (np.asarray(rp.guess.controls).reshape(m, N)
+                      if rp.guess.controls is not None else np.zeros((m, N)))
+            ph.guess.controls = _widen_controls(base_u, mu_, N,
+                                                self._gain_guess(rp, m, n))
             base = (np.asarray(rp.guess.states) if rp.guess.states is not None
                     else np.zeros((n, N)))
             rows = [base] * M
@@ -812,6 +891,25 @@ class RobustProblem(object):
         ph.guess.states = np.vstack(rows)
         pg = (np.asarray(rp.guess.parameters, dtype=float).ravel()
               if rp.guess.parameters is not None else np.zeros(npu))
+        if n_gain:
+            # Start from a gain that already works. A co-designed gain is a
+            # nonconvex problem in its own right, and starting it at zero starts it
+            # at the open-loop design, which is the expensive local minimum this is
+            # meant to escape. Once the generation loop has a gain of its own,
+            # start from THAT instead: the scenario being added is one the previous
+            # gain nearly served, so its value is a far better guess than the LQR
+            # one, and re-starting each iteration from the LQR gain throws away
+            # everything the loop has learned about the gain.
+            pv = (None if pguess is None
+                  else np.asarray(pguess, dtype=float).ravel())
+            if pv is not None and len(pv) >= npu + n_gain:
+                g0 = pv[npu:npu + n_gain].reshape(m, n)
+            else:
+                g0 = (rp.feedback_guess if rp.feedback_guess is not None
+                      else self.feedback_guess)
+                g0 = (np.zeros((m, n)) if g0 is None
+                      else np.atleast_2d(np.asarray(g0, dtype=float)))
+            pg = np.concatenate([pg, np.asarray(g0, dtype=float).reshape(-1)])
         if risk == "cvar":
             pg = np.concatenate([pg, np.zeros(M + 1)])
         ph.guess.parameters = pg.reshape(-1, 1) if npar else None
@@ -889,6 +987,9 @@ class RobustProblem(object):
         if self._vL is None:
             return np.zeros((1, len(t_row)))
         npu = self._phases[0].nparameters
+        # The guess table handed in may carry a co-designed gain schedule in its
+        # trailing rows; the user's integrand knows only the control.
+        u_rows = np.asarray(u_rows)[0:self._phases[0].ncontrols, :]
         L = np.array([float(self._vL(x_rows[:, j], u_rows[:, j], np.zeros(npu),
                                      t_row[j]))
                       for j in range(len(t_row))])
@@ -982,8 +1083,14 @@ class RobustProblem(object):
         J = np.zeros(K)
         N = len(t_nodes)
 
-        def realise(Ubar, Xc):
-            return Ubar if Kg is None else Ubar + Kg @ (Xc - Xc[:, 0:1])
+        mu = rp.ncontrols
+
+        def realise(Ufull, Xc, tt):
+            ub = Ufull[0:mu]
+            if Kg is None:
+                return ub
+            with np.errstate(invalid="ignore", over="ignore"):
+                return ub + Kg(tt, params, Ufull[:, 0]) @ (Xc - Xc[:, 0:1])
 
         def LL(Xc, Uc, tt):
             if mp["L"] is None:
@@ -1003,19 +1110,19 @@ class RobustProblem(object):
                 tA = ta + sstep * h
                 tH = ta + (sstep + 0.5) * h
                 tB = ta + (sstep + 1) * h
-                UA = realise(BA, X)
+                UA = realise(BA, X, tA)
                 k1 = np.asarray(mp["f"](X, UA, P, np.full((1, K), tA), TH))
                 l1 = LL(X, UA, tA)
                 X2 = X + 0.5 * h * k1
-                UH2 = realise(BH, X2)
+                UH2 = realise(BH, X2, tH)
                 k2 = np.asarray(mp["f"](X2, UH2, P, np.full((1, K), tH), TH))
                 l2 = LL(X2, UH2, tH)
                 X3 = X + 0.5 * h * k2
-                UH3 = realise(BH, X3)
+                UH3 = realise(BH, X3, tH)
                 k3 = np.asarray(mp["f"](X3, UH3, P, np.full((1, K), tH), TH))
                 l3 = LL(X3, UH3, tH)
                 X4 = X + h * k3
-                UB4 = realise(BB, X4)
+                UB4 = realise(BB, X4, tB)
                 k4 = np.asarray(mp["f"](X4, UB4, P, np.full((1, K), tB), TH))
                 l4 = LL(X4, UB4, tB)
                 X = X + (h / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
@@ -1033,11 +1140,244 @@ class RobustProblem(object):
         x0 = np.asarray(self.initial_state, dtype=float)
         return np.tile(x0.reshape(-1, 1), (1, len(thetas)))
 
-    def _gain(self):
-        """The ancillary gain in force, or None."""
+    def riccati_gain(self, out, Q, R, Qf=None, degree=9, nsub=6):
+        """A time-varying ancillary gain, from a Riccati sweep along a design.
+
+        The fixed gain of the first tube is a regulator about one point -- usually
+        the target -- and the manoeuvre spends most of its time elsewhere. This
+        linearises the plant along the REFERENCE trajectory a design actually
+        produced,
+
+            A(t) = df/dx,  B(t) = df/du   at (x_ref(t), u_bar(t), theta_ref),
+
+        integrates the Riccati equation backwards from P(t_f) = Qf,
+
+            -dP/dt = A'P + P A - P B inv(R) B' P + Q,
+
+        and returns K(t) = -inv(R) B'(t) P(t). It is therefore an OUTER iteration:
+        design, linearise, re-design. Two passes are usually enough, because the
+        second design moves the trajectory much less than the first.
+
+        The gain comes back as a callable of t whose entries are POLYNOMIALS of the
+        given degree, fitted to the Riccati solution. A table interpolated between
+        nodes would be the obvious alternative and cannot be used: the emitter
+        refuses a branch on a symbolic value, and every interpolation is a branch.
+        A polynomial is elementary arithmetic, so it survives the trip to C++ --
+        and a gain is an approximation being approximated, which is a comfortable
+        place to fit a polynomial.
+
+        Qf DEFAULTS TO THE INFINITE-HORIZON VALUE FUNCTION, and that matters.
+        With Qf = Q the gain has a terminal boundary layer: P relaxes towards Q
+        over the last part of the horizon and the gain collapses with it --
+        measured on the arm, |K| falls from 7.0 to 3.0 over the final tenth. The
+        feedback is then weakest exactly where the terminal ball has to be met, and
+        a global polynomial cannot represent the layer either. Setting Qf to the
+        solution of the algebraic Riccati equation at the terminal linearisation
+        removes it: the gain ends at the steady-state value it would hold on an
+        infinite horizon, and |K| runs 7.08, 7.53, 7.19 instead.
+
+        Two things this does not do. The reference between nodes is interpolated
+        linearly rather than integrated: it is a gain, and the expense is not
+        warranted. And the fit is over the interval the design produced, so if the
+        final time moves a long way at the next solve the gain is being used
+        slightly outside it -- which is why the outer iteration re-fits.
+
+        `.fit_error` on the returned callable is the largest discrepancy between
+        the fitted polynomial and the Riccati gain it approximates. Read it: what
+        the design uses is the polynomial, not the sweep.
+        """
         rp = self._phases[0]
-        g = rp.feedback if rp.feedback is not None else self.feedback
-        return None if g is None else np.atleast_2d(np.asarray(g, dtype=float))
+        n, m, npu = rp.nstates, rp.ncontrols, rp.nparameters
+        d = self.uncertainty.dim
+        Q = np.atleast_2d(np.asarray(Q, dtype=float))
+        R = np.atleast_2d(np.asarray(R, dtype=float))
+        Qf = None if Qf is None else np.atleast_2d(np.asarray(Qf, dtype=float))
+
+        xs_ = ca.SX.sym("x", n)
+        us_ = ca.SX.sym("u", m)
+        ps_ = ca.SX.sym("p", npu)
+        ts_ = ca.SX.sym("t", 1)
+        th_ = ca.SX.sym("th", d)
+        f = ca.vertcat(rp.dynamics(xs_, us_, ps_, ts_, th_))
+        Af = ca.Function("A", [xs_, us_, ps_, ts_, th_], [ca.jacobian(f, xs_)])
+        Bf = ca.Function("B", [xs_, us_, ps_, ts_, th_], [ca.jacobian(f, us_)])
+
+        t_nodes = np.asarray(out.time).ravel()
+        u_nodes = np.asarray(out.controls).reshape(m, len(t_nodes))
+        x_nodes = np.asarray(out.design.states)[0:n, :]        # scenario 0
+        th = np.asarray(self._theta_ref, dtype=float)
+        pv = np.zeros(npu)
+        Rinv = np.linalg.inv(R)
+
+        def at(tt):
+            x = np.array([np.interp(tt, t_nodes, x_nodes[i]) for i in range(n)])
+            u = np.array([np.interp(tt, t_nodes, u_nodes[i]) for i in range(m)])
+            return (np.asarray(Af(x, u, pv, tt, th)),
+                    np.asarray(Bf(x, u, pv, tt, th)))
+
+        if Qf is None:
+            # The infinite-horizon value function at the terminal linearisation.
+            # See the note above on why Q itself is the wrong terminal weight.
+            from scipy.linalg import solve_continuous_are
+            AT = np.asarray(Af(x_nodes[:, -1], u_nodes[:, -1], pv, t_nodes[-1], th))
+            BT = np.asarray(Bf(x_nodes[:, -1], u_nodes[:, -1], pv, t_nodes[-1], th))
+            Qf = solve_continuous_are(AT, BT, Q, R)
+
+        from scipy.integrate import solve_ivp
+
+        # The Riccati equation runs BACKWARDS from P(t_f) = Qf:
+        #
+        #     -dP/dt = A'P + P A - P B inv(R) B' P + Q
+        #
+        # and solve_ivp marches forwards, so it is integrated in reversed time
+        # s = t_f - t, where ds = -dt and the sign flips once:
+        #
+        #      dP/ds = A'P + P A - P B inv(R) B' P + Q,   P(s=0) = Qf.
+        #
+        # Written out because the sign was wrong the first time, and the Riccati
+        # equation integrated in the unstable direction does not fail politely: it
+        # blows up in finite time, the fit returns NaN coefficients, and what
+        # surfaces is a compiler error about a non-finite constant in the emitted
+        # C++, a long way from here.
+        def rhs_reversed(ss, pflat):
+            P = pflat.reshape(n, n)
+            A, B = at(t_nodes[-1] - ss)
+            return (A.T @ P + P @ A - P @ B @ Rinv @ B.T @ P + Q).ravel()
+
+        grid = np.linspace(0.0, t_nodes[-1] - t_nodes[0], max(20, nsub*len(t_nodes)))
+        r = solve_ivp(rhs_reversed, (0.0, grid[-1]), Qf.ravel(), t_eval=grid,
+                      method="LSODA", rtol=1e-8, atol=1e-10)
+        if not r.success or not np.all(np.isfinite(r.y)):
+            raise RuntimeError(
+                "riccati_gain: the Riccati sweep did not stay finite (%s). The "
+                "equation is being integrated in reversed time from P(t_f) = Qf; "
+                "if it diverges, the usual causes are a Q or R that is not "
+                "positive definite, or a linearisation taken about a trajectory "
+                "the design never actually follows." % r.message)
+
+        times = t_nodes[-1] - grid
+        Ks = np.empty((len(grid), m, n))
+        for j in range(len(grid)):
+            P = r.y[:, j].reshape(n, n)
+            P = 0.5*(P + P.T)                       # symmetry, lost to round-off
+            _A, B = at(times[j])
+            Ks[j] = -(Rinv @ B.T @ P)
+
+        order = np.argsort(times)
+        tt, Ks = times[order], Ks[order]
+
+        # Fit in NORMALISED time. A polynomial of this degree against absolute
+        # seconds is badly conditioned, and the fit IS the gain: nothing
+        # downstream ever sees the sweep.
+        t0, tf = float(tt[0]), float(tt[-1])
+        span = tf - t0 if tf > t0 else 1.0
+        tau = (tt - t0)/span
+        coeffs = [[np.polyfit(tau, Ks[:, i, j], degree) for j in range(n)]
+                  for i in range(m)]
+        if not np.all(np.isfinite(np.asarray(coeffs, dtype=float))):
+            raise RuntimeError(
+                "riccati_gain: the polynomial fit of degree %d returned "
+                "non-finite coefficients. Lower the degree." % degree)
+        err = 0.0
+        for i in range(m):
+            for j in range(n):
+                err = max(err, float(np.max(np.abs(
+                    np.polyval(coeffs[i][j], tau) - Ks[:, i, j]))))
+
+        def K_of_t(t):
+            z = (t - t0)/span
+            return [[_horner(coeffs[i][j], z) for j in range(n)] for i in range(m)]
+
+        K_of_t.coefficients = coeffs
+        K_of_t.samples = (tt, Ks)
+        K_of_t.fit_error = err
+        K_of_t.interval = (t0, tf)
+        return K_of_t
+
+    def _gain_guess(self, rp, m, n):
+        """The gain a co-design starts from: the caller's, or zero."""
+        g0 = (rp.feedback_guess if rp.feedback_guess is not None
+              else self.feedback_guess)
+        return (np.zeros((m, n)) if g0 is None
+                else np.atleast_2d(np.asarray(g0, dtype=float)))
+
+    def _gain(self):
+        """A callable (t, params, u_column) -> the gain matrix, or None.
+
+        One accessor for all four forms, so nothing downstream has to know which
+        was asked for. A constant ignores its arguments; a scheduled gain reads the
+        time; a co-designed constant gain reads the static parameters, where the
+        solver put it; a co-designed SCHEDULE reads the trailing rows of the
+        control, where the transcription put it.
+        """
+        rp = self._phases[0]
+        spec = rp.feedback if rp.feedback is not None else self.feedback
+        kind, value = _feedback_kind(spec, rp.ncontrols, rp.nstates)
+        n, m, npu = rp.nstates, rp.ncontrols, rp.nparameters
+        if kind == "none":
+            return None
+        if kind == "constant":
+            return lambda t, params, uc: value
+        if kind == "co-design":
+            def from_params(t, params, uc):
+                pv = np.asarray(params, dtype=float).ravel()
+                if len(pv) < npu + m*n:
+                    # Before the first solve there is nothing to read; the guess is
+                    # the honest stand-in, and saying zero would silently verify an
+                    # open-loop design as though it were the closed-loop one.
+                    return self._gain_guess(rp, m, n)
+                return pv[npu:npu + m*n].reshape(m, n)
+
+            return from_params
+        if kind == "co-design-schedule":
+            def from_control(t, params, uc):
+                uv = np.asarray(uc, dtype=float).ravel()
+                if len(uv) < m + m*n:
+                    return self._gain_guess(rp, m, n)
+                return uv[m:m + m*n].reshape(m, n)
+
+            return from_control
+
+        # Scheduled: compile the user's expression once, then evaluate numerically.
+        tsym = ca.SX.sym("t", 1)
+        Kexpr = ca.reshape(ca.vertcat(*[ca.vertcat(*r)
+                                        for r in _rows_of(value(tsym))]), m, n)
+        f = ca.Function("Kfun", [tsym], [Kexpr])
+        return lambda t, params, uc: np.asarray(f(t))
+
+    def _feedback_bounds(self):
+        """The bounds a co-designed gain was given, or None if it was not one."""
+        rp = self._phases[0]
+        spec = rp.feedback if rp.feedback is not None else self.feedback
+        kind, _v = _feedback_kind(spec, rp.ncontrols, rp.nstates)
+        if kind not in ("co-design", "co-design-schedule"):
+            return None
+        return (rp.feedback_bounds if rp.feedback_bounds is not None
+                else self.feedback_bounds)
+
+    def _designed_gain(self, design, u_nodes):
+        """Every value a co-designed gain took, as one flat array.
+
+        A constant gain contributes its m*n entries; a schedule contributes them at
+        every node, because a schedule that touches its bound anywhere is touching
+        it, and the whole point of looking is to notice that it did.
+        """
+        rp = self._phases[0]
+        spec = rp.feedback if rp.feedback is not None else self.feedback
+        kind, _v = _feedback_kind(spec, rp.ncontrols, rp.nstates)
+        n, m, npu = rp.nstates, rp.ncontrols, rp.nparameters
+        if kind == "co-design":
+            if design.parameters is None:
+                return None
+            pv = np.asarray(design.parameters, dtype=float).ravel()
+            return pv[npu:npu + m*n] if len(pv) >= npu + m*n else None
+        if kind == "co-design-schedule":
+            u = np.asarray(u_nodes, dtype=float)
+            # Node-major, so that tiling the entry box over the nodes lines
+            # up with it.
+            return (u[m:m + m*n, :].T.ravel() if u.shape[0] >= m + m*n
+                    else None)
+        return None
 
     def _violation_many(self, thetas, t_nodes, u_nodes, params, nsub=None,
                         want_nodes=False, want_uexcess=False):
@@ -1092,16 +1432,29 @@ class RobustProblem(object):
         worst = np.zeros(K)
         uex = np.zeros(K)
 
-        ulo = (np.asarray(rp.bounds.lower.controls, dtype=float).reshape(-1, 1)
+        ulo = (np.asarray(rp.bounds.lower.controls,
+                          dtype=float).ravel()[:rp.ncontrols].reshape(-1, 1)
                if rp.bounds.lower.controls is not None else None)
-        uhi = (np.asarray(rp.bounds.upper.controls, dtype=float).reshape(-1, 1)
+        uhi = (np.asarray(rp.bounds.upper.controls,
+                          dtype=float).ravel()[:rp.ncontrols].reshape(-1, 1)
                if rp.bounds.upper.controls is not None else None)
 
-        def realise(Ubar, Xc):
-            """The control each column actually applies."""
+        mu = rp.ncontrols
+
+        def realise(Ufull, Xc, tt):
+            """The control each column actually applies, at time tt.
+
+            Ufull may be wider than the user's control vector: a co-designed gain
+            schedule rides in its trailing rows, put there by the transcription.
+            """
+            ub = Ufull[0:mu]
             if Kg is None:
-                return Ubar
-            U = Ubar + Kg @ (Xc - Xc[:, 0:1])
+                return ub
+            # Errors are not raised here: a column that has already diverged makes
+            # this product non-finite, and that is dealt with once, at the end of
+            # the sweep, rather than as a warning per step per node.
+            with np.errstate(invalid="ignore", over="ignore"):
+                U = ub + Kg(tt, params, Ufull[:, 0]) @ (Xc - Xc[:, 0:1])
             if want_uexcess and ulo is not None:
                 np.maximum(uex, np.maximum(np.maximum(ulo - U, U - uhi),
                                            0.0).max(axis=0), out=uex)
@@ -1127,22 +1480,23 @@ class RobustProblem(object):
                 BH = np.tile(ua + wh * (ub - ua), (1, K))
                 BB = np.tile(ua + w1 * (ub - ua), (1, K))
                 tA, tH, tB = ta + sstep * h, ta + (sstep + 0.5) * h, ta + (sstep + 1) * h
-                UA = realise(BA, X)
+                UA = realise(BA, X, tA)
                 path_excess(X, UA, tA)
                 k1 = np.asarray(mp["f"](X, UA, P, np.full((1, K), tA), TH))
                 X2 = X + 0.5 * h * k1
-                k2 = np.asarray(mp["f"](X2, realise(BH, X2), P,
+                k2 = np.asarray(mp["f"](X2, realise(BH, X2, tH), P,
                                         np.full((1, K), tH), TH))
                 X3 = X + 0.5 * h * k2
-                k3 = np.asarray(mp["f"](X3, realise(BH, X3), P,
+                k3 = np.asarray(mp["f"](X3, realise(BH, X3, tH), P,
                                         np.full((1, K), tH), TH))
                 X4 = X + h * k3
-                k4 = np.asarray(mp["f"](X4, realise(BB, X4), P,
+                k4 = np.asarray(mp["f"](X4, realise(BB, X4, tB), P,
                                         np.full((1, K), tB), TH))
                 X = X + (h / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
             if want_nodes:
                 nodes[:, i + 1, :] = X
-        path_excess(X, realise(np.tile(u_nodes[:, -1:], (1, K)), X), t_nodes[-1])
+        path_excess(X, realise(np.tile(u_nodes[:, -1:], (1, K)), X,
+                               t_nodes[-1]), t_nodes[-1])
 
         if rp.nevents:
             ev = np.asarray(mp["e"](self._x0_of(thetas), X, P,
@@ -1151,6 +1505,19 @@ class RobustProblem(object):
             np.maximum(worst, _bound_excess_many(ev, rp.bounds.lower.events,
                                                  rp.bounds.upper.events,
                                                  self.event_scale), out=worst)
+
+        # A column whose trajectory left the reals is not an unknown, it is the
+        # worst possible outcome: the closed loop diverged at that parameter. NaN
+        # would propagate into the search's ranking and into every max() above it,
+        # where it does not compare, so the divergence would be invisible to the
+        # very search whose job is to find it. Infinity compares correctly and is
+        # the truth. This is reachable under an aggressive ancillary gain, which is
+        # exactly where it matters: the design is stable at the scenarios it was
+        # built from and unstable a little way outside them.
+        bad = ~np.isfinite(worst)
+        if bad.any():
+            worst = np.where(bad, np.inf, worst)
+            uex = np.where(bad, np.inf, uex)
 
         # Drop the reference column: it is scenario 0 of the design and is scored
         # in its own right when it appears in `thetas`.
@@ -1198,9 +1565,19 @@ class RobustProblem(object):
         def split(xx):
             return (xx[n:], xx[:n]) if Kg is not None else (xx, None)
 
-        def applied(ubar, xx):
+        # A co-designed gain SCHEDULE rides in the trailing rows of the control
+        # table, so `ufull` here may be wider than the user's control vector. The
+        # reference plant is driven by the nominal control alone and must be handed
+        # only those rows; handing it the whole column is a shape error from
+        # CasADi, and would have been a wrong answer if the shapes had happened to
+        # agree.
+        def nominal(ufull):
+            return np.asarray(ufull).ravel()[0:rp.ncontrols]
+
+        def applied(ufull, xx, tt):
             xk, xr = split(xx)
-            return ubar if Kg is None else ubar + Kg @ (xk - xr)
+            ub = nominal(ufull)
+            return ub if Kg is None else ub + Kg(tt, params, ufull) @ (xk - xr)
 
         def excess_path(xx, uu, tt):
             if not rp.npath:
@@ -1216,11 +1593,12 @@ class RobustProblem(object):
             def rhs(tt, xx, ta=ta, tb=tb, ua=ua, ub=ub):
                 ubar = ua + (0.0 if tb == ta else (tt - ta) / (tb - ta)) * (ub - ua)
                 xk, xr = split(xx)
-                dk = np.asarray(self._vf(xk, applied(ubar, xx), params, tt,
-                                         th)).ravel()
+                dk = np.asarray(self._vf(xk, applied(ubar, xx, tt), params,
+                                         tt, th)).ravel()
                 if Kg is None:
                     return dk
-                dr = np.asarray(self._vf(xr, ubar, params, tt, thr)).ravel()
+                dr = np.asarray(self._vf(xr, nominal(ubar), params,
+                                         tt, thr)).ravel()
                 return np.concatenate([dr, dk])
 
             grid = np.linspace(ta, tb, nsub + 1)[1:]
@@ -1232,7 +1610,8 @@ class RobustProblem(object):
             for j, tt in enumerate(grid):
                 ww = 0.0 if tb == ta else (tt - ta) / (tb - ta)
                 ubar = ua + ww * (ub - ua)
-                v = max(v, excess_path(r.y[:, j], applied(ubar, r.y[:, j]), tt))
+                v = max(v, excess_path(r.y[:, j], applied(ubar, r.y[:, j], tt),
+                                       tt))
             x = r.y[:, -1]
         if rp.nevents:
             ev = np.asarray(self._ve(split(x0)[0], split(x)[0], params,
@@ -1403,7 +1782,8 @@ class RobustProblem(object):
         design = None
         for it in range(max_iterations):
             prob = self._augment(thetas, margins, guess, weights, risk,
-                                 cvar_alpha, mv_lambda)
+                                 cvar_alpha, mv_lambda,
+                                 pguess=(params if it else None))
             sol = prob.solve(alg)
             out.n_solves += 1
             if not sol.status.success:
@@ -1438,10 +1818,17 @@ class RobustProblem(object):
                 break
 
             design = sol
-            if sol.parameters is not None and rp.nparameters:
+            # Every static parameter the AUGMENTED problem carries, not only the
+            # user's: a co-designed constant gain lives in the trailing entries,
+            # and the guard used to read rp.nparameters, so on a problem with no
+            # parameters of its own -- which is the common case -- the solved gain
+            # was never read back and the verification silently checked the design
+            # against the gain it had STARTED from. A closed-loop certificate for
+            # the wrong loop.
+            if sol.parameters is not None:
                 params = np.asarray(sol.parameters, dtype=float).ravel()
             t_nodes = np.asarray(sol.time).ravel()
-            u_nodes = np.asarray(sol.controls).reshape(rp.ncontrols, len(t_nodes))
+            u_nodes = np.asarray(sol.controls).reshape(-1, len(t_nodes))
             v, th_worst = self._worst_case(t_nodes, u_nodes, params,
                                            n_seed, n_refine, seed + it)
             out.history.append(dict(iteration=it, M=len(thetas),
@@ -1478,11 +1865,17 @@ class RobustProblem(object):
             better = None
             if csol.status.success:
                 ct = np.asarray(csol.time).ravel()
-                cu = np.asarray(csol.controls).reshape(rp.ncontrols, len(ct))
-                cv, _cth = self._worst_case(ct, cu, params, n_seed, n_refine,
+                cu = np.asarray(csol.controls).reshape(-1, len(ct))
+                # The cold solve has its OWN static parameters, and under co-design
+                # that includes its own gain. Verifying it against the warm chain's
+                # parameters would compare two designs by integrating one of them
+                # wrongly.
+                cparams = (np.asarray(csol.parameters, dtype=float).ravel()
+                           if csol.parameters is not None else params)
+                cv, _cth = self._worst_case(ct, cu, cparams, n_seed, n_refine,
                                             seed + 4242)
                 dt = np.asarray(design.time).ravel()
-                du = np.asarray(design.controls).reshape(rp.ncontrols, len(dt))
+                du = np.asarray(design.controls).reshape(-1, len(dt))
                 dv, _dth = self._worst_case(dt, du, params, n_seed, n_refine,
                                             seed + 4242)
                 # Prefer a certified design; among certified ones, the cheaper.
@@ -1500,9 +1893,10 @@ class RobustProblem(object):
                                         else "warm one"))
             if better is not None:
                 design = better
+                params = cparams
 
         t_nodes = np.asarray(design.time).ravel()
-        u_nodes = np.asarray(design.controls).reshape(rp.ncontrols, len(t_nodes))
+        u_nodes = np.asarray(design.controls).reshape(-1, len(t_nodes))
         v, th_worst = self._worst_case(t_nodes, u_nodes, params, n_seed,
                                        n_refine, seed + 9999)
         # The certificate is reported from the ADAPTIVE integrator at the worst
@@ -1530,13 +1924,37 @@ class RobustProblem(object):
         out.design = design
         out.scenarios = np.array(thetas)
         out.time = t_nodes
+        # The FULL control table, which a co-designed schedule widens: the
+        # verifier needs the gain rows and they belong with the control they ride
+        # in. out.gain_schedule pulls them out for a caller who wants to look.
         out.controls = u_nodes
+        out.gain_schedule = (u_nodes[rp.ncontrols:]
+                             if u_nodes.shape[0] > rp.ncontrols else None)
         out.objective = float(design.objective)
         out.certificate = dict(violation=v, theta=th_worst,
                                evaluations=self._nver, slack=slack,
                                integrator_drift=drift, nsub=nsub,
                                control_excess=u_excess,
                                feedback=self._gain() is not None)
+        # A co-designed gain sitting on its bound is the signature of the failure
+        # this whole apparatus exists to catch: the optimiser is being paid in cost
+        # for a gain it is not being charged for, so it takes all the gain it is
+        # allowed. Reported rather than refused, because a gain ON its bound is
+        # still a valid design if it certifies -- and if it does not, this says
+        # where to look first.
+        gb = self._feedback_bounds()
+        if gb is not None:
+            gv = self._designed_gain(design, u_nodes)
+            if gv is not None:
+                glo, ghi = _gain_box(gb, rp.ncontrols, rp.nstates)
+                # A schedule repeats the box at every node.
+                r = gv.size // glo.size
+                glo, ghi = np.tile(glo, r), np.tile(ghi, r)
+                tol = 1.0e-6 * np.maximum(1.0, ghi - glo)
+                out.certificate["gain_entries"] = int(gv.size)
+                out.certificate["gain_on_bound"] = int(
+                    np.count_nonzero((gv <= glo + tol) | (gv >= ghi - tol)))
+                out.certificate["gain_norm"] = float(np.abs(gv).max())
         out.converged = out.converged and v <= slack
 
         if out_of_sample:
@@ -1690,6 +2108,75 @@ class RobustProblem(object):
 # ----------------------------------------------------------------------------------
 #  helpers
 # ----------------------------------------------------------------------------------
+
+
+def _widen_controls(u, mu, N, g0):
+    """Pad a control guess with a co-designed gain schedule's own rows."""
+    u = np.asarray(u, dtype=float)
+    if u.shape[0] >= mu:
+        return u[:mu, :]
+    pad = np.tile(np.asarray(g0, dtype=float).reshape(-1, 1), (1, N))
+    return np.vstack([u, pad[:mu - u.shape[0], :]])
+
+
+def _gain_box(bounds, m, n):
+    """A co-designed gain's box, flattened, from scalars or from (m, n) arrays.
+
+    Scalars give every entry the same range, which is what one writes first and is
+    almost never what one wants: the entries of a gain matrix are not commensurate
+    -- one multiplies an angle, the next an angular rate -- so a single number wide
+    enough for the largest is far too wide for the rest, and a co-designed gain
+    takes every bit of width it is given. Arrays let the box be put around a gain
+    already known to stabilise the family, which is the only form of co-design this
+    driver has found to be worth anything.
+    """
+    lo, hi = bounds
+    lo = np.broadcast_to(np.asarray(lo, dtype=float), (m, n)).reshape(-1)
+    hi = np.broadcast_to(np.asarray(hi, dtype=float), (m, n)).reshape(-1)
+    if np.any(hi < lo):
+        raise ValueError("RobustProblem: feedback_bounds has an upper bound below "
+                         "its lower bound")
+    return lo, hi
+
+
+def _horner(c, t):
+    """A polynomial with numpy's coefficient order, evaluated in elementary ops."""
+    out = float(c[0])
+    for k in range(1, len(c)):
+        out = out*t + float(c[k])
+    return out
+
+
+def _feedback_kind(spec, m, n):
+    """Classify what was put in .feedback, and check its shape while we are here."""
+    if spec is None:
+        return ("none", None)
+    if isinstance(spec, str):
+        if spec not in ("co-design", "co-design-schedule"):
+            raise ValueError(
+                "RobustProblem: feedback=%r. Give None, a gain matrix, a callable "
+                "of t, 'co-design' for a constant gain optimised with the "
+                "trajectory, or 'co-design-schedule' for a time-varying one."
+                % (spec,))
+        return (spec, None)
+    if callable(spec):
+        return ("scheduled", spec)
+    K = np.atleast_2d(np.asarray(spec, dtype=float))
+    if K.shape != (m, n):
+        raise ValueError(
+            "RobustProblem: feedback gain is %s, expected (%d, %d) --- one row "
+            "per control, one column per state." % (K.shape, m, n))
+    return ("constant", K)
+
+
+def _rows_of(K):
+    """Whatever a scheduled gain returned, as a list of lists."""
+    if hasattr(K, "shape") and not isinstance(K, (list, tuple)):
+        try:
+            return [[K[i, j] for j in range(K.shape[1])] for i in range(K.shape[0])]
+        except (TypeError, IndexError):
+            pass
+    return [list(r) for r in K]
 
 
 def _tile(v, M):

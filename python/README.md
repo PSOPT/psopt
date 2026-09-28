@@ -201,7 +201,7 @@ the error says which of the two you have met.
 
 ## Examples and validation
 
-Twenty examples, in `examples/`. Run one directly, or all of them:
+Twenty-one examples, in `examples/`. Run one directly, or all of them:
 
 ```
 cd python/examples
@@ -237,18 +237,22 @@ what `run_all.py` reports.
 | `robust_driver_risk.py` | expectation, mean-variance and CVaR on one problem | each objective is recomputed from the per-scenario costs |
 | `robust_driver_estimate.py` | estimate the plant, then design against its covariance | the design must hold at the true plant, which it never saw |
 | `robust_driver_tube.py` | an ancillary feedback gain against open loop | the closed loop is checked against an independent implementation |
+| `robust_driver_gain.py` | who chooses the ancillary gain: given, scheduled, co-designed | a measured negative result --- the co-designed gain must be cheaper and must fail to certify |
 | `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
 
 The first fourteen were run together on 17 September 2026 and passed;
-`robust_arm.py` and the five driver examples were added on 27 September 2026 and
-all twenty were run together then. The suite now takes about nine minutes, most
-of it in the robust examples; `run_all.py` takes a name filter if you want a
+`robust_arm.py` and five driver examples were added on 27 September 2026, and
+`robust_driver_gain.py` on 28 September 2026. All twenty-one were run together on
+28 September 2026 and passed. `run_all.py` takes a name filter if you want a
 subset.
 
-The three robust examples are the slow ones, at ten to sixty seconds each,
-because each calls `prob.solve` once per iteration of a scenario-generation loop
-and integrates thousands of trajectories to verify the result. The C++
-counterpart, `examples/robust_arm/`, is the fuller study and takes minutes.
+The robust examples are the slow ones, because each calls `prob.solve` once per
+iteration of a scenario-generation loop and integrates thousands of trajectories
+to verify the result. Six of them take between forty seconds and two and a half
+minutes. `robust_driver_gain.py` is the outlier at about eight minutes: it
+co-designs a feedback gain, which is a harder NLP than any other example here, and
+the point of the example is what that buys. The C++ counterpart of the first,
+`examples/robust_arm/`, is the fuller study and takes minutes.
 
 ## Robust optimal control
 
@@ -317,8 +321,41 @@ reports. The verification integrates the closed loop, carrying the reference as
 an extra column of the same sweep, so it assumes the controller regenerates the
 reference by integrating the nominal model rather than storing it at the design's
 node spacing. And the gain needs the state to be measurable, which the open-loop
-design does not. The gain is given rather than co-designed: co-designing it makes
-the problem bilinear, and a fixed ancillary gain is the standard first step.
+design does not.
+
+**Where the gain comes from, and who should not choose it.** `.feedback` takes four
+kinds of value: a matrix, for a given constant gain; a callable of `t`, for a given
+schedule `K(t)`; `"co-design"`, for a constant gain whose entries are optimised as
+static parameters alongside the trajectory; and `"co-design-schedule"`, for a
+time-varying gain optimised as extra *controls*, which is the representation to use
+because the transcription already gives a control a time profile at the resolution
+the trajectory has. The two co-designed forms need `.feedback_bounds = (lo, hi)`,
+where each may be a scalar or an `(ncontrols, nstates)` array, and take
+`.feedback_guess` as a starting point.
+
+Co-design is easy to set up and does not work, and `robust_driver_gain.py` is the
+measurement. Every co-designed variant tried on the arm — constant and scheduled,
+bounds from wide to a box around a gain that certifies, scenario sets of three, nine
+and sixteen points — came out cheaper on the objective than the given LQR gain and
+failed its certificate, by between one and five orders of magnitude against a slack
+of 1e-3. The reason is structural. A scenario set enters the design as a constraint
+set, so the gain is rewarded for making those M plants cheap and charged nothing for
+what it does to the rest of the family; and a gain multiplies a deviation that is
+itself a function of the uncertain parameter, so its leverage on an unsampled plant
+is bounded by nothing the design can see. Density does not fix it and a tighter
+bound does not fix it. A gain has to be chosen by a criterion that quantifies over
+the whole family — which is what solving a Riccati equation does and what minimising
+over a finite sample cannot. `riccati_gain(out, Q, R)` is provided as the diagnostic
+rather than as a design tool: it sweeps the Riccati equation backwards along a design
+and reports how much the ideal gain actually varies, together with the error of
+fitting it as a polynomial in `t`.
+
+The driver therefore offers co-design and then measures it honestly.
+`certificate["gain_on_bound"]` counts the entries that finished on their bound, which
+is where an unconstrained co-design goes, and the report says what that means;
+`certificate["integrator_drift"]` comes out as large as the violation on a
+co-designed design, because an aggressive gain makes the closed loop stiff and a step
+count adequate for the nominal problem is not adequate for that.
 
 **Where the uncertainty should come from.** A covariance somebody chose is the
 weakest part of a robust design. PSOPT's own parameter estimation returns one —
@@ -377,10 +414,15 @@ tolerance, since an inequality event costs nothing here. The count is a lower
 bound, because an equality event can be linearly dependent on the defects, so it
 is used to explain a failure and never to refuse in advance.
 
-Not implemented: scenario-dependent static parameters, a time-varying ancillary
-gain from a Riccati sweep along the nominal trajectory (the obvious next step
-after the fixed gain), co-design of the gain with the trajectory, and multi-phase
-problems, which are refused rather than quietly mishandled.
+Not implemented: scenario-dependent static parameters, and multi-phase problems,
+which are refused rather than quietly mishandled. A given schedule `K(t)` is
+implemented but is not recommended: the front end emits the maths for CppAD to tape
+and refuses a branch on a symbolic value, so every interpolation is out and the
+schedule has to be a polynomial in `t`. On the arm the Riccati gain needs degree 9
+to fit to 3%, degree 3 misses by a factor of three, and at degree 9 the first solve
+does not converge. `"co-design-schedule"` exists because a gain carried as extra
+controls needs no basis and no branch; it is subject to the same objection as any
+other co-designed gain.
 
 One figure has moved and is flagged rather than quietly updated. `bryson_ir.py`
 reports the integrated residual, which is a feasibility measure rather than a
