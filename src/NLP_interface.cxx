@@ -215,6 +215,20 @@ void psopt_apply_pre_workspace_environment_overrides(Alg& algorithm)
         algorithm.diagnostic_level = atoi(d);
     }
 
+    // Whether a defect row the transcription cannot fill counts as an equality. It is off by
+    // default because it moves the iterate path on a problem that is already rank-deficient,
+    // and whether it should stay off is a question to be re-measured rather than settled by a
+    // note: a sweep of the example set with this set and unset is the measurement, and it
+    // should not need sixty-odd sources edited.
+    const char* fp = getenv("PSOPT_FREE_PADDED_DEFECT_ROWS");
+    if (fp != NULL && (atoi(fp) != 0) != algorithm.free_padded_defect_rows) {
+        if (algorithm.print_level)
+            fprintf(stderr, ">>> PSOPT_FREE_PADDED_DEFECT_ROWS overrides the algorithm "
+                            "setting in the source: %d -> %d\n",
+                    (int) algorithm.free_padded_defect_rows, atoi(fp) != 0);
+        algorithm.free_padded_defect_rows = (atoi(fp) != 0);
+    }
+
     const char* w = getenv("PSOPT_MR_SWITCH_DETECTION");
     if (w != NULL && atoi(w) != algorithm.mr_switch_detection) {
         if (algorithm.print_level)

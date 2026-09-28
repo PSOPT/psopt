@@ -1265,6 +1265,112 @@ static double worst_violation(const Run& r, const std::string& upar)
 } // namespace mspath
 
 
+// ---------------------------------------------------------------------------
+// AND THE ROW THAT MUST NOT BE FREED
+//
+// ms_flag_redundant_terminal_path_rows leaves the terminal path row unimposed only for a
+// component that depends on the pinned controls alone. For a component that depends on the
+// STATE the row is a different constraint from its neighbour, and freeing it would be a
+// constraint silently not imposed at the final time -- the worst thing this library can do.
+//
+// The test puts a state bound where that would show: maximise x1(tf) on a double integrator
+// with x1 <= 1/2 and enough authority to reach 2. The bound is then active AT the terminal
+// node, where the cost is measured, so a freed row would be exploited immediately and by a
+// wide margin rather than subtly.
+// ---------------------------------------------------------------------------
+
+namespace msterm {
+
+adouble endpoint_cost(adouble*, adouble* f, adouble*, adouble&, adouble&, adouble*,
+                      int, Workspace*) { return -f[0]; }
+adouble integrand_cost(adouble*, adouble*, adouble*, adouble&, adouble*, int, Workspace*)
+{ return (adouble) 0.0; }
+
+void dae(adouble* d, adouble* path, adouble* s, adouble* c, adouble*, adouble&,
+         adouble*, int, Workspace*)
+{
+    d[0] = s[1];
+    d[1] = c[0];
+    path[0] = s[0];                      // a STATE, so the terminal row is not a repeat
+}
+
+void events(adouble* e, adouble* i, adouble*, adouble*, adouble&, adouble&,
+            adouble*, int, Workspace*)
+{ e[0] = i[0]; e[1] = i[1]; }
+
+static double solve(int segments, double& x1_final)
+{
+    Alg algorithm; Sol solution; Prob problem;
+    const int nodes = segments + 1;
+    problem.name        = "terminal state path row";
+    problem.outfilename = "test_ms_terminal_path.txt";
+    problem.nphases     = 1;
+    problem.nlinkages   = 0;
+    psopt_level1_setup(problem);
+    problem.phases(1).nstates   = 2;
+    problem.phases(1).ncontrols = 1;
+    problem.phases(1).nevents   = 2;
+    problem.phases(1).npath     = 1;
+    problem.phases(1).nodes     << nodes;
+    psopt_level2_setup(problem, algorithm);
+    problem.phases(1).bounds.lower.states   << -10.0, -10.0;
+    problem.phases(1).bounds.upper.states   <<  10.0,  10.0;
+    problem.phases(1).bounds.lower.controls << -1.0;
+    problem.phases(1).bounds.upper.controls <<  1.0;
+    problem.phases(1).bounds.lower.path(0)  = -10.0;
+    problem.phases(1).bounds.upper.path(0)  =  0.5;
+    problem.phases(1).bounds.lower.events   << 0.0, 0.0;
+    problem.phases(1).bounds.upper.events   << 0.0, 0.0;
+    problem.phases(1).bounds.lower.StartTime = 0.0; problem.phases(1).bounds.upper.StartTime = 0.0;
+    problem.phases(1).bounds.lower.EndTime   = 2.0; problem.phases(1).bounds.upper.EndTime   = 2.0;
+    problem.integrand_cost = &integrand_cost;
+    problem.endpoint_cost  = &endpoint_cost;
+    problem.dae            = &dae;
+    problem.events         = &events;
+    problem.linkages       = &msh::linkages;
+    problem.phases(1).guess.states   = zeros(2, nodes);
+    problem.phases(1).guess.controls = zeros(1, nodes);
+    problem.phases(1).guess.time     = linspace(0.0, 2.0, nodes);
+    algorithm.nlp_method            = "IPOPT";
+    algorithm.scaling               = "automatic";
+    algorithm.derivatives           = "automatic";
+    algorithm.nlp_iter_max          = 2000;
+    algorithm.nlp_tolerance         = 1.0e-9;
+    algorithm.print_level           = 0;
+    algorithm.mesh_refinement       = "manual";
+    algorithm.collocation_method    = "Hermite-Simpson";
+    algorithm.transcription_method  = "multiple-shooting";
+    algorithm.ms_steps_per_segment  = 10;
+    algorithm.ms_control_parameterisation = "constant";
+    algorithm.ms_path_samples             = 0;
+
+    x1_final = 0.0;
+    if ( psopt(solution, problem, algorithm) != 0 ) return 1.0e30;
+    MatrixXd x = solution.get_states_in_phase(1);
+    x1_final = x(0, x.cols() - 1);
+    return solution.cost;
+}
+
+} // namespace msterm
+
+
+TEST(MultipleShooting, AStateDependentTerminalPathRowStaysImposed)
+{
+    for (int M : {8, 12, 20}) {
+        double x1f = 0.0;
+        const double J = msterm::solve(M, x1f);
+        ASSERT_LT(J, 1.0e29) << "M = " << M << ": the solve failed";
+        EXPECT_LE(x1f, 0.5 + 1.0e-7)
+            << "M = " << M << ": x1(tf) = " << x1f << " against a bound of 0.5. A terminal "
+            << "path row freed for a STATE-dependent component is a constraint silently not "
+            << "imposed at the final time, and the cost here is measured exactly there.";
+        EXPECT_NEAR(-J, 0.5, 1.0e-6)
+            << "M = " << M << ": the bound is active at the terminal node, so the maximum "
+            << "reachable x1(tf) IS the bound";
+    }
+}
+
+
 TEST(MultipleShooting, AControlOnlyEqualityPathConstraintIsExactUnderAHeldControl)
 {
     const mspath::Run r = mspath::solve(10, "constant", 0);
@@ -1275,6 +1381,34 @@ TEST(MultipleShooting, AControlOnlyEqualityPathConstraintIsExactUnderAHeldContro
         << "satisfies it everywhere on that segment, so this should be round-off";
     EXPECT_NEAR(r.J, -1.7944638, 0.02)
         << "against the Hermite-Simpson collocation answer on fifty nodes";
+}
+
+
+// The counts this configuration used to fail at, and the convergence they concealed.
+//
+// A control-only path component makes its own row at the TERMINAL node a repeat of the row
+// before it, the pinned terminal control giving both the same arguments. That redundancy
+// left the multipliers non-unique and IPOPT ended in Restoration_Failed at every segment
+// count above twelve -- 14, 16, 18, 20, 22 and 24 measured -- while 6 to 12 solved. With
+// ms_flag_redundant_terminal_path_rows leaving the repeated row unimposed, all ten counts
+// solve and the cost descends monotonically towards the collocation answer, which is what a
+// discretisation is supposed to do and what the failures were hiding.
+TEST(MultipleShooting, TheHeldControlConvergesAtEverySegmentCount)
+{
+    const double Jref = -1.7944638;      // Hermite-Simpson collocation, fifty nodes
+    double prev = 0.0;
+    for (int M : {6, 8, 10, 12, 14, 16, 18, 20, 22, 24}) {
+        const mspath::Run r = mspath::solve(M, "constant", 0);
+        ASSERT_EQ(r.flag, 0) << "M = " << M << ", IPOPT return code " << r.rc;
+        EXPECT_EQ(r.rc, 0) << "M = " << M;
+        EXPECT_LT(mspath::worst_violation(r, "constant"), 1.0e-12) << "M = " << M;
+        if ( prev != 0.0 )
+            EXPECT_LT(r.J, prev)
+                << "M = " << M << ": the cost should improve with the segment count";
+        prev = r.J;
+    }
+    EXPECT_NEAR(prev, Jref, 5.0e-3)
+        << "twenty-four segments, against the collocation answer";
 }
 
 

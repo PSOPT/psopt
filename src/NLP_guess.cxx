@@ -236,6 +236,11 @@ void  define_initial_nlp_guess(MatrixXd& x0, MatrixXd& lambda, Sol& solution, Pr
 
   determine_constraint_scaling_factors(x0, solution, problem, algorithm, workspace);
 
+  // Beside the scaling because it takes the same kind of sparsity pass and this is where
+  // the cost of one more is smallest, and per mesh because the answer depends on the
+  // segment count.
+  ms_flag_redundant_terminal_path_rows(x0, problem, algorithm, workspace);
+
   // Assign zeros to the vector of lagrange multipliers:
 
   lambda.resize(workspace->ncons, 1);
@@ -465,6 +470,8 @@ void hot_start_nlp_guess(MatrixXd& x0,MatrixXd& lambda, Sol& solution,Prob& prob
   determine_objective_scaling(x0,solution,problem,algorithm, workspace);
 
   determine_constraint_scaling_factors(x0, solution, problem, algorithm, workspace);
+
+  ms_flag_redundant_terminal_path_rows(x0, problem, algorithm, workspace);
 
 }
 

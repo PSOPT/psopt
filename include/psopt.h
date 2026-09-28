@@ -1395,6 +1395,11 @@ public:
    unique_ptr<double[]>  jac_Aij;
    unique_ptr<double[]>  jac_Gij;
    int       jac_nnz;
+   // Per phase, per path component: may the TERMINAL path row be left unimposed because
+   // it is redundant? Filled once per mesh by ms_flag_redundant_terminal_path_rows and
+   // read by get_constraint_bounds. Empty, or all zero, means impose everything, which is
+   // what every transcription but the pinned-terminal-control one does.
+   std::vector< std::vector<char> > ms_free_terminal_path;
    int       jac_nnzA;
    int       jac_nnzG;
    unique_ptr<double[]>  nrm_row;
@@ -2235,6 +2240,39 @@ inline adouble ir_node_time(std::vector<adouble>& tau, int k, adouble& t0, adoub
 int get_nvars_phase_i(Prob& problem, int i, Workspace* workspace);
 
 int get_ncons_phase_i(Prob& problem, int i, Workspace* workspace);
+
+// Which terminal path rows are redundant, and may therefore be left unimposed?
+//
+// Under a piecewise-CONSTANT control the terminal control slot belongs to no segment and is
+// pinned to its neighbour's (see ms_terminal_pin_rows). For a path component that depends on
+// the controls ALONE, the path row at the terminal node is then evaluated at the same
+// arguments as the row before it, and the two are dependent through the pin -- one redundant
+// equality, multipliers no longer unique. Measured on Bryson's maximum-range problem with
+// |u|^2 = 1 as a path equality and a held control: rank deficient by one beyond the
+// structurally empty rows at EVERY segment count, and IPOPT ends in Restoration_Failed above
+// twelve segments, where the same problem with the constraint made state-dependent solves at
+// all of them. Leaving the terminal row unimposed turns that into a clean solve at 14, 16, 18,
+// 20, 22 and 24 with the cost converging monotonically to the collocation answer, and changes
+// nothing at the counts that already worked.
+//
+// Leaving it unimposed gives up NOTHING for such a component, which is the whole reason for
+// detecting rather than dropping the row wholesale: the constraint still holds at the terminal
+// node, imposed by the row before it at arguments the pin makes identical. For a component
+// that depends on the state it is a different constraint, it is not redundant, and it stays.
+//
+// The test is structural, from the Jacobian sparsity of the assembled constraint function: the
+// terminal row's nonzero columns must lie entirely in the PINNED terminal-node controls or in
+// the static parameters. A state column, either time, an element width, a midpoint control, an
+// ALGEBRAIC control (which the pin skips, so nothing makes it equal to its neighbour) or an
+// empty row all disqualify it. That whitelist is deliberate: anything unrecognised leaves the
+// row imposed, which is today's behaviour.
+//
+// Called once per mesh, beside determine_constraint_scaling_factors, which already takes the
+// same sparsity pass and is where the cost of one more is smallest. Numerical derivatives
+// disqualify everything: a numerically detected pattern can miss a dependence that vanishes at
+// the point it was probed, and a wrongly freed row is a constraint silently not imposed.
+void ms_flag_redundant_terminal_path_rows(MatrixXd& X, Prob& problem, Alg& algorithm,
+                                         Workspace* workspace);
 
 void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace);
 

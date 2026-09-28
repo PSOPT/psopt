@@ -209,6 +209,121 @@ void  define_nlp_bounds(MatrixXd& xlb, MatrixXd& xub, Prob& problem, Alg& algori
 
 
 
+// See the note on the declaration in psopt.h.
+void ms_flag_redundant_terminal_path_rows(MatrixXd& X, Prob& problem, Alg& algorithm,
+                                         Workspace* workspace)
+{
+    const int nph = problem.nphases;
+    workspace->ms_free_terminal_path.assign(nph, std::vector<char>());
+    for (int i = 0; i < nph; i++)
+        workspace->ms_free_terminal_path[i].assign(
+            problem.phase[i].npath > 0 ? (size_t) problem.phase[i].npath : (size_t) 0, 0);
+
+    // Only the pinned terminal control makes a terminal path row redundant.
+    if ( !is_multiple_shooting(algorithm) ) return;
+    // A numerically detected pattern can miss a dependence that vanishes where it was
+    // probed, and a wrongly freed row is a constraint silently not imposed.
+    if ( !useAutomaticDifferentiation(algorithm) ) return;
+
+    bool any = false;
+    for (int i = 0; i < nph; i++) {
+        const int npin = ms_terminal_pin_rows(problem.phase[i].ncontrols
+                               - ms_algebraic_vars(problem, i, algorithm), algorithm);
+        if ( npin > 0 && problem.phase[i].npath > 0
+             && problem.phase[i].current_number_of_intervals >= 1 ) any = true;
+    }
+    if ( !any ) return;
+
+    const int nvars = workspace->nvars;
+    const int ncons = workspace->ncons;
+    if ( nvars <= 0 || ncons <= 0 ) return;
+
+    // The rows to ask about, and the columns each one is allowed to touch.
+    struct Target { int row; int lo1, hi1, lo2, hi2; int phase, comp; };
+    std::vector<Target> targets;
+    int cons_offset = 0;
+    for (int i = 0; i < nph; i++) {
+        const int norder    = problem.phase[i].current_number_of_intervals;
+        const int nstates   = problem.phase[i].nstates;
+        const int ncontrols = problem.phase[i].ncontrols;
+        const int nevents   = problem.phase[i].nevents;
+        const int npath     = problem.phase[i].npath;
+        const int nparam    = problem.phase[i].nparameters;
+        const int nalg      = ms_algebraic_vars(problem, i, algorithm);
+        const int npin      = ms_terminal_pin_rows(ncontrols - nalg, algorithm);
+        const int ncons_i   = get_ncons_phase_i(problem, i, workspace);
+        if ( npin > 0 && npath > 0 && norder >= 1 ) {
+            const int voff = get_iphase_offset(problem, i+1, workspace);
+            // The controls the pin actually makes equal to their neighbours: the first
+            // ncontrols - nalgebraic slots of the terminal node. An algebraic component is
+            // never pinned, so a row reading one is not redundant.
+            const int clo = voff + norder*ncontrols;
+            const int chi = clo + (ncontrols - nalg);
+            const int plo = voff + (ncontrols + nstates)*(norder + 1);
+            const int phi = plo + nparam;
+            const int rbase = cons_offset + nstates*(norder+1) + nevents + norder*npath;
+            for (int j = 0; j < npath; j++) {
+                Target t; t.row = rbase + j;
+                t.lo1 = clo; t.hi1 = chi; t.lo2 = plo; t.hi2 = phi;
+                t.phase = i;  t.comp = j;
+                targets.push_back(t);
+            }
+        }
+        cons_offset += ncons_i;
+    }
+    if ( targets.empty() ) return;
+
+    // One sparsity pass over the assembled constraint function. ad_gc is re-recorded by
+    // every user before every use, so borrowing it here cannot leave a stale tape behind.
+    MatrixXd xp = X;
+    double* x = &xp(0);
+    psopt_ad::ad_record(workspace->ad_gc, nvars, ncons, x,
+        [&](const adouble* xin, adouble* yout){ gg_ad(const_cast<adouble*>(xin), yout, workspace); });
+    psopt_ad::SparseTriplet J =
+        psopt_ad::ad_sparse_jacobian(workspace->ad_gc, x, /*reuse=*/false);
+
+    // A row is freeable when it has at least one entry and every entry is inside its
+    // whitelist. Start from "freeable if it has an entry" and let any stray entry veto it.
+    std::vector<char> ok(targets.size(), 0);
+    std::vector<char> vetoed(targets.size(), 0);
+    for (int t = 0; t < J.nnz(); t++) {
+        const int r = J.row[t], c = J.col[t];
+        for (size_t q = 0; q < targets.size(); q++) {
+            if ( targets[q].row != r ) continue;
+            const Target& T = targets[q];
+            const bool inside = ( c >= T.lo1 && c < T.hi1 )
+                             || ( c >= T.lo2 && c < T.hi2 );
+            if ( inside ) ok[q] = 1; else vetoed[q] = 1;
+        }
+    }
+    int freed = 0;
+    for (size_t q = 0; q < targets.size(); q++)
+        if ( ok[q] && !vetoed[q] ) {
+            workspace->ms_free_terminal_path[ targets[q].phase ][ targets[q].comp ] = 1;
+            freed++;
+        }
+
+    if ( freed > 0 ) {
+        snprintf(workspace->text, sizeof(workspace->text),
+            "\n>>> Note: %d path component(s) depend on the pinned controls alone, so their "
+            "row at the\n>>> TERMINAL node repeats the row before it and is left unimposed. "
+            "The constraint still holds\n>>> there, through that neighbouring row and the "
+            "terminal-control pin; what goes is one\n>>> redundant equality per component, "
+            "which makes the multipliers non-unique and has been\n>>> measured to end a "
+            "held-control solve in Restoration_Failed. Components:", freed);
+        psopt_print(workspace, workspace->text);
+        for (int i = 0; i < nph; i++)
+            for (size_t j = 0; j < workspace->ms_free_terminal_path[i].size(); j++)
+                if ( workspace->ms_free_terminal_path[i][j] ) {
+                    snprintf(workspace->text, sizeof(workspace->text),
+                             " phase %d path %d;", i+1, (int) j+1);
+                    psopt_print(workspace, workspace->text);
+                }
+        psopt_print(workspace, "\n");
+    }
+}
+
+
 void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 {
 
@@ -296,6 +411,14 @@ void get_constraint_bounds(double* g_l, double* g_u, Workspace* workspace)
 		for (l=0;l<(norder + 1);l++) {   // EIGEN_UPDATE: index l shifted by -1.
 		    j = offset + (l)*npath + k;
 		    if ( folded[k] ) { g_l[j] = -PSOPT::inf; g_u[j] = PSOPT::inf; continue; }
+		    // A terminal path row that repeats the row before it; see
+		    // ms_flag_redundant_terminal_path_rows.
+		    if ( l == norder
+		         && i < (int) workspace->ms_free_terminal_path.size()
+		         && k < (int) workspace->ms_free_terminal_path[i].size()
+		         && workspace->ms_free_terminal_path[i][k] ) {
+		        g_l[j] = -PSOPT::inf; g_u[j] = PSOPT::inf; continue;
+		    }
 		    if( algorithm->scaling=="user" )
 		       path_sc = path_scaling(k);
 		    else
