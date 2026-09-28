@@ -953,17 +953,34 @@ string contact_notice=  "\n * The author can be contacted at his email address: 
 
     snprintf(workspace->text,sizeof(workspace->text), "\nThis is mesh refinement iteration:\t\t\t%i", iter_nodes);
     psopt_print(workspace,workspace->text);
-    if ( use_global_collocation(algorithm) ) {
-      snprintf(workspace->text,sizeof(workspace->text), "\nCollocation method:\t\t\t\t\t%s", algorithm.collocation_method.c_str());
+    // What discretises this problem, and nothing that does not.
+    //
+    // use_global_collocation() reads algorithm.collocation_method alone, so under
+    // multiple shooting it is true whenever that field holds a global method --
+    // which on a default Alg it does, because it holds "Legendre". This banner
+    // therefore used to announce a Legendre collocation with a standard
+    // differentiation matrix for a run that collocates nothing and differentiates
+    // no polynomial: between two segment boundaries there is an integrator. Patch
+    // 214 corrected the same claim in the options block written to the solution
+    // file; this is the other place it was made, on the console, once per mesh
+    // refinement iteration.
+    if ( is_multiple_shooting(algorithm) ) {
+      snprintf(workspace->text,sizeof(workspace->text), "\nTranscription method:\t\t\t\t\t%s", algorithm.transcription_method.c_str());
+      psopt_print(workspace,workspace->text);
+      snprintf(workspace->text,sizeof(workspace->text), "\nMS integrator:\t\t\t\t\t\t%s, %i step(s) per segment", algorithm.ms_integrator.c_str(), algorithm.ms_steps_per_segment);
       psopt_print(workspace,workspace->text);
     }
     else {
-      snprintf(workspace->text,sizeof(workspace->text), "\nCollocation method:\t\t\t\t\t%s", workspace->differential_defects.c_str());
-      psopt_print(workspace,workspace->text);
-    }
-    if ( use_global_collocation(algorithm) ) {
-	  snprintf(workspace->text,sizeof(workspace->text), "\nDifferentiation matrix:\t\t\t\t\t%s", algorithm.diff_matrix.c_str());
-	  psopt_print(workspace,workspace->text);
+      if ( use_global_collocation(algorithm) ) {
+        snprintf(workspace->text,sizeof(workspace->text), "\nCollocation method:\t\t\t\t\t%s", algorithm.collocation_method.c_str());
+        psopt_print(workspace,workspace->text);
+        snprintf(workspace->text,sizeof(workspace->text), "\nDifferentiation matrix:\t\t\t\t\t%s", algorithm.diff_matrix.c_str());
+        psopt_print(workspace,workspace->text);
+      }
+      else {
+        snprintf(workspace->text,sizeof(workspace->text), "\nCollocation method:\t\t\t\t\t%s", workspace->differential_defects.c_str());
+        psopt_print(workspace,workspace->text);
+      }
     }
 
     snprintf(workspace->text,sizeof(workspace->text), "\nNumber of NLP variables\t\t\t\t\t%i", workspace->nvars );

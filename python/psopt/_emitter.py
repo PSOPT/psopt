@@ -5,6 +5,8 @@ PSOPT hybrid wrapper (faithful route). Walks a CasADi SX Function's instruction
 graph and emits straight-line scalar-templated C++ that plugs into PSOPT's fixed
 dae/cost/events signatures, so CppAD tapes it exactly as hand-written code.
 """
+import math
+
 import casadi as ca
 
 BINARY = {
@@ -73,7 +75,20 @@ def emit_instructions(f, input_names, out_writer, indent="    "):
         elif op == ca.OP_OUTPUT:
             lines.append(f"{indent}{out_writer(oo[0], oo[1])} = w[{ii[0]}];")
         elif op == ca.OP_CONST:
-            lines.append(f"{indent}w[{oo[0]}] = T({float(f.instruction_constant(k))!r});")
+            c = float(f.instruction_constant(k))
+            if not math.isfinite(c):
+                # repr(nan) is "nan", which C++ reads as a function name and then
+                # fails to convert to the AD type -- so a non-finite constant that
+                # got this far came out as a compiler error about `double (*)(const
+                # char*)`, twenty lines from anything to do with the model. Almost
+                # always it arrived from a fit or a solve that diverged upstream.
+                raise NotImplementedError(
+                    "the expression contains a non-finite constant (%r). That is "
+                    "not something CppAD can tape, and it usually means a number "
+                    "computed upstream -- a fitted coefficient, a gain, a bound --"
+                    " came out as NaN or infinity. Check what produced it rather "
+                    "than what is emitting it." % (c,))
+            lines.append(f"{indent}w[{oo[0]}] = T({c!r});")
         elif op in UNARY:
             if op in STD_FUNCS: used.add(STD_FUNCS[op])
             lines.append(f"{indent}w[{oo[0]}] = {UNARY[op].format(a=f'w[{ii[0]}]')};")
