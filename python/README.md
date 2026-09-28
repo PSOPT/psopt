@@ -201,7 +201,7 @@ the error says which of the two you have met.
 
 ## Examples and validation
 
-Twenty-one examples, in `examples/`. Run one directly, or all of them:
+Twenty-two examples, in `examples/`. Run one directly, or all of them:
 
 ```
 cd python/examples
@@ -238,21 +238,23 @@ what `run_all.py` reports.
 | `robust_driver_estimate.py` | estimate the plant, then design against its covariance | the design must hold at the true plant, which it never saw |
 | `robust_driver_tube.py` | an ancillary feedback gain against open loop | the closed loop is checked against an independent implementation |
 | `robust_driver_gain.py` | who chooses the ancillary gain: given, scheduled, co-designed | a measured negative result --- the co-designed gain must be cheaper and must fail to certify |
+| `robust_driver_cvar.py` | a tail measure on a set dense enough to resolve its tail | CVaR must be WORSE in the tail than the mean-minimising design at sixteen scenarios and better at forty-eight |
 | `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
 
 The first fourteen were run together on 17 September 2026 and passed;
 `robust_arm.py` and five driver examples were added on 27 September 2026, and
-`robust_driver_gain.py` on 28 September 2026. All twenty-one were run together on
-28 September 2026 and passed. `run_all.py` takes a name filter if you want a
+`robust_driver_gain.py` and `robust_driver_cvar.py` on 28 September 2026. All twenty-two
+were run together on 28 September 2026 and passed. `run_all.py` takes a name filter if you want a
 subset.
 
 The robust examples are the slow ones, because each calls `prob.solve` once per
-iteration of a scenario-generation loop and integrates thousands of trajectories
-to verify the result. Six of them take between forty seconds and two and a half
-minutes. `robust_driver_gain.py` is the outlier at about eight minutes: it
-co-designs a feedback gain, which is a harder NLP than any other example here, and
-the point of the example is what that buys. The C++ counterpart of the first,
-`examples/robust_arm/`, is the fuller study and takes minutes.
+iteration of a scenario-generation loop and integrates thousands of trajectories to
+verify the result. Most take between forty seconds and three and a half minutes;
+`robust_driver_cvar.py` is about two and a half, being four solves of a
+forty-eight-scenario problem. `robust_driver_gain.py` is the outlier at three to eight
+minutes depending on the build: it co-designs a feedback gain, which is a harder NLP than
+any other example here, and the point of the example is what that buys. The C++
+counterpart of the first, `examples/robust_arm/`, is the fuller study and takes minutes.
 
 ## Robust optimal control
 
@@ -483,23 +485,29 @@ conservatively pessimistic — it was optimistic for the quadratic parameterisat
 verifier that can flatter a design is worse than one that penalises it.
 
 **What the density buys, on the risk measures.** The wall mattered most where a
-scenario set has to resolve a *tail*. On the van der Pol problem of
-`robust_driver_risk.py`, CVaR at α = 0.95 — the worst one plant in twenty — scored on
-2872 plants no design saw:
+scenario set has to resolve a *tail*, and `robust_driver_cvar.py` is the worked example:
+CVaR at α = 0.95 on the van der Pol problem — the tail is the worst one plant in twenty —
+scored on 2889 plants no design saw.
 
-| scenarios | E[J] design's out-of-sample CVaR | CVaR design's |
-|---|---|---|
-| 8 | 5.070 | 5.311 |
-| 16 | 5.061 | 5.327 |
-| 24 | 5.019 | **4.690** |
-| 32 | 4.810 | **4.648** |
-| 48 | 5.185 | **4.645** |
+| scenarios | E[J] design's out-of-sample CVaR | CVaR design's | |
+|---|---|---|---|
+| 16 | 4.983 | 5.238 | CVaR is **+5.1% worse** |
+| 48 | 5.103 | **4.635** | CVaR is **−9.2% better**, paying +19.2% on the mean |
 
-The CVaR design is *worse* than the expectation design until the set reaches about
-twenty-four scenarios, then better and monotonically improving, while the expectation
-design's tail wanders with the sample. Under the old counting this problem carried
-twenty-one scenarios at most, CVaR's cost state and slacks included. The measure
-begins to earn its name just past the point where the arithmetic refused it.
+At sixteen points a 5% tail holds eight tenths of a point, so minimising CVaR over it is
+minimising which single scenario happens to be worst, and the design that comes out is
+worse in the real tail than the one that simply minimised the mean. **Under the old
+counting this problem carried twenty-two scenarios and was refused at twenty-four**,
+CVaR's cost state and Rockafellar–Uryasev slacks included. The density at which the
+measure starts to work sat just past the density the arithmetic refused.
+
+The reported value is optimistic, as a sample average over the scenarios that were
+optimised should be: 4.410 in sample against 4.635 realised, −4.8%. **The reported value
+of a risk measure is never the certificate.**
+
+At α = 0.75 the effect is much weaker and does not clearly favour CVaR at any density
+tried, which is consistent with `robust_driver_risk.py`'s own account: at a gentle level
+the tail is not where the action is.
 
 Not implemented: scenario-dependent static parameters, and multi-phase problems,
 which are refused rather than quietly mishandled. A given schedule `K(t)` is
