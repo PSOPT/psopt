@@ -302,4 +302,47 @@ TEST(Robust, WorstCaseIsReproducible)
     EXPECT_NEAR((a - b).norm(), 0.0, 0.0);
 }
 
+//////////////////////////////////////////////////////////////////////////
+//  The polish rule
+//////////////////////////////////////////////////////////////////////////
+
+// The polish step re-solves the final scenario set from the caller's own guess, because
+// the warm chain conditions the answer: on the two-link arm the chain finishes at
+// t_f = 8.9713 and a cold solve of its own twelve scenarios reaches 7.6387 with no
+// violation anywhere in the set. Which of the two is kept is this one function, and
+// these are its four cases.
+TEST(Robust, PolishPrefersTheCheaperCertifiedDesign)
+{
+    const double slack = 1.0e-3;
+    // Both certify: take the cheaper.
+    EXPECT_TRUE (robust_prefer_cold(7.6387, 0.0,      8.9713, 6.7e-05, slack));
+    EXPECT_FALSE(robust_prefer_cold(9.5000, 0.0,      8.9713, 6.7e-05, slack));
+    // A tie on the objective keeps the warm design, which is the one already reported.
+    EXPECT_FALSE(robust_prefer_cold(8.9713, 0.0,      8.9713, 6.7e-05, slack));
+}
+
+// The case this rule exists for. A cold design that undercuts the warm one and violates
+// the constraints somewhere in the set is not a design, and no size of saving buys it in.
+TEST(Robust, PolishNeverTradesACertificateForACheaperObjective)
+{
+    const double slack = 1.0e-3;
+    EXPECT_FALSE(robust_prefer_cold(8.6063, 7.717e-03, 8.9670, 1.418e-04, slack));
+    EXPECT_FALSE(robust_prefer_cold(0.0010, 1.0e+02,   8.9670, 1.418e-04, slack));
+    // Only the warm design fails: the cold one is taken even though it costs more.
+    EXPECT_TRUE (robust_prefer_cold(9.9000, 0.0,       8.9670, 5.0e-02,   slack));
+}
+
+// With neither certified there is no certificate to protect, so the rule falls back to
+// whichever design comes closer to having one. The objective is ignored here on purpose:
+// a cheaper infeasible design is not progress.
+TEST(Robust, PolishFallsBackToTheSmallerViolation)
+{
+    const double slack = 1.0e-3;
+    EXPECT_TRUE (robust_prefer_cold(9.9, 2.0e-03, 8.0, 5.0e-02, slack));
+    EXPECT_FALSE(robust_prefer_cold(8.0, 5.0e-02, 9.9, 2.0e-03, slack));
+    // A violation exactly at the slack counts as certified, matching the loop's own
+    // stopping test, which is `worst <= slack`.
+    EXPECT_TRUE (robust_prefer_cold(7.0, slack,   8.0, slack,   slack));
+}
+
 }  // namespace

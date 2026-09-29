@@ -278,6 +278,29 @@ struct RobustSpec {
     // (ncontrols * nodes) / nstates scenarios, whatever freedom the design still has.
     bool     keep_padded_defect_rows;
 
+    // Solve the final scenario set once more from the caller's own guess, and keep
+    // that design if it certifies and is cheaper. One extra call to psopt(), two when
+    // the cold answer loses and the warm one has to be put back into the caller's Sol.
+    //
+    // It is on by default because the warm chain the loop needs is also what limits
+    // what it returns. The chain is required while the scenario set is small and
+    // growing: each subproblem is nonconvex, and a guess that is merely the right
+    // shape leaves the augmented problem with M copies of an infeasible arc. But it
+    // follows ONE homotopy, and it finishes at a local minimum that the final scenario
+    // set does not require. Measured on examples/robust_driver, the two-link arm at 25
+    // nodes with a terminal ball of 0.03: the chain finishes at t_f = 8.9713 with a
+    // worst violation of 6.7e-05, and a cold solve of its own twelve scenarios reaches
+    // t_f = 7.6387 with NO violation anywhere in the set -- fifteen per cent faster and
+    // a cleaner certificate, confirmed by a scan of 4001 payloads through an integrator
+    // independent of the transcription. One extra solve buys that.
+    //
+    // A reported objective is therefore an upper bound on what the method can deliver,
+    // and is not the value of the robust problem. The cold answer is kept only when the
+    // caller's own violation function certifies it, so this cannot trade a certificate
+    // for a cheaper number.
+    bool     polish;
+    // The rule itself is robust_prefer_cold below.
+
     // ---- what the user supplies -------------------------------------------
 
     // Build `problem` and `algorithm` for this scenario list. Called before every
@@ -314,11 +337,23 @@ struct RobustSpec {
 
     RobustSpec()
         : slack(0.0), max_iterations(12), n_seed(128), n_refine(3), seed(20260927u),
-          verbose(true), keep_padded_defect_rows(false),
+          verbose(true), keep_padded_defect_rows(false), polish(true),
           setup(0), violation(0), user_data(0),
           certificate(0.0), evaluations(0), n_solves(0), converged(false),
           budget_exhausted(false) {}
 };
+
+// Which of two candidate designs the polish step keeps: prefer one the caller's own
+// violation function certifies, and among certified designs the cheaper; if neither
+// certifies, the one that comes closer.
+//
+// Exposed and named because it is the single decision in this driver that could
+// silently trade a certificate for a cheaper objective, and a rule that can be tested
+// on its own is one that can be relied on. A cold design that undercuts the warm one on
+// the objective while violating the constraints somewhere in the set is not a design,
+// and this returns false for it however large the saving.
+bool robust_prefer_cold(double cold_objective, double cold_worst,
+                        double warm_objective, double warm_worst, double slack);
 
 // Design a control that serves every parameter in the uncertainty set.
 //

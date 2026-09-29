@@ -620,6 +620,17 @@ RobustDesign design_of(Sol& solution, Prob& problem)
 }
 }
 
+bool robust_prefer_cold(double cold_objective, double cold_worst,
+                        double warm_objective, double warm_worst, double slack)
+{
+    const bool cert_cold = (cold_worst <= slack);
+    const bool cert_warm = (warm_worst <= slack);
+    if (cert_cold && cert_warm) return cold_objective < warm_objective;
+    if (cert_cold)              return true;
+    if (cert_warm)              return false;
+    return cold_worst < warm_worst;
+}
+
 [[nodiscard]] int psopt_solve_robust(Sol& solution, RobustSpec& spec,
                                      Prob& problem, Alg& algorithm)
 {
@@ -763,6 +774,91 @@ RobustDesign design_of(Sol& solution, Prob& problem)
         if (it == spec.max_iterations - 1) break;
 
         scenarios.push_back(at);
+    }
+
+    // ---- the polish step -------------------------------------------------------
+    //
+    // Solve the final scenario set once more from the caller's own guess. Passing an
+    // invalid RobustDesign as `previous` is how setup() is told to build its cold
+    // guess, which is the same path it takes on the first iteration.
+    //
+    // The rule is the one the Python driver uses: prefer a design the caller's own
+    // violation function certifies, and among certified designs the cheaper. A cold
+    // answer that does not certify is not a design and is discarded whatever its
+    // objective. See the note on RobustSpec::polish for what this is worth.
+    if (spec.polish && best.valid) {
+        const RobustDesign warm       = best;
+        const double       warm_worst = spec.certificate;
+        const RowVectorXd  warm_at    = spec.certificate_at;
+
+        spec.setup(problem, algorithm, scenarios, RobustDesign(), spec.user_data);
+        const int rc_cold = psopt(solution, problem, algorithm);
+        ++spec.n_solves;
+
+        bool took_cold = false;
+        if (robust_trial_succeeded(solution)) {
+            const RobustDesign cold = design_of(solution, problem);
+
+            OracleContext ctx;
+            ctx.spec   = &spec;
+            ctx.design = &cold;
+            ctx.calls  = 0;
+            RowVectorXd  cold_at;
+            const double cold_worst =
+                robust_worst_case(spec.uncertainty, &oracle_bridge, &ctx,
+                                  spec.n_seed, spec.n_refine,
+                                  spec.seed + 4242u, cold_at);
+            spec.evaluations += ctx.calls;
+
+            took_cold = robust_prefer_cold(cold.objective, cold_worst,
+                                           warm.objective, warm_worst, spec.slack);
+
+            if (spec.verbose) {
+                printf("  polish: a cold solve of the same %d scenarios gives "
+                       "%.6f (worst %.3e)\n", (int) scenarios.size(),
+                       cold.objective, cold_worst);
+                printf("          the warm chain gave %.6f (worst %.3e); keeping "
+                       "the %s one\n", warm.objective, warm_worst,
+                       took_cold ? "cold" : "warm");
+            }
+
+            if (took_cold) {
+                best                = cold;
+                spec.certificate    = cold_worst;
+                spec.certificate_at = cold_at;
+                spec.converged      = (cold_worst <= spec.slack);
+                rc                  = rc_cold;
+            }
+        } else if (spec.verbose) {
+            printf("  polish: the cold solve of the final %d scenarios failed "
+                   "(NLP return code %d); keeping the warm one\n",
+                   (int) scenarios.size(), solution.nlp_return_code);
+        }
+
+        if (!took_cold) {
+            // The cold solve has overwritten the caller's Sol, so the warm design has
+            // to be put back. Re-solving its own scenario list warm-started from its
+            // own trajectory returns to it, that design being a fixed point of the
+            // warm start, which is the same argument the failure path above uses.
+            spec.setup(problem, algorithm, scenarios, warm, spec.user_data);
+            rc = psopt(solution, problem, algorithm);
+            ++spec.n_solves;
+            // spec.design stays the design that was certified, whatever the re-solve
+            // returned. Reporting a certificate for one trajectory and handing back
+            // another would be the one mistake this whole driver exists to avoid, and
+            // the fixed-point argument is an argument and not a guarantee, so the
+            // re-solve is checked against it instead of being trusted.
+            best                = warm;
+            spec.certificate    = warm_worst;
+            spec.certificate_at = warm_at;
+            if (spec.verbose && robust_trial_succeeded(solution)) {
+                const double back = design_of(solution, problem).objective;
+                if (fabs(back - warm.objective) > 1.0e-6*(1.0 + fabs(warm.objective)))
+                    printf("  polish: putting the warm design back gave %.6f against "
+                           "%.6f.\n          spec.design holds the certified one; "
+                           "`solution` holds the re-solve.\n", back, warm.objective);
+            }
+        }
     }
 
     spec.scenarios = scenarios;

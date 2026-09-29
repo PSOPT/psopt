@@ -312,8 +312,8 @@ final time. Setting `.feedback` to a gain `K` turns the design into a tube,
 where `u_bar` is still the only decision variable and the reference is scenario 0
 of the rule, which runs open loop by construction. The design remains
 here-and-now: both `u_bar` and `K` are fixed before the uncertainty is revealed.
-On the arm the price of robustness falls from +192% to +13% and half as many
-scenarios are needed to certify it.
+On the arm the price of robustness falls from +185% to +13% and fewer than half as
+many scenarios are needed to certify it.
 
 Three things come with it. The realised control differs from scenario to
 scenario, so its bounds become path constraints and the driver adds them — set
@@ -384,6 +384,26 @@ Three properties are worth knowing before relying on it.
 functions from the same user equations and integrates them separately: a
 vectorised fixed-step RK4 for the search, SciPy's adaptive DOP853 for the
 reported numbers, and the disagreement between the two is measured and printed.
+
+*The objective a run returns is an upper bound, not the value of the problem.* The
+warm chain the loop needs while the scenario set is small and growing also
+conditions where it finishes: the loop follows one homotopy through a nonconvex
+problem and lands on a local minimum the final scenario set does not require. Both
+drivers therefore re-solve the final set cold, from the guess you already supplied,
+and keep that design when it certifies and is cheaper (`polish=True` here,
+`spec.polish` in C++). Measured on the arm at 25 nodes: the C++ loop finishes at
+t_f = 8.9713 and the cold re-solve of its own twelve scenarios reaches **7.6387 with
+no violation anywhere in the set**, 15% faster with a cleaner certificate, verified
+over 4001 payloads by an integrator independent of the transcription.
+
+The rule never trades a certificate for a cheaper number. In `robust_driver_arm.py`
+the cold solve comes out at 8.6063 with a worst violation of 7.7e-03, seven times
+the slack, so polish refuses it and the warm design at 8.9670 stands. That is also
+why the two drivers end 17% apart on the same problem: on one scenario set the cold
+solve certifies and on the other it does not. Both answers are certified designs.
+**Read the certificate, not the objective**, and where the final time genuinely
+matters, run the loop at more than one `seed` and keep the cheapest design that
+certifies.
 
 *A certificate is a claim about a search.* For one uncertain parameter the seeding
 is effectively exhaustive; in more than one it is not, and `out.certificate` says
