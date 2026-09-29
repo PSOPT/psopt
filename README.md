@@ -62,6 +62,7 @@ PSOPT is able to deal with problems with the following characteristics:
 -  Fixed or free final time
 -  Optimal control problems including the optimisation of static parameters, including real and integer (discrete-valued) parameters
 -  Optimal control problems with mixed continuous and integer (discrete-valued) controls
+-  Robust optimal control problems, in which the dynamics, the path constraints or the boundary conditions depend on an uncertain parameter and one control has to be committed before that parameter is revealed
 -  Parameter estimation problems with sampled measurements
 -  Differential equations with delayed variables
 -  Differential-algebraic systems, including semi-explicit index-1 systems solved in the form in which they are written
@@ -78,6 +79,7 @@ The implementation has the following features:
 - hp-adaptive mesh refinement for pseudospectral discretisations (Radau, Gauss, Legendre, Chebyshev)
 - Automatic identification of the Jacobian and Hessian sparsity
 - DAE formulation, so that differential and algebraic constraints can be implemented in the same C++ function
+- Robust optimal control by scenario augmentation, through a driver in C++ (`psopt_solve_robust`) and one in Python (`psopt.robust`). The uncertainty set is replaced by a finite list of scenarios, which turns the problem into one ordinary deterministic problem carrying a copy of the state per scenario against a single copy of the control, so that the design cannot anticipate the parameter. Each driver places the scenarios, adds the parameter the current design serves worst, re-solves, and finishes with a certificate over the whole set that is measured by an integrator independent of the transcription. The Python driver also offers expectation, mean-variance and CVaR objectives, and an ancillary feedback gain
 - A choice of nonlinear programming solver: IPOPT by default, or PSOPT's own sparse sequential quadratic programming solver, which is optional at build time
 - A Python interface, enabling users to create models without writing a single line of C++, while benefiting from the speed and power of PSOPT's C++ core computational engine
 
