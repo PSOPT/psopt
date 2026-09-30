@@ -253,8 +253,9 @@ verify the result. Most take between forty seconds and three and a half minutes;
 `robust_driver_cvar.py` is about two and a half, being four solves of a
 forty-eight-scenario problem. `robust_driver_gain.py` is the outlier at three to eight
 minutes depending on the build: it co-designs a feedback gain, which is a harder NLP than
-any other example here, and the point of the example is what that buys. The C++
-counterpart of the first, `examples/robust_arm/`, is the fuller study and takes minutes.
+any other example here, and the point of the example is what that buys. The C++ study of
+the same problem is `examples/robust_driver/`, which goes through `psopt_solve_robust` and
+takes two to four minutes.
 
 ## Robust optimal control
 

@@ -38,8 +38,9 @@
 // and the verification integrator are all the library's.
 //
 // The other way remains. A caller who fills spec.setup writes the augmented problem
-// themselves, as examples/robust_arm.cxx does, and supplies spec.violation to verify
-// it. That route is the one to take when the nominal equations cannot be evaluated
+// themselves and supplies spec.violation to verify it; python/examples/robust_arm.py is
+// that route written out, in Python, and reads as C++ would. It is the route to take when
+// the nominal equations cannot be evaluated
 // numerically -- a dae reading get_delayed_state or get_interpolated_state, for
 // instance -- and it is the stronger claim about a certificate, the verification then
 // sharing no code with the library at all. Both routes use the same driver: the
@@ -280,11 +281,11 @@ void robust_dof_message(Prob& problem, int iphase, int nscenarios, Alg& algorith
 
 // WHY THIS EXISTS
 //
-// Writing the augmentation by hand, as examples/robust_arm and examples/robust_driver
-// do, is 173 of the 317 code lines of the latter: eight for the dae loop, thirteen for
-// the events loop, fifty-one to size the phase and replicate the bounds, forty-nine for
-// the warm start, and forty-five for the verification integrator. Only the first eight
-// are what people expect the work to be.
+// Writing the augmentation by hand was 173 of the 317 code lines of the arm example
+// before this interface existed: eight for the dae loop, thirteen for the events loop,
+// fifty-one to size the phase and replicate the bounds, forty-nine for the warm start, and
+// forty-five for the verification integrator. Only the first eight are what people expect
+// the work to be.
 //
 // A RobustModel is the NOMINAL problem, stated once, with the uncertain parameter as one
 // extra argument. psopt_solve_robust then builds the augmented problem itself: it
@@ -634,8 +635,8 @@ struct RobustSpec {
     // The rule itself is robust_prefer_cold below.
 
     // The nominal problem, when the caller wants the driver to build the augmented one.
-    // Left null, `setup` below is required and the augmentation is the caller's, as in
-    // examples/robust_arm. Set, `setup` is not called at all and may be left null.
+    // Left null, `setup` below is required and the augmentation is the caller's. Set,
+    // `setup` is not called at all and may be left null.
     // psopt_solve_robust's five-argument overload sets this.
     RobustModel* model;
 
@@ -756,7 +757,8 @@ void robust_events_value(const RobustModel& model, const double* theta, int nthe
 // the solve only the user's equations. It is not independent of the LIBRARY. A design
 // checked against the integrator that produced it checks nothing, and this is not that,
 // but a caller who wants the stronger claim writes their own and sets spec.violation, as
-// examples/robust_arm does. The driver says which of the two produced a certificate.
+// python/examples/robust_arm.py does on the Python side. The driver says which of the two
+// produced a certificate.
 // Under an ancillary gain two further arguments matter, and both default so that code
 // written against the open-loop version keeps compiling. `theta_ref` is the parameter of
 // the reference trajectory, scenario 0 of the rule, which the verifier integrates beside

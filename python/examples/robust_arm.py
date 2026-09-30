@@ -38,11 +38,14 @@ of NumPy, vectorised over payloads, sharing only the equations of motion. A
 design checked against a different implementation of the plant is checking the
 implementation and not the design.
 
-``examples/robust_arm/robust_arm.cxx`` is the fuller C++ study of the same
-problem -- a sweep in the quadrature order, out-of-sample statistics for every
-design, and the measurement showing that the integrator accuracy validated on
-the nominal slew is not enough for the robust one. This is the short version, cut
-down to run in under a minute.
+``examples/robust_driver`` is the fuller C++ study of the same problem, through
+the library's own driver: a sweep in the quadrature order, out-of-sample
+statistics for every design, and the measurement showing that the integrator
+accuracy validated on the nominal slew is not enough for the robust one. This is
+the short version, cut down to run in under a minute, and it is the one that
+writes the loop out BY HAND: the augmented problem, the verification integrator
+and the generation loop are all here, which is what to read if you want to see
+what a driver does rather than use one.
 """
 import numpy as np
 import casadi as ca
