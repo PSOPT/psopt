@@ -47,6 +47,7 @@
 #include <vector>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  The uncertainty  ////////////////////////////////////
@@ -299,6 +300,33 @@ void robust_dof_message(Prob& problem, int iphase, int nscenarios, Alg& algorith
 // numerically, so such a problem keeps its own spec.setup and writes the augmentation by
 // hand. The Python driver has the same restriction, for the same reason.
 
+// What is minimised when the cost is a random variable. One number per realisation
+// makes "minimise the cost" an incomplete problem statement, and which summary of the
+// distribution is minimised is a modelling decision with consequences.
+//
+//   ROBUST_NOMINAL         the cost of the central scenario. Feasibility is robust and
+//                          the objective is the nominal one, which is the right choice
+//                          when the cost is shared, as it is in a minimum-time problem.
+//   ROBUST_EXPECTATION     the scenario rule's estimate of E[J].
+//   ROBUST_MEAN_VARIANCE   E[J] + mv_lambda * Var[J].
+//   ROBUST_CVAR            the conditional value at risk at cvar_alpha, the mean of the
+//                          worst 1 - alpha of the distribution, by the device of
+//                          Rockafellar and Uryasev.
+//
+// The first two are weighted sums of per-scenario costs, so they go straight into the
+// integrand and the endpoint cost and need nothing else. The last two need each
+// scenario's cost as a quantity in its own right, because the variance of a Lagrange
+// cost across scenarios is not the integral of anything, so the augmentation carries one
+// extra state per scenario whose derivative is that scenario's integrand and whose
+// initial value is pinned to zero. A state needs bounds, which is what
+// RobustModel::cost_lower and cost_upper are for.
+enum RobustRisk {
+    ROBUST_NOMINAL = 0,
+    ROBUST_EXPECTATION,
+    ROBUST_MEAN_VARIANCE,
+    ROBUST_CVAR
+};
+
 typedef void (*RobustDaeFn)(adouble* derivatives, adouble* path, adouble* states,
                             adouble* controls, adouble* parameters, adouble& time,
                             const double* theta, int ntheta,
@@ -355,6 +383,13 @@ struct RobustModel {
     // neighbouring scenarios is necessarily a little larger. 0.9 keeps nine tenths.
     double tighten;
 
+    // The range each scenario's cost is certainly inside, needed by the two risk
+    // measures that carry that cost as a state. Asked for rather than guessed: a bound
+    // that turned out to be active would silently change the risk measure into
+    // something else. Left as they are, both not-a-number, ROBUST_MEAN_VARIANCE and
+    // ROBUST_CVAR are refused.
+    double cost_lower, cost_upper;
+
     // Per-constraint scale factors for the violation measure, so that a metre and a
     // radian are not added together. One entry per nominal event and per nominal path
     // constraint. Left empty they are all one and the measure is the raw infinity norm,
@@ -396,6 +431,8 @@ struct RobustModel {
         : nstates(0), ncontrols(0), nevents(0), npath(0), nparameters(0),
           dae(0), events(0), endpoint_cost(0), integrand_cost(0),
           t0_lower(0.0), t0_upper(0.0), tf_lower(0.0), tf_upper(0.0),
+          cost_lower(std::numeric_limits<double>::quiet_NaN()),
+          cost_upper(std::numeric_limits<double>::quiet_NaN()),
           tighten(0.9), verify_substeps(16), warm_substeps(8),
           configure(0), configure_data(0) {}
 };
@@ -441,6 +478,21 @@ struct RobustSpec {
     // double it. Zero demands the declared bounds hold everywhere, which an inward
     // margin on the design is what makes attainable.
     double slack;
+
+    // What is minimised. See RobustRisk. The scenario set does two jobs and the driver
+    // keeps them apart: as a CONSTRAINT SET every member counts equally, and as a
+    // QUADRATURE RULE for the risk measure the weights are the rule's. So a scenario the
+    // generation loop adds is imposed in full and carries weight ZERO in the objective,
+    // being the place the design was failing and therefore a biased sample of the
+    // uncertainty by construction.
+    RobustRisk risk;
+    double     cvar_alpha;     // the CVaR level; 0.9 averages the worst tenth
+    double     mv_lambda;      // the weight on the variance in mean-variance
+
+    // The quadrature weights of the starting scenario set. Left empty, the driver takes
+    // them from the unscented rule when it builds that set, or makes them uniform when
+    // the caller has filled spec.scenarios. Generated scenarios append a zero.
+    RowVectorXd weights;
 
     int      max_iterations;   // scenario-generation iterations
     int      n_seed;           // low-discrepancy seeds per worst-case search
@@ -528,12 +580,39 @@ struct RobustSpec {
     bool                     budget_exhausted;// a solve starved of freedom
 
     RobustSpec()
-        : slack(0.0), max_iterations(12), n_seed(128), n_refine(3), seed(20260927u),
+        : slack(0.0), risk(ROBUST_NOMINAL), cvar_alpha(0.9), mv_lambda(1.0),
+          max_iterations(12), n_seed(128), n_refine(3), seed(20260927u),
           verbose(true), keep_padded_defect_rows(false), polish(true), model(0),
           setup(0), violation(0), user_data(0),
           certificate(0.0), evaluations(0), n_solves(0), converged(false),
           own_verifier(false), budget_exhausted(false) {}
 };
+
+// The sizes of the augmented problem for M scenarios under a given risk measure. The
+// generated setup uses this rather than computing the sizes inline, so that a caller who
+// wants to check what a scenario count will cost gets the same answer the driver will
+// use, and so that the arithmetic exists in one place.
+//
+// The layout it describes, which three separate places read back:
+//
+//   states      nstates per scenario, then one cost state per scenario for the two
+//               measures that carry one
+//   controls    the nominal controls
+//   parameters  the user's, then CVaR's eta and one slack per scenario
+//   events      nevents per scenario, then one pinned zero per cost state, then one
+//               Rockafellar-Uryasev row per scenario under CVaR
+//   path        npath per scenario
+void robust_augmented_sizes(const RobustModel& model, int M, RobustRisk risk,
+                            int& nstates, int& ncontrols, int& nevents,
+                            int& npath, int& nparameters);
+
+// Evaluate a RobustModel's nominal integrand numerically at one scenario. The companion
+// of robust_dae_value, and what the generated setup uses to seed the cost states of a
+// risk measure that carries them: starting them at zero would start the objective of a
+// mean-variance or CVaR design at a value its own trajectory contradicts.
+double robust_integrand_value(const RobustModel& model,
+                              const double* states, const double* controls,
+                              const double* parameters, double time);
 
 // Evaluate a RobustModel's nominal events numerically at one scenario. The companion of
 // robust_dae_value, and needed for the same reason.

@@ -829,12 +829,60 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
     return worst;
 }
 
+static bool robust_carries_cost(RobustRisk risk)
+{
+    return risk == ROBUST_MEAN_VARIANCE || risk == ROBUST_CVAR;
+}
+
+void robust_augmented_sizes(const RobustModel& model, int M, RobustRisk risk,
+                            int& nstates, int& ncontrols, int& nevents,
+                            int& npath, int& nparameters)
+{
+    const bool cost = robust_carries_cost(risk);
+    nstates     = model.nstates*M + (cost ? M : 0);
+    ncontrols   = model.ncontrols;
+    nevents     = model.nevents*M + (cost ? M : 0)
+                  + (risk == ROBUST_CVAR ? M : 0);
+    npath       = model.npath*M;
+    nparameters = model.nparameters + (risk == ROBUST_CVAR ? M + 1 : 0);
+}
+
+double robust_integrand_value(const RobustModel& model,
+                              const double* states, const double* controls,
+                              const double* parameters, double time)
+{
+    if (!model.integrand_cost) return 0.0;
+    const int ns = model.nstates, nc = model.ncontrols, npar = model.nparameters;
+    std::vector<adouble> xa(ns > 0 ? ns : 1), ua(nc > 0 ? nc : 1),
+                         pa(npar > 0 ? npar : 1);
+    adouble ta = time;
+    for (int j = 0; j < ns;   ++j) xa[j] = states[j];
+    for (int j = 0; j < nc;   ++j) ua[j] = controls[j];
+    for (int j = 0; j < npar; ++j) pa[j] = parameters[j];
+    return model.integrand_cost(&xa[0], &ua[0], &pa[0], ta, 0, 1, 0).value();
+}
+
 // What the library needs in order to loop the user's nominal equations. Held in
 // problem.robust_data, which exists so that user_data stays the user's.
 struct RobustAugmentation {
     const RobustModel*       model;
     std::vector<RowVectorXd> scenarios;
-    RobustAugmentation() : model(0) {}
+    RowVectorXd              weights;     // the quadrature rule's, zero for generated
+    RobustRisk               risk;
+    double                   cvar_alpha;
+    double                   mv_lambda;
+    RobustAugmentation()
+        : model(0), risk(ROBUST_NOMINAL), cvar_alpha(0.9), mv_lambda(1.0) {}
+
+    int  M()     const { return (int) scenarios.size(); }
+    bool cost()  const { return robust_carries_cost(risk); }
+    // Scenario k's cost state, which sits after every scenario's plant states.
+    int  cs(int k) const { return model->nstates*M() + k; }
+    // CVaR's eta, and the slack of scenario k, after the user's own parameters.
+    int  eta()   const { return model->nparameters; }
+    int  slack(int k) const { return model->nparameters + 1 + k; }
+    double w(int k) const
+    { return ((int) weights.size() > k) ? weights(k) : 0.0; }
 };
 
 static void robust_augmented_dae(adouble* derivatives, adouble* path, adouble* states,
@@ -850,6 +898,31 @@ static void robust_augmented_dae(adouble* derivatives, adouble* path, adouble* s
                      states + ns*i, controls, parameters, time,
                      A.scenarios[i].data(), (int) A.scenarios[i].size(),
                      xad, iphase, workspace);
+    // One cost state per scenario, for the two risk measures that need each scenario's
+    // cost as a quantity of its own. Its derivative IS that scenario's integrand.
+    if (A.cost())
+        for (int i = 0; i < M; ++i)
+            derivatives[A.cs(i)] =
+                A.model->integrand_cost
+                ? A.model->integrand_cost(states + ns*i, controls, parameters, time,
+                                          xad, iphase, workspace)
+                : adouble(0.0);
+}
+
+// Scenario k's total cost as a function of the endpoint: its endpoint term plus the value
+// its cost state has accumulated.
+static adouble robust_scenario_cost(const RobustAugmentation& A, int k,
+                                    adouble* initial_states, adouble* final_states,
+                                    adouble* parameters, adouble& t0, adouble& tf,
+                                    adouble* xad, int iphase, Workspace* workspace)
+{
+    const int ns = A.model->nstates;
+    adouble J = A.model->endpoint_cost
+                ? A.model->endpoint_cost(initial_states + ns*k, final_states + ns*k,
+                                         parameters, t0, tf, xad, iphase, workspace)
+                : adouble(0.0);
+    if (A.cost()) J += final_states[A.cs(k)];
+    return J;
 }
 
 static void robust_augmented_events(adouble* e, adouble* initial_states,
@@ -861,12 +934,93 @@ static void robust_augmented_events(adouble* e, adouble* initial_states,
         *((const RobustAugmentation*) workspace->problem->robust_data);
     const int ns = A.model->nstates, ne = A.model->nevents;
     const int M  = (int) A.scenarios.size();
-    if (ne == 0) return;
+    if (ne > 0)
+        for (int i = 0; i < M; ++i)
+            A.model->events(e + ne*i, initial_states + ns*i, final_states + ns*i,
+                            parameters, t0, tf,
+                            A.scenarios[i].data(), (int) A.scenarios[i].size(),
+                            xad, iphase, workspace);
+    int k = ne*M;
+    // Each cost state starts at zero, which is the one thing that makes its final value
+    // the scenario's cost rather than the cost plus an arbitrary offset.
+    if (A.cost())
+        for (int i = 0; i < M; ++i) e[k++] = initial_states[A.cs(i)];
+    // Rockafellar and Uryasev: CVaR_alpha = min over eta of
+    // eta + 1/(1-alpha) sum_k w_k [J_k - eta]+, with the positive part carried by a slack
+    // static parameter per scenario rather than by a smoothed hinge. s_k >= J_k - eta and
+    // s_k >= 0 are both exact, where a smoothed maximum would put an arbitrary rounding
+    // radius between the answer and the risk measure that was asked for.
+    if (A.risk == ROBUST_CVAR)
+        for (int i = 0; i < M; ++i) {
+            const adouble J = robust_scenario_cost(A, i, initial_states, final_states,
+                                                   parameters, t0, tf, xad, iphase,
+                                                   workspace);
+            e[k++] = parameters[A.slack(i)] - (J - parameters[A.eta()]);
+        }
+}
+
+static adouble robust_augmented_integrand(adouble* states, adouble* controls,
+                                          adouble* parameters, adouble& time,
+                                          adouble* xad, int iphase,
+                                          Workspace* workspace)
+{
+    const RobustAugmentation& A =
+        *((const RobustAugmentation*) workspace->problem->robust_data);
+    if (!A.model->integrand_cost) return adouble(0.0);
+    const int ns = A.model->nstates;
+    // Under a measure that carries cost states the objective is entirely an endpoint
+    // expression in those states, so the augmented integrand is zero and the user's
+    // integrand reaches the problem only through the cost-state derivatives.
+    if (A.cost()) return adouble(0.0);
+    if (A.risk == ROBUST_NOMINAL)
+        return A.model->integrand_cost(states, controls, parameters, time,
+                                       xad, iphase, workspace);
+    adouble L = 0.0;
+    for (int i = 0; i < A.M(); ++i)
+        if (A.w(i) != 0.0)
+            L += A.w(i)*A.model->integrand_cost(states + ns*i, controls, parameters,
+                                                time, xad, iphase, workspace);
+    return L;
+}
+
+static adouble robust_augmented_endpoint(adouble* initial_states, adouble* final_states,
+                                         adouble* parameters, adouble& t0, adouble& tf,
+                                         adouble* xad, int iphase, Workspace* workspace)
+{
+    const RobustAugmentation& A =
+        *((const RobustAugmentation*) workspace->problem->robust_data);
+    const int M = A.M();
+
+    if (A.risk == ROBUST_CVAR) {
+        adouble s = 0.0;
+        for (int i = 0; i < M; ++i)
+            if (A.w(i) != 0.0) s += A.w(i)*parameters[A.slack(i)];
+        return parameters[A.eta()] + s/(1.0 - A.cvar_alpha);
+    }
+    if (A.risk == ROBUST_MEAN_VARIANCE) {
+        adouble mean = 0.0, second = 0.0;
+        for (int i = 0; i < M; ++i) {
+            if (A.w(i) == 0.0) continue;
+            const adouble J = robust_scenario_cost(A, i, initial_states, final_states,
+                                                   parameters, t0, tf, xad, iphase,
+                                                   workspace);
+            mean   += A.w(i)*J;
+            second += A.w(i)*J*J;
+        }
+        return mean + A.mv_lambda*(second - mean*mean);
+    }
+    if (!A.model->endpoint_cost) return adouble(0.0);
+    const int ns = A.model->nstates;
+    if (A.risk == ROBUST_NOMINAL)
+        return A.model->endpoint_cost(initial_states, final_states, parameters,
+                                      t0, tf, xad, iphase, workspace);
+    adouble phi = 0.0;
     for (int i = 0; i < M; ++i)
-        A.model->events(e + ne*i, initial_states + ns*i, final_states + ns*i,
-                        parameters, t0, tf,
-                        A.scenarios[i].data(), (int) A.scenarios[i].size(),
-                        xad, iphase, workspace);
+        if (A.w(i) != 0.0)
+            phi += A.w(i)*A.model->endpoint_cost(initial_states + ns*i,
+                                                 final_states + ns*i, parameters,
+                                                 t0, tf, xad, iphase, workspace);
+    return phi;
 }
 
 static void robust_no_linkages(adouble*, adouble*, Workspace*) {}
@@ -970,11 +1124,13 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
     problem.nlinkages = 0;
     psopt_level1_setup(problem);
 
-    problem.phases(1).nstates     = ns*M;
-    problem.phases(1).ncontrols   = nc;
-    problem.phases(1).nevents     = ne*M;
-    problem.phases(1).npath       = np*M;
-    problem.phases(1).nparameters = model.nparameters;
+    int anx = 0, anu = 0, ane = 0, anp = 0, anpar = 0;
+    robust_augmented_sizes(model, M, aug.risk, anx, anu, ane, anp, anpar);
+    problem.phases(1).nstates     = anx;
+    problem.phases(1).ncontrols   = anu;
+    problem.phases(1).nevents     = ane;
+    problem.phases(1).npath       = anp;
+    problem.phases(1).nparameters = anpar;
     problem.phases(1).nodes       = model.nodes;
     psopt_level2_setup(problem, algorithm);
     // The one moment at which the caller's options can be set, because the call above has
@@ -991,6 +1147,11 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
             problem.phases(1).bounds.lower.states(ns*i + j) = model.states_lower(j);
             problem.phases(1).bounds.upper.states(ns*i + j) = model.states_upper(j);
         }
+    if (aug.cost())
+        for (int i = 0; i < M; ++i) {
+            problem.phases(1).bounds.lower.states(aug.cs(i)) = model.cost_lower;
+            problem.phases(1).bounds.upper.states(aug.cs(i)) = model.cost_upper;
+        }
     for (int j = 0; j < nc; ++j) {
         problem.phases(1).bounds.lower.controls(j) = model.controls_lower(j);
         problem.phases(1).bounds.upper.controls(j) = model.controls_upper(j);
@@ -998,6 +1159,17 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
     for (int j = 0; j < model.nparameters; ++j) {
         problem.phases(1).bounds.lower.parameters(j) = model.parameters_lower(j);
         problem.phases(1).bounds.upper.parameters(j) = model.parameters_upper(j);
+    }
+    if (aug.risk == ROBUST_CVAR) {
+        // eta lives on the scale of the cost; each slack is the positive part of a
+        // difference of two costs, so it cannot exceed their range.
+        problem.phases(1).bounds.lower.parameters(aug.eta()) = model.cost_lower;
+        problem.phases(1).bounds.upper.parameters(aug.eta()) = model.cost_upper;
+        for (int i = 0; i < M; ++i) {
+            problem.phases(1).bounds.lower.parameters(aug.slack(i)) = 0.0;
+            problem.phases(1).bounds.upper.parameters(aug.slack(i)) =
+                model.cost_upper - model.cost_lower;
+        }
     }
 
     // The tightening. Applied to the events and the path constraints, per scenario, and
@@ -1027,13 +1199,28 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
         }
     }
 
+    {
+        int k = ne*M;
+        if (aug.cost())
+            for (int i = 0; i < M; ++i, ++k) {
+                problem.phases(1).bounds.lower.events(k) = 0.0;
+                problem.phases(1).bounds.upper.events(k) = 0.0;
+            }
+        if (aug.risk == ROBUST_CVAR)
+            for (int i = 0; i < M; ++i, ++k) {
+                problem.phases(1).bounds.lower.events(k) = 0.0;
+                problem.phases(1).bounds.upper.events(k) =
+                    model.cost_upper - model.cost_lower;
+            }
+    }
+
     problem.phases(1).bounds.lower.StartTime = model.t0_lower;
     problem.phases(1).bounds.upper.StartTime = model.t0_upper;
     problem.phases(1).bounds.lower.EndTime   = model.tf_lower;
     problem.phases(1).bounds.upper.EndTime   = model.tf_upper;
 
-    problem.endpoint_cost  = model.endpoint_cost;
-    problem.integrand_cost = model.integrand_cost;
+    problem.endpoint_cost  = &robust_augmented_endpoint;
+    problem.integrand_cost = &robust_augmented_integrand;
     problem.dae            = &robust_augmented_dae;
     problem.events         = (ne > 0) ? &robust_augmented_events : 0;
     problem.linkages       = &robust_no_linkages;
@@ -1058,14 +1245,54 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
             printf("  the warm start did not stay finite at %d substeps or below; "
                    "using the nominal guess\n", robust_warm_substeps_max);
     }
+    // The cost states, seeded by integrating each scenario's integrand along the guessed
+    // arc. Zero would start a mean-variance or CVaR objective at a value its own
+    // trajectory contradicts, which is a poor place to start a nonconvex solve from.
+    if (aug.cost()) {
+        const int N = (int) problem.phases(1).guess.time.cols();
+        const MatrixXd& ug = problem.phases(1).guess.controls;
+        const MatrixXd& tg = problem.phases(1).guess.time;
+        MatrixXd full = zeros(anx, N);
+        full.topRows(ns*M) = x_guess.topRows(ns*M);
+        std::vector<double> par(model.nparameters > 0 ? model.nparameters : 1, 0.0);
+        for (int j = 0; j < model.nparameters
+                        && j < (int) model.guess_parameters.size(); ++j)
+            par[j] = model.guess_parameters(j);
+        for (int i = 0; i < M; ++i) {
+            double z = 0.0;
+            full(aug.cs(i), 0) = 0.0;
+            for (int c = 0; c < N - 1; ++c) {
+                std::vector<double> xa(ns), xb(ns), ua(nc > 0 ? nc : 1),
+                                    ub(nc > 0 ? nc : 1);
+                for (int j = 0; j < ns; ++j) {
+                    xa[j] = full(ns*i + j, c);
+                    xb[j] = full(ns*i + j, c+1);
+                }
+                for (int j = 0; j < nc; ++j) { ua[j] = ug(j, c); ub[j] = ug(j, c+1); }
+                const double La = robust_integrand_value(model, &xa[0], &ua[0], &par[0],
+                                                         tg(0, c));
+                const double Lb = robust_integrand_value(model, &xb[0], &ub[0], &par[0],
+                                                         tg(0, c+1));
+                z += 0.5*(La + Lb)*(tg(0, c+1) - tg(0, c));      // trapezoid
+                full(aug.cs(i), c+1) = z;
+            }
+        }
+        x_guess = full;
+    }
     problem.phases(1).guess.states = x_guess;
-    if (model.nparameters > 0 && (int) model.guess_parameters.size() == model.nparameters)
-        problem.phases(1).guess.parameters = model.guess_parameters;
+    if (anpar > 0) {
+        MatrixXd pg = zeros(anpar, 1);
+        for (int j = 0; j < model.nparameters
+                        && j < (int) model.guess_parameters.size(); ++j)
+            pg(j, 0) = model.guess_parameters(j);
+        problem.phases(1).guess.parameters = pg;
+    }
 }
 
 // What the caller is owed before the loop starts: whether the model is complete, and
 // whether the tightening will actually reach every constraint it is meant to.
-static bool robust_model_is_usable(const RobustModel& model, bool verbose)
+static bool robust_model_is_usable(const RobustModel& model, RobustRisk risk,
+                                   double cvar_alpha, bool verbose)
 {
     if (model.nstates <= 0 || !model.dae) {
         error_message("psopt_solve_robust: spec.model needs at least nstates and dae");
@@ -1091,6 +1318,26 @@ static bool robust_model_is_usable(const RobustModel& model, bool verbose)
         error_message("psopt_solve_robust: spec.model needs nodes and a nominal guess");
         return false;
     }
+    if (robust_carries_cost(risk)
+        && !(std::isfinite(model.cost_lower) && std::isfinite(model.cost_upper)
+             && model.cost_upper > model.cost_lower)) {
+        error_message("psopt_solve_robust: this risk measure carries each scenario's cost "
+                      "as a state, and a state needs bounds. Set model.cost_lower and "
+                      "model.cost_upper to a range the per-scenario cost is certainly "
+                      "inside. They are asked for rather than guessed because a bound "
+                      "that turns out to be active silently changes the risk measure "
+                      "into something else");
+        return false;
+    }
+    if (risk == ROBUST_CVAR && !(cvar_alpha >= 0.0 && cvar_alpha < 1.0)) {
+        error_message("psopt_solve_robust: spec.cvar_alpha must lie in [0, 1)");
+        return false;
+    }
+    if (risk != ROBUST_NOMINAL && !model.integrand_cost && !model.endpoint_cost) {
+        error_message("psopt_solve_robust: a risk measure over the cost needs the model "
+                      "to have a cost. Set integrand_cost, endpoint_cost or both");
+        return false;
+    }
     if (verbose) {
         RowVectorXd mg;
         int e1 = 0, p1 = 0;
@@ -1114,9 +1361,21 @@ static void robust_do_setup(Prob& problem, Alg& algorithm, RobustSpec& spec,
                             const std::vector<RowVectorXd>& scenarios,
                             const RobustDesign& previous, RobustAugmentation& aug)
 {
-    if (spec.model)
+    if (spec.model) {
+        aug.risk       = spec.risk;
+        aug.cvar_alpha = spec.cvar_alpha;
+        aug.mv_lambda  = spec.mv_lambda;
+        // The weights the risk measure uses. A scenario the generation loop added is
+        // imposed in full and weighs nothing in the objective, being the place the design
+        // was failing and so a biased sample of the uncertainty by construction.
+        const int M = (int) scenarios.size();
+        RowVectorXd w = zeros(1, M);
+        for (int i = 0; i < M; ++i)
+            w(i) = ((int) spec.weights.size() > i) ? spec.weights(i) : 0.0;
+        aug.weights = w;
         robust_model_setup(problem, algorithm, *spec.model, scenarios, previous, aug,
                            spec.verbose);
+    }
     else
         spec.setup(problem, algorithm, scenarios, previous, spec.user_data);
 }
@@ -1154,7 +1413,8 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
                "integrator\n  (robust_model_violation), which is independent of the "
                "TRANSCRIPTION and not of the library.\n  Set spec.violation to verify "
                "against an implementation of your own instead.\n");
-    if (spec.model && !robust_model_is_usable(*spec.model, spec.verbose)) return -1;
+    if (spec.model && !robust_model_is_usable(*spec.model, spec.risk, spec.cvar_alpha,
+                                              spec.verbose)) return -1;
 
     // Lives as long as this call, because the augmented dae and events read it through
     // problem.robust_data on every evaluation.
@@ -1189,6 +1449,15 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
                           "spec.scenarios with a low-discrepancy set instead.");
             return -1;
         }
+        if (spec.weights.size() == 0) spec.weights = w;
+    }
+    // A caller who filled spec.scenarios and no weights gets a uniform rule, which is
+    // what a low-discrepancy set is.
+    if ((int) spec.weights.size() != (int) scenarios.size()) {
+        const int M = (int) scenarios.size();
+        RowVectorXd w = zeros(1, M);
+        for (int i = 0; i < M; ++i) w(i) = 1.0/M;
+        spec.weights = w;
     }
 
     spec.evaluations      = 0;
@@ -1295,6 +1564,9 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
         if (it == spec.max_iterations - 1) break;
 
         scenarios.push_back(at);
+        RowVectorXd w = zeros(1, (int) scenarios.size());
+        w.head(spec.weights.size()) = spec.weights;
+        spec.weights = w;                       // the new scenario weighs nothing
     }
 
     // ---- the polish step -------------------------------------------------------

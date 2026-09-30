@@ -613,4 +613,109 @@ TEST(Robust, EventsValueAgreesWithTheHandWrittenArithmetic)
     EXPECT_DOUBLE_EQ(e, 0.37);
 }
 
+
+//////////////////////////////////////////////////////////////////////////
+//  Risk measures
+//////////////////////////////////////////////////////////////////////////
+
+namespace {
+RobustModel sized_model(int ns, int nc, int ne, int np, int npar)
+{
+    RobustModel m;
+    m.nstates = ns; m.ncontrols = nc; m.nevents = ne; m.npath = np;
+    m.nparameters = npar;
+    return m;
+}
+}  // namespace
+
+// The two measures that are weighted sums of per-scenario costs go straight into the
+// integrand and the endpoint cost, so the augmented problem is the plain replication and
+// nothing more.
+TEST(Robust, SumRiskMeasuresAddNothingToTheProblem)
+{
+    const RobustModel m = sized_model(4, 2, 8, 1, 3);
+    int nx = 0, nu = 0, ne = 0, np = 0, npar = 0;
+    for (int r = 0; r < 2; ++r) {
+        const RobustRisk risk = r ? ROBUST_EXPECTATION : ROBUST_NOMINAL;
+        robust_augmented_sizes(m, 6, risk, nx, nu, ne, np, npar);
+        EXPECT_EQ(nx,   4*6);
+        EXPECT_EQ(nu,   2);
+        EXPECT_EQ(ne,   8*6);
+        EXPECT_EQ(np,   1*6);
+        EXPECT_EQ(npar, 3);
+    }
+}
+
+// Mean-variance needs each scenario's cost as a quantity of its own, because the variance
+// of a Lagrange cost across scenarios is not the integral of anything. That is one extra
+// state per scenario, and one extra pinned event per scenario to start it at zero.
+TEST(Robust, MeanVarianceCarriesACostStatePerScenario)
+{
+    const RobustModel m = sized_model(4, 2, 8, 1, 3);
+    int nx = 0, nu = 0, ne = 0, np = 0, npar = 0;
+    robust_augmented_sizes(m, 6, ROBUST_MEAN_VARIANCE, nx, nu, ne, np, npar);
+    EXPECT_EQ(nx,   4*6 + 6);
+    EXPECT_EQ(ne,   8*6 + 6);
+    EXPECT_EQ(npar, 3);          // no extra parameters: the objective is the endpoint
+    EXPECT_EQ(np,   1*6);
+}
+
+// CVaR adds the Rockafellar-Uryasev device on top: one eta and one slack parameter per
+// scenario, and one inequality row per scenario saying s_k >= J_k - eta. The slacks are
+// static parameters rather than a smoothed hinge, so the constraints are exact.
+TEST(Robust, CvarAddsEtaAndASlackPerScenario)
+{
+    const RobustModel m = sized_model(4, 2, 8, 1, 3);
+    int nx = 0, nu = 0, ne = 0, np = 0, npar = 0;
+    robust_augmented_sizes(m, 6, ROBUST_CVAR, nx, nu, ne, np, npar);
+    EXPECT_EQ(nx,   4*6 + 6);
+    EXPECT_EQ(ne,   8*6 + 6 + 6);
+    EXPECT_EQ(npar, 3 + 6 + 1);
+    EXPECT_EQ(np,   1*6);
+}
+
+// A problem with no events of its own still gets the rows its risk measure needs, which is
+// the case where an off-by-one in the layout would otherwise go unnoticed.
+TEST(Robust, RiskRowsSurviveAProblemWithNoEventsOfItsOwn)
+{
+    const RobustModel m = sized_model(2, 1, 0, 0, 0);
+    int nx = 0, nu = 0, ne = 0, np = 0, npar = 0;
+    robust_augmented_sizes(m, 5, ROBUST_CVAR, nx, nu, ne, np, npar);
+    EXPECT_EQ(nx,   2*5 + 5);
+    EXPECT_EQ(ne,   5 + 5);
+    EXPECT_EQ(npar, 5 + 1);
+    robust_augmented_sizes(m, 5, ROBUST_NOMINAL, nx, nu, ne, np, npar);
+    EXPECT_EQ(ne,   0);
+    EXPECT_EQ(npar, 0);
+}
+
+namespace {
+adouble quadratic_integrand(adouble* x, adouble* u, adouble* p, adouble& t,
+                            adouble* /*xad*/, int /*iphase*/, Workspace* /*ws*/)
+{
+    return 0.5*(x[0]*x[0] + u[0]*u[0]) + p[0]*t;
+}
+}  // namespace
+
+// The integrand evaluated numerically, which is what seeds the cost states of a
+// measure that carries them. Starting those at zero would start the objective at a value
+// the guessed trajectory contradicts.
+TEST(Robust, IntegrandValueAgreesWithTheHandWrittenArithmetic)
+{
+    RobustModel m = sized_model(1, 1, 0, 0, 1);
+    m.integrand_cost = &quadratic_integrand;
+    const double x = 0.7, u = -0.3, p = 2.0, t = 1.5;
+    EXPECT_DOUBLE_EQ(robust_integrand_value(m, &x, &u, &p, t),
+                     0.5*(x*x + u*u) + p*t);
+}
+
+// A model with no integrand contributes nothing, which the cost-state seeding relies on
+// rather than guarding against separately.
+TEST(Robust, IntegrandValueIsZeroWithoutAnIntegrand)
+{
+    const RobustModel m = sized_model(1, 1, 0, 0, 1);
+    const double x = 0.7, u = -0.3, p = 2.0;
+    EXPECT_DOUBLE_EQ(robust_integrand_value(m, &x, &u, &p, 1.5), 0.0);
+}
+
 }  // namespace
