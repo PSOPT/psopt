@@ -454,6 +454,21 @@ typedef void (*RobustDaeFn)(adouble* derivatives, adouble* path, adouble* states
                             const double* theta, int ntheta,
                             adouble* xad, int iphase, Workspace* workspace);
 
+// How one phase joins the next, for one scenario: `nlink` values the driver holds at zero.
+// The states and times are those of the two phases either side of the boundary.
+typedef void (*RobustLinkFn)(adouble* link,
+                             adouble* final_states_prev, adouble& tf_prev,
+                             adouble* initial_states_next, adouble& t0_next,
+                             adouble* parameters, const double* theta, int ntheta,
+                             void* user_data);
+
+// The same in numbers, for the verifier: the state one phase ends at, and the state the
+// next phase starts from. Continuity is x0_next = xf_prev, which is what the driver assumes
+// when neither this nor RobustModel::link is given.
+typedef void (*RobustJumpFn)(const double* theta, int ntheta, int from_phase,
+                             const double* final_states_prev, double t,
+                             double* initial_states_next, void* user_data);
+
 // The state a scenario starts from, when it depends on the uncertain parameter. Writes
 // nstates values. See RobustModel::initial_state_fn for what it is for and what it does
 // not do.
@@ -466,16 +481,20 @@ typedef void (*RobustEventsFn)(adouble* e, adouble* initial_states,
                                const double* theta, int ntheta,
                                adouble* xad, int iphase, Workspace* workspace);
 
-struct RobustModel {
+// ---- one phase of a nominal problem ---------------------------------------------------
+//
+// A model IS its first phase, by inheritance below, so a single-phase problem is written
+// exactly as it always was and nothing here needs to be known about. A problem of several
+// phases fills RobustModel::later_phases with the rest, in order.
+struct RobustPhase {
     // ---- the nominal sizes, per scenario ----------------------------------
-    int nstates, ncontrols, nevents, npath, nparameters;
+    int nstates, ncontrols, nevents, npath;
     RowVectorXi nodes;
 
     // ---- the nominal maths ------------------------------------------------
     // dae and events take theta; the costs do not, being shared across the scenarios.
     // A cost that differed per scenario would be a risk measure, which needs a cost
-    // state per scenario and is not offered here (see the Limitations of the manual's
-    // robust chapter).
+    // state per scenario and is built by the driver instead.
     RobustDaeFn    dae;
     RobustEventsFn events;
     adouble (*endpoint_cost)(adouble* initial_states, adouble* final_states,
@@ -490,15 +509,61 @@ struct RobustModel {
     RowVectorXd controls_lower, controls_upper;
     RowVectorXd events_lower, events_upper;
     RowVectorXd path_lower, path_upper;
-    RowVectorXd parameters_lower, parameters_upper;
     double t0_lower, t0_upper, tf_lower, tf_upper;
 
     // ---- the nominal guess ------------------------------------------------
-    MatrixXd    guess_states;      // nstates x N
-    MatrixXd    guess_controls;    // ncontrols x N
-    MatrixXd    guess_time;        // 1 x N
-    RowVectorXd guess_parameters;
+    MatrixXd guess_states;      // nstates x N
+    MatrixXd guess_controls;    // ncontrols x N
+    MatrixXd guess_time;        // 1 x N
 
+    // Per-constraint scale factors for the violation measure, so that a metre and a
+    // radian are not added together. One entry per nominal event and per nominal path
+    // constraint of THIS phase. Left empty they are all one and the measure is the raw
+    // infinity norm, which is right only when the constraints share units.
+    RowVectorXd event_scale, path_scale;
+
+    RobustPhase()
+        : nstates(0), ncontrols(0), nevents(0), npath(0),
+          dae(0), events(0), endpoint_cost(0), integrand_cost(0),
+          t0_lower(0.0), t0_upper(0.0), tf_lower(0.0), tf_upper(0.0) {}
+};
+
+struct RobustModel : public RobustPhase {
+    // ---- the phases after the first ---------------------------------------
+    //
+    // Empty for a single-phase problem, which is what the model was until it learned about
+    // phases and is still how most are written. Filled, the phases run in the order given,
+    // the model itself being the first, and the driver joins them.
+    //
+    // THE PHASE BOUNDARY TIMES ARE SHARED BY EVERY SCENARIO, and that is forced rather than
+    // chosen. PSOPT gives a phase one t0, one tf and one control, so letting scenario k
+    // switch at its own time would need M separate chains of phases, and those cannot share
+    // a control grid, which is what makes the design non-anticipative. A switching time is
+    // therefore a here-and-now decision like the control itself. That is consistent with
+    // the formulation and it excludes a boundary triggered by a state event.
+    std::vector<RobustPhase> later_phases;
+
+    // How one phase joins the next, for ONE scenario, as adouble maths. Left null the
+    // driver joins them by CONTINUITY, which is what most multi-phase problems want: every
+    // state of the scenario carried across unchanged, and the time carried across once,
+    // being shared. Set, it writes `nlink` values the driver holds at zero, once per
+    // scenario per boundary, and `jump` below has to say the same thing in numbers.
+    RobustLinkFn link;
+    int          nlink;        // values `link` writes, per scenario per boundary
+    void*        link_data;
+
+    // The same statement for the VERIFIER, which integrates one scenario across the
+    // boundary and cannot solve an implicit linkage. Left null with `link` also null the
+    // verifier carries the state across unchanged, which is continuity. Left null with
+    // `link` set, the verifier says so and refuses, because carrying the state across a
+    // linkage that is not continuity would verify a trajectory the design does not have.
+    RobustJumpFn jump;
+    void*        jump_data;
+
+    // ---- what belongs to the whole problem and not to a phase --------------
+    int         nparameters;
+    RowVectorXd parameters_lower, parameters_upper;
+    RowVectorXd guess_parameters;
     // The state every scenario starts from, which the warm start and the verification
     // integrate out of. It is asked for rather than read off the event bounds, because the
     // driver cannot in general tell which events are the initial conditions, and guessing
@@ -564,12 +629,6 @@ struct RobustModel {
     // ROBUST_CVAR are refused.
     double cost_lower, cost_upper;
 
-    // Per-constraint scale factors for the violation measure, so that a metre and a
-    // radian are not added together. One entry per nominal event and per nominal path
-    // constraint. Left empty they are all one and the measure is the raw infinity norm,
-    // which is right only when the constraints share units.
-    RowVectorXd event_scale, path_scale;
-
     // Substeps per node interval in the DEFAULT verification integrator. Sixteen was
     // measured on the arm: at eight the transcription reported a design landing exactly
     // on its tolerance ball that an independent integrator found outside it, at sixteen
@@ -602,11 +661,11 @@ struct RobustModel {
     void*  configure_data;
 
     RobustModel()
-        : nstates(0), ncontrols(0), nevents(0), npath(0), nparameters(0),
-          dae(0), events(0), endpoint_cost(0), integrand_cost(0),
+        : RobustPhase(),
+          link(0), nlink(0), link_data(0), jump(0), jump_data(0),
+          nparameters(0),
           feedback_kind(ROBUST_FEEDBACK_NONE), feedback_schedule(0), feedback_data(0),
           initial_state_fn(0), initial_state_data(0),
-          t0_lower(0.0), t0_upper(0.0), tf_lower(0.0), tf_upper(0.0),
           cost_lower(std::numeric_limits<double>::quiet_NaN()),
           cost_upper(std::numeric_limits<double>::quiet_NaN()),
           tighten(0.9), verify_substeps(16), warm_substeps(8),
@@ -796,6 +855,14 @@ void robust_augmented_sizes(const RobustModel& model, int M, RobustRisk risk,
                             int& nstates, int& ncontrols, int& nevents,
                             int& npath, int& nparameters);
 
+// The same for ONE PHASE of a model of several, the sizes of a phase being its own. The
+// call above is this one on the model's first phase, which is the whole of a single-phase
+// problem.
+void robust_augmented_phase_sizes(const RobustModel& model, const RobustPhase& phase,
+                                  int M, RobustRisk risk,
+                                  int& nstates, int& ncontrols, int& nevents,
+                                  int& npath, int& nparameters);
+
 // Evaluate a RobustModel's nominal integrand numerically at one scenario. The companion
 // of robust_dae_value, and what the generated setup uses to seed the cost states of a
 // risk measure that carries them: starting them at zero would start the objective of a
@@ -813,6 +880,14 @@ void robust_initial_state(const RobustModel& model, const double* theta, int nth
 
 // Evaluate a RobustModel's nominal events numerically at one scenario. The companion of
 // robust_dae_value, and needed for the same reason.
+// One phase's dae evaluated numerically, for a model of several phases. The call above is
+// this one on the model's first phase.
+void robust_phase_dae_value(const RobustPhase& phase, const RobustModel& model,
+                            const double* theta, int ntheta,
+                            const double* states, const double* controls,
+                            const double* parameters, double time,
+                            double* derivatives, double* path);
+
 void robust_events_value(const RobustModel& model, const double* theta, int ntheta,
                          const double* initial_states, const double* final_states,
                          const double* parameters, double t0, double tf,

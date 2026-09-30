@@ -18,9 +18,15 @@
 // Small layout predicates, declared here because both the verifier and the augmentation
 // need them and the two live at opposite ends of this file.
 static int  robust_gain_parameters(const RobustModel& m);
+static void robust_gain_double(const RobustModel& m, const RobustDesign& design,
+                               const double* ufull, double time, double* K);
 static int  robust_gain_controls(const RobustModel& m);
 static bool robust_has_feedback(const RobustModel& m);
 static double robust_gain_box(const MatrixXd& b, int i, int j, int nc);
+static std::vector<const RobustPhase*> robust_phase_list(const RobustModel& m);
+static void robust_cross_boundary(const RobustModel& model, int from_phase,
+                                  const RowVectorXd& theta, const double* xf, double t,
+                                  int ns_next, double* x0);
 
 //////////////////////////////////////////////////////////////////////////
 ///////////////////  Constructors  ///////////////////////////////////////
@@ -745,6 +751,66 @@ void robust_initial_state(const RobustModel& model, const double* theta, int nth
         x0[j] = ((int) model.initial_state.size() > j) ? model.initial_state(j) : 0.0;
 }
 
+// One phase's dae, numerically. The model-level call below is this one on the first phase,
+// which is the whole of a single-phase problem.
+void robust_phase_dae_value(const RobustPhase& phase, const RobustModel& model,
+                            const double* theta, int ntheta,
+                            const double* states, const double* controls,
+                            const double* parameters, double time,
+                            double* derivatives, double* path)
+{
+    const int ns = phase.nstates, nc = phase.ncontrols;
+    const int np = phase.npath, npar = model.nparameters;
+    if (ns <= 0 || !phase.dae) return;
+
+    std::vector<adouble> xa(ns), ua(nc > 0 ? nc : 1), pa(npar > 0 ? npar : 1);
+    std::vector<adouble> da(ns), ga(np > 0 ? np : 1);
+    adouble ta = time;
+    for (int j = 0; j < ns;   ++j) xa[j] = states[j];
+    for (int j = 0; j < nc;   ++j) ua[j] = controls[j];
+    for (int j = 0; j < npar; ++j) pa[j] = parameters[j];
+
+    phase.dae(&da[0], &ga[0], &xa[0], &ua[0], &pa[0], ta, theta, ntheta, 0, 1, 0);
+    for (int j = 0; j < ns; ++j) derivatives[j] = da[j].value();
+    if (path) for (int j = 0; j < np; ++j) path[j] = ga[j].value();
+}
+
+// The realised control at one instant, for the warm start: the nominal column, plus the
+// correction against the reference when there is a gain. The four Runge-Kutta stages each
+// need it at their own state, and a stage that used another stage's control would be
+// integrating a different controller.
+static void robust_warm_control(const RobustModel& m, const RobustPhase& phase,
+                                const RobustDesign& design, bool fb,
+                                const double* xx, const double* rr, const double* uf,
+                                double tt, double* K, double* ur)
+{
+    const int nc = phase.ncontrols, ns = phase.nstates;
+    for (int q = 0; q < nc; ++q) ur[q] = uf[q];
+    if (!fb) return;
+    robust_gain_double(m, design, uf, tt, K);
+    for (int q = 0; q < nc; ++q)
+        for (int j = 0; j < ns; ++j) ur[q] += K[q*ns + j]*(xx[j] - rr[j]);
+}
+
+void robust_phase_events_value(const RobustPhase& phase, const RobustModel& model,
+                               const double* theta, int ntheta,
+                               const double* initial_states, const double* final_states,
+                               const double* parameters, double t0, double tf, double* e)
+{
+    const int ns = phase.nstates, ne = phase.nevents, npar = model.nparameters;
+    if (ne <= 0 || !phase.events) return;
+
+    std::vector<adouble> xi(ns > 0 ? ns : 1), xf(ns > 0 ? ns : 1);
+    std::vector<adouble> pa(npar > 0 ? npar : 1), ea(ne);
+    adouble ta = t0, tb = tf;
+    for (int j = 0; j < ns;   ++j) xi[j] = initial_states[j];
+    for (int j = 0; j < ns;   ++j) xf[j] = final_states[j];
+    for (int j = 0; j < npar; ++j) pa[j] = parameters[j];
+
+    phase.events(&ea[0], &xi[0], &xf[0], &pa[0], ta, tb, theta, ntheta, 0, 1, 0);
+    for (int j = 0; j < ne; ++j) e[j] = ea[j].value();
+}
+
 void robust_events_value(const RobustModel& model, const double* theta, int ntheta,
                          const double* initial_states, const double* final_states,
                          const double* parameters, double t0, double tf,
@@ -780,32 +846,52 @@ static double robust_bound_excess(double value, double lo, double up, double sca
 namespace {
 enum RobustControlShape { ROBUST_HELD, ROBUST_LINEAR, ROBUST_PARABOLA };
 
-RobustControlShape robust_control_shape(Alg& algorithm, const RobustDesign& design)
+RobustControlShape robust_control_shape(Alg& algorithm, const MatrixXd& controls_full,
+                                        const MatrixXd& time_full)
 {
-    if (design.controls_full.cols() > 0 && design.time_full.cols() > 0)
-        return ROBUST_PARABOLA;
+    if (controls_full.cols() > 0 && time_full.cols() > 0) return ROBUST_PARABOLA;
     if (is_multiple_shooting(algorithm)
         && algorithm.ms_control_parameterisation == "constant")
         return ROBUST_HELD;
     return ROBUST_LINEAR;
 }
 
+RobustControlShape robust_control_shape(Alg& algorithm, const RobustDesign& design)
+{
+    return robust_control_shape(algorithm, design.controls_full, design.time_full);
+}
+
 // The control on interval i at fraction w of it, as the design means it. For the parabola
 // the three values are the node, the midpoint and the next node, which controls_full holds
 // at columns 2i, 2i+1 and 2i+2.
+void robust_control_at(const MatrixXd& controls, const MatrixXd& controls_full,
+                       RobustControlShape shape, int i, double w, int nc, double* u);
+
 void robust_control_at(const RobustDesign& design, RobustControlShape shape,
                        int i, double w, int nc, double* u)
+{
+    robust_control_at(design.controls, design.controls_full, shape, i, w, nc, u);
+}
+
+void robust_control_at(const RobustPhaseTrajectory& traj, RobustControlShape shape,
+                       int i, double w, int nc, double* u)
+{
+    robust_control_at(traj.controls, traj.controls_full, shape, i, w, nc, u);
+}
+
+void robust_control_at(const MatrixXd& controls, const MatrixXd& controls_full,
+                       RobustControlShape shape, int i, double w, int nc, double* u)
 {
     // nc is the number of ROWS of the design's control table, which under a co-designed
     // gain schedule is wider than the user's control vector: the gain rides in the
     // trailing rows, put there by the transcription.
     for (int j = 0; j < nc; ++j) {
-        const double a = design.controls(j, i), b = design.controls(j, i + 1);
+        const double a = controls(j, i), b = controls(j, i + 1);
         if (shape == ROBUST_HELD) { u[j] = a; continue; }
         if (shape == ROBUST_LINEAR) { u[j] = a + w*(b - a); continue; }
-        const double ua = design.controls_full(j, 2*i);
-        const double um = design.controls_full(j, 2*i + 1);
-        const double ub = design.controls_full(j, 2*i + 2);
+        const double ua = controls_full(j, 2*i);
+        const double um = controls_full(j, 2*i + 1);
+        const double ub = controls_full(j, 2*i + 2);
         // Lagrange through (0, ua), (1/2, um), (1, ub).
         u[j] = (2.0*w - 1.0)*(w - 1.0)*ua - 4.0*w*(w - 1.0)*um + w*(2.0*w - 1.0)*ub;
     }
@@ -850,21 +936,27 @@ static void robust_gain_double(const RobustModel& m, const RobustDesign& design,
     }
 }
 
-double robust_model_violation(const RobustModel& model, Alg& algorithm,
-                              const RowVectorXd& theta, const RobustDesign& design,
-                              const RowVectorXd* theta_ref, double* control_excess)
+// One phase of a verification: integrate every scenario's plant across it, accumulate the
+// path excess as it goes, and check that phase's events at its two ends. `x` and `r` come
+// in at the phase's start and go out at its end, so the caller chains the phases.
+static double robust_verify_phase(const RobustModel& model, const RobustPhase& phase,
+                                  Alg& algorithm, const RowVectorXd& theta,
+                                  const RobustDesign& design,
+                                  const RobustPhaseTrajectory& traj,
+                                  const RowVectorXd* theta_ref,
+                                  std::vector<double>& x, std::vector<double>& r,
+                                  double* control_excess)
 {
-    const int ns = model.nstates, nc = model.ncontrols;
-    const int ne = model.nevents, np = model.npath, npar = model.nparameters;
-    const int N  = (int) design.time.cols();
-    const int nrows = (int) design.controls.rows();
+    const int ns = phase.nstates, nc = phase.ncontrols;
+    const int ne = phase.nevents, np = phase.npath, npar = model.nparameters;
+    const int N  = (int) traj.time.cols();
+    const int nrows = (int) traj.controls.rows();
     const double inf = std::numeric_limits<double>::infinity();
-    if (control_excess) *control_excess = 0.0;
     if (N < 2) return inf;
-    if (!model.initial_state_fn && (int) model.initial_state.size() != ns) return inf;
 
-    const RobustControlShape shape = robust_control_shape(algorithm, design);
-    if (shape == ROBUST_PARABOLA && (int) design.controls_full.cols() != 2*N - 1)
+    const RobustControlShape shape = robust_control_shape(algorithm, traj.controls_full,
+                                                          traj.time_full);
+    if (shape == ROBUST_PARABOLA && (int) traj.controls_full.cols() != 2*N - 1)
         return inf;
 
     // With a gain the verifier has to integrate the REFERENCE beside the plant, because
@@ -885,19 +977,13 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
     for (int j = 0; j < npar && j < (int) design.parameters.size(); ++j)
         par[j] = design.parameters(j);
 
-    std::vector<double> x(ns), r(ns), y(ns), yr(ns), g(np > 0 ? np : 1, 0.0);
+    std::vector<double> y(ns), yr(ns), g(np > 0 ? np : 1, 0.0);
     std::vector<double> k1(ns), k2(ns), k3(ns), k4(ns);
     std::vector<double> r1(ns), r2(ns), r3(ns), r4(ns);
     std::vector<double> ufull(nrows > 0 ? nrows : 1), K(nc*ns > 0 ? nc*ns : 1);
     std::vector<double> ub(nc > 0 ? nc : 1), ur(nc > 0 ? nc : 1);
-    // Each trajectory starts where its own scenario says. Under a gain the reference is a
-    // different parameter from the plant, so the two need not start from the same point,
-    // and taking the plant's start for both would verify a controller whose reference is
-    // not the one it was designed against.
-    robust_initial_state(model, th, nt, &x[0]);
-    if (fb) robust_initial_state(model, thr_d, nthr, &r[0]);
-    else    for (int j = 0; j < ns; ++j) r[j] = x[j];
 
+    const std::vector<double> x0 = x;          // this phase's entry state, for its events
     double worst = 0.0, uex = 0.0;
 
     // The realised control at one instant, given the nominal column and both trajectories.
@@ -907,8 +993,8 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
     // Whether there are control bounds to hold the realised control against. A model that
     // declared none leaves the excess at zero, which is the truth: an unbounded actuator
     // cannot be asked for more than it has.
-    const bool ubounded = ((int) model.controls_lower.size() >= nc
-                           && (int) model.controls_upper.size() >= nc);
+    const bool ubounded = ((int) phase.controls_lower.size() >= nc
+                           && (int) phase.controls_upper.size() >= nc);
 
     struct Realise {
         const RobustModel& m; const RobustDesign& d; bool fb; bool ubounded;
@@ -937,39 +1023,39 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
     } realise = { model, design, fb, ubounded, &K[0], &ub[0], &ur[0], &uex };
 
     for (int i = 0; i < N - 1; ++i) {
-        const double ta = design.time(0, i);
-        const double h  = (design.time(0, i+1) - ta)/sub;
+        const double ta = traj.time(0, i);
+        const double h  = (traj.time(0, i+1) - ta)/sub;
         for (int s = 0; s < sub; ++s) {
             const double wA =  s        /(double) sub;
             const double wH = (s + 0.5) /(double) sub;
             const double wB = (s + 1.0) /(double) sub;
             const double tA = ta + s*h, tH = ta + (s + 0.5)*h, tB = ta + (s + 1.0)*h;
 
-            robust_control_at(design, shape, i, wA, nrows, &ufull[0]);
+            robust_control_at(traj, shape, i, wA, nrows, &ufull[0]);
             realise(&x[0], &r[0], &ufull[0], tA);
             if (np > 0) {
-                robust_dae_value(model, th, nt, &x[0], &ur[0], &par[0], tA, &k1[0], &g[0]);
+                robust_phase_dae_value(phase, model, th, nt, &x[0], &ur[0], &par[0], tA, &k1[0], &g[0]);
                 for (int j = 0; j < np; ++j) {
-                    const double sc = ((int) model.path_scale.size() > j)
-                                      ? model.path_scale(j) : 1.0;
+                    const double sc = ((int) phase.path_scale.size() > j)
+                                      ? phase.path_scale(j) : 1.0;
                     worst = std::max(worst,
-                                     robust_bound_excess(g[j], model.path_lower(j),
-                                                         model.path_upper(j), sc));
+                                     robust_bound_excess(g[j], phase.path_lower(j),
+                                                         phase.path_upper(j), sc));
                 }
             } else {
-                robust_dae_value(model, th, nt, &x[0], &ur[0], &par[0], tA, &k1[0], 0);
+                robust_phase_dae_value(phase, model, th, nt, &x[0], &ur[0], &par[0], tA, &k1[0], 0);
             }
-            if (fb) robust_dae_value(model, thr_d, nthr, &r[0], &ub[0], &par[0], tA,
+            if (fb) robust_phase_dae_value(phase, model, thr_d, nthr, &r[0], &ub[0], &par[0], tA,
                                      &r1[0], 0);
 
             for (int j = 0; j < ns; ++j) {
                 y[j]  = x[j] + 0.5*h*k1[j];
                 yr[j] = fb ? r[j] + 0.5*h*r1[j] : y[j];
             }
-            robust_control_at(design, shape, i, wH, nrows, &ufull[0]);
+            robust_control_at(traj, shape, i, wH, nrows, &ufull[0]);
             realise(&y[0], &yr[0], &ufull[0], tH);
-            robust_dae_value(model, th, nt, &y[0], &ur[0], &par[0], tH, &k2[0], 0);
-            if (fb) robust_dae_value(model, thr_d, nthr, &yr[0], &ub[0], &par[0], tH,
+            robust_phase_dae_value(phase, model, th, nt, &y[0], &ur[0], &par[0], tH, &k2[0], 0);
+            if (fb) robust_phase_dae_value(phase, model, thr_d, nthr, &yr[0], &ub[0], &par[0], tH,
                                      &r2[0], 0);
 
             for (int j = 0; j < ns; ++j) {
@@ -977,18 +1063,18 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
                 yr[j] = fb ? r[j] + 0.5*h*r2[j] : y[j];
             }
             realise(&y[0], &yr[0], &ufull[0], tH);
-            robust_dae_value(model, th, nt, &y[0], &ur[0], &par[0], tH, &k3[0], 0);
-            if (fb) robust_dae_value(model, thr_d, nthr, &yr[0], &ub[0], &par[0], tH,
+            robust_phase_dae_value(phase, model, th, nt, &y[0], &ur[0], &par[0], tH, &k3[0], 0);
+            if (fb) robust_phase_dae_value(phase, model, thr_d, nthr, &yr[0], &ub[0], &par[0], tH,
                                      &r3[0], 0);
 
             for (int j = 0; j < ns; ++j) {
                 y[j]  = x[j] + h*k3[j];
                 yr[j] = fb ? r[j] + h*r3[j] : y[j];
             }
-            robust_control_at(design, shape, i, wB, nrows, &ufull[0]);
+            robust_control_at(traj, shape, i, wB, nrows, &ufull[0]);
             realise(&y[0], &yr[0], &ufull[0], tB);
-            robust_dae_value(model, th, nt, &y[0], &ur[0], &par[0], tB, &k4[0], 0);
-            if (fb) robust_dae_value(model, thr_d, nthr, &yr[0], &ub[0], &par[0], tB,
+            robust_phase_dae_value(phase, model, th, nt, &y[0], &ur[0], &par[0], tB, &k4[0], 0);
+            if (fb) robust_phase_dae_value(phase, model, thr_d, nthr, &yr[0], &ub[0], &par[0], tB,
                                      &r4[0], 0);
 
             for (int j = 0; j < ns; ++j) {
@@ -1004,19 +1090,74 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
     }
 
     if (ne > 0) {
-        std::vector<double> e(ne), xi(ns);
-        robust_initial_state(model, th, nt, &xi[0]);
-        robust_events_value(model, th, nt, &xi[0], &x[0], &par[0],
-                            design.time(0, 0), design.time(0, N-1), &e[0]);
+        std::vector<double> e(ne);
+        robust_phase_events_value(phase, model, th, nt, &x0[0], &x[0], &par[0],
+                                  traj.time(0, 0), traj.time(0, N-1), &e[0]);
         for (int j = 0; j < ne; ++j) {
-            const double sc = ((int) model.event_scale.size() > j)
-                              ? model.event_scale(j) : 1.0;
+            const double sc = ((int) phase.event_scale.size() > j)
+                              ? phase.event_scale(j) : 1.0;
             worst = std::max(worst,
-                             robust_bound_excess(e[j], model.events_lower(j),
-                                                 model.events_upper(j), sc));
+                             robust_bound_excess(e[j], phase.events_lower(j),
+                                                 phase.events_upper(j), sc));
         }
     }
-    if (control_excess) *control_excess = uex;
+    if (control_excess && uex > *control_excess) *control_excess = uex;
+    return worst;
+}
+
+double robust_model_violation(const RobustModel& model, Alg& algorithm,
+                              const RowVectorXd& theta, const RobustDesign& design,
+                              const RowVectorXd* theta_ref, double* control_excess)
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    if (control_excess) *control_excess = 0.0;
+    if (!model.initial_state_fn
+        && (int) model.initial_state.size() != model.nstates) return inf;
+
+    const std::vector<const RobustPhase*> ph = robust_phase_list(model);
+    const int P = (int) ph.size();
+    const bool fb = robust_has_feedback(model);
+    const RowVectorXd& thr = (fb && theta_ref) ? *theta_ref : theta;
+
+    // A linkage of the caller's own that has no numerical companion cannot be crossed:
+    // carrying the state over unchanged would verify a trajectory the design does not
+    // have, and reporting a violation of infinity says so without pretending.
+    if (P > 1 && model.link && !model.jump) return inf;
+
+    std::vector<double> x(ph[0]->nstates), r(ph[0]->nstates);
+    robust_initial_state(model, theta.data(), (int) theta.size(), &x[0]);
+    if (fb) robust_initial_state(model, thr.data(), (int) thr.size(), &r[0]);
+    else    r = x;
+
+    double worst = 0.0;
+    for (int p = 1; p <= P; ++p) {
+        // A design that carries no phase vector is a single-phase design, and its five
+        // flat fields are that phase.
+        RobustPhaseTrajectory flat;
+        if (design.phase.empty()) {
+            flat.time = design.time; flat.controls = design.controls;
+            flat.states = design.states; flat.controls_full = design.controls_full;
+            flat.time_full = design.time_full;
+        }
+        const RobustPhaseTrajectory& traj =
+            design.phase.empty() ? flat : design.phase[p-1];
+        if (p > 1 && (int) design.phase.size() < p) return inf;
+
+        const double v = robust_verify_phase(model, *ph[p-1], algorithm, theta, design,
+                                             traj, theta_ref, x, r, control_excess);
+        if (!std::isfinite(v)) return inf;
+        worst = std::max(worst, v);
+
+        if (p < P) {
+            const int ns_next = ph[p]->nstates;
+            const double t_end = traj.time(0, traj.time.cols() - 1);
+            std::vector<double> xn(ns_next), rn(ns_next);
+            robust_cross_boundary(model, p, theta, &x[0], t_end, ns_next, &xn[0]);
+            if (fb) robust_cross_boundary(model, p, thr, &r[0], t_end, ns_next, &rn[0]);
+            else    rn = xn;
+            x = xn; r = rn;
+        }
+    }
     return worst;
 }
 
@@ -1054,23 +1195,35 @@ static bool robust_carries_cost(RobustRisk risk)
     return risk == ROBUST_MEAN_VARIANCE || risk == ROBUST_CVAR;
 }
 
-void robust_augmented_sizes(const RobustModel& model, int M, RobustRisk risk,
-                            int& nstates, int& ncontrols, int& nevents,
-                            int& npath, int& nparameters)
+void robust_augmented_phase_sizes(const RobustModel& model, const RobustPhase& phase,
+                                  int M, RobustRisk risk,
+                                  int& nstates, int& ncontrols, int& nevents,
+                                  int& npath, int& nparameters)
 {
     const bool cost = robust_carries_cost(risk);
     const bool fb   = robust_has_feedback(model) && M > 1;
-    nstates     = model.nstates*M + (cost ? M : 0);
-    ncontrols   = model.ncontrols + robust_gain_controls(model);
-    nevents     = model.nevents*M + (cost ? M : 0)
+    nstates     = phase.nstates*M + (cost ? M : 0);
+    ncontrols   = phase.ncontrols + robust_gain_controls(model);
+    nevents     = phase.nevents*M + (cost ? M : 0)
                   + (risk == ROBUST_CVAR ? M : 0);
     // Under feedback the REALISED control differs from scenario to scenario, so its bounds
     // are no longer the decision variable's bounds and have to be imposed as path rows,
     // one per control per corrected scenario. They are inequalities and cost no degrees of
     // freedom. Scenario 0 needs none: it is the reference and runs open loop.
-    npath       = model.npath*M + (fb ? model.ncontrols*(M - 1) : 0);
+    npath       = phase.npath*M + (fb ? phase.ncontrols*(M - 1) : 0);
+    // The static parameters are replicated in every phase and tied across the boundaries,
+    // PSOPT's parameters belonging to a phase and not to a problem. That is neutral in
+    // freedom, each copy bringing its own equality with it.
     nparameters = model.nparameters + robust_gain_parameters(model)
                   + (risk == ROBUST_CVAR ? M + 1 : 0);
+}
+
+void robust_augmented_sizes(const RobustModel& model, int M, RobustRisk risk,
+                            int& nstates, int& ncontrols, int& nevents,
+                            int& npath, int& nparameters)
+{
+    robust_augmented_phase_sizes(model, model, M, risk, nstates, ncontrols, nevents,
+                                 npath, nparameters);
 }
 
 double robust_integrand_value(const RobustModel& model,
@@ -1092,6 +1245,9 @@ double robust_integrand_value(const RobustModel& model,
 // problem.robust_data, which exists so that user_data stays the user's.
 struct RobustAugmentation {
     const RobustModel*       model;
+    // The phases in order, the first of them the model itself. One entry for a
+    // single-phase problem, which is what most of them are.
+    std::vector<const RobustPhase*> ph;
     std::vector<RowVectorXd> scenarios;
     RowVectorXd              weights;     // the quadrature rule's, zero for generated
     RobustRisk               risk;
@@ -1101,9 +1257,14 @@ struct RobustAugmentation {
         : model(0), risk(ROBUST_NOMINAL), cvar_alpha(0.9), mv_lambda(1.0) {}
 
     int  M()     const { return (int) scenarios.size(); }
+    int  P()     const { return (int) ph.size(); }
     bool cost()  const { return robust_carries_cost(risk); }
-    // Scenario k's cost state, which sits after every scenario's plant states.
-    int  cs(int k) const { return model->nstates*M() + k; }
+    // The phase PSOPT is asking about. Out of range it answers with the first, which is
+    // the only phase a single-phase problem has and the one every caller means.
+    const RobustPhase* p(int iphase) const
+    { return ph[(iphase >= 1 && iphase <= (int) ph.size()) ? iphase - 1 : 0]; }
+    // Scenario k's cost state in a phase, which sits after every scenario's plant states.
+    int  cs(int k, int iphase) const { return p(iphase)->nstates*M() + k; }
     // The parameter layout: the user's own, then a co-designed gain, then CVaR's eta and
     // slacks. Fixed in one place because four separate sites read it back.
     int  gain_par()   const { return model->nparameters; }
@@ -1146,11 +1307,12 @@ static void robust_gain_adouble(const RobustAugmentation& A, adouble* controls,
 // The control scenario k actually applies: the nominal history, plus the gain acting on
 // this scenario's deviation from the reference. Scenario 0 IS the reference, so its
 // deviation from itself is zero and it runs open loop by construction.
-static void robust_realised_control(const RobustAugmentation& A, int k,
+static void robust_realised_control(const RobustAugmentation& A, int k, int iphase,
                                     adouble* states, adouble* controls,
                                     adouble* parameters, adouble& time, adouble* u)
 {
-    const int nc = A.model->ncontrols, ns = A.model->nstates;
+    const RobustPhase* P = A.p(iphase);
+    const int nc = P->ncontrols, ns = P->nstates;
     for (int i = 0; i < nc; ++i) u[i] = controls[i];
     if (!A.feedback() || k == 0) return;
     std::vector<adouble> K(nc*ns);
@@ -1166,15 +1328,16 @@ static void robust_augmented_dae(adouble* derivatives, adouble* path, adouble* s
 {
     const RobustAugmentation& A =
         *((const RobustAugmentation*) workspace->problem->robust_data);
-    const int ns = A.model->nstates, np = A.model->npath, nc = A.model->ncontrols;
+    const RobustPhase* P = A.p(iphase);
+    const int ns = P->nstates, np = P->npath, nc = P->ncontrols;
     const int M  = (int) A.scenarios.size();
     std::vector<adouble> u(nc > 0 ? nc : 1);
     for (int i = 0; i < M; ++i) {
-        robust_realised_control(A, i, states, controls, parameters, time, &u[0]);
-        A.model->dae(derivatives + ns*i, np > 0 ? path + np*i : path,
-                     states + ns*i, &u[0], parameters, time,
-                     A.scenarios[i].data(), (int) A.scenarios[i].size(),
-                     xad, iphase, workspace);
+        robust_realised_control(A, i, iphase, states, controls, parameters, time, &u[0]);
+        P->dae(derivatives + ns*i, np > 0 ? path + np*i : path,
+               states + ns*i, &u[0], parameters, time,
+               A.scenarios[i].data(), (int) A.scenarios[i].size(),
+               xad, iphase, workspace);
     }
     // The realised control of every corrected scenario, so that the actuator's own limits
     // can be imposed on it. Without these rows the gain is free to ask for more torque
@@ -1182,7 +1345,8 @@ static void robust_augmented_dae(adouble* derivatives, adouble* path, adouble* s
     if (A.feedback()) {
         int r = np*M;
         for (int i = 1; i < M; ++i) {
-            robust_realised_control(A, i, states, controls, parameters, time, &u[0]);
+            robust_realised_control(A, i, iphase, states, controls, parameters, time,
+                                    &u[0]);
             for (int j = 0; j < nc; ++j) path[r++] = u[j];
         }
     }
@@ -1190,11 +1354,12 @@ static void robust_augmented_dae(adouble* derivatives, adouble* path, adouble* s
     // cost as a quantity of its own. Its derivative IS that scenario's integrand.
     if (A.cost())
         for (int i = 0; i < M; ++i) {
-            robust_realised_control(A, i, states, controls, parameters, time, &u[0]);
-            derivatives[A.cs(i)] =
-                A.model->integrand_cost
-                ? A.model->integrand_cost(states + ns*i, &u[0], parameters, time,
-                                          xad, iphase, workspace)
+            robust_realised_control(A, i, iphase, states, controls, parameters, time,
+                                    &u[0]);
+            derivatives[A.cs(i, iphase)] =
+                P->integrand_cost
+                ? P->integrand_cost(states + ns*i, &u[0], parameters, time,
+                                    xad, iphase, workspace)
                 : adouble(0.0);
         }
 }
@@ -1206,12 +1371,13 @@ static adouble robust_scenario_cost(const RobustAugmentation& A, int k,
                                     adouble* parameters, adouble& t0, adouble& tf,
                                     adouble* xad, int iphase, Workspace* workspace)
 {
-    const int ns = A.model->nstates;
-    adouble J = A.model->endpoint_cost
-                ? A.model->endpoint_cost(initial_states + ns*k, final_states + ns*k,
-                                         parameters, t0, tf, xad, iphase, workspace)
+    const RobustPhase* P = A.p(iphase);
+    const int ns = P->nstates;
+    adouble J = P->endpoint_cost
+                ? P->endpoint_cost(initial_states + ns*k, final_states + ns*k,
+                                   parameters, t0, tf, xad, iphase, workspace)
                 : adouble(0.0);
-    if (A.cost()) J += final_states[A.cs(k)];
+    if (A.cost()) J += final_states[A.cs(k, iphase)];
     return J;
 }
 
@@ -1222,19 +1388,20 @@ static void robust_augmented_events(adouble* e, adouble* initial_states,
 {
     const RobustAugmentation& A =
         *((const RobustAugmentation*) workspace->problem->robust_data);
-    const int ns = A.model->nstates, ne = A.model->nevents;
+    const RobustPhase* P = A.p(iphase);
+    const int ns = P->nstates, ne = P->nevents;
     const int M  = (int) A.scenarios.size();
     if (ne > 0)
         for (int i = 0; i < M; ++i)
-            A.model->events(e + ne*i, initial_states + ns*i, final_states + ns*i,
-                            parameters, t0, tf,
-                            A.scenarios[i].data(), (int) A.scenarios[i].size(),
-                            xad, iphase, workspace);
+            P->events(e + ne*i, initial_states + ns*i, final_states + ns*i,
+                      parameters, t0, tf,
+                      A.scenarios[i].data(), (int) A.scenarios[i].size(),
+                      xad, iphase, workspace);
     int k = ne*M;
     // Each cost state starts at zero, which is the one thing that makes its final value
     // the scenario's cost rather than the cost plus an arbitrary offset.
     if (A.cost())
-        for (int i = 0; i < M; ++i) e[k++] = initial_states[A.cs(i)];
+        for (int i = 0; i < M; ++i) e[k++] = initial_states[A.cs(i, iphase)];
     // Rockafellar and Uryasev: CVaR_alpha = min over eta of
     // eta + 1/(1-alpha) sum_k w_k [J_k - eta]+, with the positive part carried by a slack
     // static parameter per scenario rather than by a smoothed hinge. s_k >= J_k - eta and
@@ -1256,25 +1423,25 @@ static adouble robust_augmented_integrand(adouble* states, adouble* controls,
 {
     const RobustAugmentation& A =
         *((const RobustAugmentation*) workspace->problem->robust_data);
-    if (!A.model->integrand_cost) return adouble(0.0);
-    const int ns = A.model->nstates;
+    const RobustPhase* P = A.p(iphase);
+    if (!P->integrand_cost) return adouble(0.0);
+    const int ns = P->nstates;
     // Under a measure that carries cost states the objective is entirely an endpoint
     // expression in those states, so the augmented integrand is zero and the user's
     // integrand reaches the problem only through the cost-state derivatives.
     if (A.cost()) return adouble(0.0);
-    const int nc = A.model->ncontrols;
+    const int nc = P->ncontrols;
     std::vector<adouble> u(nc > 0 ? nc : 1);
     if (A.risk == ROBUST_NOMINAL) {
-        robust_realised_control(A, 0, states, controls, parameters, time, &u[0]);
-        return A.model->integrand_cost(states, &u[0], parameters, time,
-                                       xad, iphase, workspace);
+        robust_realised_control(A, 0, iphase, states, controls, parameters, time, &u[0]);
+        return P->integrand_cost(states, &u[0], parameters, time, xad, iphase, workspace);
     }
     adouble L = 0.0;
     for (int i = 0; i < A.M(); ++i) {
         if (A.w(i) == 0.0) continue;
-        robust_realised_control(A, i, states, controls, parameters, time, &u[0]);
-        L += A.w(i)*A.model->integrand_cost(states + ns*i, &u[0], parameters,
-                                            time, xad, iphase, workspace);
+        robust_realised_control(A, i, iphase, states, controls, parameters, time, &u[0]);
+        L += A.w(i)*P->integrand_cost(states + ns*i, &u[0], parameters,
+                                      time, xad, iphase, workspace);
     }
     return L;
 }
@@ -1305,21 +1472,70 @@ static adouble robust_augmented_endpoint(adouble* initial_states, adouble* final
         }
         return mean + A.mv_lambda*(second - mean*mean);
     }
-    if (!A.model->endpoint_cost) return adouble(0.0);
-    const int ns = A.model->nstates;
+    const RobustPhase* P = A.p(iphase);
+    if (!P->endpoint_cost) return adouble(0.0);
+    const int ns = P->nstates;
     if (A.risk == ROBUST_NOMINAL)
-        return A.model->endpoint_cost(initial_states, final_states, parameters,
-                                      t0, tf, xad, iphase, workspace);
+        return P->endpoint_cost(initial_states, final_states, parameters,
+                                t0, tf, xad, iphase, workspace);
     adouble phi = 0.0;
     for (int i = 0; i < M; ++i)
         if (A.w(i) != 0.0)
-            phi += A.w(i)*A.model->endpoint_cost(initial_states + ns*i,
-                                                 final_states + ns*i, parameters,
-                                                 t0, tf, xad, iphase, workspace);
+            phi += A.w(i)*P->endpoint_cost(initial_states + ns*i,
+                                           final_states + ns*i, parameters,
+                                           t0, tf, xad, iphase, workspace);
     return phi;
 }
 
 static void robust_no_linkages(adouble*, adouble*, Workspace*) {}
+
+// How many rows the driver's own linkage function writes per boundary: the states of every
+// scenario carried across, or the caller's own linkage once per scenario; the time, carried
+// across once because it is shared; and the static parameters, which PSOPT gives to a phase
+// and not to a problem, so a parameter shared by the phases is one copy per phase tied
+// together here. The parameter rows are neutral in freedom, each copy bringing its own
+// equality with it.
+static int robust_linkage_rows(const RobustAugmentation& A, int anpar)
+{
+    const RobustModel& m = *A.model;
+    const int per_scenario = m.link ? m.nlink : A.p(1)->nstates;
+    return per_scenario*A.M() + 1 + anpar;
+}
+
+static void robust_augmented_linkages(adouble* link, adouble* xad, Workspace* workspace)
+{
+    const RobustAugmentation& A =
+        *((const RobustAugmentation*) workspace->problem->robust_data);
+    const RobustModel& m = *A.model;
+    const int M = A.M(), anpar = workspace->problem->phases(1).nparameters;
+
+    int r = 0;
+    for (int b = 1; b < A.P(); ++b) {
+        const int nprev = A.p(b)->nstates, nnext = A.p(b+1)->nstates;
+        std::vector<adouble> xf(nprev*M + 8), xi(nnext*M + 8);
+        std::vector<adouble> pprev(anpar > 0 ? anpar : 1), pnext(anpar > 0 ? anpar : 1);
+        get_final_states(&xf[0],   xad, b,   workspace);
+        get_initial_states(&xi[0], xad, b+1, workspace);
+        adouble tf_prev = get_final_time(xad, b, workspace);
+        adouble t0_next = get_initial_time(xad, b+1, workspace);
+        if (anpar > 0) {
+            get_parameters(&pprev[0], xad, b,   workspace);
+            get_parameters(&pnext[0], xad, b+1, workspace);
+        }
+        for (int k = 0; k < M; ++k) {
+            if (m.link)
+                m.link(link + r, &xf[nprev*k], tf_prev, &xi[nnext*k], t0_next,
+                       &pprev[0], A.scenarios[k].data(), (int) A.scenarios[k].size(),
+                       m.link_data),
+                r += m.nlink;
+            else
+                for (int j = 0; j < nprev; ++j)
+                    link[r++] = xi[nnext*k + j] - xf[nprev*k + j];
+        }
+        link[r++] = t0_next - tf_prev;
+        for (int j = 0; j < anpar; ++j) link[r++] = pnext[j] - pprev[j];
+    }
+}
 
 // The warm start: each scenario's own plant integrated through the previous control.
 //
@@ -1342,22 +1558,25 @@ static void robust_no_linkages(adouble*, adouble*, Workspace*) {}
 //
 // Returns false when the integration did not stay finite even at the largest substep
 // count, which is the caller's signal to fall back to the nominal guess.
-static bool robust_warm_states(const RobustModel& model,
+static bool robust_warm_states(const RobustModel& model, const RobustPhase& phase,
                                const std::vector<RowVectorXd>& scenarios,
-                               const RobustDesign& previous, Alg& algorithm,
-                               MatrixXd& x_guess)
+                               const RobustDesign& previous,
+                               const MatrixXd& prev_time, const MatrixXd& prev_controls,
+                               const std::vector<double>& start,
+                               Alg& algorithm, MatrixXd& x_guess,
+                               std::vector<double>& finish)
 {
-    const int ns = model.nstates, nc = model.ncontrols, M = (int) scenarios.size();
-    const int N  = (int) previous.time.cols();
-    const int nrows = (int) previous.controls.rows();
-    if (N < 2 || (int) previous.controls.cols() != N) return false;
-    if (!model.initial_state_fn && (int) model.initial_state.size() != ns) return false;
+    const int ns = phase.nstates, nc = phase.ncontrols, M = (int) scenarios.size();
+    const int N  = (int) prev_time.cols();
+    const int nrows = (int) prev_controls.rows();
+    if (N < 2 || (int) prev_controls.cols() != N) return false;
+    if ((int) start.size() < ns*M)               return false;
 
     const bool held = is_multiple_shooting(algorithm)
                       && algorithm.ms_control_parameterisation == "constant";
     std::vector<double> par(model.nparameters > 0 ? model.nparameters : 1, 0.0);
-    for (int j = 0; j < model.nparameters && j < (int) previous.parameters.size(); ++j)
-        par[j] = previous.parameters(j);
+    for (int j = 0; j < model.nparameters && j < (int) model.guess_parameters.size(); ++j)
+        par[j] = model.guess_parameters(j);
 
     // With a gain, scenario 0 of the rule is the reference and every other plant is
     // driven by the correction against it. Without one there is no reference and each
@@ -1366,6 +1585,7 @@ static bool robust_warm_states(const RobustModel& model,
     const RowVectorXd& thr = scenarios[0];
 
     x_guess = zeros(ns*M, N);
+    finish.assign(ns*M, 0.0);
 
     for (int sub = (model.warm_substeps > 0 ? model.warm_substeps : 8);
          sub <= robust_warm_substeps_max; sub *= 2) {
@@ -1377,82 +1597,71 @@ static bool robust_warm_states(const RobustModel& model,
                                 uB(nrows > 0 ? nrows : 1);
             std::vector<double> K(nc*ns > 0 ? nc*ns : 1);
             std::vector<double> ur(nc > 0 ? nc : 1);
-            robust_initial_state(model, scenarios[i].data(), (int) scenarios[i].size(),
-                                 &x[0]);
-            if (fb) robust_initial_state(model, thr.data(), (int) thr.size(), &r[0]);
-            else    for (int j = 0; j < ns; ++j) r[j] = x[j];
-            for (int j = 0; j < ns; ++j) x_guess(ns*i + j, 0) = x[j];
-            // The realised control at one instant, the warm start's counterpart of the
-            // verifier's Realise: the four stages each need it at their own state, and a
-            // stage that used another stage's control would be integrating a different
-            // controller.
-            struct Realise {
-                const RobustModel& m; const RobustDesign& d; bool fb;
-                double* K; double* ur;
-                void operator()(const double* xx, const double* rr,
-                                const double* uf, double tt)
-                {
-                    const int nc = m.ncontrols, ns = m.nstates;
-                    for (int q = 0; q < nc; ++q) ur[q] = uf[q];
-                    if (!fb) return;
-                    robust_gain_double(m, d, uf, tt, K);
-                    for (int q = 0; q < nc; ++q)
-                        for (int j = 0; j < ns; ++j) ur[q] += K[q*ns + j]*(xx[j] - rr[j]);
-                }
-            } realise = { model, previous, fb, &K[0], &ur[0] };
-
+            for (int j = 0; j < ns; ++j) {
+                x[j] = start[ns*i + j];
+                r[j] = start[j];                 // the reference is scenario 0's start
+                x_guess(ns*i + j, 0) = x[j];
+            }
             for (int c = 0; c < N - 1 && ok; ++c) {
-                const double ta = previous.time(0, c);
-                const double h  = (previous.time(0, c+1) - ta)/sub;
-                for (int s = 0; s < sub; ++s) {
-                    const double w0 =  s        /(double) sub;
-                    const double wh = (s + 0.5) /(double) sub;
-                    const double w1 = (s + 1.0) /(double) sub;
+                const double ta = prev_time(0, c);
+                const double h  = (prev_time(0, c+1) - ta)/sub;
+                for (int s2 = 0; s2 < sub; ++s2) {
+                    const double w0 =  s2        /(double) sub;
+                    const double wh = (s2 + 0.5) /(double) sub;
+                    const double w1 = (s2 + 1.0) /(double) sub;
                     // Every row, not only the user's controls: a co-designed gain
                     // schedule rides in the trailing ones and robust_gain_double reads
                     // it from there.
                     for (int j = 0; j < nrows; ++j) {
-                        const double a = previous.controls(j, c);
-                        const double b = previous.controls(j, c+1);
-                        uA[j] = held ? a : a + w0*(b - a);
-                        uH[j] = held ? a : a + wh*(b - a);
-                        uB[j] = held ? a : a + w1*(b - a);
+                        const double aa = prev_controls(j, c);
+                        const double bb = prev_controls(j, c+1);
+                        uA[j] = held ? aa : aa + w0*(bb - aa);
+                        uH[j] = held ? aa : aa + wh*(bb - aa);
+                        uB[j] = held ? aa : aa + w1*(bb - aa);
                     }
                     const double* th = scenarios[i].data();
                     const int     nt = (int) scenarios[i].size();
                     const double* thr_d = thr.data();
                     const int     nthr  = (int) thr.size();
-                    const double  tA = ta + s*h, tH = ta + (s + 0.5)*h,
-                                  tB = ta + (s + 1.0)*h;
+                    const double  tA = ta + s2*h, tH = ta + (s2 + 0.5)*h,
+                                  tB = ta + (s2 + 1.0)*h;
 
-                    realise(&x[0], &r[0], &uA[0], tA);
-                    robust_dae_value(model, th, nt, &x[0], &ur[0], &par[0], tA, &k1[0], 0);
-                    if (fb) robust_dae_value(model, thr_d, nthr, &r[0], &uA[0], &par[0],
-                                             tA, &r1[0], 0);
+                    robust_warm_control(model, phase, previous, fb, &x[0], &r[0], &uA[0], tA,
+                                        &K[0], &ur[0]);
+                    robust_phase_dae_value(phase, model, th, nt, &x[0], &ur[0], &par[0],
+                                           tA, &k1[0], 0);
+                    if (fb) robust_phase_dae_value(phase, model, thr_d, nthr, &r[0],
+                                                   &uA[0], &par[0], tA, &r1[0], 0);
                     for (int j = 0; j < ns; ++j) {
                         y[j]  = x[j] + 0.5*h*k1[j];
                         yr[j] = fb ? r[j] + 0.5*h*r1[j] : y[j];
                     }
-                    realise(&y[0], &yr[0], &uH[0], tH);
-                    robust_dae_value(model, th, nt, &y[0], &ur[0], &par[0], tH, &k2[0], 0);
-                    if (fb) robust_dae_value(model, thr_d, nthr, &yr[0], &uH[0], &par[0],
-                                             tH, &r2[0], 0);
+                    robust_warm_control(model, phase, previous, fb, &y[0], &yr[0], &uH[0], tH,
+                                        &K[0], &ur[0]);
+                    robust_phase_dae_value(phase, model, th, nt, &y[0], &ur[0], &par[0],
+                                           tH, &k2[0], 0);
+                    if (fb) robust_phase_dae_value(phase, model, thr_d, nthr, &yr[0],
+                                                   &uH[0], &par[0], tH, &r2[0], 0);
                     for (int j = 0; j < ns; ++j) {
                         y[j]  = x[j] + 0.5*h*k2[j];
                         yr[j] = fb ? r[j] + 0.5*h*r2[j] : y[j];
                     }
-                    realise(&y[0], &yr[0], &uH[0], tH);
-                    robust_dae_value(model, th, nt, &y[0], &ur[0], &par[0], tH, &k3[0], 0);
-                    if (fb) robust_dae_value(model, thr_d, nthr, &yr[0], &uH[0], &par[0],
-                                             tH, &r3[0], 0);
+                    robust_warm_control(model, phase, previous, fb, &y[0], &yr[0], &uH[0], tH,
+                                        &K[0], &ur[0]);
+                    robust_phase_dae_value(phase, model, th, nt, &y[0], &ur[0], &par[0],
+                                           tH, &k3[0], 0);
+                    if (fb) robust_phase_dae_value(phase, model, thr_d, nthr, &yr[0],
+                                                   &uH[0], &par[0], tH, &r3[0], 0);
                     for (int j = 0; j < ns; ++j) {
                         y[j]  = x[j] + h*k3[j];
                         yr[j] = fb ? r[j] + h*r3[j] : y[j];
                     }
-                    realise(&y[0], &yr[0], &uB[0], tB);
-                    robust_dae_value(model, th, nt, &y[0], &ur[0], &par[0], tB, &k4[0], 0);
-                    if (fb) robust_dae_value(model, thr_d, nthr, &yr[0], &uB[0], &par[0],
-                                             tB, &r4[0], 0);
+                    robust_warm_control(model, phase, previous, fb, &y[0], &yr[0], &uB[0], tB,
+                                        &K[0], &ur[0]);
+                    robust_phase_dae_value(phase, model, th, nt, &y[0], &ur[0], &par[0],
+                                           tB, &k4[0], 0);
+                    if (fb) robust_phase_dae_value(phase, model, thr_d, nthr, &yr[0],
+                                                   &uB[0], &par[0], tB, &r4[0], 0);
 
                     for (int j = 0; j < ns; ++j) {
                         x[j] += (h/6.0)*(k1[j] + 2.0*k2[j] + 2.0*k3[j] + k4[j]);
@@ -1465,38 +1674,73 @@ static bool robust_warm_states(const RobustModel& model,
                     x_guess(ns*i + j, c+1) = x[j];
                 }
             }
+            if (ok) for (int j = 0; j < ns; ++j) finish[ns*i + j] = x[j];
         }
         if (ok) return true;
     }
     return false;
 }
 
+
 // Build the augmented problem for one scenario list. This is what spec.setup would have
 // been, and it is generated instead.
+// The phases of a model, in order: the model itself, which IS the first phase, and then
+// whatever later_phases holds. One entry for a single-phase problem.
+static std::vector<const RobustPhase*> robust_phase_list(const RobustModel& m)
+{
+    std::vector<const RobustPhase*> v;
+    v.push_back(&m);
+    for (size_t k = 0; k < m.later_phases.size(); ++k) v.push_back(&m.later_phases[k]);
+    return v;
+}
+
+// Where scenario k starts in phase p+1, given where it ended in phase p: the caller's jump
+// map if there is one, and otherwise continuity, which is what the driver's own linkage
+// rows impose when the caller declares no linkage of their own.
+static void robust_cross_boundary(const RobustModel& model, int from_phase,
+                                  const RowVectorXd& theta, const double* xf, double t,
+                                  int ns_next, double* x0)
+{
+    if (model.jump) {
+        model.jump(theta.data(), (int) theta.size(), from_phase, xf, t, x0,
+                   model.jump_data);
+        return;
+    }
+    for (int j = 0; j < ns_next; ++j) x0[j] = xf[j];
+}
+
 static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel& model,
                                const std::vector<RowVectorXd>& scenarios,
                                const RobustDesign& previous,
                                RobustAugmentation& aug, bool verbose)
 {
-    const int M   = (int) scenarios.size();
-    const int ns  = model.nstates, nc = model.ncontrols;
-    const int ne  = model.nevents, np = model.npath;
+    const int M = (int) scenarios.size();
 
     aug.model     = &model;
     aug.scenarios = scenarios;
+    aug.ph        = robust_phase_list(model);
+    const int P   = aug.P();
 
-    problem.nphases   = 1;
-    problem.nlinkages = 0;
+    // Sized from the first phase, the static parameters being the same in every one.
+    int anx = 0, anu = 0, ane = 0, anp = 0, anpar = 0;
+    robust_augmented_phase_sizes(model, model, M, aug.risk, anx, anu, ane, anp, anpar);
+
+    problem.nphases   = P;
+    problem.nlinkages = (P > 1) ? robust_linkage_rows(aug, anpar)*(P - 1) : 0;
     psopt_level1_setup(problem);
 
-    int anx = 0, anu = 0, ane = 0, anp = 0, anpar = 0;
-    robust_augmented_sizes(model, M, aug.risk, anx, anu, ane, anp, anpar);
-    problem.phases(1).nstates     = anx;
-    problem.phases(1).ncontrols   = anu;
-    problem.phases(1).nevents     = ane;
-    problem.phases(1).npath       = anp;
-    problem.phases(1).nparameters = anpar;
-    problem.phases(1).nodes       = model.nodes;
+    bool any_events = false;
+    for (int p = 1; p <= P; ++p) {
+        robust_augmented_phase_sizes(model, *aug.p(p), M, aug.risk,
+                                     anx, anu, ane, anp, anpar);
+        problem.phases(p).nstates     = anx;
+        problem.phases(p).ncontrols   = anu;
+        problem.phases(p).nevents     = ane;
+        problem.phases(p).npath       = anp;
+        problem.phases(p).nparameters = anpar;
+        problem.phases(p).nodes       = aug.p(p)->nodes;
+        if (ane > 0) any_events = true;
+    }
     psopt_level2_setup(problem, algorithm);
     // The one moment at which the caller's options can be set, because the call above has
     // just reset every one of them to its default. See RobustModel::configure.
@@ -1507,200 +1751,248 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
 
     problem.robust_data = (void*) &aug;
 
-    for (int i = 0; i < M; ++i)
-        for (int j = 0; j < ns; ++j) {
-            problem.phases(1).bounds.lower.states(ns*i + j) = model.states_lower(j);
-            problem.phases(1).bounds.upper.states(ns*i + j) = model.states_upper(j);
-        }
-    if (aug.cost())
-        for (int i = 0; i < M; ++i) {
-            problem.phases(1).bounds.lower.states(aug.cs(i)) = model.cost_lower;
-            problem.phases(1).bounds.upper.states(aug.cs(i)) = model.cost_upper;
-        }
-    for (int j = 0; j < nc; ++j) {
-        problem.phases(1).bounds.lower.controls(j) = model.controls_lower(j);
-        problem.phases(1).bounds.upper.controls(j) = model.controls_upper(j);
-    }
-    for (int i = 0; i < robust_gain_controls(model); ++i) {
-        problem.phases(1).bounds.lower.controls(nc + i) =
-            robust_gain_box(model.feedback_lower, i/ns, i%ns, nc*ns);
-        problem.phases(1).bounds.upper.controls(nc + i) =
-            robust_gain_box(model.feedback_upper, i/ns, i%ns, nc*ns);
-    }
-    for (int j = 0; j < model.nparameters; ++j) {
-        problem.phases(1).bounds.lower.parameters(j) = model.parameters_lower(j);
-        problem.phases(1).bounds.upper.parameters(j) = model.parameters_upper(j);
-    }
-    for (int i = 0; i < robust_gain_parameters(model); ++i) {
-        problem.phases(1).bounds.lower.parameters(aug.gain_par() + i) =
-            robust_gain_box(model.feedback_lower, i/ns, i%ns, nc*ns);
-        problem.phases(1).bounds.upper.parameters(aug.gain_par() + i) =
-            robust_gain_box(model.feedback_upper, i/ns, i%ns, nc*ns);
-    }
-    if (aug.risk == ROBUST_CVAR) {
-        // eta lives on the scale of the cost; each slack is the positive part of a
-        // difference of two costs, so it cannot exceed their range.
-        problem.phases(1).bounds.lower.parameters(aug.eta()) = model.cost_lower;
-        problem.phases(1).bounds.upper.parameters(aug.eta()) = model.cost_upper;
-        for (int i = 0; i < M; ++i) {
-            problem.phases(1).bounds.lower.parameters(aug.slack(i)) = 0.0;
-            problem.phases(1).bounds.upper.parameters(aug.slack(i)) =
-                model.cost_upper - model.cost_lower;
-        }
-    }
+    for (int p = 1; p <= P; ++p) {
+        const RobustPhase& ph = *aug.p(p);
+        const int ns = ph.nstates, nc = ph.ncontrols;
+        const int ne = ph.nevents, np = ph.npath;
+        robust_augmented_phase_sizes(model, ph, M, aug.risk, anx, anu, ane, anp, anpar);
 
-    // The tightening. Applied to the events and the path constraints, per scenario, and
-    // reported once rather than per scenario.
-    RowVectorXd emargin, pmargin;
-    int e_one_sided = 0, p_one_sided = 0;
-    (void) e_one_sided; (void) p_one_sided;   // reported once, by the driver
-    if (ne > 0)
-        robust_margins(model.events_lower, model.events_upper, model.tighten,
-                       emargin, e_one_sided);
-    if (np > 0)
-        robust_margins(model.path_lower, model.path_upper, model.tighten,
-                       pmargin, p_one_sided);
-
-    for (int i = 0; i < M; ++i) {
-        for (int j = 0; j < ne; ++j) {
-            const double lo = model.events_lower(j), up = model.events_upper(j);
-            const double mg = (up > lo) ? emargin(j) : 0.0;
-            problem.phases(1).bounds.lower.events(ne*i + j) = lo + mg;
-            problem.phases(1).bounds.upper.events(ne*i + j) = up - mg;
-        }
-        for (int j = 0; j < np; ++j) {
-            const double lo = model.path_lower(j), up = model.path_upper(j);
-            const double mg = (up > lo) ? pmargin(j) : 0.0;
-            problem.phases(1).bounds.lower.path(np*i + j) = lo + mg;
-            problem.phases(1).bounds.upper.path(np*i + j) = up - mg;
-        }
-    }
-
-    {
-        int k = ne*M;
-        if (aug.cost())
-            for (int i = 0; i < M; ++i, ++k) {
-                problem.phases(1).bounds.lower.events(k) = 0.0;
-                problem.phases(1).bounds.upper.events(k) = 0.0;
+        for (int i = 0; i < M; ++i)
+            for (int j = 0; j < ns; ++j) {
+                problem.phases(p).bounds.lower.states(ns*i + j) = ph.states_lower(j);
+                problem.phases(p).bounds.upper.states(ns*i + j) = ph.states_upper(j);
             }
-        if (aug.risk == ROBUST_CVAR)
-            for (int i = 0; i < M; ++i, ++k) {
-                problem.phases(1).bounds.lower.events(k) = 0.0;
-                problem.phases(1).bounds.upper.events(k) =
+        if (aug.cost())
+            for (int i = 0; i < M; ++i) {
+                problem.phases(p).bounds.lower.states(aug.cs(i, p)) = model.cost_lower;
+                problem.phases(p).bounds.upper.states(aug.cs(i, p)) = model.cost_upper;
+            }
+        for (int j = 0; j < nc; ++j) {
+            problem.phases(p).bounds.lower.controls(j) = ph.controls_lower(j);
+            problem.phases(p).bounds.upper.controls(j) = ph.controls_upper(j);
+        }
+        for (int i = 0; i < robust_gain_controls(model); ++i) {
+            problem.phases(p).bounds.lower.controls(nc + i) =
+                robust_gain_box(model.feedback_lower, i/ns, i%ns, nc*ns);
+            problem.phases(p).bounds.upper.controls(nc + i) =
+                robust_gain_box(model.feedback_upper, i/ns, i%ns, nc*ns);
+        }
+        for (int j = 0; j < model.nparameters; ++j) {
+            problem.phases(p).bounds.lower.parameters(j) = model.parameters_lower(j);
+            problem.phases(p).bounds.upper.parameters(j) = model.parameters_upper(j);
+        }
+        for (int i = 0; i < robust_gain_parameters(model); ++i) {
+            problem.phases(p).bounds.lower.parameters(aug.gain_par() + i) =
+                robust_gain_box(model.feedback_lower, i/ns, i%ns, nc*ns);
+            problem.phases(p).bounds.upper.parameters(aug.gain_par() + i) =
+                robust_gain_box(model.feedback_upper, i/ns, i%ns, nc*ns);
+        }
+        if (aug.risk == ROBUST_CVAR) {
+            // eta lives on the scale of the cost; each slack is the positive part of a
+            // difference of two costs, so it cannot exceed their range.
+            problem.phases(p).bounds.lower.parameters(aug.eta()) = model.cost_lower;
+            problem.phases(p).bounds.upper.parameters(aug.eta()) = model.cost_upper;
+            for (int i = 0; i < M; ++i) {
+                problem.phases(p).bounds.lower.parameters(aug.slack(i)) = 0.0;
+                problem.phases(p).bounds.upper.parameters(aug.slack(i)) =
                     model.cost_upper - model.cost_lower;
             }
-    }
+        }
 
-    if (aug.feedback()) {
-        // The user's own control bounds, on each corrected scenario's realised control. No
-        // margin: these are the actuator's limits, not a requirement the design is being
-        // asked to meet with room to spare.
-        int r = np*M;
-        for (int i = 1; i < M; ++i)
-            for (int j = 0; j < nc; ++j, ++r) {
-                problem.phases(1).bounds.lower.path(r) = model.controls_lower(j);
-                problem.phases(1).bounds.upper.path(r) = model.controls_upper(j);
+        // The tightening. Applied to the events and the path constraints, per scenario,
+        // and reported once rather than per scenario.
+        RowVectorXd emargin, pmargin;
+        int e_one_sided = 0, p_one_sided = 0;
+        (void) e_one_sided; (void) p_one_sided;   // reported once, by the driver
+        if (ne > 0)
+            robust_margins(ph.events_lower, ph.events_upper, model.tighten,
+                           emargin, e_one_sided);
+        if (np > 0)
+            robust_margins(ph.path_lower, ph.path_upper, model.tighten,
+                           pmargin, p_one_sided);
+
+        for (int i = 0; i < M; ++i) {
+            for (int j = 0; j < ne; ++j) {
+                const double lo = ph.events_lower(j), up = ph.events_upper(j);
+                const double mg = (up > lo) ? emargin(j) : 0.0;
+                problem.phases(p).bounds.lower.events(ne*i + j) = lo + mg;
+                problem.phases(p).bounds.upper.events(ne*i + j) = up - mg;
             }
-    }
+            for (int j = 0; j < np; ++j) {
+                const double lo = ph.path_lower(j), up = ph.path_upper(j);
+                const double mg = (up > lo) ? pmargin(j) : 0.0;
+                problem.phases(p).bounds.lower.path(np*i + j) = lo + mg;
+                problem.phases(p).bounds.upper.path(np*i + j) = up - mg;
+            }
+        }
 
-    problem.phases(1).bounds.lower.StartTime = model.t0_lower;
-    problem.phases(1).bounds.upper.StartTime = model.t0_upper;
-    problem.phases(1).bounds.lower.EndTime   = model.tf_lower;
-    problem.phases(1).bounds.upper.EndTime   = model.tf_upper;
+        {
+            int k = ne*M;
+            if (aug.cost())
+                for (int i = 0; i < M; ++i, ++k) {
+                    problem.phases(p).bounds.lower.events(k) = 0.0;
+                    problem.phases(p).bounds.upper.events(k) = 0.0;
+                }
+            if (aug.risk == ROBUST_CVAR)
+                for (int i = 0; i < M; ++i, ++k) {
+                    problem.phases(p).bounds.lower.events(k) = 0.0;
+                    problem.phases(p).bounds.upper.events(k) =
+                        model.cost_upper - model.cost_lower;
+                }
+        }
+
+        if (aug.feedback()) {
+            // The user's own control bounds, on each corrected scenario's realised
+            // control. No margin: these are the actuator's limits, not a requirement the
+            // design is being asked to meet with room to spare.
+            int r = np*M;
+            for (int i = 1; i < M; ++i)
+                for (int j = 0; j < nc; ++j, ++r) {
+                    problem.phases(p).bounds.lower.path(r) = ph.controls_lower(j);
+                    problem.phases(p).bounds.upper.path(r) = ph.controls_upper(j);
+                }
+        }
+
+        problem.phases(p).bounds.lower.StartTime = ph.t0_lower;
+        problem.phases(p).bounds.upper.StartTime = ph.t0_upper;
+        problem.phases(p).bounds.lower.EndTime   = ph.tf_lower;
+        problem.phases(p).bounds.upper.EndTime   = ph.tf_upper;
+    }
 
     problem.endpoint_cost  = &robust_augmented_endpoint;
     problem.integrand_cost = &robust_augmented_integrand;
     problem.dae            = &robust_augmented_dae;
-    problem.events         = (ne > 0) ? &robust_augmented_events : 0;
-    problem.linkages       = &robust_no_linkages;
+    problem.events         = any_events ? &robust_augmented_events : 0;
+    problem.linkages       = (P > 1) ? &robust_augmented_linkages : &robust_no_linkages;
 
-    // The guess. The warm start when there is a previous design and it integrated
-    // cleanly; the user's own nominal guess, replicated, otherwise.
-    MatrixXd x_guess;
-    bool warm = previous.valid
-                && robust_warm_states(model, scenarios, previous, algorithm, x_guess);
+    // ---- the guess -----------------------------------------------------------------
+    //
+    // The warm start when there is a previous design and every phase of it integrated
+    // cleanly; the user's own nominal guess, replicated, otherwise. The phases are chained:
+    // each one starts where the previous one finished, crossing the boundary by the jump
+    // map or by continuity, so a warm start for a multi-phase problem is one trajectory
+    // and not P unrelated ones.
+    std::vector<MatrixXd> x_guess(P);
+    bool warm = previous.valid && (int) previous.phase.size() >= P;
     if (warm) {
-        problem.phases(1).guess.controls = previous.controls;
-        problem.phases(1).guess.time     = previous.time;
-    } else {
-        const int N = (int) model.guess_time.cols();
-        x_guess = zeros(ns*M, N);
+        std::vector<double> start(aug.p(1)->nstates*M, 0.0), finish;
         for (int i = 0; i < M; ++i)
-            for (int j = 0; j < ns; ++j)
-                x_guess.row(ns*i + j) = model.guess_states.row(j);
-        problem.phases(1).guess.controls = model.guess_controls;
-        problem.phases(1).guess.time     = model.guess_time;
-        if (verbose && previous.valid)
-            printf("  the warm start did not stay finite at %d substeps or below; "
-                   "using the nominal guess\n", robust_warm_substeps_max);
-    }
-    // The cost states, seeded by integrating each scenario's integrand along the guessed
-    // arc. Zero would start a mean-variance or CVaR objective at a value its own
-    // trajectory contradicts, which is a poor place to start a nonconvex solve from.
-    if (aug.cost()) {
-        const int N = (int) problem.phases(1).guess.time.cols();
-        const MatrixXd& ug = problem.phases(1).guess.controls;
-        const MatrixXd& tg = problem.phases(1).guess.time;
-        MatrixXd full = zeros(anx, N);
-        full.topRows(ns*M) = x_guess.topRows(ns*M);
-        std::vector<double> par(model.nparameters > 0 ? model.nparameters : 1, 0.0);
-        for (int j = 0; j < model.nparameters
-                        && j < (int) model.guess_parameters.size(); ++j)
-            par[j] = model.guess_parameters(j);
-        for (int i = 0; i < M; ++i) {
-            double z = 0.0;
-            full(aug.cs(i), 0) = 0.0;
-            for (int c = 0; c < N - 1; ++c) {
-                std::vector<double> xa(ns), xb(ns), ua(nc > 0 ? nc : 1),
-                                    ub(nc > 0 ? nc : 1);
-                for (int j = 0; j < ns; ++j) {
-                    xa[j] = full(ns*i + j, c);
-                    xb[j] = full(ns*i + j, c+1);
-                }
-                for (int j = 0; j < nc; ++j) { ua[j] = ug(j, c); ub[j] = ug(j, c+1); }
-                const double La = robust_integrand_value(model, &xa[0], &ua[0], &par[0],
-                                                         tg(0, c));
-                const double Lb = robust_integrand_value(model, &xb[0], &ub[0], &par[0],
-                                                         tg(0, c+1));
-                z += 0.5*(La + Lb)*(tg(0, c+1) - tg(0, c));      // trapezoid
-                full(aug.cs(i), c+1) = z;
+            robust_initial_state(model, scenarios[i].data(), (int) scenarios[i].size(),
+                                 &start[aug.p(1)->nstates*i]);
+        for (int p = 1; p <= P && warm; ++p) {
+            const RobustPhase& ph = *aug.p(p);
+            if (!robust_warm_states(model, ph, scenarios, previous,
+                                    previous.phase[p-1].time,
+                                    previous.phase[p-1].controls,
+                                    start, algorithm, x_guess[p-1], finish))
+                { warm = false; break; }
+            if (p < P) {
+                const int ns_next = aug.p(p+1)->nstates;
+                std::vector<double> next(ns_next*M, 0.0);
+                const double t_end = previous.phase[p-1].time
+                                     (0, previous.phase[p-1].time.cols() - 1);
+                for (int i = 0; i < M; ++i)
+                    robust_cross_boundary(model, p, scenarios[i], &finish[ph.nstates*i],
+                                          t_end, ns_next, &next[ns_next*i]);
+                start = next;
             }
         }
-        x_guess = full;
     }
-    problem.phases(1).guess.states = x_guess;
-    if (anpar > 0) {
-        MatrixXd pg = zeros(anpar, 1);
-        for (int j = 0; j < model.nparameters
-                        && j < (int) model.guess_parameters.size(); ++j)
-            pg(j, 0) = model.guess_parameters(j);
-        // A co-designed gain starts from the previous solve's gain when the loop has one,
-        // and from model.feedback_guess otherwise. Starting at zero starts at the
-        // open-loop design, which is the expensive local minimum the gain exists to
-        // escape; and re-starting each iteration from the given guess throws away
-        // everything the loop has learned about the gain, when the scenario just added is
-        // one the previous gain nearly served.
-        const int ng = robust_gain_parameters(model);
-        for (int i = 0; i < ng; ++i) {
-            double g = 0.0;
-            if (previous.valid && (int) previous.parameters.size() >= aug.gain_par() + ng)
-                g = previous.parameters(aug.gain_par() + i);
-            else if (model.feedback_guess.size() == nc*ns)
-                g = model.feedback_guess(i/ns, i%ns);
-            pg(aug.gain_par() + i, 0) = g;
+    if (!warm && verbose && previous.valid)
+        printf("  the warm start did not stay finite at %d substeps or below; "
+               "using the nominal guess\n", robust_warm_substeps_max);
+
+    for (int p = 1; p <= P; ++p) {
+        const RobustPhase& ph = *aug.p(p);
+        const int ns = ph.nstates, nc = ph.ncontrols;
+        robust_augmented_phase_sizes(model, ph, M, aug.risk, anx, anu, ane, anp, anpar);
+        MatrixXd xg;
+        if (warm) {
+            xg = x_guess[p-1];
+            problem.phases(p).guess.controls = previous.phase[p-1].controls;
+            problem.phases(p).guess.time     = previous.phase[p-1].time;
+        } else {
+            const int N = (int) ph.guess_time.cols();
+            xg = zeros(ns*M, N);
+            for (int i = 0; i < M; ++i)
+                for (int j = 0; j < ns; ++j)
+                    xg.row(ns*i + j) = ph.guess_states.row(j);
+            problem.phases(p).guess.controls = ph.guess_controls;
+            problem.phases(p).guess.time     = ph.guess_time;
         }
-        problem.phases(1).guess.parameters = pg;
-    }
-    if (robust_gain_controls(model) > 0) {
-        const int N = (int) problem.phases(1).guess.time.cols();
-        MatrixXd ug = zeros(anu, N);
-        ug.topRows(nc) = problem.phases(1).guess.controls.topRows(nc);
-        for (int i = 0; i < robust_gain_controls(model); ++i) {
-            double g = (model.feedback_guess.size() == nc*ns)
-                       ? model.feedback_guess(i/ns, i%ns) : 0.0;
-            ug.row(nc + i) = g*ones(1, N);
+
+        // The cost states, seeded by integrating each scenario's integrand along the
+        // guessed arc. Zero would start a mean-variance or CVaR objective at a value its
+        // own trajectory contradicts, which is a poor place to start a nonconvex solve
+        // from. A measure that carries cost states is single-phase for now, which
+        // robust_model_is_usable refuses to let past.
+        if (aug.cost()) {
+            const int N = (int) problem.phases(p).guess.time.cols();
+            const MatrixXd& ug = problem.phases(p).guess.controls;
+            const MatrixXd& tg = problem.phases(p).guess.time;
+            MatrixXd full = zeros(anx, N);
+            full.topRows(ns*M) = xg.topRows(ns*M);
+            std::vector<double> par(model.nparameters > 0 ? model.nparameters : 1, 0.0);
+            for (int j = 0; j < model.nparameters
+                            && j < (int) model.guess_parameters.size(); ++j)
+                par[j] = model.guess_parameters(j);
+            for (int i = 0; i < M; ++i) {
+                double z = 0.0;
+                full(aug.cs(i, p), 0) = 0.0;
+                for (int c = 0; c < N - 1; ++c) {
+                    std::vector<double> xa(ns), xb(ns), ua(nc > 0 ? nc : 1),
+                                        ub(nc > 0 ? nc : 1);
+                    for (int j = 0; j < ns; ++j) {
+                        xa[j] = full(ns*i + j, c);
+                        xb[j] = full(ns*i + j, c+1);
+                    }
+                    for (int j = 0; j < nc; ++j) { ua[j] = ug(j, c); ub[j] = ug(j, c+1); }
+                    const double La = robust_integrand_value(model, &xa[0], &ua[0],
+                                                             &par[0], tg(0, c));
+                    const double Lb = robust_integrand_value(model, &xb[0], &ub[0],
+                                                             &par[0], tg(0, c+1));
+                    z += 0.5*(La + Lb)*(tg(0, c+1) - tg(0, c));      // trapezoid
+                    full(aug.cs(i, p), c+1) = z;
+                }
+            }
+            xg = full;
         }
-        problem.phases(1).guess.controls = ug;
+        problem.phases(p).guess.states = xg;
+
+        if (anpar > 0) {
+            MatrixXd pg = zeros(anpar, 1);
+            for (int j = 0; j < model.nparameters
+                            && j < (int) model.guess_parameters.size(); ++j)
+                pg(j, 0) = model.guess_parameters(j);
+            // A co-designed gain starts from the previous solve's gain when the loop has
+            // one, and from model.feedback_guess otherwise. Starting at zero starts at the
+            // open-loop design, which is the expensive local minimum the gain exists to
+            // escape; and re-starting each iteration from the given guess throws away
+            // everything the loop has learned about the gain, when the scenario just added
+            // is one the previous gain nearly served.
+            const int ng = robust_gain_parameters(model);
+            for (int i = 0; i < ng; ++i) {
+                double g = 0.0;
+                if (previous.valid
+                    && (int) previous.parameters.size() >= aug.gain_par() + ng)
+                    g = previous.parameters(aug.gain_par() + i);
+                else if (model.feedback_guess.size() == nc*ns)
+                    g = model.feedback_guess(i/ns, i%ns);
+                pg(aug.gain_par() + i, 0) = g;
+            }
+            problem.phases(p).guess.parameters = pg;
+        }
+        if (robust_gain_controls(model) > 0) {
+            const int N = (int) problem.phases(p).guess.time.cols();
+            MatrixXd ug = zeros(anu, N);
+            ug.topRows(nc) = problem.phases(p).guess.controls.topRows(nc);
+            for (int i = 0; i < robust_gain_controls(model); ++i) {
+                double g = (model.feedback_guess.size() == nc*ns)
+                           ? model.feedback_guess(i/ns, i%ns) : 0.0;
+                ug.row(nc + i) = g*ones(1, N);
+            }
+            problem.phases(p).guess.controls = ug;
+        }
     }
 }
 
@@ -1709,6 +2001,61 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
 static bool robust_model_is_usable(const RobustModel& model, RobustRisk risk,
                                    double cvar_alpha, bool verbose)
 {
+    const std::vector<const RobustPhase*> ph = robust_phase_list(model);
+    const int P = (int) ph.size();
+
+    for (int p = 1; p <= P; ++p) {
+        char where[64];
+        snprintf(where, sizeof where, "phase %d", p);
+        if (ph[p-1]->nstates <= 0 || !ph[p-1]->dae) {
+            error_message("psopt_solve_robust: every phase of spec.model needs at least "
+                          "nstates and dae");
+            return false;
+        }
+        if (ph[p-1]->nevents > 0 && !ph[p-1]->events) {
+            error_message("psopt_solve_robust: a phase of spec.model declares nevents "
+                          "but no events function");
+            return false;
+        }
+        if ((int) ph[p-1]->states_lower.size() != ph[p-1]->nstates ||
+            (int) ph[p-1]->states_upper.size() != ph[p-1]->nstates) {
+            error_message("psopt_solve_robust: every phase of spec.model needs nominal "
+                          "state bounds");
+            return false;
+        }
+        if (ph[p-1]->nodes.size() < 1 || (int) ph[p-1]->guess_time.cols() < 2) {
+            error_message("psopt_solve_robust: every phase of spec.model needs nodes and "
+                          "a nominal guess");
+            return false;
+        }
+    }
+
+    // What a second phase does not yet reach. Each of these is a real increment and not a
+    // guard against nonsense, so each says what it would take rather than only refusing.
+    if (P > 1 && robust_carries_cost(risk)) {
+        error_message("psopt_solve_robust: mean-variance and CVaR are single-phase for "
+                      "now. Each carries one cost state per scenario, and across a "
+                      "boundary that state has to be carried by the linkage and its "
+                      "Rockafellar-Uryasev rows moved to the final phase, which is the "
+                      "next increment. Expectation and the nominal measure work over any "
+                      "number of phases");
+        return false;
+    }
+    if (P > 1 && robust_has_feedback(model)) {
+        error_message("psopt_solve_robust: an ancillary gain is single-phase for now. A "
+                      "gain is ncontrols by nstates and those are a phase's, so a "
+                      "multi-phase tube needs one gain per phase and a rule for what "
+                      "happens to the correction at a boundary");
+        return false;
+    }
+    if (P > 1 && model.link && !model.jump) {
+        error_message("psopt_solve_robust: a model that declares its own linkage must "
+                      "also declare model.jump, which says the same thing in numbers. "
+                      "The verifier integrates one scenario across the boundary and "
+                      "cannot solve an implicit linkage, and carrying the state across "
+                      "unchanged would verify a trajectory the design does not have");
+        return false;
+    }
     if (model.nstates <= 0 || !model.dae) {
         error_message("psopt_solve_robust: spec.model needs at least nstates and dae");
         return false;

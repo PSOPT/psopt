@@ -989,14 +989,20 @@ RobustModel checkable_model(void)
     return m;
 }
 
-int try_solve(RobustModel& model)
+int try_solve_with(RobustModel& model, RobustSpec& spec)
 {
-    Prob problem; Alg algorithm; Sol solution; RobustSpec spec;
+    Prob problem; Alg algorithm; Sol solution;
     RowVectorXd mean(1);  mean << 0.0;
     MatrixXd    cov(1,1); cov  << 1.0;
     spec.uncertainty = robust_gaussian(mean, cov, 2.0);
     spec.verbose     = false;
     return psopt_solve_robust(solution, spec, model, problem, algorithm);
+}
+
+int try_solve(RobustModel& model)
+{
+    RobustSpec spec;
+    return try_solve_with(model, spec);
 }
 }  // namespace
 
@@ -1123,6 +1129,96 @@ TEST(Robust, ADesignCountsItsPhases)
     EXPECT_EQ(d.nphases(), 1);
     d.phase.resize(3);
     EXPECT_EQ(d.nphases(), 3);
+}
+
+// A model of several phases: the sizes are the phase's, and the parameters, which PSOPT
+// gives to a phase and not to a problem, are replicated in every one.
+TEST(Robust, PhaseSizesAreThePhasesOwn)
+{
+    RobustModel m = sized_model(4, 2, 8, 1, 3);
+    m.later_phases.resize(1);
+    m.later_phases[0].nstates   = 2;
+    m.later_phases[0].ncontrols = 1;
+    m.later_phases[0].nevents   = 3;
+    m.later_phases[0].npath     = 0;
+
+    int nx = 0, nu = 0, ne = 0, np = 0, npar = 0;
+    robust_augmented_phase_sizes(m, m, 5, ROBUST_NOMINAL, nx, nu, ne, np, npar);
+    EXPECT_EQ(nx, 4*5); EXPECT_EQ(nu, 2); EXPECT_EQ(ne, 8*5); EXPECT_EQ(np, 1*5);
+    EXPECT_EQ(npar, 3);
+
+    robust_augmented_phase_sizes(m, m.later_phases[0], 5, ROBUST_NOMINAL,
+                                 nx, nu, ne, np, npar);
+    EXPECT_EQ(nx, 2*5); EXPECT_EQ(nu, 1); EXPECT_EQ(ne, 3*5); EXPECT_EQ(np, 0);
+    EXPECT_EQ(npar, 3);          // the same parameters, one copy per phase
+
+    // The model's own call is the first phase, which is the whole of a single-phase
+    // problem and is what every existing model asks for.
+    int bx = 0, bu = 0, be = 0, bp = 0, bpar = 0;
+    robust_augmented_sizes(m, 5, ROBUST_NOMINAL, bx, bu, be, bp, bpar);
+    EXPECT_EQ(bx, 4*5); EXPECT_EQ(bu, 2); EXPECT_EQ(be, 8*5); EXPECT_EQ(bp, 1*5);
+}
+
+namespace {
+// A two-phase model that gets past the other checks, so that what the refusals below refuse
+// is the thing under test.
+RobustModel two_phase_model(void)
+{
+    RobustModel m = checkable_model();
+    m.later_phases.resize(1);
+    RobustPhase& q = m.later_phases[0];
+    q.nstates = 1; q.ncontrols = 1; q.nevents = 0; q.npath = 0;
+    q.dae = &disturbed_dae;
+    q.states_lower = -1.0*ones(1, 1); q.states_upper = ones(1, 1);
+    q.nodes.resize(1); q.nodes << 5;
+    q.guess_states   = zeros(1, 5);
+    q.guess_controls = zeros(1, 5);
+    q.guess_time     = linspace(1.0, 2.0, 5);
+    return m;
+}
+
+void a_link(adouble* link, adouble* xf, adouble& /*tf*/, adouble* xi, adouble& /*t0*/,
+            adouble*, const double*, int, void*)
+{ link[0] = xi[0] - 2.0*xf[0]; }
+}  // namespace
+
+// The three things a second phase does not yet reach, each refused in as many words rather
+// than assembled into something that looks right. They are increments, not nonsense.
+TEST(Robust, WhatASecondPhaseDoesNotYetReachIsRefused)
+{
+    RobustModel mv = two_phase_model();
+    mv.cost_lower = 0.0; mv.cost_upper = 10.0;
+    mv.integrand_cost = &quadratic_integrand;
+    RobustSpec s1; s1.risk = ROBUST_MEAN_VARIANCE;
+    EXPECT_THROW({ const int rc = try_solve_with(mv, s1); (void) rc; }, ErrorHandler);
+
+    RobustModel fb = two_phase_model();
+    fb.feedback_kind = ROBUST_FEEDBACK_CONSTANT;
+    fb.feedback_gain = zeros(1, 1);
+    RobustSpec s2;
+    EXPECT_THROW({ const int rc = try_solve_with(fb, s2); (void) rc; }, ErrorHandler);
+
+    // A linkage of the caller's own with no numerical companion: the verifier would have
+    // to cross the boundary by guessing.
+    RobustModel lk = two_phase_model();
+    lk.link = &a_link; lk.nlink = 1;
+    RobustSpec s3;
+    EXPECT_THROW({ const int rc = try_solve_with(lk, s3); (void) rc; }, ErrorHandler);
+}
+
+// And the same verifier says so on its own, without a solve: a violation of infinity for a
+// design it cannot follow across the boundary.
+TEST(Robust, TheVerifierRefusesALinkageItCannotCross)
+{
+    RobustModel m = two_phase_model();
+    m.link = &a_link; m.nlink = 1;
+    RobustDesign d = ramp_design(0.0, 2.0);
+    d.phase.resize(2);
+    d.phase[0] = d.phase[1] = RobustPhaseTrajectory();
+    d.phase[0].time = d.time; d.phase[0].controls = d.controls;
+    d.phase[1].time = d.time; d.phase[1].controls = d.controls;
+    Alg alg = ms_alg("linear");
+    EXPECT_TRUE(std::isinf(robust_model_violation(m, alg, one(0.25), d)));
 }
 
 }  // namespace
