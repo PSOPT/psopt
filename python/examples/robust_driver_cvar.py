@@ -121,7 +121,7 @@ def design(risk, M):
                    out_of_sample=0, wait_and_see=0, verbose=False)
     # The realised cost of THIS design on plants it never saw, by the driver's own cost
     # sweep, which shares the equations with the transcription and nothing else.
-    J = rp._costs_many(TEST, out.time, out.controls,
+    J = rp._costs_many(TEST, (out.time, out.controls),
                        np.asarray(out.design.parameters).ravel(), nsub=8)
     return out, J, time.time() - t0
 

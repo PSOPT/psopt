@@ -134,8 +134,8 @@ rp.uncertainty = Explicit([MEAN])
 nom = rp.solve(alg, slack=SLACK, scenarios="explicit", generate=False,
                out_of_sample=0, verbose=False)
 rp.uncertainty = Gaussian(mean=MEAN, cov=COV, truncate=2.5)
-nom_worst, nom_th = rp._worst_case(nom.time, nom.controls, np.zeros(0), 256, 3, 1)
-nom_score = rp._score(nom.time, nom.controls, np.zeros(0), 500, SLACK, 20260927)
+nom_worst, nom_th = rp._worst_case((nom.time, nom.controls), np.zeros(0), 256, 3, 1)
+nom_score = rp._score((nom.time, nom.controls), np.zeros(0), 500, SLACK, 20260927)
 
 print("\n  %-26s %10s %13s %20s" % ("design", "J", "worst in set", "at (w, mu)"))
 print("  %-26s %10.5f %13.3e   (%.4f, %.4f)"
@@ -152,9 +152,9 @@ print("  %-26s %10.5f %13.3e   (%.4f, %.4f)"
 PROBE = 5.0
 ph.bounds.lower.path = [PROBE]
 probe_set = rp.uncertainty.quasi_random(256, seed=3)
-dip_robust = PROBE - float(rp._violation_many(probe_set, out.time, out.controls,
+dip_robust = PROBE - float(rp._violation_many(probe_set, (out.time, out.controls),
                                               np.zeros(0)).max())
-dip_nominal = PROBE - float(rp._violation_many(probe_set, nom.time, nom.controls,
+dip_nominal = PROBE - float(rp._violation_many(probe_set, (nom.time, nom.controls),
                                                np.zeros(0)).max())
 ph.bounds.lower.path = [BARRIER]
 print("\n  lowest x1 reached anywhere in the uncertainty set")
@@ -178,7 +178,7 @@ grid = np.array([[a, b]
                  for a in np.linspace(MEAN[0] - 2.5 * SD[0], MEAN[0] + 2.5 * SD[0], g)
                  for b in np.linspace(MEAN[1] - 2.5 * SD[1], MEAN[1] + 2.5 * SD[1], g)])
 grid = np.array([t for t in grid if rp.uncertainty.contains(t)])
-grid_worst = float(rp._violation_many(grid, nom.time, nom.controls,
+grid_worst = float(rp._violation_many(grid, (nom.time, nom.controls),
                                       np.zeros(0)).max())
 print("\n  searching the NOMINAL design's worst case, on a budget of 256 points:")
 print("    a %dx%d lattice, %d of whose points are in the set : %.4f"

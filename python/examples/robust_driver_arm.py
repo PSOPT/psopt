@@ -130,7 +130,7 @@ rp.uncertainty = Explicit([[MU]])
 nom = rp.solve(alg, slack=SLACK, scenarios="explicit", generate=False,
                out_of_sample=0, verbose=False)
 rp.uncertainty = Gaussian(mean=[MU], cov=[[SIGMA ** 2]], truncate=3.0)
-nom_worst, nom_theta = rp._worst_case(nom.time, nom.controls, np.zeros(0),
+nom_worst, nom_theta = rp._worst_case((nom.time, nom.controls), np.zeros(0),
                                       128, 3, 1)
 
 print("\n  %-22s %9s %13s %11s" % ("design", "t_f", "worst in set", "at m_p"))
@@ -185,7 +185,7 @@ def miss_numpy(t, u, mp_grid, nsub=32):
 
 grid = np.linspace(MU - 3 * SIGMA, MU + 3 * SIGMA, 2001)
 mine = miss_numpy(out.time, out.controls, grid)
-theirs = rp._violation_many(grid.reshape(-1, 1), out.time, out.controls, np.zeros(0))
+theirs = rp._violation_many(grid.reshape(-1, 1), (out.time, out.controls), np.zeros(0))
 gap = float(np.max(np.abs(np.maximum(mine - DELTA, 0.0) - theirs)))
 print("\n  the driver's verifier against an independent NumPy RK4, over %d payloads:"
       % len(grid))

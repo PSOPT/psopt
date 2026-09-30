@@ -129,7 +129,7 @@ def solve(risk, scenarios, n=None):
     out = rp.solve(alg, slack=0.0, risk=risk, cvar_alpha=ALPHA, mv_lambda=LAM,
                    scenarios=scenarios, n_scenarios=n, generate=False,
                    out_of_sample=0, wait_and_see=0, verbose=False)
-    J = rp._costs_many(TEST, out.time, out.controls, np.zeros(0), nsub=8)
+    J = rp._costs_many(TEST, (out.time, out.controls), np.zeros(0), nsub=8)
     return out, J
 
 
@@ -145,7 +145,7 @@ gaps, base = [], {}
 for risk in ("expectation", "mean-variance", "cvar"):
     out, J5 = solve(risk, "sigma-points")
     base[risk] = (out, J5)
-    J = rp._costs_many(pts, out.time, out.controls, np.zeros(0), nsub=40)
+    J = rp._costs_many(pts, (out.time, out.controls), np.zeros(0), nsub=40)
     mean = float(np.dot(wts, J))
     var = float(np.dot(wts, J ** 2) - mean ** 2)
     if risk == "expectation":

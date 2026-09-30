@@ -260,7 +260,7 @@ truth_miss = {}
 for label, out in (("the point estimate alone", nominal),
                    ("the estimated covariance", posterior),
                    ("the same error bars, uncorrelated", diagonal)):
-    v = float(rp._violation_many(TRUE.reshape(1, 2), out.time, out.controls,
+    v = float(rp._violation_many(TRUE.reshape(1, 2), (out.time, out.controls),
                                  np.zeros(0))[0])
     truth_miss[label] = v
     flag = "  within" if v <= SLACK else "  OUTSIDE the declared ball"
@@ -272,7 +272,7 @@ worst = {}
 for label, out in (("the point estimate alone", nominal),
                    ("the estimated covariance", posterior),
                    ("the same error bars, uncorrelated", diagonal)):
-    w, _th = rp._worst_case(out.time, out.controls, np.zeros(0), 128, 3, 5)
+    w, _th = rp._worst_case((out.time, out.controls), np.zeros(0), 128, 3, 5)
     worst[label] = w
     print("  %-34s %14.3e%s" % (label, w, "" if w <= SLACK else "   fails"))
 

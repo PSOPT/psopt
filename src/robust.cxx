@@ -2130,18 +2130,28 @@ static bool robust_model_is_usable(const RobustModel& model, RobustRisk risk,
         return false;
     }
     if (verbose) {
+        // Over EVERY phase. The margins themselves are computed per phase where the
+        // augmentation applies them, so a report that read only the first phase would
+        // stay silent about a one-sided bound in the phase that carries the terminal
+        // condition, which is the phase where it matters most.
         RowVectorXd mg;
         int e1 = 0, p1 = 0;
-        if (model.nevents > 0)
-            robust_margins(model.events_lower, model.events_upper, model.tighten, mg, e1);
-        if (model.npath > 0)
-            robust_margins(model.path_lower, model.path_upper, model.tighten, mg, p1);
+        for (int p = 1; p <= P; ++p) {
+            int e = 0, q = 0;
+            if (ph[p-1]->nevents > 0)
+                robust_margins(ph[p-1]->events_lower, ph[p-1]->events_upper,
+                               model.tighten, mg, e);
+            if (ph[p-1]->npath > 0)
+                robust_margins(ph[p-1]->path_lower, ph[p-1]->path_upper,
+                               model.tighten, mg, q);
+            e1 += e; p1 += q;
+        }
         if (e1 + p1 > 0)
-            printf("\npsopt_solve_robust: %d event and %d path bound(s) are one-sided, "
-                   "so tighten gives them\n  no margin. A design left sitting on such a "
+            printf("\npsopt_solve_robust: %d event and %d path bound(s)%s are one-sided, "
+                   "so tighten gives\n  them no margin. A design left sitting on such a "
                    "bound is where the between-scenario\n  overshoot appears; widen the "
                    "bound or state it two-sided if the loop will not converge.\n",
-                   e1, p1);
+                   e1, p1, (P > 1) ? ", over all phases," : "");
     }
     return true;
 }

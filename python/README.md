@@ -239,6 +239,7 @@ what `run_all.py` reports.
 | `robust_driver_tube.py` | an ancillary feedback gain against open loop | the closed loop is checked against an independent implementation |
 | `robust_driver_gain.py` | who chooses the ancillary gain: given, scheduled, co-designed | a measured negative result --- the co-designed gain must be cheaper and must fail to certify |
 | `robust_driver_cvar.py` | a tail measure on a set dense enough to resolve its tail | CVaR must be WORSE in the tail than the mean-minimising design at sixteen scenarios and better at forty-eight |
+| `robust_driver_twophase.py` | a robust design over two phases joined by a linkage | the design must cross the boundary and an independent integrator that crosses it too must agree |
 | `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
 
 The first fourteen were run together on 17 September 2026 and passed;
@@ -535,15 +536,46 @@ At α = 0.75 the effect is much weaker and does not clearly favour CVaR at any d
 tried, which is consistent with `robust_driver_risk.py`'s own account: at a gentle level
 the tail is not where the action is.
 
-Not implemented: scenario-dependent static parameters, and multi-phase problems,
-which are refused rather than quietly mishandled. A given schedule `K(t)` is
-implemented but is not recommended: the front end emits the maths for CppAD to tape
-and refuses a branch on a symbolic value, so every interpolation is out and the
-schedule has to be a polynomial in `t`. On the arm the Riccati gain needs degree 9
-to fit to 3%, degree 3 misses by a factor of three, and at degree 9 the first solve
-does not converge. `"co-design-schedule"` exists because a gain carried as extra
-controls needs no basis and no branch; it is subject to the same objection as any
-other co-designed gain.
+Multi-phase problems are supported. `add_phase` may be called more than once, and
+`link_phases(a, b, jumps=None)` states what happens at the boundary: consecutive
+phases are joined by continuity when nothing says otherwise, and `jumps` gives a
+numerical jump map for a staging event. `robust_driver_twophase.py` is the worked
+example, and it is deliberately a problem whose answer is known, so that the four
+things the driver has to do at a boundary can each be checked: replicate the linkage
+once per scenario, chain the warm start across it, verify a trajectory that crosses
+it, and count the linkage equalities out of the degrees of freedom. Both verifiers
+cross the boundary: the fixed-step sweep the worst-case search uses, and the adaptive
+DOP853 cross-check the reported certificate comes from, so the drift between them
+still measures the step count on a problem of several phases. It has to. A drift
+measured on the first phase of three would say nothing about the step count over the
+other two, and a boundary is where a fixed step is most likely to be wrong, the node
+spacing there being whatever the two meshes happen to leave.
+
+One restriction is forced and not chosen. A phase has one `t0`, one `tf` and one
+control, so a boundary time is shared by every scenario, which makes a switching time
+a here-and-now decision committed before theta is revealed; letting scenario *k*
+switch at its own time would need *M* separate chains of phases, and those cannot
+share a control grid, which is what makes the design non-anticipative in the first
+place. A boundary triggered by a state event is therefore excluded.
+
+Still not implemented, and refused instead of quietly mishandled: scenario-dependent
+static parameters; static parameters of any kind on more than one phase; a
+cost-carrying risk measure, which is to say mean-variance or CVaR, on more than one
+phase; and an ancillary gain on more than one phase. The last three are refusals of
+scope and not of principle. A static parameter belongs to a phase in PSOPT and this
+front end's linkages carry states and time and nothing else, so on several phases
+each phase would optimise its own copy while the verification integrates one vector
+across all of them; tying the copies needs a linkage row per parameter per boundary.
+The other two add rows to the augmented problem whose placement across a chain of
+phases has not been measured, and a refusal is the answer until it has.
+
+A given schedule `K(t)` is implemented but is not recommended: the front end emits
+the maths for CppAD to tape and refuses a branch on a symbolic value, so every
+interpolation is out and the schedule has to be a polynomial in `t`. On the arm the
+Riccati gain needs degree 9 to fit to 3%, degree 3 misses by a factor of three, and
+at degree 9 the first solve does not converge. `"co-design-schedule"` exists because
+a gain carried as extra controls needs no basis and no branch; it is subject to the
+same objection as any other co-designed gain.
 
 One figure has moved and is flagged rather than quietly updated. `bryson_ir.py`
 reports the integrated residual, which is a feasibility measure rather than a

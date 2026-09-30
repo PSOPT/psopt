@@ -195,7 +195,7 @@ def closed_loop_miss(t, u, mp_grid, gain, nsub=32):
 
 grid = np.linspace(MU - 3 * SIGMA, MU + 3 * SIGMA, 601)
 mine = closed_loop_miss(tube.time, tube.controls, grid, GAIN)
-theirs = rp._violation_many(grid.reshape(-1, 1), tube.time, tube.controls,
+theirs = rp._violation_many(grid.reshape(-1, 1), (tube.time, tube.controls),
                             np.zeros(0))
 gap = float(np.max(np.abs(np.maximum(mine - DELTA, 0.0) - theirs)))
 
