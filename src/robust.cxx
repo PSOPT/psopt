@@ -595,14 +595,20 @@ namespace {
 struct OracleContext {
     RobustSpec*         spec;
     const RobustDesign* design;
+    Alg*                algorithm;
     long                calls;
+    OracleContext() : spec(0), design(0), algorithm(0), calls(0) {}
 };
 
 double oracle_bridge(const RowVectorXd& theta, void* user_data)
 {
     OracleContext* c = (OracleContext*) user_data;
     ++c->calls;
-    return c->spec->violation(theta, *c->design, c->spec->user_data);
+    if (c->spec->violation)
+        return c->spec->violation(theta, *c->design, c->spec->user_data);
+    // The caller supplied a model and no verifier of their own, so the library's is used.
+    // psopt_solve_robust has already refused the combination of no model and no verifier.
+    return robust_model_violation(*c->spec->model, *c->algorithm, theta, *c->design);
 }
 
 // Take a copy of what a solve produced. Sol cannot be held; this can.
@@ -615,7 +621,11 @@ RobustDesign design_of(Sol& solution, Prob& problem)
     if (problem.phases(1).nparameters > 0)
         d.parameters = solution.get_parameters_in_phase(1);
     d.objective = solution.get_cost();
-    d.valid     = true;
+    // Empty for every transcription that carries no midpoint control, which is what the
+    // accessor's contract promises, so no algorithm test is needed here.
+    d.controls_full = solution.get_hs_controls_in_phase(1);
+    d.time_full     = solution.get_hs_time_in_phase(1);
+    d.valid         = true;
     return d;
 }
 }
@@ -660,6 +670,163 @@ void robust_dae_value(const RobustModel& model, const double* theta, int ntheta,
 
     for (int j = 0; j < ns; ++j) derivatives[j] = da[j].value();
     if (path) for (int j = 0; j < np; ++j) path[j] = ga[j].value();
+}
+
+void robust_events_value(const RobustModel& model, const double* theta, int ntheta,
+                         const double* initial_states, const double* final_states,
+                         const double* parameters, double t0, double tf,
+                         double* e)
+{
+    const int ns = model.nstates, ne = model.nevents, npar = model.nparameters;
+    if (ne <= 0 || !model.events) return;
+
+    std::vector<adouble> xi(ns > 0 ? ns : 1), xf(ns > 0 ? ns : 1);
+    std::vector<adouble> pa(npar > 0 ? npar : 1), ea(ne);
+    adouble ta = t0, tb = tf;
+    for (int j = 0; j < ns;   ++j) xi[j] = initial_states[j];
+    for (int j = 0; j < ns;   ++j) xf[j] = final_states[j];
+    for (int j = 0; j < npar; ++j) pa[j] = parameters[j];
+
+    model.events(&ea[0], &xi[0], &xf[0], &pa[0], ta, tb, theta, ntheta, 0, 1, 0);
+    for (int j = 0; j < ne; ++j) e[j] = ea[j].value();
+}
+
+// The largest scaled amount by which a value falls outside [lo, hi]. Zero when inside.
+static double robust_bound_excess(double value, double lo, double up, double scale)
+{
+    const double s = (scale > 0.0) ? scale : 1.0;
+    double e = 0.0;
+    if (std::isfinite(lo) && value < lo) e = (lo - value)/s;
+    if (std::isfinite(up) && value > up) e = std::max(e, (value - up)/s);
+    if (!std::isfinite(value)) e = std::numeric_limits<double>::infinity();
+    return e;
+}
+
+// How the transcription reads the control between two stored values. A verification has to
+// use the same reading or it measures a different controller.
+namespace {
+enum RobustControlShape { ROBUST_HELD, ROBUST_LINEAR, ROBUST_PARABOLA };
+
+RobustControlShape robust_control_shape(Alg& algorithm, const RobustDesign& design)
+{
+    if (design.controls_full.cols() > 0 && design.time_full.cols() > 0)
+        return ROBUST_PARABOLA;
+    if (is_multiple_shooting(algorithm)
+        && algorithm.ms_control_parameterisation == "constant")
+        return ROBUST_HELD;
+    return ROBUST_LINEAR;
+}
+
+// The control on interval i at fraction w of it, as the design means it. For the parabola
+// the three values are the node, the midpoint and the next node, which controls_full holds
+// at columns 2i, 2i+1 and 2i+2.
+void robust_control_at(const RobustDesign& design, RobustControlShape shape,
+                       int i, double w, int nc, double* u)
+{
+    for (int j = 0; j < nc; ++j) {
+        const double a = design.controls(j, i), b = design.controls(j, i + 1);
+        if (shape == ROBUST_HELD) { u[j] = a; continue; }
+        if (shape == ROBUST_LINEAR) { u[j] = a + w*(b - a); continue; }
+        const double ua = design.controls_full(j, 2*i);
+        const double um = design.controls_full(j, 2*i + 1);
+        const double ub = design.controls_full(j, 2*i + 2);
+        // Lagrange through (0, ua), (1/2, um), (1, ub).
+        u[j] = (2.0*w - 1.0)*(w - 1.0)*ua - 4.0*w*(w - 1.0)*um + w*(2.0*w - 1.0)*ub;
+    }
+}
+}  // namespace
+
+double robust_model_violation(const RobustModel& model, Alg& algorithm,
+                              const RowVectorXd& theta, const RobustDesign& design)
+{
+    const int ns = model.nstates, nc = model.ncontrols;
+    const int ne = model.nevents, np = model.npath, npar = model.nparameters;
+    const int N  = (int) design.time.cols();
+    if (N < 2 || (int) model.initial_state.size() != ns)
+        return std::numeric_limits<double>::infinity();
+
+    const RobustControlShape shape = robust_control_shape(algorithm, design);
+    // controls_full must line up with the nodal table before it is trusted. Its even
+    // columns ARE the nodes, so the check is cheap and catches a mismatch rather than
+    // silently reading the wrong array.
+    if (shape == ROBUST_PARABOLA && (int) design.controls_full.cols() != 2*N - 1)
+        return std::numeric_limits<double>::infinity();
+
+    const int sub = (model.verify_substeps > 0) ? model.verify_substeps : 16;
+    const double* th = theta.data();
+    const int     nt = (int) theta.size();
+
+    std::vector<double> par(npar > 0 ? npar : 1, 0.0);
+    for (int j = 0; j < npar && j < (int) design.parameters.size(); ++j)
+        par[j] = design.parameters(j);
+
+    std::vector<double> x(ns), y(ns), k1(ns), k2(ns), k3(ns), k4(ns);
+    std::vector<double> uA(nc > 0 ? nc : 1), uH(nc > 0 ? nc : 1), uB(nc > 0 ? nc : 1);
+    std::vector<double> g(np > 0 ? np : 1, 0.0);
+    for (int j = 0; j < ns; ++j) x[j] = model.initial_state(j);
+
+    double worst = 0.0;
+
+    // The path constraints, sampled at every substep boundary. A path row imposed only at
+    // the nodes says nothing between them, which is where an ancillary correction or a
+    // fast mode puts its excursion.
+    for (int i = 0; i < N - 1; ++i) {
+        const double ta = design.time(0, i);
+        const double h  = (design.time(0, i+1) - ta)/sub;
+        for (int s = 0; s < sub; ++s) {
+            const double w0 =  s        /(double) sub;
+            const double wh = (s + 0.5) /(double) sub;
+            const double w1 = (s + 1.0) /(double) sub;
+            robust_control_at(design, shape, i, w0, nc, &uA[0]);
+            robust_control_at(design, shape, i, wh, nc, &uH[0]);
+            robust_control_at(design, shape, i, w1, nc, &uB[0]);
+
+            if (np > 0) {
+                robust_dae_value(model, th, nt, &x[0], &uA[0], &par[0], ta + s*h,
+                                 &k1[0], &g[0]);
+                for (int j = 0; j < np; ++j) {
+                    const double sc = ((int) model.path_scale.size() > j)
+                                      ? model.path_scale(j) : 1.0;
+                    worst = std::max(worst,
+                                     robust_bound_excess(g[j], model.path_lower(j),
+                                                         model.path_upper(j), sc));
+                }
+            } else {
+                robust_dae_value(model, th, nt, &x[0], &uA[0], &par[0], ta + s*h,
+                                 &k1[0], 0);
+            }
+            for (int j = 0; j < ns; ++j) y[j] = x[j] + 0.5*h*k1[j];
+            robust_dae_value(model, th, nt, &y[0], &uH[0], &par[0], ta + (s + 0.5)*h,
+                             &k2[0], 0);
+            for (int j = 0; j < ns; ++j) y[j] = x[j] + 0.5*h*k2[j];
+            robust_dae_value(model, th, nt, &y[0], &uH[0], &par[0], ta + (s + 0.5)*h,
+                             &k3[0], 0);
+            for (int j = 0; j < ns; ++j) y[j] = x[j] + h*k3[j];
+            robust_dae_value(model, th, nt, &y[0], &uB[0], &par[0], ta + (s + 1.0)*h,
+                             &k4[0], 0);
+            for (int j = 0; j < ns; ++j)
+                x[j] += (h/6.0)*(k1[j] + 2.0*k2[j] + 2.0*k3[j] + k4[j]);
+            for (int j = 0; j < ns; ++j)
+                if (!std::isfinite(x[j])) return std::numeric_limits<double>::infinity();
+        }
+    }
+
+    // The events, against the bounds the user DECLARED rather than the tightened ones the
+    // design was solved against.
+    if (ne > 0) {
+        std::vector<double> e(ne), xi(ns);
+        for (int j = 0; j < ns; ++j) xi[j] = model.initial_state(j);
+        robust_events_value(model, th, nt, &xi[0], &x[0], &par[0],
+                            design.time(0, 0), design.time(0, N-1), &e[0]);
+        for (int j = 0; j < ne; ++j) {
+            const double sc = ((int) model.event_scale.size() > j)
+                              ? model.event_scale(j) : 1.0;
+            worst = std::max(worst,
+                             robust_bound_excess(e[j], model.events_lower(j),
+                                                 model.events_upper(j), sc));
+        }
+    }
+    return worst;
 }
 
 // What the library needs in order to loop the user's nominal equations. Held in
@@ -968,18 +1135,25 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
 [[nodiscard]] int psopt_solve_robust(Sol& solution, RobustSpec& spec,
                                      Prob& problem, Alg& algorithm)
 {
-    if (!spec.violation) {
-        error_message("psopt_solve_robust: spec.violation must be supplied. The "
-                      "verification has to be independent of the transcription, and only "
-                      "the caller knows what that means for their problem");
-        return -1;
-    }
     if (!spec.setup && !spec.model) {
         error_message("psopt_solve_robust: supply either spec.setup, which builds the "
                       "augmented problem, or spec.model, which is the nominal problem "
                       "the driver augments itself");
         return -1;
     }
+    if (!spec.violation && !spec.model) {
+        error_message("psopt_solve_robust: spec.violation must be supplied when the "
+                      "augmentation is your own. The verification has to be independent "
+                      "of the transcription, and without a model the library has no "
+                      "equations of its own to build one from");
+        return -1;
+    }
+    spec.own_verifier = (spec.violation != 0);
+    if (spec.verbose && !spec.own_verifier)
+        printf("\npsopt_solve_robust: the certificate below comes from the library's own "
+               "integrator\n  (robust_model_violation), which is independent of the "
+               "TRANSCRIPTION and not of the library.\n  Set spec.violation to verify "
+               "against an implementation of your own instead.\n");
     if (spec.model && !robust_model_is_usable(*spec.model, spec.verbose)) return -1;
 
     // Lives as long as this call, because the augmented dae and events read it through
@@ -1097,9 +1271,10 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
         best = design_of(solution, problem);
 
         OracleContext ctx;
-        ctx.spec   = &spec;
-        ctx.design = &best;
-        ctx.calls  = 0;
+        ctx.spec      = &spec;
+        ctx.design    = &best;
+        ctx.algorithm = &algorithm;
+        ctx.calls     = 0;
         RowVectorXd  at;
         const double worst = robust_worst_case(spec.uncertainty, &oracle_bridge,
                                                &ctx, spec.n_seed, spec.n_refine,
@@ -1146,9 +1321,10 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
             const RobustDesign cold = design_of(solution, problem);
 
             OracleContext ctx;
-            ctx.spec   = &spec;
-            ctx.design = &cold;
-            ctx.calls  = 0;
+            ctx.spec      = &spec;
+            ctx.design    = &cold;
+            ctx.algorithm = &algorithm;
+            ctx.calls     = 0;
             RowVectorXd  cold_at;
             const double cold_worst =
                 robust_worst_case(spec.uncertainty, &oracle_bridge, &ctx,
@@ -1214,8 +1390,9 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
         printf("\n  scenarios in the final design : %d\n", (int) scenarios.size());
         printf("  objective                     : %.6f\n", best.objective);
         printf("  worst violation over the set  : %.3e\n", spec.certificate);
-        printf("  found over                    : %ld evaluations of the caller's\n",
-               spec.evaluations);
+        printf("  found over                    : %ld evaluations of %s\n",
+               spec.evaluations,
+               spec.own_verifier ? "the caller's" : "the library's");
         printf("                                  independent integrator; nothing\n");
         printf("                                  worse was found, which is not a\n");
         printf("                                  proof that nothing worse exists\n");

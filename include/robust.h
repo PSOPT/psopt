@@ -150,11 +150,28 @@ double robust_mahalanobis(const RobustUncertainty& U, const RowVectorXd& theta);
 // the trajectory to verify.
 struct RobustDesign {
     MatrixXd time;          // 1 x N
-    MatrixXd controls;      // ncontrols x N
+    MatrixXd controls;      // ncontrols x N, the nodal table
     MatrixXd states;        // nstates x N   (all scenario copies, as solved)
     MatrixXd parameters;    // static parameters, if any
     double   objective;
     bool     valid;
+
+    // The COMPLETE control history, node and midpoint values interleaved, and the times
+    // that go with it. Filled for the two transcriptions that carry a control at the
+    // midpoint of every interval, Hermite-Simpson and multiple shooting under the
+    // "quadratic" parameterisation, and empty for every other one, where the nodal table
+    // IS the history.
+    //
+    // Anything that has to reproduce the designed control must prefer these, a
+    // verification integrator above all. Reading the nodal values alone under those two
+    // parameterisations gives two thirds of the control variables and none of the
+    // curvature, and the error is not in the safe direction: a parabola read as a chord
+    // flatters a design as readily as it damns one, because the parabola lies outside the
+    // chord on one side. Measured on the two-link arm, the same Hermite-Simpson design is
+    // charged 8.3e-02 read correctly and 2.6e+00 read as chords, and the same multiple
+    // shooting quadratic design is charged 2.9 correctly and 1.8 as chords.
+    MatrixXd controls_full; // ncontrols x (2N-1), or empty
+    MatrixXd time_full;     // 1 x (2N-1), or empty
 
     RobustDesign() : objective(0.0), valid(false) {}
 };
@@ -338,6 +355,20 @@ struct RobustModel {
     // neighbouring scenarios is necessarily a little larger. 0.9 keeps nine tenths.
     double tighten;
 
+    // Per-constraint scale factors for the violation measure, so that a metre and a
+    // radian are not added together. One entry per nominal event and per nominal path
+    // constraint. Left empty they are all one and the measure is the raw infinity norm,
+    // which is right only when the constraints share units.
+    RowVectorXd event_scale, path_scale;
+
+    // Substeps per node interval in the DEFAULT verification integrator. Sixteen was
+    // measured on the arm: at eight the transcription reported a design landing exactly
+    // on its tolerance ball that an independent integrator found outside it, at sixteen
+    // the two agree to 2e-05, and at thirty-two to the printed precision. A setting
+    // validated on the nominal problem has to be validated again on the robust one,
+    // whose trajectory is longer and gentler.
+    int verify_substeps;
+
     // Substeps per node interval in the warm start's integration, doubled on demand.
     // The horizon being integrated over is a decision variable and a robust final time
     // grows as scenarios are added, so a count that was ample at the start need not be
@@ -365,7 +396,8 @@ struct RobustModel {
         : nstates(0), ncontrols(0), nevents(0), npath(0), nparameters(0),
           dae(0), events(0), endpoint_cost(0), integrand_cost(0),
           t0_lower(0.0), t0_upper(0.0), tf_lower(0.0), tf_upper(0.0),
-          tighten(0.9), warm_substeps(8), configure(0), configure_data(0) {}
+          tighten(0.9), verify_substeps(16), warm_substeps(8),
+          configure(0), configure_data(0) {}
 };
 
 const int robust_warm_substeps_max = 256;
@@ -471,8 +503,12 @@ struct RobustSpec {
                   const std::vector<RowVectorXd>& scenarios,
                   const RobustDesign& previous, void* user_data);
 
-    // The violation of the CURRENT design at one parameter vector, by the user's
-    // own independent integrator.
+    // The violation of the CURRENT design at one parameter vector, by the user's own
+    // independent integrator. Required when the augmentation is the caller's; optional
+    // when spec.model is set, in which case leaving it null selects
+    // robust_model_violation above and setting it overrides that with the caller's, which
+    // is the stronger claim. Read the note on robust_model_violation before relying on
+    // the default.
     double (*violation)(const RowVectorXd& theta, const RobustDesign& design,
                         void* user_data);
 
@@ -486,6 +522,9 @@ struct RobustSpec {
     long                     evaluations;     // violation calls that went into it
     int                      n_solves;        // calls to psopt()
     bool                     converged;       // nothing worse than slack was found
+    bool                     own_verifier;    // true when spec.violation produced the
+                                              // certificate, false when the library's
+                                              // robust_model_violation did
     bool                     budget_exhausted;// a solve starved of freedom
 
     RobustSpec()
@@ -493,8 +532,39 @@ struct RobustSpec {
           verbose(true), keep_padded_defect_rows(false), polish(true), model(0),
           setup(0), violation(0), user_data(0),
           certificate(0.0), evaluations(0), n_solves(0), converged(false),
-          budget_exhausted(false) {}
+          own_verifier(false), budget_exhausted(false) {}
 };
+
+// Evaluate a RobustModel's nominal events numerically at one scenario. The companion of
+// robust_dae_value, and needed for the same reason.
+void robust_events_value(const RobustModel& model, const double* theta, int ntheta,
+                         const double* initial_states, const double* final_states,
+                         const double* parameters, double t0, double tf,
+                         double* e);
+
+// How badly a design serves one parameter vector, by an integrator built from the model's
+// own equations. This is what psopt_solve_robust uses when the caller supplies a model and
+// leaves spec.violation null, and it is exposed so that a caller can call it directly,
+// compare it against a verifier of their own, or use it as the starting point for one.
+//
+// It integrates the plant from model.initial_state with a fixed-step RK4 at
+// model.verify_substeps steps per node interval, reading the control the way `algorithm`
+// means it: held under a constant parameterisation, the ramp under a linear one, and the
+// parabola through node, midpoint and node for the two that carry a midpoint control,
+// taken from design.controls_full. It returns the largest scaled amount by which the
+// trajectory falls outside the DECLARED event and path bounds, and zero when it stays
+// inside all of them. The declared bounds are the model's own, not the tightened ones the
+// design was solved against: the tightening is a margin for the design and not a change
+// to what is being verified.
+//
+// WHAT INDEPENDENCE THIS DOES AND DOES NOT GIVE. It is independent of the TRANSCRIPTION:
+// a different integrator, a different step control, its own code path, and it shares with
+// the solve only the user's equations. It is not independent of the LIBRARY. A design
+// checked against the integrator that produced it checks nothing, and this is not that,
+// but a caller who wants the stronger claim writes their own and sets spec.violation, as
+// examples/robust_arm does. The driver says which of the two produced a certificate.
+double robust_model_violation(const RobustModel& model, Alg& algorithm,
+                              const RowVectorXd& theta, const RobustDesign& design);
 
 // Which of two candidate designs the polish step keeps: prefer one the caller's own
 // violation function certifies, and among certified designs the cheaper; if neither

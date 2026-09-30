@@ -457,4 +457,160 @@ TEST(Robust, DaeValueToleratesANullPathPointer)
     EXPECT_DOUBLE_EQ(d[0], 2.0);
 }
 
+
+//////////////////////////////////////////////////////////////////////////
+//  The default verification integrator
+//////////////////////////////////////////////////////////////////////////
+
+namespace {
+// x' = theta*u, with the state also reported as a path quantity so that the between-node
+// sampling can be tested. theta scales the control, so one design serves several plants.
+void ramp_dae(adouble* d, adouble* path, adouble* x, adouble* u, adouble* /*p*/,
+              adouble& /*t*/, const double* theta, int /*ntheta*/,
+              adouble* /*xad*/, int /*iphase*/, Workspace* /*ws*/)
+{
+    d[0]    = theta[0]*u[0];
+    path[0] = x[0];
+}
+
+void terminal_event(adouble* e, adouble* /*xi*/, adouble* xf, adouble* /*p*/,
+                    adouble& /*t0*/, adouble& /*tf*/,
+                    const double* /*theta*/, int /*ntheta*/,
+                    adouble* /*xad*/, int /*iphase*/, Workspace* /*ws*/)
+{
+    e[0] = xf[0];
+}
+
+RobustModel ramp_model(double e_lo, double e_hi, double p_lo, double p_hi)
+{
+    RobustModel m;
+    m.nstates = 1; m.ncontrols = 1; m.nevents = 1; m.npath = 1;
+    m.dae = &ramp_dae; m.events = &terminal_event;
+    m.initial_state = zeros(1, 1);
+    m.events_lower  = e_lo*ones(1, 1);  m.events_upper = e_hi*ones(1, 1);
+    m.path_lower    = p_lo*ones(1, 1);  m.path_upper   = p_hi*ones(1, 1);
+    m.verify_substeps = 16;
+    return m;
+}
+
+RobustDesign ramp_design(double u0, double u1)
+{
+    RobustDesign d;
+    d.time = zeros(1, 2);      d.time(0, 0) = 0.0; d.time(0, 1) = 1.0;
+    d.controls = zeros(1, 2);  d.controls(0, 0) = u0; d.controls(0, 1) = u1;
+    d.valid = true;
+    return d;
+}
+
+Alg ms_alg(const char* parameterisation)
+{
+    Alg a;
+    a.transcription_method        = "multiple-shooting";
+    a.ms_control_parameterisation = parameterisation;
+    return a;
+}
+
+RowVectorXd one(double v) { RowVectorXd r(1); r << v; return r; }
+}  // namespace
+
+// The reading of the control between the nodes, which is the one thing a verification
+// integrator must not get wrong. One design, three readings, three answers computed by
+// hand: with u going 0 to 2 over a unit interval and x' = u,
+//
+//   held      x(1) = 0                            (the control never leaves its first value)
+//   linear    x(1) = (0 + 2)/2               = 1
+//   parabola  x(1) = integral of -2w^2 + 4w  = 4/3
+//
+// the parabola being the one through (0, 0), (1/2, 3/2) and (1, 2). The terminal bound is
+// [0, 1/2], so the excesses are 0, 1/2 and 5/6. A verifier reading that parabola as a chord
+// would report 1/2 for a design that misses by 5/6, and the error is not in the safe
+// direction either way, which is what this pins down.
+TEST(Robust, VerifierReadsTheControlTheWayTheTranscriptionMeansIt)
+{
+    RobustModel model = ramp_model(0.0, 0.5, -1.0e30, 1.0e30);
+    RobustDesign d = ramp_design(0.0, 2.0);
+
+    Alg held = ms_alg("constant");
+    EXPECT_NEAR(robust_model_violation(model, held, one(1.0), d), 0.0, 1.0e-10);
+
+    Alg linear = ms_alg("linear");
+    EXPECT_NEAR(robust_model_violation(model, linear, one(1.0), d), 0.5, 1.0e-10);
+
+    // The same nodal table, now with the midpoint the design actually carries.
+    d.controls_full = zeros(1, 3);
+    d.controls_full(0, 0) = 0.0; d.controls_full(0, 1) = 1.5; d.controls_full(0, 2) = 2.0;
+    d.time_full = zeros(1, 3);
+    d.time_full(0, 0) = 0.0; d.time_full(0, 1) = 0.5; d.time_full(0, 2) = 1.0;
+    Alg quad = ms_alg("quadratic");
+    EXPECT_NEAR(robust_model_violation(model, quad, one(1.0), d), 4.0/3.0 - 0.5, 1.0e-9);
+}
+
+// A path constraint has to be sampled BETWEEN the nodes. Here the trajectory leaves and
+// returns within a single interval: u going 2 to -2 gives x = 2w - 2w^2, whose peak is 1/2
+// at the midpoint and which ends at 0. The terminal bound is met and the path bound of 1/5
+// is exceeded by 3/10, which only an interior sample can see.
+TEST(Robust, VerifierSamplesPathConstraintsBetweenTheNodes)
+{
+    RobustModel model = ramp_model(-0.01, 0.01, -0.2, 0.2);
+    RobustDesign d = ramp_design(2.0, -2.0);
+    Alg alg = ms_alg("linear");
+    EXPECT_NEAR(robust_model_violation(model, alg, one(1.0), d), 0.3, 1.0e-9);
+}
+
+// The scales exist so that a metre and a radian are not added together, and they divide.
+TEST(Robust, VerifierAppliesTheConstraintScales)
+{
+    RobustModel model = ramp_model(-0.01, 0.01, -0.2, 0.2);
+    model.path_scale = 2.0*ones(1, 1);
+    RobustDesign d = ramp_design(2.0, -2.0);
+    Alg alg = ms_alg("linear");
+    EXPECT_NEAR(robust_model_violation(model, alg, one(1.0), d), 0.15, 1.0e-9);
+}
+
+// The scenario reaches the verifier as data too, so one design is scored against several
+// plants. Scaling theta scales the terminal state and so the excess beyond 1/2.
+TEST(Robust, VerifierScoresOneDesignAgainstSeveralPlants)
+{
+    RobustModel model = ramp_model(0.0, 0.5, -1.0e30, 1.0e30);
+    RobustDesign d = ramp_design(0.0, 2.0);
+    Alg alg = ms_alg("linear");
+    EXPECT_NEAR(robust_model_violation(model, alg, one(0.25), d), 0.0, 1.0e-10);
+    EXPECT_NEAR(robust_model_violation(model, alg, one(1.0),  d), 0.5, 1.0e-10);
+    EXPECT_NEAR(robust_model_violation(model, alg, one(2.0),  d), 1.5, 1.0e-10);
+}
+
+// A design whose integration leaves the finite numbers is infinitely bad, and must not come
+// back as a quiet zero or as a NaN. NaN does not compare, so a diverged trajectory reported
+// as one would be invisible to the worst-case search's running maximum, which is a failure
+// this project has already had once.
+TEST(Robust, VerifierReportsADivergedTrajectoryAsInfinite)
+{
+    RobustModel model = ramp_model(0.0, 0.5, -1.0e30, 1.0e30);
+    RobustDesign d = ramp_design(0.0, 2.0);
+    Alg alg = ms_alg("linear");
+    EXPECT_TRUE(std::isinf(robust_model_violation(model, alg, one(1.0e308), d)));
+}
+
+// A quadratic reading needs a control history of the right width, and a mismatch has to be
+// refused rather than read as whatever happens to be in the array.
+TEST(Robust, VerifierRefusesAMalformedControlHistory)
+{
+    RobustModel model = ramp_model(0.0, 0.5, -1.0e30, 1.0e30);
+    RobustDesign d = ramp_design(0.0, 2.0);
+    d.controls_full = zeros(1, 2);      // should be 2N-1 = 3
+    d.time_full     = zeros(1, 2);
+    Alg quad = ms_alg("quadratic");
+    EXPECT_TRUE(std::isinf(robust_model_violation(model, quad, one(1.0), d)));
+}
+
+// The events evaluated numerically, the companion of robust_dae_value.
+TEST(Robust, EventsValueAgreesWithTheHandWrittenArithmetic)
+{
+    RobustModel model = ramp_model(0.0, 0.5, -1.0, 1.0);
+    const double th = 1.0, xi = 0.0, xf = 0.37, par = 0.0;
+    double e = -1.0;
+    robust_events_value(model, &th, 1, &xi, &xf, &par, 0.0, 1.0, &e);
+    EXPECT_DOUBLE_EQ(e, 0.37);
+}
+
 }  // namespace
