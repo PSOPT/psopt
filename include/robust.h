@@ -417,6 +417,12 @@ typedef void (*RobustDaeFn)(adouble* derivatives, adouble* path, adouble* states
                             const double* theta, int ntheta,
                             adouble* xad, int iphase, Workspace* workspace);
 
+// The state a scenario starts from, when it depends on the uncertain parameter. Writes
+// nstates values. See RobustModel::initial_state_fn for what it is for and what it does
+// not do.
+typedef void (*RobustInitialStateFn)(const double* theta, int ntheta, double* x0,
+                                     void* user_data);
+
 typedef void (*RobustEventsFn)(adouble* e, adouble* initial_states,
                                adouble* final_states, adouble* parameters,
                                adouble& t0, adouble& tf,
@@ -456,11 +462,41 @@ struct RobustModel {
     MatrixXd    guess_time;        // 1 x N
     RowVectorXd guess_parameters;
 
-    // The state every scenario starts from, which the warm start integrates out of. It
-    // is asked for rather than read off the event bounds, because the driver cannot in
-    // general tell which events are the initial conditions, and guessing would put a
-    // silent error in the one place the warm start rests on.
+    // The state every scenario starts from, which the warm start and the verification
+    // integrate out of. It is asked for rather than read off the event bounds, because the
+    // driver cannot in general tell which events are the initial conditions, and guessing
+    // would put a silent error in the one place they both rest on.
     RowVectorXd initial_state;
+
+    // The same thing when the initial state DEPENDS ON THE PARAMETER, which is the case
+    // whenever the uncertainty is in where the plant starts rather than in how it behaves.
+    // Set this and `initial_state` is not read.
+    //
+    // What it changes and what it does not. The design already knows about a parameterised
+    // initial condition, because the nominal `events` receive theta and a caller writes
+    // e = x(t0) - x0(theta) there as they would write any other event. What the library
+    // cannot infer from that is the VALUE, so without this function the warm start and the
+    // verifier integrate every scenario out of the fixed vector above while the design
+    // holds each one to its own starting point, and the certificate is then about a
+    // different plant from the one that was designed. That failure is silent, which is why
+    // this exists.
+    //
+    // The function is called with a scenario and must write nstates values. It has to agree
+    // with the events: the library does not check that it does, having no way to, and a
+    // disagreement between them is the same silent error in a new place.
+    //
+    // Measured on x' = -x + u with x(0) = theta over a 3 sigma set of 0.3, brought to x = 1
+    // within 0.02. The DESIGN is right either way, at t_f = 2.8134, which is the closed form
+    // ln(0.3/(0.9*0.02)) this problem happens to have. What differs is the picture the
+    // library forms of it: with the function set the loop stops at five scenarios with a
+    // certificate of zero, which an integrator written independently of the library
+    // confirms; without it the loop runs to twelve scenarios chasing a violation of 3.0e-01
+    // that the same independent integrator puts at zero. The error runs pessimistic there
+    // because the initial condition is itself an event, and would run optimistic on a
+    // problem where it is not. What is common to both is that the certificate is not about
+    // the design.
+    RobustInitialStateFn initial_state_fn;
+    void*                initial_state_data;   // passed to it unchanged
 
     // Inward tightening of the design's constraints, as a fraction of each two-sided
     // half width, without which the generation loop cannot terminate: the scenarios are
@@ -532,6 +568,7 @@ struct RobustModel {
         : nstates(0), ncontrols(0), nevents(0), npath(0), nparameters(0),
           dae(0), events(0), endpoint_cost(0), integrand_cost(0),
           feedback_kind(ROBUST_FEEDBACK_NONE), feedback_schedule(0), feedback_data(0),
+          initial_state_fn(0), initial_state_data(0),
           t0_lower(0.0), t0_upper(0.0), tf_lower(0.0), tf_upper(0.0),
           cost_lower(std::numeric_limits<double>::quiet_NaN()),
           cost_upper(std::numeric_limits<double>::quiet_NaN()),
@@ -729,6 +766,13 @@ void robust_augmented_sizes(const RobustModel& model, int M, RobustRisk risk,
 double robust_integrand_value(const RobustModel& model,
                               const double* states, const double* controls,
                               const double* parameters, double time);
+
+// The state one scenario starts from: model.initial_state_fn if the caller set one, and
+// model.initial_state otherwise. Exposed because a caller who writes their own verifier
+// has to start it where the library's would, and because a caller who has a parameterised
+// initial condition needs one place that answers the question.
+void robust_initial_state(const RobustModel& model, const double* theta, int ntheta,
+                          double* x0);
 
 // Evaluate a RobustModel's nominal events numerically at one scenario. The companion of
 // robust_dae_value, and needed for the same reason.

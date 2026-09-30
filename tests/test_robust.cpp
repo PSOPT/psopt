@@ -481,6 +481,16 @@ void terminal_event(adouble* e, adouble* /*xi*/, adouble* xf, adouble* /*p*/,
     e[0] = xf[0];
 }
 
+// An event on the INITIAL state, for the test that the verifier hands the scenario's own
+// starting point to the events and not the model's fixed vector.
+void initial_state_event(adouble* e, adouble* xi, adouble* /*xf*/, adouble* /*p*/,
+                         adouble& /*t0*/, adouble& /*tf*/,
+                         const double* /*theta*/, int /*ntheta*/,
+                         adouble* /*xad*/, int /*iphase*/, Workspace* /*ws*/)
+{
+    e[0] = xi[0];
+}
+
 RobustModel ramp_model(double e_lo, double e_hi, double p_lo, double p_hi)
 {
     RobustModel m;
@@ -902,6 +912,64 @@ TEST(Robust, ASmallCorrectionLeavesNoControlExcess)
     const double v = robust_model_violation(closed, alg, one(0.5), design, &ref, &excess);
     EXPECT_GT(v, 0.0);
     EXPECT_DOUBLE_EQ(excess, 0.0);
+}
+
+namespace {
+// x0(theta) = theta, for a model whose uncertainty is in where the plant starts and not in
+// how it behaves. Written against the ramp model, whose dae is x' = theta*u.
+void theta_start(const double* theta, int /*ntheta*/, double* x0, void* /*user_data*/)
+{
+    x0[0] = theta[0];
+}
+}  // namespace
+
+// An initial state that depends on the parameter, which the verifier has to start from.
+// The ramp model has x' = theta*u, so with u going 0 to 2 over a unit interval read as a
+// ramp, x(1) = x0 + theta. At theta = 0.25 that is 0.25 + 0.25 = 0.5 when the start moves
+// with the parameter, against 0.25 when it does not, and the terminal bound [0, 0.2] turns
+// those into excesses of 0.3 and 0.05. A verifier that kept the fixed vector would report
+// the second for a design that achieves the first, which is the silent error this exists to
+// prevent.
+TEST(Robust, VerifierStartsWhereTheScenarioSays)
+{
+    RobustModel model = ramp_model(0.0, 0.2, -1.0e30, 1.0e30);
+    RobustDesign d = ramp_design(0.0, 2.0);
+    Alg linear = ms_alg("linear");
+
+    EXPECT_NEAR(robust_model_violation(model, linear, one(0.25), d), 0.05, 1.0e-10);
+
+    model.initial_state_fn = &theta_start;
+    EXPECT_NEAR(robust_model_violation(model, linear, one(0.25), d), 0.30, 1.0e-10);
+}
+
+// The events are evaluated at that same starting state, not at the vector. Here the event
+// is the FINAL state, so this pins the terminal reading; the initial-state reading is
+// pinned by the next test, where the event is the initial state itself.
+TEST(Robust, EventsSeeTheScenariosOwnInitialState)
+{
+    RobustModel model = ramp_model(-1.0e30, 1.0e30, -1.0e30, 1.0e30);
+    model.events        = &initial_state_event;
+    model.events_lower  = zeros(1, 1);
+    model.events_upper  = zeros(1, 1);
+    model.initial_state_fn = &theta_start;
+    RobustDesign d = ramp_design(0.0, 0.0);      // no control, so nothing but x0 matters
+    Alg linear = ms_alg("linear");
+    EXPECT_NEAR(robust_model_violation(model, linear, one(0.25), d), 0.25, 1.0e-12);
+}
+
+// With no function the fixed vector is used, which is what every existing model does and
+// what the driver's other tests rest on.
+TEST(Robust, TheFixedInitialStateIsTheDefault)
+{
+    RobustModel model = ramp_model(0.0, 0.2, -1.0e30, 1.0e30);
+    double x0 = -1.0;
+    const double th = 0.25;
+    robust_initial_state(model, &th, 1, &x0);
+    EXPECT_DOUBLE_EQ(x0, 0.0);
+
+    model.initial_state_fn = &theta_start;
+    robust_initial_state(model, &th, 1, &x0);
+    EXPECT_DOUBLE_EQ(x0, 0.25);
 }
 
 namespace {

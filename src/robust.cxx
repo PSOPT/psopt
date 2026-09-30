@@ -685,6 +685,18 @@ void robust_dae_value(const RobustModel& model, const double* theta, int ntheta,
     if (path) for (int j = 0; j < np; ++j) path[j] = ga[j].value();
 }
 
+void robust_initial_state(const RobustModel& model, const double* theta, int ntheta,
+                          double* x0)
+{
+    const int ns = model.nstates;
+    if (model.initial_state_fn) {
+        model.initial_state_fn(theta, ntheta, x0, model.initial_state_data);
+        return;
+    }
+    for (int j = 0; j < ns; ++j)
+        x0[j] = ((int) model.initial_state.size() > j) ? model.initial_state(j) : 0.0;
+}
+
 void robust_events_value(const RobustModel& model, const double* theta, int ntheta,
                          const double* initial_states, const double* final_states,
                          const double* parameters, double t0, double tf,
@@ -800,7 +812,8 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
     const int nrows = (int) design.controls.rows();
     const double inf = std::numeric_limits<double>::infinity();
     if (control_excess) *control_excess = 0.0;
-    if (N < 2 || (int) model.initial_state.size() != ns) return inf;
+    if (N < 2) return inf;
+    if (!model.initial_state_fn && (int) model.initial_state.size() != ns) return inf;
 
     const RobustControlShape shape = robust_control_shape(algorithm, design);
     if (shape == ROBUST_PARABOLA && (int) design.controls_full.cols() != 2*N - 1)
@@ -829,7 +842,13 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
     std::vector<double> r1(ns), r2(ns), r3(ns), r4(ns);
     std::vector<double> ufull(nrows > 0 ? nrows : 1), K(nc*ns > 0 ? nc*ns : 1);
     std::vector<double> ub(nc > 0 ? nc : 1), ur(nc > 0 ? nc : 1);
-    for (int j = 0; j < ns; ++j) x[j] = r[j] = model.initial_state(j);
+    // Each trajectory starts where its own scenario says. Under a gain the reference is a
+    // different parameter from the plant, so the two need not start from the same point,
+    // and taking the plant's start for both would verify a controller whose reference is
+    // not the one it was designed against.
+    robust_initial_state(model, th, nt, &x[0]);
+    if (fb) robust_initial_state(model, thr_d, nthr, &r[0]);
+    else    for (int j = 0; j < ns; ++j) r[j] = x[j];
 
     double worst = 0.0, uex = 0.0;
 
@@ -938,7 +957,7 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
 
     if (ne > 0) {
         std::vector<double> e(ne), xi(ns);
-        for (int j = 0; j < ns; ++j) xi[j] = model.initial_state(j);
+        robust_initial_state(model, th, nt, &xi[0]);
         robust_events_value(model, th, nt, &xi[0], &x[0], &par[0],
                             design.time(0, 0), design.time(0, N-1), &e[0]);
         for (int j = 0; j < ne; ++j) {
@@ -1284,7 +1303,7 @@ static bool robust_warm_states(const RobustModel& model,
     const int N  = (int) previous.time.cols();
     const int nrows = (int) previous.controls.rows();
     if (N < 2 || (int) previous.controls.cols() != N) return false;
-    if ((int) model.initial_state.size() != ns)       return false;
+    if (!model.initial_state_fn && (int) model.initial_state.size() != ns) return false;
 
     const bool held = is_multiple_shooting(algorithm)
                       && algorithm.ms_control_parameterisation == "constant";
@@ -1310,10 +1329,11 @@ static bool robust_warm_states(const RobustModel& model,
                                 uB(nrows > 0 ? nrows : 1);
             std::vector<double> K(nc*ns > 0 ? nc*ns : 1);
             std::vector<double> ur(nc > 0 ? nc : 1);
-            for (int j = 0; j < ns; ++j) {
-                x[j] = r[j] = model.initial_state(j);
-                x_guess(ns*i + j, 0) = x[j];
-            }
+            robust_initial_state(model, scenarios[i].data(), (int) scenarios[i].size(),
+                                 &x[0]);
+            if (fb) robust_initial_state(model, thr.data(), (int) thr.size(), &r[0]);
+            else    for (int j = 0; j < ns; ++j) r[j] = x[j];
+            for (int j = 0; j < ns; ++j) x_guess(ns*i + j, 0) = x[j];
             // The realised control at one instant, the warm start's counterpart of the
             // verifier's Realise: the four stages each need it at their own state, and a
             // stage that used another stage's control would be integrating a different
@@ -1645,10 +1665,13 @@ static bool robust_model_is_usable(const RobustModel& model, RobustRisk risk,
         error_message("psopt_solve_robust: spec.model needs at least nstates and dae");
         return false;
     }
-    if ((int) model.initial_state.size() != model.nstates) {
-        error_message("psopt_solve_robust: spec.model.initial_state must have nstates "
-                      "entries. The warm start integrates every scenario out of it, and "
-                      "it is not inferred from the event bounds");
+    if (!model.initial_state_fn
+        && (int) model.initial_state.size() != model.nstates) {
+        error_message("psopt_solve_robust: spec.model needs the state every scenario "
+                      "starts from, as initial_state with nstates entries or as "
+                      "initial_state_fn when it depends on the parameter. The warm start "
+                      "and the verification both integrate out of it, and it is not "
+                      "inferred from the event bounds");
         return false;
     }
     if ((int) model.states_lower.size() != model.nstates ||
