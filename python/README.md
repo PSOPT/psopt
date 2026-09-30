@@ -335,12 +335,17 @@ the trajectory has. The two co-designed forms need `.feedback_bounds = (lo, hi)`
 where each may be a scalar or an `(ncontrols, nstates)` array, and take
 `.feedback_guess` as a starting point.
 
-Co-design is easy to set up and does not work, and `robust_driver_gain.py` is the
-measurement. Every co-designed variant tried on the arm — constant and scheduled,
-bounds from wide to a box around a gain that certifies, scenario sets of three, nine
-and sixteen points — came out cheaper on the objective than the given LQR gain and
-failed its certificate, by between one and five orders of magnitude against a slack
-of 1e-3. The reason is structural. A scenario set enters the design as a constraint
+Co-design is easy to set up and cannot be relied on, and `robust_driver_gain.py` is the
+measurement. Every co-designed variant tried on the arm through this driver — constant
+and scheduled, bounds from wide to a box around a gain that certifies, scenario sets of
+three, nine and sixteen points — came out cheaper on the objective than the given LQR
+gain and failed its certificate, by between one and five orders of magnitude against a
+slack of 1e-3. The C++ driver, on the same problem with the same box and the same guess,
+reached a different local minimum where the co-designed gain does certify, at t_f 3.4210
+against 3.5583 for the given gain, and this driver's own verifier agrees when handed that
+design. So the outcome turns on which local minimum a solve reaches, which is exactly
+what makes a co-designed gain's cheaper objective worthless until it has been verified.
+The reason it turns on that at all is structural. A scenario set enters the design as a constraint
 set, so the gain is rewarded for making those M plants cheap and charged nothing for
 what it does to the rest of the family; and a gain multiplies a deviation that is
 itself a function of the uncertain parameter, so its leverage on an unsampled plant

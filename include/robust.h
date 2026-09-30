@@ -25,17 +25,26 @@
 // slot as psopt_solve_integer (include/integer_parameters.h): an outer loop over
 // an unmodified solver.
 //
-// WHAT THE USER STILL WRITES, AND WHY
+// WHAT THE USER WRITES, AND WHY THERE ARE TWO WAYS TO WRITE IT
 //
 // In the Python interface the driver builds the augmented problem itself, because
 // the user's equations arrive as CasADi expressions it can replicate. In C++ they
 // arrive as dae() and events() with fixed signatures, taped by CppAD, and nothing
-// can rewrite them. So in C++ the AUGMENTATION is the user's -- the dae loops over
-// the scenarios it finds in problem.user_data, exactly as examples/robust_arm.cxx
-// does -- and the DRIVER is the library's. That division is the honest one for
-// this language, and it is where the work actually is: the scenario rule, the
-// oracle, the warm start and the loop are the same for every problem, while the
-// augmented dae is three lines of the user's own.
+// can rewrite an existing pair. What the library can do is call a nominal pair that
+// takes the uncertain parameter as an extra argument, once per scenario, from inside
+// an augmented dae of its own. That is RobustModel, and a caller who fills one
+// writes the nominal problem and nothing else: the augmentation, the bounds with
+// their inward tightening, the warm start, the risk measure, the ancillary feedback
+// and the verification integrator are all the library's.
+//
+// The other way remains. A caller who fills spec.setup writes the augmented problem
+// themselves, as examples/robust_arm.cxx does, and supplies spec.violation to verify
+// it. That route is the one to take when the nominal equations cannot be evaluated
+// numerically -- a dae reading get_delayed_state or get_interpolated_state, for
+// instance -- and it is the stronger claim about a certificate, the verification then
+// sharing no code with the library at all. Both routes use the same driver: the
+// scenario rule, the oracle, the generation loop and the polish step are the same for
+// every problem either way.
 //
 // Copyright (c) Victor M. Becerra, 2026. Part of the PSOPT library (LGPL).
 
@@ -320,6 +329,81 @@ void robust_dof_message(Prob& problem, int iphase, int nscenarios, Alg& algorith
 // extra state per scenario whose derivative is that scenario's integrand and whose
 // initial value is pinned to zero. A state needs bounds, which is what
 // RobustModel::cost_lower and cost_upper are for.
+// Where the ancillary gain comes from, if there is one.
+//
+// A design with no gain is OPEN LOOP: one control history, committed before the
+// uncertainty is revealed, serving every plant in the set unaided. That is honest and over
+// a long horizon it is expensive, costing a factor of about three in final time on the
+// two-link arm. With a gain the design becomes a tube,
+//
+//     u_k(t) = u_bar(t) + K ( x_k(t) - x_ref(t) )
+//
+// in which u_bar remains the only control decision variable and the reference is scenario
+// 0 of the rule, the centre of the set, which therefore runs open loop by construction.
+// The design stays a here-and-now design: u_bar and K are both fixed before the parameter
+// is revealed and nothing adapts to it. What changes is that one history no longer has to
+// serve every plant by itself.
+//
+//   ROBUST_FEEDBACK_NONE       open loop.
+//   ROBUST_FEEDBACK_CONSTANT   a gain the caller gives, in model.feedback_gain.
+//   ROBUST_FEEDBACK_SCHEDULED  a gain the caller gives as a function of time, in
+//                              model.feedback_schedule. Unlike the Python driver, which
+//                              must emit its schedule for CppAD to tape and so is limited
+//                              to a polynomial in t, a C++ schedule is an ordinary adouble
+//                              function: an interpolant through the conditional helpers of
+//                              psopt.h, a table lookup, anything tape-safe.
+//   ROBUST_FEEDBACK_CODESIGN   the gain's entries become static parameters and are
+//                              optimised with the trajectory.
+//   ROBUST_FEEDBACK_CODESIGN_SCHEDULE
+//                              a time-varying gain optimised as extra CONTROLS, which is
+//                              the representation to reach for when a co-designed schedule
+//                              is wanted: the transcription already gives a control a time
+//                              profile at the resolution the trajectory has, so the gain
+//                              inherits one with no basis to choose.
+//
+// CO-DESIGN IS OFFERED AND IS NOT RELIABLE, and what that means is worth stating
+// carefully, because the measurements point both ways.
+//
+// Most co-designed variants tried on the two-link arm, constant and scheduled, with bounds
+// from wide to a box around a gain known to certify, on scenario sets of three, nine and
+// sixteen points, came out CHEAPER on the objective than a given LQR gain and FAILED their
+// certificate, by between one and five orders of magnitude against a slack of 1e-3. In one
+// run of the C++ driver a co-designed constant gain in a box of plus or minus five, started
+// from that LQR gain, certified: t_f 3.4210 against 3.5583 for the given gain, with no
+// violation anywhere in the set and a realised control 6.4e-04 outside its bounds, and
+// three integrators written independently of each other agree on that verdict. The Python
+// driver on the same problem, the same box and the same guess reached a different local
+// minimum at nearly the same objective which misses by 6.1e-02, and Python's verifier
+// passes the C++ design when handed it, so the disagreement is between the two SOLVES and
+// not between the two verifications.
+//
+// So a co-designed gain sometimes certifies, and whether it does is a property of the local
+// minimum the solve happens to reach and not of the formulation. The reason it cannot be
+// relied on is structural. A scenario set enters the design as a constraint set, so the
+// gain is rewarded for making those M plants cheap and charged nothing for what it does to
+// the rest of the family; and a gain multiplies a deviation that is itself a function of
+// the uncertain parameter, so its leverage on an unsampled plant is bounded by nothing the
+// design can see. Neither a denser set nor a tighter bound repairs that. A gain chosen by a
+// criterion that quantifies over the whole family, which is what solving a Riccati equation
+// does, carries no such hazard.
+//
+// The practical reading: co-design is worth trying, its result is worth nothing until
+// verified, and the verification is where the decision is made. The driver reports the
+// largest entry of the gain it designed and how many entries sit on their bound, because a
+// gain held at its bound is being chosen by the bound and not by the problem.
+enum RobustFeedbackKind {
+    ROBUST_FEEDBACK_NONE = 0,
+    ROBUST_FEEDBACK_CONSTANT,
+    ROBUST_FEEDBACK_SCHEDULED,
+    ROBUST_FEEDBACK_CODESIGN,
+    ROBUST_FEEDBACK_CODESIGN_SCHEDULE
+};
+
+// A gain schedule the caller gives. `gain` receives ncontrols*nstates entries in row-major
+// order and is written in adouble arithmetic, because it is evaluated inside the taped
+// dae where the time may itself depend on a free final time.
+typedef void (*RobustGainFn)(adouble& time, adouble* gain, void* user_data);
+
 enum RobustRisk {
     ROBUST_NOMINAL = 0,
     ROBUST_EXPECTATION,
@@ -383,6 +467,22 @@ struct RobustModel {
     // neighbouring scenarios is necessarily a little larger. 0.9 keeps nine tenths.
     double tighten;
 
+    // ---- the ancillary gain, if any ---------------------------------------
+    RobustFeedbackKind feedback_kind;
+    MatrixXd           feedback_gain;      // ncontrols x nstates, for CONSTANT
+    RobustGainFn       feedback_schedule;  // for SCHEDULED
+    void*              feedback_data;      // passed to feedback_schedule
+    // Bounds on a co-designed gain's entries, each either 1x1 and broadcast or
+    // ncontrols x nstates. A co-designed gain is a decision variable and nothing else
+    // bounds it; an unbounded one runs away into saturation, where the realised control is
+    // not the control that was designed. Required by the two co-designed kinds.
+    MatrixXd           feedback_lower, feedback_upper;
+    // A gain to start a co-design from. Starting at zero starts it at the open-loop
+    // design, which is the expensive local minimum the gain exists to escape. Once the
+    // generation loop has a gain of its own the setup starts from THAT instead, the
+    // scenario being added being one the previous gain nearly served.
+    MatrixXd           feedback_guess;
+
     // The range each scenario's cost is certainly inside, needed by the two risk
     // measures that carry that cost as a state. Asked for rather than guessed: a bound
     // that turned out to be active would silently change the risk measure into
@@ -430,6 +530,7 @@ struct RobustModel {
     RobustModel()
         : nstates(0), ncontrols(0), nevents(0), npath(0), nparameters(0),
           dae(0), events(0), endpoint_cost(0), integrand_cost(0),
+          feedback_kind(ROBUST_FEEDBACK_NONE), feedback_schedule(0), feedback_data(0),
           t0_lower(0.0), t0_upper(0.0), tf_lower(0.0), tf_upper(0.0),
           cost_lower(std::numeric_limits<double>::quiet_NaN()),
           cost_upper(std::numeric_limits<double>::quiet_NaN()),
@@ -574,6 +675,19 @@ struct RobustSpec {
     long                     evaluations;     // violation calls that went into it
     int                      n_solves;        // calls to psopt()
     bool                     converged;       // nothing worse than slack was found
+    // The largest amount by which the realised control of the final design leaves the
+    // user's control bounds, sampled between the nodes where nothing constrains it. Zero
+    // without feedback. A design whose corrections quietly ask for more actuator than
+    // exists is one no plant can execute, whatever its certificate says about the states.
+    double                   control_excess;
+    RowVectorXd              reference_parameter;  // scenario 0 of the starting rule
+    // A co-designed gain sitting on its bound is the signature of the failure the note on
+    // RobustFeedbackKind records: the optimiser is paid in cost for a gain it is not
+    // charged for, so it takes all the gain it is allowed. Reported and not refused,
+    // because a gain on its bound is still a valid design if it certifies, and if it does
+    // not this says where to look first. Zero for every kind of gain the caller gives.
+    int                      gain_entries, gain_on_bound;
+    double                   gain_norm;       // the largest |K| entry of the design
     bool                     own_verifier;    // true when spec.violation produced the
                                               // certificate, false when the library's
                                               // robust_model_violation did
@@ -585,6 +699,7 @@ struct RobustSpec {
           verbose(true), keep_padded_defect_rows(false), polish(true), model(0),
           setup(0), violation(0), user_data(0),
           certificate(0.0), evaluations(0), n_solves(0), converged(false),
+          control_excess(0.0), gain_entries(0), gain_on_bound(0), gain_norm(0.0),
           own_verifier(false), budget_exhausted(false) {}
 };
 
@@ -642,8 +757,19 @@ void robust_events_value(const RobustModel& model, const double* theta, int nthe
 // checked against the integrator that produced it checks nothing, and this is not that,
 // but a caller who wants the stronger claim writes their own and sets spec.violation, as
 // examples/robust_arm does. The driver says which of the two produced a certificate.
+// Under an ancillary gain two further arguments matter, and both default so that code
+// written against the open-loop version keeps compiling. `theta_ref` is the parameter of
+// the reference trajectory, scenario 0 of the rule, which the verifier integrates beside
+// the plant because the correction is a deviation from it: passing null with a gain in
+// place makes the reference the plant itself, which is not the controller that was
+// designed. `control_excess` receives the largest amount by which the REALISED control
+// leaves the user's control bounds, which is reported separately rather than added to the
+// violation, because a design whose corrections ask for more actuator than exists is a
+// different fault from one that misses a constraint, and the two want different remedies.
 double robust_model_violation(const RobustModel& model, Alg& algorithm,
-                              const RowVectorXd& theta, const RobustDesign& design);
+                              const RowVectorXd& theta, const RobustDesign& design,
+                              const RowVectorXd* theta_ref = 0,
+                              double* control_excess = 0);
 
 // Which of two candidate designs the polish step keeps: prefer one the caller's own
 // violation function certifies, and among certified designs the cheaper; if neither

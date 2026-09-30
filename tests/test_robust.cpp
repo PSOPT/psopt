@@ -718,4 +718,247 @@ TEST(Robust, IntegrandValueIsZeroWithoutAnIntegrand)
     EXPECT_DOUBLE_EQ(robust_integrand_value(m, &x, &u, &p, 1.5), 0.0);
 }
 
+
+//////////////////////////////////////////////////////////////////////////
+//  The ancillary feedback
+//////////////////////////////////////////////////////////////////////////
+
+// Under feedback the realised control differs from scenario to scenario, so the control
+// bounds are no longer the decision variable's bounds and become path rows: one per
+// control per CORRECTED scenario. Scenario 0 is the reference and runs open loop, so it
+// needs none, and a single-scenario problem has no deviation to correct at all.
+TEST(Robust, FeedbackAddsPathRowsForEveryCorrectedScenario)
+{
+    RobustModel m = sized_model(4, 2, 8, 1, 3);
+    m.feedback_kind = ROBUST_FEEDBACK_CONSTANT;
+    int nx = 0, nu = 0, ne = 0, np = 0, npar = 0;
+    robust_augmented_sizes(m, 6, ROBUST_NOMINAL, nx, nu, ne, np, npar);
+    EXPECT_EQ(np,   1*6 + 2*5);
+    EXPECT_EQ(nu,   2);               // u_bar is still the only control decision
+    EXPECT_EQ(npar, 3);
+    robust_augmented_sizes(m, 1, ROBUST_NOMINAL, nx, nu, ne, np, npar);
+    EXPECT_EQ(np,   1);               // one scenario, which is its own reference
+}
+
+// A given gain costs no decision variables. A co-designed one does, and which kind it is
+// decides whether they are static parameters or controls: a constant gain is one number
+// per entry for the whole horizon, a schedule is one per entry per node, which is what a
+// control already is.
+TEST(Robust, CodesignedGainsTakeParametersOrControls)
+{
+    RobustModel m = sized_model(4, 2, 8, 1, 3);
+    int nx = 0, nu = 0, ne = 0, np = 0, npar = 0;
+
+    m.feedback_kind = ROBUST_FEEDBACK_SCHEDULED;
+    robust_augmented_sizes(m, 6, ROBUST_NOMINAL, nx, nu, ne, np, npar);
+    EXPECT_EQ(nu,   2);
+    EXPECT_EQ(npar, 3);
+
+    m.feedback_kind = ROBUST_FEEDBACK_CODESIGN;
+    robust_augmented_sizes(m, 6, ROBUST_NOMINAL, nx, nu, ne, np, npar);
+    EXPECT_EQ(nu,   2);
+    EXPECT_EQ(npar, 3 + 2*4);
+
+    m.feedback_kind = ROBUST_FEEDBACK_CODESIGN_SCHEDULE;
+    robust_augmented_sizes(m, 6, ROBUST_NOMINAL, nx, nu, ne, np, npar);
+    EXPECT_EQ(nu,   2 + 2*4);
+    EXPECT_EQ(npar, 3);
+}
+
+namespace {
+// x' = u + theta: a constant disturbance the control has to work against, with the state
+// reported as the terminal event. One scalar state and one scalar control keep the closed
+// loop solvable in closed form, which is the point: the answers below are analytic.
+void disturbed_dae(adouble* d, adouble* /*path*/, adouble* /*x*/, adouble* u,
+                   adouble* /*p*/, adouble& /*t*/, const double* theta, int /*ntheta*/,
+                   adouble* /*xad*/, int /*iphase*/, Workspace* /*ws*/)
+{
+    d[0] = u[0] + theta[0];
+}
+
+void disturbed_event(adouble* e, adouble* /*xi*/, adouble* xf, adouble* /*p*/,
+                     adouble& /*t0*/, adouble& /*tf*/, const double* /*theta*/,
+                     int /*ntheta*/, adouble* /*xad*/, int /*iphase*/, Workspace* /*ws*/)
+{
+    e[0] = xf[0];
+}
+
+// The terminal bound is [0, 0.2] and the control bound is [-0.2, 0.2], so both the
+// violation and the realised control's excess are numbers this file can predict.
+RobustModel disturbed_model(double gain)
+{
+    RobustModel m;
+    m.nstates = 1; m.ncontrols = 1; m.nevents = 1; m.npath = 0;
+    m.dae = &disturbed_dae; m.events = &disturbed_event;
+    m.initial_state  = zeros(1, 1);
+    m.events_lower   = zeros(1, 1);     m.events_upper   = 0.2*ones(1, 1);
+    m.controls_lower = -0.2*ones(1, 1); m.controls_upper = 0.2*ones(1, 1);
+    m.verify_substeps = 64;
+    if (gain != 0.0) {
+        m.feedback_kind = ROBUST_FEEDBACK_CONSTANT;
+        m.feedback_gain = gain*ones(1, 1);
+    }
+    return m;
+}
+
+RobustDesign flat_design(void)
+{
+    RobustDesign d;
+    d.time     = zeros(1, 2);  d.time(0, 1) = 1.0;
+    d.controls = zeros(1, 2);                      // u_bar identically zero
+    d.valid    = true;
+    return d;
+}
+}  // namespace
+
+// The closed loop, against its own solution. With u_bar = 0, a reference at theta = 0 and
+// a plant at theta = d, the deviation e = x - x_ref obeys e' = K e + d from e(0) = 0, so
+// at K = -1 and t = 1
+//
+//     e(1) = d (1 - exp(-1)) = 0.6321205588 d,
+//
+// against d for the open loop. At d = 0.5 the terminal state is 0.3160602794 closed loop
+// and 0.5 open loop, and against the bound [0, 0.2] those are excesses of 0.1160602794
+// and 0.3. A verifier that integrated the open loop would report the second for a
+// controller that achieves the first, which is not an error in the safe direction.
+TEST(Robust, VerifierIntegratesTheClosedLoop)
+{
+    const double d = 0.5;
+    const double e_closed = d*(1.0 - exp(-1.0));
+    RobustDesign design = flat_design();
+    Alg alg = ms_alg("linear");
+
+    RobustModel open = disturbed_model(0.0);
+    EXPECT_NEAR(robust_model_violation(open, alg, one(d), design), d - 0.2, 1.0e-9);
+
+    RobustModel closed = disturbed_model(-1.0);
+    const RowVectorXd ref = one(0.0);
+    EXPECT_NEAR(robust_model_violation(closed, alg, one(d), design, &ref),
+                e_closed - 0.2, 1.0e-9);
+}
+
+// The reference is an argument and not an assumption, and leaving it out with a gain in
+// place makes the plant its own reference: the deviation is then identically zero, the
+// correction with it, and what is verified is the open-loop controller. Pinned here
+// because it is the one way to use this function that silently measures something other
+// than the design that was solved.
+TEST(Robust, VerifierWithoutAReferenceVerifiesTheOpenLoop)
+{
+    RobustModel closed = disturbed_model(-1.0);
+    RobustDesign design = flat_design();
+    Alg alg = ms_alg("linear");
+    EXPECT_NEAR(robust_model_violation(closed, alg, one(0.5), design), 0.3, 1.0e-9);
+}
+
+// A gain of zero is the open loop, which is worth pinning because it is the path every
+// non-feedback problem takes through the same code after this patch.
+TEST(Robust, AZeroGainIsTheOpenLoop)
+{
+    RobustModel closed = disturbed_model(0.0);
+    closed.feedback_kind = ROBUST_FEEDBACK_CONSTANT;
+    closed.feedback_gain = zeros(1, 1);
+    RobustDesign design = flat_design();
+    Alg alg = ms_alg("linear");
+    const RowVectorXd ref = one(0.0);
+    double excess = -1.0;
+    EXPECT_NEAR(robust_model_violation(closed, alg, one(0.5), design, &ref, &excess),
+                0.3, 1.0e-9);
+    EXPECT_DOUBLE_EQ(excess, 0.0);
+}
+
+// What the gain asks of the actuator, reported separately from the violation. Here
+// u_bar = 0 and the realised control is K e, which grows monotonically to
+// -0.3160602794 at t = 1 and so leaves the bound [-0.2, 0.2] by 0.1160602794. That
+// number is not added to the violation: a design that saturates its actuator and a design
+// that misses its target are different faults and want different remedies.
+//
+// The excess is read at the RUNGE-KUTTA STAGES and not only at the nodes, which is the
+// whole point of measuring it in the verifier, so the last of them sits a little beyond
+// the final state and the agreement here is to the stage's own accuracy and not to the
+// integrator's.
+TEST(Robust, VerifierReportsTheRealisedControlExcessSeparately)
+{
+    const double d = 0.5, e_closed = d*(1.0 - exp(-1.0));
+    RobustModel closed = disturbed_model(-1.0);
+    RobustDesign design = flat_design();
+    Alg alg = ms_alg("linear");
+    const RowVectorXd ref = one(0.0);
+    double excess = -1.0;
+    const double v = robust_model_violation(closed, alg, one(d), design, &ref, &excess);
+    EXPECT_NEAR(v,      e_closed - 0.2, 1.0e-9);
+    EXPECT_NEAR(excess, e_closed - 0.2, 1.0e-6);   // |K| = 1, so the two coincide here
+}
+
+// A correction small enough to stay inside the actuator's range leaves no excess at all,
+// which separates the two measures: the same design misses its terminal bound and asks
+// for nothing it has not got.
+TEST(Robust, ASmallCorrectionLeavesNoControlExcess)
+{
+    RobustModel closed = disturbed_model(-0.2);      // |K| small, so |K e| < 0.2
+    RobustDesign design = flat_design();
+    Alg alg = ms_alg("linear");
+    const RowVectorXd ref = one(0.0);
+    double excess = -1.0;
+    const double v = robust_model_violation(closed, alg, one(0.5), design, &ref, &excess);
+    EXPECT_GT(v, 0.0);
+    EXPECT_DOUBLE_EQ(excess, 0.0);
+}
+
+namespace {
+// The smallest model that gets past the driver's other checks, so that what a test of the
+// feedback validation refuses is the feedback and not something else.
+RobustModel checkable_model(void)
+{
+    RobustModel m;
+    m.nstates = 1; m.ncontrols = 1;
+    m.dae = &disturbed_dae;
+    m.initial_state = zeros(1, 1);
+    m.states_lower  = -1.0*ones(1, 1);  m.states_upper = ones(1, 1);
+    m.nodes.resize(1); m.nodes << 5;
+    m.guess_states   = zeros(1, 5);
+    m.guess_controls = zeros(1, 5);
+    m.guess_time     = linspace(0.0, 1.0, 5);
+    return m;
+}
+
+int try_solve(RobustModel& model)
+{
+    Prob problem; Alg algorithm; Sol solution; RobustSpec spec;
+    RowVectorXd mean(1);  mean << 0.0;
+    MatrixXd    cov(1,1); cov  << 1.0;
+    spec.uncertainty = robust_gaussian(mean, cov, 2.0);
+    spec.verbose     = false;
+    return psopt_solve_robust(solution, spec, model, problem, algorithm);
+}
+}  // namespace
+
+// A co-designed gain is a decision variable and nothing else bounds it. An unbounded one
+// runs away into saturation, where the realised control is not the control that was
+// designed, so the driver refuses the combination before a solve starts rather than
+// returning a design whose certificate is about a different controller.
+TEST(Robust, ACodesignedGainWithoutBoundsIsRefused)
+{
+    RobustModel m = checkable_model();
+    m.feedback_kind = ROBUST_FEEDBACK_CODESIGN;
+    EXPECT_THROW({ const int rc = try_solve(m); (void) rc; }, ErrorHandler);
+
+    RobustModel s = checkable_model();
+    s.feedback_kind = ROBUST_FEEDBACK_CODESIGN_SCHEDULE;
+    EXPECT_THROW({ const int rc = try_solve(s); (void) rc; }, ErrorHandler);
+}
+
+// A given gain of the wrong shape is refused for the same reason, and a scheduled kind
+// with nothing to call is refused rather than quietly designing the open loop.
+TEST(Robust, AMalformedGivenGainIsRefused)
+{
+    RobustModel m = checkable_model();
+    m.feedback_kind = ROBUST_FEEDBACK_CONSTANT;
+    m.feedback_gain = ones(2, 2);                  // should be ncontrols x nstates
+    EXPECT_THROW({ const int rc = try_solve(m); (void) rc; }, ErrorHandler);
+
+    RobustModel s = checkable_model();
+    s.feedback_kind = ROBUST_FEEDBACK_SCHEDULED;   // and no feedback_schedule
+    EXPECT_THROW({ const int rc = try_solve(s); (void) rc; }, ErrorHandler);
+}
+
 }  // namespace

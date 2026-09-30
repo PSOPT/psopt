@@ -38,6 +38,13 @@
 //    * the scenario rule, the search for the payload the design serves worst, the
 //      generation loop, the polish step, and the diagnosis when the transcription runs
 //      out of degrees of freedom;
+//    * the risk measure, if the design is to be scored by something other than the
+//      central scenario's cost: an expectation, a mean-variance combination, or the
+//      conditional value at risk, the last two carrying each scenario's cost as a state
+//      the library adds and pins for itself;
+//    * the ancillary feedback, if the design is to be a tube rather than one open-loop
+//      history: the correction inside the augmented dae, the realised control's bounds as
+//      path rows, and a verification that integrates the closed loop beside its reference;
 //    * the verification integrator.
 //
 //  That last item is the one to think about rather than accept. The library's verifier

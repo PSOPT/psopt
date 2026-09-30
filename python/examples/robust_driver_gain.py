@@ -10,8 +10,10 @@ near the target, the gain is regulating about a point the plant is not at, and t
 is +13% still on the table. Handing the gain to the optimiser --- CO-DESIGN --- is
 the obvious next move.
 
-It does not work, and the reason is structural rather than numerical. This example
-is that measurement.
+On this driver it does not work, and the reason is structural rather than numerical.
+This example is that measurement. It is not a proof that a co-designed gain can never
+certify, and the section further down records a run of the C++ driver on this same
+problem where one did.
 
 WHAT THE DRIVER OFFERS
 
@@ -95,9 +97,23 @@ all: stabilise the linearisation, penalise state and effort quadratically, solve
 Riccati equation. That criterion quantifies over the whole family implicitly, which
 is the property the gain needs and an objective on a finite sample cannot supply.
 
-The gain that works is chosen by a criterion that never looks at the scenario set at
-all: stabilise the linearisation, penalise state and effort quadratically, solve the
-Riccati equation. That criterion quantifies over the whole family implicitly, which
+ONE CO-DESIGN HAS CERTIFIED, WHICH SHARPENS THE CLAIM RATHER THAN OVERTURNING IT
+
+The C++ driver, given this same problem, the same box around the same LQR gain and the
+same starting guess, reached a co-designed gain that certifies: t_f 3.4210 against 3.5583
+for the given gain, no violation anywhere in the set, and a realised control 6.4e-04
+outside its bounds. Three integrators written independently of one another agree on that
+verdict, one of them this driver's own, which passes the C++ design when handed it. The
+two drivers disagree about the SOLVE and not about the verification: from the same guess
+they reach different local minima of a bilinear problem, and Python's is the one in the
+table above.
+
+So co-design is not guaranteed to fail. What it is is unaccountable: whether a run lands
+on a gain that serves the whole family or on one that serves only the sample is a property
+of the local minimum reached, and nothing in the formulation makes the difference. That is
+why a co-designed gain's cheaper objective means nothing until it is verified, and why the
+gain to reach for first is still the one a Riccati equation gives.
+
 WHAT THE DRIVER DOES ABOUT IT
 
 It offers co-design and then measures it honestly, which is the only defensible
