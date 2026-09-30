@@ -1029,4 +1029,100 @@ TEST(Robust, AMalformedGivenGainIsRefused)
     EXPECT_THROW({ const int rc = try_solve(s); (void) rc; }, ErrorHandler);
 }
 
+//////////////////////////////////////////////////////////////////////////
+//  Several phases
+//////////////////////////////////////////////////////////////////////////
+
+namespace {
+void two_phase_dae(adouble* d, adouble* /*path*/, adouble* x, adouble* u, adouble*,
+                   adouble&, adouble*, int, Workspace*)
+{ d[0] = x[0] + u[0]; }
+
+void two_phase_events(adouble* e, adouble* xi, adouble* /*xf*/, adouble*, adouble&,
+                      adouble&, adouble*, int, Workspace*)
+{ e[0] = xi[0]; }
+
+void two_phase_linkages(adouble*, adouble*, Workspace*) {}
+
+// Two phases of one state and one control, the first with a pinned event and a fixed
+// start time, the second with neither. Nothing is solved: the arithmetic under test is a
+// count of variables and equalities, and it reads the bounds and the node counts.
+void build_two_phase(Prob& problem, Alg& algorithm, int nlinkages)
+{
+    problem.name      = "dof over two phases";
+    problem.nphases   = 2;
+    problem.nlinkages = nlinkages;
+    psopt_level1_setup(problem);
+    for (int p = 1; p <= 2; ++p) {
+        problem.phases(p).nstates   = 1;
+        problem.phases(p).ncontrols = 1;
+        problem.phases(p).nevents   = 1;
+        problem.phases(p).npath     = 0;
+        problem.phases(p).nodes     << 6;
+    }
+    psopt_level2_setup(problem, algorithm);
+    for (int p = 1; p <= 2; ++p) {
+        problem.phases(p).current_number_of_intervals = 5;
+        problem.phases(p).bounds.lower.states(0)   = -1.0;
+        problem.phases(p).bounds.upper.states(0)   =  1.0;
+        problem.phases(p).bounds.lower.controls(0) = -1.0;
+        problem.phases(p).bounds.upper.controls(0) =  1.0;
+        problem.phases(p).bounds.lower.StartTime   = 0.0;
+        problem.phases(p).bounds.upper.StartTime   = 0.0;
+        problem.phases(p).bounds.lower.EndTime     = 1.0;
+        problem.phases(p).bounds.upper.EndTime     = 1.0;
+    }
+    // Phase 1's event is an equality and phase 2's is not, so the two phases differ and
+    // the tightest of them is the first.
+    problem.phases(1).bounds.lower.events(0) = 0.0;
+    problem.phases(1).bounds.upper.events(0) = 0.0;
+    problem.phases(2).bounds.lower.events(0) = 0.0;
+    problem.phases(2).bounds.upper.events(0) = 1.0;
+    problem.dae = &two_phase_dae; problem.events = &two_phase_events;
+    problem.linkages = &two_phase_linkages;
+    algorithm.transcription_method = "multiple-shooting";
+}
+}  // namespace
+
+// The whole problem's freedom is the phases' summed, less the linkage equalities, which
+// belong to the problem and to no phase. Leaving them out would report freedom the problem
+// does not have, which is the direction that lets a starved solve through.
+TEST(Robust, DegreesOfFreedomSumOverPhasesAndChargeTheLinkages)
+{
+    Prob problem; Alg algorithm;
+    build_two_phase(problem, algorithm, 3);
+    const int d1 = robust_degrees_of_freedom(problem, 1, algorithm);
+    const int d2 = robust_degrees_of_freedom(problem, 2, algorithm);
+    EXPECT_EQ(robust_linkage_equalities(problem), 3);
+    EXPECT_EQ(robust_problem_degrees_of_freedom(problem, algorithm), d1 + d2 - 3);
+    EXPECT_LT(d1, d2);                       // the pinned event is phase 1's
+    EXPECT_EQ(robust_tightest_phase(problem, algorithm), 1);
+}
+
+// A linkage the caller bounded as an inequality is not an equality and removes no freedom.
+// Unset bounds mean every linkage is an equality, which is what auto_link builds.
+TEST(Robust, LinkageEqualitiesReadTheBoundsWhenThereAreAny)
+{
+    Prob problem; Alg algorithm;
+    build_two_phase(problem, algorithm, 3);
+    EXPECT_EQ(robust_linkage_equalities(problem), 3);
+
+    problem.bounds.lower.linkage = zeros(3, 1);
+    problem.bounds.upper.linkage = zeros(3, 1);
+    problem.bounds.upper.linkage(2) = 1.0;           // one of them is a range
+    EXPECT_EQ(robust_linkage_equalities(problem), 2);
+}
+
+// A design of one phase reports one phase, whether or not anything filled the vector, so
+// that code written against a single-phase design reads the same either way.
+TEST(Robust, ADesignCountsItsPhases)
+{
+    RobustDesign d;
+    EXPECT_EQ(d.nphases(), 0);
+    d.valid = true;
+    EXPECT_EQ(d.nphases(), 1);
+    d.phase.resize(3);
+    EXPECT_EQ(d.nphases(), 3);
+}
+
 }  // namespace

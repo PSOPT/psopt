@@ -159,13 +159,33 @@ double robust_mahalanobis(const RobustUncertainty& U, const RowVectorXd& theta);
 // one iteration to the next. This carries the parts of one that the outer loop and
 // the user actually need: the trajectory to warm-start the next solve from, and
 // the trajectory to verify.
-struct RobustDesign {
+// One phase of a solved design. A single-phase problem has one of these and the fields of
+// RobustDesign below are it; a multi-phase problem has one per phase, in order.
+struct RobustPhaseTrajectory {
     MatrixXd time;          // 1 x N
     MatrixXd controls;      // ncontrols x N, the nodal table
     MatrixXd states;        // nstates x N   (all scenario copies, as solved)
-    MatrixXd parameters;    // static parameters, if any
+    MatrixXd controls_full; // ncontrols x (2N-1), or empty; see RobustDesign
+    MatrixXd time_full;     // 1 x (2N-1), or empty
+};
+
+struct RobustDesign {
+    // PHASE 1. These five fields are the first phase and nothing else, which is the whole
+    // design when there is one phase and is why they are spelled without a phase index: a
+    // single-phase problem, which is most of them, reads exactly as it did before the
+    // driver learned about phases. A multi-phase design is in `phase` below, whose first
+    // entry holds these same five.
+    MatrixXd time;          // 1 x N
+    MatrixXd controls;      // ncontrols x N, the nodal table
+    MatrixXd states;        // nstates x N   (all scenario copies, as solved)
+    MatrixXd parameters;    // static parameters, if any, shared by every phase
     double   objective;
     bool     valid;
+
+    // Every phase, in order, the first of them the one above. A violation function written
+    // for a multi-phase problem reads this; one written for a single-phase problem need
+    // never know it exists.
+    std::vector<RobustPhaseTrajectory> phase;
 
     // The COMPLETE control history, node and midpoint values interleaved, and the times
     // that go with it. Filled for the two transcriptions that carry a control at the
@@ -185,6 +205,9 @@ struct RobustDesign {
     MatrixXd time_full;     // 1 x (2N-1), or empty
 
     RobustDesign() : objective(0.0), valid(false) {}
+
+    // How many phases this design has, which is one whenever the caller never built more.
+    int nphases() const { return phase.empty() ? (valid ? 1 : 0) : (int) phase.size(); }
 };
 
 // How badly a given design serves one parameter vector: zero when every declared
@@ -254,6 +277,20 @@ long robust_worst_case_evaluations(const RobustUncertainty& U, int n_seed,
 // Not_Enough_Degrees_Of_Freedom, return code -10, after the whole problem has been
 // assembled and taped, and the message names no remedy at all.
 int robust_degrees_of_freedom(Prob& problem, int iphase, Alg& algorithm);
+
+// The same count for a problem of SEVERAL phases: the per-phase counts summed, less the
+// linkage equalities, which belong to the problem and to no phase. A sum that had not
+// subtracted them would report freedom the problem does not have, which is the direction
+// that lets a starved solve through. `robust_linkage_equalities` counts them, reading the
+// linkage bounds when the caller set them and taking all of them as equalities when the
+// caller left them unset, which is what auto_link builds.
+//
+// `robust_tightest_phase` names the phase with the least freedom, which is the one whose
+// arithmetic a failure diagnosis should print: the total says a multi-phase problem is
+// starved, and this says where.
+int robust_problem_degrees_of_freedom(Prob& problem, Alg& algorithm);
+int robust_linkage_equalities(Prob& problem);
+int robust_tightest_phase(Prob& problem, Alg& algorithm);
 
 // Is every entry of the initial guess a finite number?
 //

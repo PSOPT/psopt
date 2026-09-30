@@ -519,6 +519,42 @@ int robust_degrees_of_freedom(Prob& problem, int iphase, Alg& algorithm)
     return dof_parts(problem, iphase, algorithm).dof;
 }
 
+int robust_linkage_equalities(Prob& problem)
+{
+    const int n = problem.nlinkages;
+    if (n <= 0) return 0;
+    const MatrixXd& lo = problem.bounds.lower.linkage;
+    const MatrixXd& up = problem.bounds.upper.linkage;
+    // An unset pair of bound vectors means the caller left the linkages as equalities,
+    // which is what auto_link builds and what almost every multi-phase problem wants.
+    if (lo.size() < n || up.size() < n) return n;
+    int neq = 0;
+    for (int i = 0; i < n; ++i) if (up(i) <= lo(i)) ++neq;
+    return neq;
+}
+
+int robust_problem_degrees_of_freedom(Prob& problem, Alg& algorithm)
+{
+    const int P = (problem.nphases > 0) ? problem.nphases : 1;
+    int dof = 0;
+    for (int p = 1; p <= P; ++p) dof += dof_parts(problem, p, algorithm).dof;
+    // The linkages are equalities of the whole problem and belong to no phase, so a sum
+    // of per-phase counts has not seen them. Leaving them out would report freedom the
+    // problem does not have, which is the direction that lets a starved solve through.
+    return dof - robust_linkage_equalities(problem);
+}
+
+int robust_tightest_phase(Prob& problem, Alg& algorithm)
+{
+    const int P = (problem.nphases > 0) ? problem.nphases : 1;
+    int best = 1, best_dof = dof_parts(problem, 1, algorithm).dof;
+    for (int p = 2; p <= P; ++p) {
+        const int d = dof_parts(problem, p, algorithm).dof;
+        if (d < best_dof) { best_dof = d; best = p; }
+    }
+    return best;
+}
+
 bool robust_guess_is_finite(Prob& problem, int iphase, const char** offender)
 {
     struct Check {
@@ -628,17 +664,29 @@ double oracle_bridge(const RowVectorXd& theta, void* user_data)
 RobustDesign design_of(Sol& solution, Prob& problem)
 {
     RobustDesign d;
-    d.time      = solution.get_time_in_phase(1);
-    d.controls  = solution.get_controls_in_phase(1);
-    d.states    = solution.get_states_in_phase(1);
+    const int P = (problem.nphases > 0) ? problem.nphases : 1;
+    d.phase.resize(P);
+    for (int p = 1; p <= P; ++p) {
+        RobustPhaseTrajectory& t = d.phase[p-1];
+        t.time     = solution.get_time_in_phase(p);
+        t.controls = solution.get_controls_in_phase(p);
+        t.states   = solution.get_states_in_phase(p);
+        // Empty for every transcription that carries no midpoint control, which is what
+        // the accessor's contract promises, so no algorithm test is needed here.
+        t.controls_full = solution.get_hs_controls_in_phase(p);
+        t.time_full     = solution.get_hs_time_in_phase(p);
+    }
+    // The first phase is also the design's own five fields, so that everything written
+    // against a single-phase design keeps reading.
+    d.time          = d.phase[0].time;
+    d.controls      = d.phase[0].controls;
+    d.states        = d.phase[0].states;
+    d.controls_full = d.phase[0].controls_full;
+    d.time_full     = d.phase[0].time_full;
     if (problem.phases(1).nparameters > 0)
         d.parameters = solution.get_parameters_in_phase(1);
     d.objective = solution.get_cost();
-    // Empty for every transcription that carries no midpoint control, which is what the
-    // accessor's contract promises, so no algorithm test is needed here.
-    d.controls_full = solution.get_hs_controls_in_phase(1);
-    d.time_full     = solution.get_hs_time_in_phase(1);
-    d.valid         = true;
+    d.valid     = true;
     return d;
 }
 }
@@ -1890,13 +1938,17 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
         // is PSOPT's constraint-coverage guard reporting a defect in PSOPT. Saying
         // so here, in one sentence naming the array, saves the caller that hunt.
         const char* offender = "";
-        if (!robust_guess_is_finite(problem, 1, &offender)) {
-            printf("\npsopt_solve_robust: the initial guess for `%s` is not finite "
-                   "at %d scenarios.\n  A guess built by integrating a previous "
+        int  bad_phase = 0;
+        const int P = (problem.nphases > 0) ? problem.nphases : 1;
+        for (int p = 1; p <= P && !bad_phase; ++p)
+            if (!robust_guess_is_finite(problem, p, &offender)) bad_phase = p;
+        if (bad_phase) {
+            printf("\npsopt_solve_robust: the initial guess for `%s` in phase %d is not "
+                   "finite at %d scenarios.\n  A guess built by integrating a previous "
                    "design can diverge, because the horizon it integrates over is a "
                    "decision variable and the robust final time grows as scenarios "
                    "are added: a step size that was ample at the start need not be "
-                   "by the end.\n", offender, (int) scenarios.size());
+                   "by the end.\n", offender, bad_phase, (int) scenarios.size());
             if (!best.valid) { solution.error_flag = 1; return 1; }
             scenarios.pop_back();
             robust_do_setup(problem, algorithm, spec, scenarios, best, aug);
@@ -1909,12 +1961,15 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
         ++spec.n_solves;
 
         if (!robust_trial_succeeded(solution)) {
-            const int  dof     = robust_degrees_of_freedom(problem, 1, algorithm);
+            // Over every phase, less the linkage equalities. The arithmetic printed is
+            // that of the phase with the least freedom, because the total says a problem
+            // is starved and only a phase says where.
+            const int  dof     = robust_problem_degrees_of_freedom(problem, algorithm);
             const bool starved = (dof <= 0);
             char       buf[1400];
             if (starved)
-                robust_dof_message(problem, 1, (int) scenarios.size(), algorithm,
-                                   buf, sizeof buf);
+                robust_dof_message(problem, robust_tightest_phase(problem, algorithm),
+                                   (int) scenarios.size(), algorithm, buf, sizeof buf);
             if (!best.valid) {
                 if (starved)
                     printf("\npsopt_solve_robust: the first solve failed and the "
