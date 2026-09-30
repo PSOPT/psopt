@@ -248,6 +248,153 @@ void robust_dof_message(Prob& problem, int iphase, int nscenarios, Alg& algorith
                         char* buffer, size_t buffer_size);
 
 //////////////////////////////////////////////////////////////////////////
+///////////////////  The model interface  ////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+// WHY THIS EXISTS
+//
+// Writing the augmentation by hand, as examples/robust_arm and examples/robust_driver
+// do, is 173 of the 317 code lines of the latter: eight for the dae loop, thirteen for
+// the events loop, fifty-one to size the phase and replicate the bounds, forty-nine for
+// the warm start, and forty-five for the verification integrator. Only the first eight
+// are what people expect the work to be.
+//
+// A RobustModel is the NOMINAL problem, stated once, with the uncertain parameter as one
+// extra argument. psopt_solve_robust then builds the augmented problem itself: it
+// installs a dae and an events function that loop the user's nominal pair over the
+// scenario list, sizes the phase for M copies of the state, replicates the bounds with
+// the inward tightening applied, and builds the warm start by integrating each
+// scenario's own plant through the previous control.
+//
+// THE ONE DESIGN DECISION THAT MAKES THIS POSSIBLE
+//
+// theta arrives as `const double*`, not as adouble. A scenario is DATA: it is not a
+// decision variable and it must not reach the derivative tape. Keeping it a plain number
+// has a consequence worth more than the tidiness: the same nominal dae can be called
+// numerically, outside any taping context, which is what lets the library build the warm
+// start (and, in due course, a verification integrator) out of the user's own equations
+// instead of asking for a second hand-written copy of them. See robust_dae_value.
+//
+// WHAT THE NOMINAL FUNCTIONS MAY NOT DO
+//
+// They must be pure arithmetic on their arguments. A dae that reaches into the tape
+// through get_delayed_state, get_interpolated_state or auto_link cannot be evaluated
+// numerically, so such a problem keeps its own spec.setup and writes the augmentation by
+// hand. The Python driver has the same restriction, for the same reason.
+
+typedef void (*RobustDaeFn)(adouble* derivatives, adouble* path, adouble* states,
+                            adouble* controls, adouble* parameters, adouble& time,
+                            const double* theta, int ntheta,
+                            adouble* xad, int iphase, Workspace* workspace);
+
+typedef void (*RobustEventsFn)(adouble* e, adouble* initial_states,
+                               adouble* final_states, adouble* parameters,
+                               adouble& t0, adouble& tf,
+                               const double* theta, int ntheta,
+                               adouble* xad, int iphase, Workspace* workspace);
+
+struct RobustModel {
+    // ---- the nominal sizes, per scenario ----------------------------------
+    int nstates, ncontrols, nevents, npath, nparameters;
+    RowVectorXi nodes;
+
+    // ---- the nominal maths ------------------------------------------------
+    // dae and events take theta; the costs do not, being shared across the scenarios.
+    // A cost that differed per scenario would be a risk measure, which needs a cost
+    // state per scenario and is not offered here (see the Limitations of the manual's
+    // robust chapter).
+    RobustDaeFn    dae;
+    RobustEventsFn events;
+    adouble (*endpoint_cost)(adouble* initial_states, adouble* final_states,
+                             adouble* parameters, adouble& t0, adouble& tf,
+                             adouble* xad, int iphase, Workspace* workspace);
+    adouble (*integrand_cost)(adouble* states, adouble* controls, adouble* parameters,
+                              adouble& time, adouble* xad, int iphase,
+                              Workspace* workspace);
+
+    // ---- the nominal bounds, stated once ----------------------------------
+    RowVectorXd states_lower, states_upper;
+    RowVectorXd controls_lower, controls_upper;
+    RowVectorXd events_lower, events_upper;
+    RowVectorXd path_lower, path_upper;
+    RowVectorXd parameters_lower, parameters_upper;
+    double t0_lower, t0_upper, tf_lower, tf_upper;
+
+    // ---- the nominal guess ------------------------------------------------
+    MatrixXd    guess_states;      // nstates x N
+    MatrixXd    guess_controls;    // ncontrols x N
+    MatrixXd    guess_time;        // 1 x N
+    RowVectorXd guess_parameters;
+
+    // The state every scenario starts from, which the warm start integrates out of. It
+    // is asked for rather than read off the event bounds, because the driver cannot in
+    // general tell which events are the initial conditions, and guessing would put a
+    // silent error in the one place the warm start rests on.
+    RowVectorXd initial_state;
+
+    // Inward tightening of the design's constraints, as a fraction of each two-sided
+    // half width, without which the generation loop cannot terminate: the scenarios are
+    // satisfied to the stated tolerance exactly, so the violation between two
+    // neighbouring scenarios is necessarily a little larger. 0.9 keeps nine tenths.
+    double tighten;
+
+    // Substeps per node interval in the warm start's integration, doubled on demand.
+    // The horizon being integrated over is a decision variable and a robust final time
+    // grows as scenarios are added, so a count that was ample at the start need not be
+    // by the end; when the integration returns a non-finite value the count is doubled,
+    // up to robust_warm_substeps_max, and failing that the nominal guess is used.
+    int warm_substeps;
+
+    // Where the algorithm options go, and this is not optional decoration.
+    //
+    // psopt_level2_setup RESETS every field of the Alg it is given to that field's
+    // default. A hand-written setup therefore assigns its options AFTER calling it, and
+    // the generated setup has to give the caller the same moment. This callback is that
+    // moment: it runs immediately after every psopt_level2_setup, once per scenario
+    // count, so whatever it sets is what the solve uses.
+    //
+    // Options set on the Alg before psopt_solve_robust is called are NOT honoured; they
+    // are overwritten by the level 2 setup of the first iteration. The first version of
+    // this interface tried to snapshot them and put them back, which silently reinstated
+    // the empty strings of every field the caller had never touched and left the solve
+    // with no collocation method at all. A callback has no such list to get wrong.
+    void (*configure)(Alg& algorithm, void* user_data);
+    void*  configure_data;
+
+    RobustModel()
+        : nstates(0), ncontrols(0), nevents(0), npath(0), nparameters(0),
+          dae(0), events(0), endpoint_cost(0), integrand_cost(0),
+          t0_lower(0.0), t0_upper(0.0), tf_lower(0.0), tf_upper(0.0),
+          tighten(0.9), warm_substeps(8), configure(0), configure_data(0) {}
+};
+
+const int robust_warm_substeps_max = 256;
+
+// Inward margins for a set of bounds: (1 - tighten) times the half width of each
+// TWO-SIDED bound, and zero for a pinned or one-sided one. A pinned bound is an
+// equality, and tightening it would make it infeasible instead of merely tight; a
+// one-sided bound has no half width to take a fraction of, and a design left sitting on
+// such a bound is exactly where the between-scenario overshoot appears, so the driver
+// says so rather than silently leaving it alone.
+//
+// `nonefinite` is set to the number of one-sided entries found.
+void robust_margins(const RowVectorXd& lower, const RowVectorXd& upper,
+                    double tighten, RowVectorXd& margin, int& n_one_sided);
+
+// Evaluate a RobustModel's nominal dae numerically at one scenario, on plain doubles.
+//
+// This is the mechanism the model interface rests on, and it is exposed because it is
+// also what a user needs in order to write a verification integrator or a warm start of
+// their own out of the equations they have already written once. `derivatives` and
+// `path` receive the values; `path` may be null when the model declares no path
+// constraints. xad and workspace are passed as null, so the nominal dae must not use
+// them, as the note above requires.
+void robust_dae_value(const RobustModel& model, const double* theta, int ntheta,
+                      const double* states, const double* controls,
+                      const double* parameters, double time,
+                      double* derivatives, double* path);
+
+//////////////////////////////////////////////////////////////////////////
 ///////////////////  The driver  /////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////
 
@@ -301,6 +448,12 @@ struct RobustSpec {
     bool     polish;
     // The rule itself is robust_prefer_cold below.
 
+    // The nominal problem, when the caller wants the driver to build the augmented one.
+    // Left null, `setup` below is required and the augmentation is the caller's, as in
+    // examples/robust_arm. Set, `setup` is not called at all and may be left null.
+    // psopt_solve_robust's five-argument overload sets this.
+    RobustModel* model;
+
     // ---- what the user supplies -------------------------------------------
 
     // Build `problem` and `algorithm` for this scenario list. Called before every
@@ -337,7 +490,7 @@ struct RobustSpec {
 
     RobustSpec()
         : slack(0.0), max_iterations(12), n_seed(128), n_refine(3), seed(20260927u),
-          verbose(true), keep_padded_defect_rows(false), polish(true),
+          verbose(true), keep_padded_defect_rows(false), polish(true), model(0),
           setup(0), violation(0), user_data(0),
           certificate(0.0), evaluations(0), n_solves(0), converged(false),
           budget_exhausted(false) {}
@@ -365,6 +518,14 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
 //
 // Returns the psopt() return code of the design in `solution`.
 [[nodiscard]] int psopt_solve_robust(Sol& solution, RobustSpec& spec,
+                                     Prob& problem, Alg& algorithm);
+
+// The same driver, with the augmentation built from a nominal model instead of by the
+// caller's own setup. Equivalent to setting spec.model and calling the overload above.
+// spec.violation is still the caller's: the verification has to be independent of the
+// transcription, and in this version the library does not offer one.
+[[nodiscard]] int psopt_solve_robust(Sol& solution, RobustSpec& spec,
+                                     RobustModel& model,
                                      Prob& problem, Alg& algorithm);
 
 #endif // PSOPT_ROBUST_H

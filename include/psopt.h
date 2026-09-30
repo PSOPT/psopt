@@ -998,7 +998,9 @@ public:
 
    prob_str()
    {
-       phase = NULL;
+       phase       = NULL;
+       user_data   = NULL;
+       robust_data = NULL;
    }
    ~prob_str()
    {
@@ -1027,6 +1029,14 @@ public:
    string  outfilename;
 
    void* user_data;
+
+   // A second channel, owned by PSOPT's own drivers and never by the user. It exists
+   // because psopt_solve_robust's model interface (robust.h) installs a dae and an
+   // events function of its own, which loop the user's nominal equations over the
+   // scenario list, and they need somewhere to find that list. Putting it in user_data
+   // would take from the user the one channel their own equations use, and every robust
+   // problem needs both at once. Left NULL by any ordinary solve.
+   void* robust_data;
 
    Phases&   phases(int iphase);
 

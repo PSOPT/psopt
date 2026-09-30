@@ -620,6 +620,340 @@ RobustDesign design_of(Sol& solution, Prob& problem)
 }
 }
 
+//////////////////////////////////////////////////////////////////////////
+///////////////////  The model interface  ////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+
+void robust_margins(const RowVectorXd& lower, const RowVectorXd& upper,
+                    double tighten, RowVectorXd& margin, int& n_one_sided)
+{
+    const int n = (int) lower.size();
+    margin = zeros(1, n);
+    n_one_sided = 0;
+    if ((int) upper.size() != n) return;
+    for (int j = 0; j < n; ++j) {
+        const double half = 0.5*(upper(j) - lower(j));
+        if (!std::isfinite(half) || fabs(half) > 1.0e29) { ++n_one_sided; continue; }
+        if (half <= 0.0) continue;               // pinned: an equality, left alone
+        margin(j) = (1.0 - tighten)*half;
+    }
+}
+
+void robust_dae_value(const RobustModel& model, const double* theta, int ntheta,
+                      const double* states, const double* controls,
+                      const double* parameters, double time,
+                      double* derivatives, double* path)
+{
+    const int ns = model.nstates, nc = model.ncontrols;
+    const int np = model.npath, npar = model.nparameters;
+
+    std::vector<adouble> xa(ns > 0 ? ns : 1), ua(nc > 0 ? nc : 1);
+    std::vector<adouble> pa(npar > 0 ? npar : 1), da(ns > 0 ? ns : 1);
+    std::vector<adouble> ga(np > 0 ? np : 1);
+    adouble ta = time;
+
+    for (int j = 0; j < ns;   ++j) xa[j] = states[j];
+    for (int j = 0; j < nc;   ++j) ua[j] = controls[j];
+    for (int j = 0; j < npar; ++j) pa[j] = parameters[j];
+
+    model.dae(&da[0], &ga[0], &xa[0], &ua[0], &pa[0], ta, theta, ntheta, 0, 1, 0);
+
+    for (int j = 0; j < ns; ++j) derivatives[j] = da[j].value();
+    if (path) for (int j = 0; j < np; ++j) path[j] = ga[j].value();
+}
+
+// What the library needs in order to loop the user's nominal equations. Held in
+// problem.robust_data, which exists so that user_data stays the user's.
+struct RobustAugmentation {
+    const RobustModel*       model;
+    std::vector<RowVectorXd> scenarios;
+    RobustAugmentation() : model(0) {}
+};
+
+static void robust_augmented_dae(adouble* derivatives, adouble* path, adouble* states,
+                                 adouble* controls, adouble* parameters, adouble& time,
+                                 adouble* xad, int iphase, Workspace* workspace)
+{
+    const RobustAugmentation& A =
+        *((const RobustAugmentation*) workspace->problem->robust_data);
+    const int ns = A.model->nstates, np = A.model->npath;
+    const int M  = (int) A.scenarios.size();
+    for (int i = 0; i < M; ++i)
+        A.model->dae(derivatives + ns*i, np > 0 ? path + np*i : path,
+                     states + ns*i, controls, parameters, time,
+                     A.scenarios[i].data(), (int) A.scenarios[i].size(),
+                     xad, iphase, workspace);
+}
+
+static void robust_augmented_events(adouble* e, adouble* initial_states,
+                                    adouble* final_states, adouble* parameters,
+                                    adouble& t0, adouble& tf,
+                                    adouble* xad, int iphase, Workspace* workspace)
+{
+    const RobustAugmentation& A =
+        *((const RobustAugmentation*) workspace->problem->robust_data);
+    const int ns = A.model->nstates, ne = A.model->nevents;
+    const int M  = (int) A.scenarios.size();
+    if (ne == 0) return;
+    for (int i = 0; i < M; ++i)
+        A.model->events(e + ne*i, initial_states + ns*i, final_states + ns*i,
+                        parameters, t0, tf,
+                        A.scenarios[i].data(), (int) A.scenarios[i].size(),
+                        xad, iphase, workspace);
+}
+
+static void robust_no_linkages(adouble*, adouble*, Workspace*) {}
+
+// The warm start: each scenario's own plant integrated through the previous control.
+//
+// A guess that is merely the right shape leaves the augmented problem with M copies of an
+// infeasible arc and the solver free to wander to a distant local minimum. The control is
+// read as held under a constant parameterisation and as a straight line otherwise, which
+// is approximate for the two parameterisations that carry a midpoint control; that is
+// admissible HERE, because this is a guess, and is not admissible in a verification,
+// where it would measure a different controller.
+//
+// Returns false when the integration did not stay finite even at the largest substep
+// count, which is the caller's signal to fall back to the nominal guess.
+static bool robust_warm_states(const RobustModel& model,
+                               const std::vector<RowVectorXd>& scenarios,
+                               const RobustDesign& previous, Alg& algorithm,
+                               MatrixXd& x_guess)
+{
+    const int ns = model.nstates, nc = model.ncontrols, M = (int) scenarios.size();
+    const int N  = (int) previous.time.cols();
+    if (N < 2 || (int) previous.controls.cols() != N) return false;
+    if ((int) model.initial_state.size() != ns)       return false;
+
+    const bool held = is_multiple_shooting(algorithm)
+                      && algorithm.ms_control_parameterisation == "constant";
+    std::vector<double> par(model.nparameters > 0 ? model.nparameters : 1, 0.0);
+    for (int j = 0; j < model.nparameters && j < (int) previous.parameters.size(); ++j)
+        par[j] = previous.parameters(j);
+
+    x_guess = zeros(ns*M, N);
+
+    for (int sub = (model.warm_substeps > 0 ? model.warm_substeps : 8);
+         sub <= robust_warm_substeps_max; sub *= 2) {
+        bool ok = true;
+        for (int i = 0; i < M && ok; ++i) {
+            std::vector<double> x(ns), y(ns), k1(ns), k2(ns), k3(ns), k4(ns);
+            std::vector<double> uA(nc > 0 ? nc : 1), uH(nc > 0 ? nc : 1),
+                                uB(nc > 0 ? nc : 1);
+            for (int j = 0; j < ns; ++j) {
+                x[j] = model.initial_state(j);
+                x_guess(ns*i + j, 0) = x[j];
+            }
+            for (int c = 0; c < N - 1 && ok; ++c) {
+                const double ta = previous.time(0, c);
+                const double h  = (previous.time(0, c+1) - ta)/sub;
+                for (int s = 0; s < sub; ++s) {
+                    const double w0 =  s        /(double) sub;
+                    const double wh = (s + 0.5) /(double) sub;
+                    const double w1 = (s + 1.0) /(double) sub;
+                    for (int j = 0; j < nc; ++j) {
+                        const double a = previous.controls(j, c);
+                        const double b = previous.controls(j, c+1);
+                        uA[j] = held ? a : a + w0*(b - a);
+                        uH[j] = held ? a : a + wh*(b - a);
+                        uB[j] = held ? a : a + w1*(b - a);
+                    }
+                    const double* th = scenarios[i].data();
+                    const int     nt = (int) scenarios[i].size();
+                    robust_dae_value(model, th, nt, &x[0], &uA[0], &par[0],
+                                     ta + s*h, &k1[0], 0);
+                    for (int j = 0; j < ns; ++j) y[j] = x[j] + 0.5*h*k1[j];
+                    robust_dae_value(model, th, nt, &y[0], &uH[0], &par[0],
+                                     ta + (s + 0.5)*h, &k2[0], 0);
+                    for (int j = 0; j < ns; ++j) y[j] = x[j] + 0.5*h*k2[j];
+                    robust_dae_value(model, th, nt, &y[0], &uH[0], &par[0],
+                                     ta + (s + 0.5)*h, &k3[0], 0);
+                    for (int j = 0; j < ns; ++j) y[j] = x[j] + h*k3[j];
+                    robust_dae_value(model, th, nt, &y[0], &uB[0], &par[0],
+                                     ta + (s + 1.0)*h, &k4[0], 0);
+                    for (int j = 0; j < ns; ++j)
+                        x[j] += (h/6.0)*(k1[j] + 2.0*k2[j] + 2.0*k3[j] + k4[j]);
+                }
+                for (int j = 0; j < ns; ++j) {
+                    if (!std::isfinite(x[j])) { ok = false; break; }
+                    x_guess(ns*i + j, c+1) = x[j];
+                }
+            }
+        }
+        if (ok) return true;
+    }
+    return false;
+}
+
+// Build the augmented problem for one scenario list. This is what spec.setup would have
+// been, and it is generated instead.
+static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel& model,
+                               const std::vector<RowVectorXd>& scenarios,
+                               const RobustDesign& previous,
+                               RobustAugmentation& aug, bool verbose)
+{
+    const int M   = (int) scenarios.size();
+    const int ns  = model.nstates, nc = model.ncontrols;
+    const int ne  = model.nevents, np = model.npath;
+
+    aug.model     = &model;
+    aug.scenarios = scenarios;
+
+    problem.nphases   = 1;
+    problem.nlinkages = 0;
+    psopt_level1_setup(problem);
+
+    problem.phases(1).nstates     = ns*M;
+    problem.phases(1).ncontrols   = nc;
+    problem.phases(1).nevents     = ne*M;
+    problem.phases(1).npath       = np*M;
+    problem.phases(1).nparameters = model.nparameters;
+    problem.phases(1).nodes       = model.nodes;
+    psopt_level2_setup(problem, algorithm);
+    // The one moment at which the caller's options can be set, because the call above has
+    // just reset every one of them to its default. See RobustModel::configure.
+    if (model.configure) model.configure(algorithm, model.configure_data);
+
+    if (problem.name.empty())        problem.name        = "robust design";
+    if (problem.outfilename.empty()) problem.outfilename = "robust_design.txt";
+
+    problem.robust_data = (void*) &aug;
+
+    for (int i = 0; i < M; ++i)
+        for (int j = 0; j < ns; ++j) {
+            problem.phases(1).bounds.lower.states(ns*i + j) = model.states_lower(j);
+            problem.phases(1).bounds.upper.states(ns*i + j) = model.states_upper(j);
+        }
+    for (int j = 0; j < nc; ++j) {
+        problem.phases(1).bounds.lower.controls(j) = model.controls_lower(j);
+        problem.phases(1).bounds.upper.controls(j) = model.controls_upper(j);
+    }
+    for (int j = 0; j < model.nparameters; ++j) {
+        problem.phases(1).bounds.lower.parameters(j) = model.parameters_lower(j);
+        problem.phases(1).bounds.upper.parameters(j) = model.parameters_upper(j);
+    }
+
+    // The tightening. Applied to the events and the path constraints, per scenario, and
+    // reported once rather than per scenario.
+    RowVectorXd emargin, pmargin;
+    int e_one_sided = 0, p_one_sided = 0;
+    (void) e_one_sided; (void) p_one_sided;   // reported once, by the driver
+    if (ne > 0)
+        robust_margins(model.events_lower, model.events_upper, model.tighten,
+                       emargin, e_one_sided);
+    if (np > 0)
+        robust_margins(model.path_lower, model.path_upper, model.tighten,
+                       pmargin, p_one_sided);
+
+    for (int i = 0; i < M; ++i) {
+        for (int j = 0; j < ne; ++j) {
+            const double lo = model.events_lower(j), up = model.events_upper(j);
+            const double mg = (up > lo) ? emargin(j) : 0.0;
+            problem.phases(1).bounds.lower.events(ne*i + j) = lo + mg;
+            problem.phases(1).bounds.upper.events(ne*i + j) = up - mg;
+        }
+        for (int j = 0; j < np; ++j) {
+            const double lo = model.path_lower(j), up = model.path_upper(j);
+            const double mg = (up > lo) ? pmargin(j) : 0.0;
+            problem.phases(1).bounds.lower.path(np*i + j) = lo + mg;
+            problem.phases(1).bounds.upper.path(np*i + j) = up - mg;
+        }
+    }
+
+    problem.phases(1).bounds.lower.StartTime = model.t0_lower;
+    problem.phases(1).bounds.upper.StartTime = model.t0_upper;
+    problem.phases(1).bounds.lower.EndTime   = model.tf_lower;
+    problem.phases(1).bounds.upper.EndTime   = model.tf_upper;
+
+    problem.endpoint_cost  = model.endpoint_cost;
+    problem.integrand_cost = model.integrand_cost;
+    problem.dae            = &robust_augmented_dae;
+    problem.events         = (ne > 0) ? &robust_augmented_events : 0;
+    problem.linkages       = &robust_no_linkages;
+
+    // The guess. The warm start when there is a previous design and it integrated
+    // cleanly; the user's own nominal guess, replicated, otherwise.
+    MatrixXd x_guess;
+    bool warm = previous.valid
+                && robust_warm_states(model, scenarios, previous, algorithm, x_guess);
+    if (warm) {
+        problem.phases(1).guess.controls = previous.controls;
+        problem.phases(1).guess.time     = previous.time;
+    } else {
+        const int N = (int) model.guess_time.cols();
+        x_guess = zeros(ns*M, N);
+        for (int i = 0; i < M; ++i)
+            for (int j = 0; j < ns; ++j)
+                x_guess.row(ns*i + j) = model.guess_states.row(j);
+        problem.phases(1).guess.controls = model.guess_controls;
+        problem.phases(1).guess.time     = model.guess_time;
+        if (verbose && previous.valid)
+            printf("  the warm start did not stay finite at %d substeps or below; "
+                   "using the nominal guess\n", robust_warm_substeps_max);
+    }
+    problem.phases(1).guess.states = x_guess;
+    if (model.nparameters > 0 && (int) model.guess_parameters.size() == model.nparameters)
+        problem.phases(1).guess.parameters = model.guess_parameters;
+}
+
+// What the caller is owed before the loop starts: whether the model is complete, and
+// whether the tightening will actually reach every constraint it is meant to.
+static bool robust_model_is_usable(const RobustModel& model, bool verbose)
+{
+    if (model.nstates <= 0 || !model.dae) {
+        error_message("psopt_solve_robust: spec.model needs at least nstates and dae");
+        return false;
+    }
+    if ((int) model.initial_state.size() != model.nstates) {
+        error_message("psopt_solve_robust: spec.model.initial_state must have nstates "
+                      "entries. The warm start integrates every scenario out of it, and "
+                      "it is not inferred from the event bounds");
+        return false;
+    }
+    if ((int) model.states_lower.size() != model.nstates ||
+        (int) model.states_upper.size() != model.nstates) {
+        error_message("psopt_solve_robust: spec.model needs nominal state bounds");
+        return false;
+    }
+    if (model.nevents > 0 && !model.events) {
+        error_message("psopt_solve_robust: spec.model declares nevents but no events "
+                      "function");
+        return false;
+    }
+    if (model.nodes.size() < 1 || (int) model.guess_time.cols() < 2) {
+        error_message("psopt_solve_robust: spec.model needs nodes and a nominal guess");
+        return false;
+    }
+    if (verbose) {
+        RowVectorXd mg;
+        int e1 = 0, p1 = 0;
+        if (model.nevents > 0)
+            robust_margins(model.events_lower, model.events_upper, model.tighten, mg, e1);
+        if (model.npath > 0)
+            robust_margins(model.path_lower, model.path_upper, model.tighten, mg, p1);
+        if (e1 + p1 > 0)
+            printf("\npsopt_solve_robust: %d event and %d path bound(s) are one-sided, "
+                   "so tighten gives them\n  no margin. A design left sitting on such a "
+                   "bound is where the between-scenario\n  overshoot appears; widen the "
+                   "bound or state it two-sided if the loop will not converge.\n",
+                   e1, p1);
+    }
+    return true;
+}
+
+// Build the problem for one scenario list, by whichever route the caller chose. Every
+// call site in the driver goes through here, so the two paths cannot drift apart.
+static void robust_do_setup(Prob& problem, Alg& algorithm, RobustSpec& spec,
+                            const std::vector<RowVectorXd>& scenarios,
+                            const RobustDesign& previous, RobustAugmentation& aug)
+{
+    if (spec.model)
+        robust_model_setup(problem, algorithm, *spec.model, scenarios, previous, aug,
+                           spec.verbose);
+    else
+        spec.setup(problem, algorithm, scenarios, previous, spec.user_data);
+}
+
 bool robust_prefer_cold(double cold_objective, double cold_worst,
                         double warm_objective, double warm_worst, double slack)
 {
@@ -634,11 +968,23 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
 [[nodiscard]] int psopt_solve_robust(Sol& solution, RobustSpec& spec,
                                      Prob& problem, Alg& algorithm)
 {
-    if (!spec.setup || !spec.violation) {
-        error_message("psopt_solve_robust: both spec.setup and spec.violation "
-                      "must be supplied");
+    if (!spec.violation) {
+        error_message("psopt_solve_robust: spec.violation must be supplied. The "
+                      "verification has to be independent of the transcription, and only "
+                      "the caller knows what that means for their problem");
         return -1;
     }
+    if (!spec.setup && !spec.model) {
+        error_message("psopt_solve_robust: supply either spec.setup, which builds the "
+                      "augmented problem, or spec.model, which is the nominal problem "
+                      "the driver augments itself");
+        return -1;
+    }
+    if (spec.model && !robust_model_is_usable(*spec.model, spec.verbose)) return -1;
+
+    // Lives as long as this call, because the augmented dae and events read it through
+    // problem.robust_data on every evaluation.
+    RobustAugmentation aug;
 
     // Free the defect rows the transcription cannot fill. They are equality rows of
     // zeros, IPOPT counts equality rows against variables, and there are nstates of them
@@ -686,7 +1032,7 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
     }
 
     for (int it = 0; it < spec.max_iterations; ++it) {
-        spec.setup(problem, algorithm, scenarios, best, spec.user_data);
+        robust_do_setup(problem, algorithm, spec, scenarios, best, aug);
 
         // Before handing it to psopt(): is the guess even a number? A guess that
         // diverged while being built reaches the solver as NaN, and what comes back
@@ -702,7 +1048,7 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
                    "by the end.\n", offender, (int) scenarios.size());
             if (!best.valid) { solution.error_flag = 1; return 1; }
             scenarios.pop_back();
-            spec.setup(problem, algorithm, scenarios, best, spec.user_data);
+            robust_do_setup(problem, algorithm, spec, scenarios, best, aug);
             rc = psopt(solution, problem, algorithm);
             ++spec.n_solves;
             break;
@@ -741,7 +1087,7 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
             // fixed point of the warm start, which a cold solve of the same set
             // would not be.
             scenarios.pop_back();
-            spec.setup(problem, algorithm, scenarios, best, spec.user_data);
+            robust_do_setup(problem, algorithm, spec, scenarios, best, aug);
             rc = psopt(solution, problem, algorithm);
             ++spec.n_solves;
             spec.budget_exhausted = starved;
@@ -791,7 +1137,7 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
         const double       warm_worst = spec.certificate;
         const RowVectorXd  warm_at    = spec.certificate_at;
 
-        spec.setup(problem, algorithm, scenarios, RobustDesign(), spec.user_data);
+        robust_do_setup(problem, algorithm, spec, scenarios, RobustDesign(), aug);
         const int rc_cold = psopt(solution, problem, algorithm);
         ++spec.n_solves;
 
@@ -840,7 +1186,7 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
             // to be put back. Re-solving its own scenario list warm-started from its
             // own trajectory returns to it, that design being a fixed point of the
             // warm start, which is the same argument the failure path above uses.
-            spec.setup(problem, algorithm, scenarios, warm, spec.user_data);
+            robust_do_setup(problem, algorithm, spec, scenarios, warm, aug);
             rc = psopt(solution, problem, algorithm);
             ++spec.n_solves;
             // spec.design stays the design that was certified, whatever the re-solve
@@ -879,4 +1225,12 @@ bool robust_prefer_cold(double cold_objective, double cold_worst,
         printf("  calls to psopt()              : %d\n", spec.n_solves);
     }
     return rc;
+}
+
+[[nodiscard]] int psopt_solve_robust(Sol& solution, RobustSpec& spec,
+                                     RobustModel& model,
+                                     Prob& problem, Alg& algorithm)
+{
+    spec.model = &model;
+    return psopt_solve_robust(solution, spec, problem, algorithm);
 }

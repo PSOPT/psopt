@@ -345,4 +345,116 @@ TEST(Robust, PolishFallsBackToTheSmallerViolation)
     EXPECT_TRUE (robust_prefer_cold(7.0, slack,   8.0, slack,   slack));
 }
 
+//////////////////////////////////////////////////////////////////////////
+//  The model interface
+//////////////////////////////////////////////////////////////////////////
+
+// The inward tightening, which is what lets the generation loop terminate. A two-sided
+// bound gives up a fraction of its half width; a pinned bound is an equality and must be
+// left exactly alone, since tightening it would make it infeasible rather than tight.
+TEST(Robust, MarginsTightenOnlyTwoSidedBounds)
+{
+    RowVectorXd lo(4), hi(4), mg;
+    int one_sided = -1;
+    lo << 0.0,  -0.02,  1.0,  0.5;
+    hi << 0.0,   0.02,  3.0,  0.5;
+    robust_margins(lo, hi, 0.9, mg, one_sided);
+    EXPECT_EQ(one_sided, 0);
+    EXPECT_DOUBLE_EQ(mg(0), 0.0);                    // pinned
+    EXPECT_NEAR(mg(1), 0.1*0.02, 1.0e-15);           // ball of 0.02 keeps nine tenths
+    EXPECT_NEAR(mg(2), 0.1*1.0,  1.0e-15);           // half width 1
+    EXPECT_DOUBLE_EQ(mg(3), 0.0);                    // pinned away from zero
+}
+
+// A one-sided bound has no half width to take a fraction of. It gets no margin and is
+// counted, because a design left sitting on such a bound is exactly where the
+// between-scenario overshoot appears and the loop will not converge without being told.
+TEST(Robust, MarginsCountOneSidedBounds)
+{
+    RowVectorXd lo(3), hi(3), mg;
+    int one_sided = 0;
+    lo << -1.0e30, 0.0, -2.0;
+    hi <<  1.0,    1.0e30, 2.0;
+    robust_margins(lo, hi, 0.5, mg, one_sided);
+    EXPECT_EQ(one_sided, 2);
+    EXPECT_DOUBLE_EQ(mg(0), 0.0);
+    EXPECT_DOUBLE_EQ(mg(1), 0.0);
+    EXPECT_NEAR(mg(2), 0.5*2.0, 1.0e-15);
+}
+
+// A tighten of 1 asks for no margin at all, which is the setting to use when the events
+// already carry an inward margin the user put there.
+TEST(Robust, MarginsVanishAtTightenOne)
+{
+    RowVectorXd lo(2), hi(2), mg;
+    int one_sided = 0;
+    lo << -1.0, 0.0;
+    hi <<  1.0, 4.0;
+    robust_margins(lo, hi, 1.0, mg, one_sided);
+    EXPECT_DOUBLE_EQ(mg(0), 0.0);
+    EXPECT_DOUBLE_EQ(mg(1), 0.0);
+}
+
+// The mechanism the whole model interface rests on: a nominal dae written once for the
+// derivative tape, called numerically on plain doubles with the scenario as data. If this
+// were not exact the library could not build a warm start out of the user's own equations
+// and would have to ask for a second, hand-written copy of the physics.
+namespace {
+void spring_dae(adouble* d, adouble* path, adouble* x, adouble* u, adouble* p,
+                adouble& t, const double* theta, int /*ntheta*/,
+                adouble* /*xad*/, int /*iphase*/, Workspace* /*ws*/)
+{
+    const double k = theta[0], c = theta[1];
+    d[0] = x[1];
+    d[1] = -k*x[0] - c*x[1] + u[0] + p[0]*sin(t);
+    path[0] = x[0]*x[0] + x[1]*x[1];
+}
+}  // namespace
+
+TEST(Robust, DaeValueAgreesWithTheHandWrittenArithmetic)
+{
+    RobustModel model;
+    model.nstates = 2; model.ncontrols = 1; model.npath = 1; model.nparameters = 1;
+    model.dae = &spring_dae;
+
+    const double th[2] = { 3.5, 0.25 };
+    const double x[2]  = { 0.7, -1.3 }, u[1] = { 0.4 }, p[1] = { 2.0 }, t = 1.1;
+    double d[2], g[1];
+    robust_dae_value(model, th, 2, x, u, p, t, d, g);
+
+    EXPECT_DOUBLE_EQ(d[0], x[1]);
+    EXPECT_DOUBLE_EQ(d[1], -th[0]*x[0] - th[1]*x[1] + u[0] + p[0]*std::sin(t));
+    EXPECT_DOUBLE_EQ(g[0], x[0]*x[0] + x[1]*x[1]);
+}
+
+// The scenario reaches the equations as data, so two scenarios give two different plants
+// from one function. This is the augmentation, in the small.
+TEST(Robust, DaeValueSeparatesTheScenarios)
+{
+    RobustModel model;
+    model.nstates = 2; model.ncontrols = 1; model.npath = 1; model.nparameters = 1;
+    model.dae = &spring_dae;
+
+    const double x[2] = { 1.0, 0.0 }, u[1] = { 0.0 }, p[1] = { 0.0 };
+    const double soft[2] = { 1.0, 0.0 }, stiff[2] = { 9.0, 0.0 };
+    double ds[2], dh[2], g[1];
+    robust_dae_value(model, soft,  2, x, u, p, 0.0, ds, g);
+    robust_dae_value(model, stiff, 2, x, u, p, 0.0, dh, g);
+    EXPECT_DOUBLE_EQ(ds[1], -1.0);
+    EXPECT_DOUBLE_EQ(dh[1], -9.0);
+}
+
+// A path pointer is optional, because the warm start wants the derivatives and has no use
+// for the path residual. Passing null must not write through it.
+TEST(Robust, DaeValueToleratesANullPathPointer)
+{
+    RobustModel model;
+    model.nstates = 2; model.ncontrols = 1; model.npath = 1; model.nparameters = 1;
+    model.dae = &spring_dae;
+    const double th[2] = { 1.0, 0.0 }, x[2] = { 1.0, 2.0 }, u[1] = { 0.0 }, p[1] = { 0.0 };
+    double d[2] = { 0.0, 0.0 };
+    robust_dae_value(model, th, 2, x, u, p, 0.0, d, 0);
+    EXPECT_DOUBLE_EQ(d[0], 2.0);
+}
+
 }  // namespace
