@@ -856,22 +856,18 @@ RobustControlShape robust_control_shape(Alg& algorithm, const MatrixXd& controls
     return ROBUST_LINEAR;
 }
 
-RobustControlShape robust_control_shape(Alg& algorithm, const RobustDesign& design)
-{
-    return robust_control_shape(algorithm, design.controls_full, design.time_full);
-}
+// There were RobustDesign overloads of both of these until the verifier became per phase.
+// A RobustDesign's own five flat fields ARE its first phase, so the phase-looping verifier
+// reads a RobustPhaseTrajectory for every phase including the first, and the convenience
+// wrappers lost their last caller. Removed rather than left: an unused static function is
+// an error under PSOPT_STRICT_WARNINGS, and a wrapper nothing calls invites a reader to
+// believe there is a path that reads a design without reference to its phases.
 
 // The control on interval i at fraction w of it, as the design means it. For the parabola
 // the three values are the node, the midpoint and the next node, which controls_full holds
 // at columns 2i, 2i+1 and 2i+2.
 void robust_control_at(const MatrixXd& controls, const MatrixXd& controls_full,
                        RobustControlShape shape, int i, double w, int nc, double* u);
-
-void robust_control_at(const RobustDesign& design, RobustControlShape shape,
-                       int i, double w, int nc, double* u)
-{
-    robust_control_at(design.controls, design.controls_full, shape, i, w, nc, u);
-}
 
 void robust_control_at(const RobustPhaseTrajectory& traj, RobustControlShape shape,
                        int i, double w, int nc, double* u)

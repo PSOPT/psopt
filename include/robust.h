@@ -660,15 +660,21 @@ struct RobustModel : public RobustPhase {
     void (*configure)(Alg& algorithm, void* user_data);
     void*  configure_data;
 
+    // The initialiser list is in DECLARATION ORDER, which is the order the members are
+    // actually initialised in whatever order this list is written. GCC says so with
+    // -Wreorder, which CI turns into an error through PSOPT_STRICT_WARNINGS, and it is
+    // worth keeping that way: a list whose order is a fiction is one place a reader can
+    // be misled about what depends on what.
     RobustModel()
         : RobustPhase(),
           link(0), nlink(0), link_data(0), jump(0), jump_data(0),
           nparameters(0),
-          feedback_kind(ROBUST_FEEDBACK_NONE), feedback_schedule(0), feedback_data(0),
           initial_state_fn(0), initial_state_data(0),
+          tighten(0.9),
+          feedback_kind(ROBUST_FEEDBACK_NONE), feedback_schedule(0), feedback_data(0),
           cost_lower(std::numeric_limits<double>::quiet_NaN()),
           cost_upper(std::numeric_limits<double>::quiet_NaN()),
-          tighten(0.9), verify_substeps(16), warm_substeps(8),
+          verify_substeps(16), warm_substeps(8),
           configure(0), configure_data(0) {}
 };
 
