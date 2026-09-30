@@ -239,7 +239,7 @@ what `run_all.py` reports.
 | `robust_driver_tube.py` | an ancillary feedback gain against open loop | the closed loop is checked against an independent implementation |
 | `robust_driver_gain.py` | who chooses the ancillary gain: given, scheduled, co-designed | a measured negative result --- the co-designed gain must be cheaper and must fail to certify |
 | `robust_driver_cvar.py` | a tail measure on a set dense enough to resolve its tail | CVaR must be WORSE in the tail than the mean-minimising design at sixteen scenarios and better at forty-eight |
-| `robust_driver_twophase.py` | a robust design over two phases joined by a linkage | the design must cross the boundary and an independent integrator that crosses it too must agree |
+| `robust_driver_twophase.py` | a robust design over two phases, joined first by continuity and then by a declared jump | the design and the certificate must match the C++ driver's on the same problem; and with a jump, the verifiers must cross the boundary the way the solved linkage did |
 | `rv2oe_casadi.py` | orbital-element helper used by `launch.py` | not an example |
 
 The first fourteen were run together on 17 September 2026 and passed;
@@ -539,7 +539,8 @@ the tail is not where the action is.
 Multi-phase problems are supported. `add_phase` may be called more than once, and
 `link_phases(a, b, jumps=None)` states what happens at the boundary: consecutive
 phases are joined by continuity when nothing says otherwise, and `jumps` gives a
-numerical jump map for a staging event. `robust_driver_twophase.py` is the worked
+numerical jump map for a staging event, with `Problem.link_phases`'s own sign, so that a
+positive delta is a DROP: `x(t0 of b) = x(tf of a) - delta`. `robust_driver_twophase.py` is the worked
 example, and it is deliberately a problem whose answer is known, so that the four
 things the driver has to do at a boundary can each be checked: replicate the linkage
 once per scenario, chain the warm start across it, verify a trajectory that crosses

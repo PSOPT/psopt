@@ -580,10 +580,15 @@ class RobustProblem(object):
     def link_phases(self, a, b, jumps=None):
         """Join phase a to phase b: every state carried across, and the time with it.
 
-        `jumps` is {state index: delta} for a state that does NOT carry across
-        unchanged, the mass dropped at staging being the usual example, and the index is
-        the NOMINAL one, the driver expanding it to every scenario's copy. The same
-        statement serves the verifier, which crosses the boundary by adding delta.
+        `jumps` is {state index: delta} for a state that does NOT carry across unchanged,
+        the mass dropped at staging being the usual example, and the index is the NOMINAL
+        one, the driver expanding it to every scenario's copy.
+
+        THE SIGN IS PSOPT'S, AND IT IS A DROP: the state SUBTRACTS delta across the
+        boundary, x(t0 of b) = x(tf of a) - delta, which is why mass jettison is written
+        with a positive number. This is `Problem.link_phases`'s own convention, `auto_link`
+        writing the residual as xf_prev - xi_next and the jump subtracting delta from it,
+        and the verifiers follow the augmented problem rather than the other way about.
 
         Called with no links at all and more than one phase, the driver joins consecutive
         phases by plain continuity, which is what most multi-phase problems want.
@@ -597,7 +602,13 @@ class RobustProblem(object):
         return [dict(a=p, b=p + 1, jumps={}) for p in range(1, len(self._phases))]
 
     def _jump_vector(self, a):
-        """The delta added to every state crossing OUT of phase a, as an array."""
+        """The delta SUBTRACTED from every state crossing out of phase a, as an array.
+
+        The sign is the one `link_phases` documents and the augmented problem imposes. A
+        verifier that added it instead would cross the boundary the wrong way and certify a
+        trajectory the design does not have, and on a continuity link, where the vector is
+        zero, nothing would show.
+        """
         rp = self._phases[a - 1]
         d = np.zeros(rp.nstates)
         for lk in self._phase_links():
@@ -1293,7 +1304,7 @@ class RobustProblem(object):
                 J = J + np.asarray(mp["phi"](X0, X, P, np.full((1, K), t_nodes[0]),
                                              np.full((1, K), t_nodes[-1]))).ravel()
             if ip + 1 < len(self._phases):
-                X = X + self._jump_vector(ip + 1).reshape(-1, 1)
+                X = X - self._jump_vector(ip + 1).reshape(-1, 1)
         return J[1:] if Kg is not None else J[:nreal]
 
     def _x0_of(self, thetas):
@@ -1721,8 +1732,8 @@ class RobustProblem(object):
                                               nodes[ip] if want_nodes else None,
                                               want_uexcess)
             if ip + 1 < len(self._phases):
-                # Across the boundary: continuity, plus whatever jump the link declared.
-                X = X + self._jump_vector(ip + 1).reshape(-1, 1)
+                # Across the boundary: continuity, less whatever jump the link declared.
+                X = X - self._jump_vector(ip + 1).reshape(-1, 1)
 
         # A column whose trajectory left the reals is not an unknown, it is the
         # worst possible outcome: the closed loop diverged at that parameter. NaN
@@ -1933,11 +1944,11 @@ class RobustProblem(object):
                 v = max(v, _bound_excess(ev, rp.bounds.lower.events,
                                          rp.bounds.upper.events, self.event_scale))
             if ip + 1 < len(self._phases):
-                # Across the boundary: continuity, plus whatever jump the link
+                # Across the boundary: continuity, less whatever jump the link
                 # declared. The jump is on the plant's own states, which under the
                 # feedback packing are the trailing n.
                 d = self._jump_vector(ip + 1)
-                x = x + (np.concatenate([d, d]) if Kg is not None else d)
+                x = x - (np.concatenate([d, d]) if Kg is not None else d)
         return v
 
     def _check_steps(self, thetas, design, params):
