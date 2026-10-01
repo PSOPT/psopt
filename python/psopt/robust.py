@@ -943,7 +943,8 @@ class RobustProblem(object):
             elo, ehi = [], []
             if ne:
               lo, hi = _shrink(rp.bounds.lower.events, rp.bounds.upper.events,
-                               margins[ip]["events"])
+                               margins[ip]["events_lower"],
+                               margins[ip]["events_upper"])
               elo, ehi = _tile(lo, M), _tile(hi, M)
             if use_cost:
               elo, ehi = elo + [0.0] * M, ehi + [0.0] * M
@@ -955,7 +956,8 @@ class RobustProblem(object):
             plo, phi = [], []
             if npth:
               lo, hi = _shrink(rp.bounds.lower.path, rp.bounds.upper.path,
-                               margins[ip]["path"])
+                               margins[ip]["path_lower"],
+                               margins[ip]["path_upper"])
               plo, phi = _tile(lo, M), _tile(hi, M)
             if nu_rows:
               # The user's own control bounds, applied to each corrected scenario's
@@ -2058,8 +2060,15 @@ class RobustProblem(object):
         generate       add the worst parameter found and re-solve, iteratively
         tighten        design against constraints shrunk to this fraction of their
                        two-sided half-width; see margin
-        margin         absolute inward margin per event and per path constraint,
-                       as dict(events=..., path=...). Overrides tighten.
+        margin         absolute inward margins, overriding what tighten derives, as
+                       dict(events=..., path=...) to set both ends of a family at
+                       once or dict(path_lower=..., path_upper=..., events_lower=...,
+                       events_upper=...) to set one end. Each value is one number per
+                       constraint of that phase, or one to be broadcast. A key left
+                       out is derived from tighten; a key present with value None gets
+                       no margin at all. Use a lower margin of zero where a bound of
+                       zero states that a quantity cannot be negative rather than
+                       requiring the design to stay away from it.
         n_seed         evaluations used to seed the worst-case search
         out_of_sample  how many parameters to draw for scoring, none of which take
                        any part in the design
@@ -2325,7 +2334,9 @@ class RobustProblem(object):
             # computed from a harder problem than the one being bounded is not a
             # lower bound.
             out.wait_and_see = self._wait_and_see(
-                alg, [dict(events=None, path=None) for _ in self._phases],
+                alg, [dict(events_lower=None, events_upper=None,
+                           path_lower=None, path_upper=None)
+                      for _ in self._phases],
                 wait_and_see, seed)
             out.n_solves += wait_and_see
         out.n_verifications = self._nver
@@ -2625,58 +2636,150 @@ def _tile(v, M):
     return list(np.tile(np.asarray(v, dtype=float), M))
 
 
-def _margins(rp, tighten, margin, where=""):
-    """Inward margins for one phase, one per event and per path constraint.
+# The keys `margin` accepts. The two family keys set both ends of their family at
+# once, which is what the interface did before it could do anything else; the four
+# one-ended keys set a single end. Giving one family both ways is refused rather
+# than resolved, because either order of precedence would be a guess.
+_MARGIN_KEYS = ("events", "path",
+                "events_lower", "events_upper", "path_lower", "path_upper")
 
-    Given as absolute numbers they are used as given. Derived from `tighten` they
-    are (1 - tighten) times the half-width of each TWO-SIDED bound; a one-sided
-    bound has no half-width to take a fraction of and gets no automatic margin,
-    which is said out loud because a one-sided constraint left at its bound is
-    exactly where the between-scenario overshoot appears.
+# Absent from the dict, which is not the same as present and None: absent means
+# derive the margin from `tighten`, None means no margin at that end.
+_DERIVE = object()
+
+
+def _margin_entry(value, n, key, where):
+    """One checked margin vector: a scalar or one entry broadcast, or n entries."""
+    mg = np.atleast_1d(np.asarray(value, dtype=float)).ravel()
+    if mg.size == 1:
+        mg = np.full(n, float(mg[0]))
+    if mg.size != n:
+        raise ValueError(
+            "RobustProblem: margin[%r]%s has %d entries and the phase declares %d "
+            "constraint(s) of that kind. Give one entry per constraint, or one to be "
+            "broadcast to all of them, or leave the key out to have the margins "
+            "derived from tighten. A vector of some other length cannot be matched "
+            "to the constraints without guessing which one each entry meant."
+            % (key, where, mg.size, n))
+    if not np.all(np.isfinite(mg)) or np.any(mg < 0.0):
+        raise ValueError(
+            "RobustProblem: margin[%r]%s is not finite and non-negative throughout. "
+            "An inward margin moves a bound inwards; a negative one would move it "
+            "outwards, which loosens a constraint the problem declares and certifies "
+            "the design against a problem that was not stated. Use zero to leave "
+            "that end of the bound exactly where it is." % (key, where))
+    return mg
+
+
+def _margins(rp, tighten, margin, where=""):
+    """Inward margins for one phase, one per constraint and per END.
+
+    Derived from `tighten` a margin is (1 - tighten) times the half-width of a
+    TWO-SIDED bound; a one-sided bound has no half-width to take a fraction of and
+    gets no automatic margin, which is said out loud because a one-sided constraint
+    left at its bound is exactly where the between-scenario overshoot appears.
+
+    `margin` overrides that, per family or per end. The derivation is necessarily
+    symmetric and a bound's two ends often do not mean the same thing: a heating rate
+    declared on [0, 1e6] has an upper end that is a requirement and a lower end that
+    is a statement of sign, and a margin of 5e4 on that lower end asks the design to
+    hold a quantity away from a zero it legitimately passes through. Setting
+    path_lower to zero leaves the statement of sign alone and tightens the
+    requirement, which is what was meant.
+
+    A key left out of `margin` is derived; a key present with value None gets no
+    margin. The distinction matters: margin=dict(path=[...]) alone leaves the events
+    to `tighten`, where margin=dict(events=None, path=[...]) says the events are to
+    have none.
 
     This is per phase, and has to be: the margins are an array the length of the
     phase's own event and path vectors, so one phase's margins applied to another
     phase's bounds would either fail to broadcast or, where one of the two has a
     single constraint, broadcast quietly and tighten the wrong thing.
     """
-    if margin is not None:
-        return dict(events=margin.get("events"), path=margin.get("path"))
+    margin = {} if margin is None else dict(margin)
+    for key in margin:
+        if key not in _MARGIN_KEYS:
+            raise ValueError("RobustProblem: margin has no key %r. The keys are %s."
+                             % (key, ", ".join(_MARGIN_KEYS)))
     out = {}
-    for key, lo, hi in (("events", rp.bounds.lower.events, rp.bounds.upper.events),
+    for fam, lo, hi in (("events", rp.bounds.lower.events, rp.bounds.upper.events),
                         ("path", rp.bounds.lower.path, rp.bounds.upper.path)):
         if lo is None or hi is None:
-            out[key] = None
+            out[fam + "_lower"] = out[fam + "_upper"] = None
             continue
+        ends = (fam + "_lower", fam + "_upper")
+        if fam in margin and any(k in margin for k in ends):
+            raise ValueError(
+                "RobustProblem: margin sets %r and one of %s at the same time. The "
+                "family key sets both ends and the one-ended keys set one each, so "
+                "give either the one or the others." % (fam, ", ".join(ends)))
+
         lo = np.asarray(lo, dtype=float)
         hi = np.asarray(hi, dtype=float)
+        n = lo.size
         half = 0.5 * (hi - lo)
-        finite = np.isfinite(half) & (np.abs(half) < 1e29)
-        mg = np.where(finite, (1.0 - tighten) * half, 0.0)
-        # A pinned bound (half-width zero) is an equality; tightening it is
-        # meaningless and would make it infeasible rather than merely tight.
-        mg = np.where(half <= 0.0, 0.0, mg)
-        if np.any(~finite):
+        two_sided = np.isfinite(half) & (np.abs(half) < 1e29)
+        pinned = half <= 0.0
+        derived = np.where(two_sided & ~pinned, (1.0 - tighten) * half, 0.0)
+
+        given, mg = {}, {}
+        for key in ends:
+            given[key] = (margin[key] if key in margin
+                          else margin[fam] if fam in margin else _DERIVE)
+            if given[key] is _DERIVE:
+                mg[key] = derived
+            elif given[key] is None:
+                mg[key] = np.zeros(n)
+            else:
+                mg[key] = _margin_entry(given[key], n, key, where)
+            # A pinned bound is an equality. Neither source may touch it: a margin
+            # there does not make it tight, it makes it empty.
+            mg[key] = np.where(pinned, 0.0, mg[key])
+
+        # The box the two margins leave. An empty one is the silent infeasibility the
+        # one-ended keys exist to remove, so it is refused rather than passed on.
+        closed = ~pinned & (lo + mg[ends[0]] >= hi - mg[ends[1]])
+        if np.any(closed):
+            j = int(np.where(closed)[0][0])
+            raise ValueError(
+                "RobustProblem: the inward margins on %s constraint %d%s close its "
+                "box: the bound is [%g, %g] and the margins %g and %g leave nothing "
+                "between %g and %g. A margin is meant to make a constraint tight, "
+                "not empty."
+                % (fam, j, where, lo[j], hi[j], mg[ends[0]][j], mg[ends[1]][j],
+                   lo[j] + mg[ends[0]][j], hi[j] - mg[ends[1]][j]))
+
+        # Reported only for the end that actually constrains and has been given
+        # nothing. An end the user has set has been dealt with and is not news.
+        unattended = (~two_sided & ~pinned
+                      & (((np.isfinite(lo) & (np.abs(lo) < 1e29))
+                          & (given[ends[0]] is _DERIVE))
+                         | ((np.isfinite(hi) & (np.abs(hi) < 1e29))
+                            & (given[ends[1]] is _DERIVE))))
+        if np.any(unattended):
             warnings.warn(
                 "RobustProblem: %s constraints %s%s are one-sided, so `tighten` gives "
-                "them no margin. Pass margin=dict(%s=[...]) to set one; without it "
-                "the design sits exactly on those bounds and the worst case between "
-                "scenarios will exceed them."
-                % (key, list(np.where(~finite)[0]), where, key), stacklevel=4)
-        out[key] = mg
+                "them no margin. Pass margin=dict(%s_lower=[...], %s_upper=[...]) to "
+                "set one; without it the design sits exactly on those bounds and the "
+                "worst case between scenarios will exceed them."
+                % (fam, list(np.where(unattended)[0]), where, fam, fam), stacklevel=4)
+
+        out[ends[0]] = mg[ends[0]]
+        out[ends[1]] = mg[ends[1]]
     return out
 
 
-def _shrink(lo, hi, margin):
+def _shrink(lo, hi, margin_lower, margin_upper):
     if lo is None or hi is None:
         return lo, hi
     lo = np.asarray(lo, dtype=float).copy()
     hi = np.asarray(hi, dtype=float).copy()
-    if margin is None:
-        return list(lo), list(hi)
-    mg = np.asarray(margin, dtype=float)
     wide = hi > lo
-    lo = np.where(wide, lo + mg, lo)
-    hi = np.where(wide, hi - mg, hi)
+    if margin_lower is not None:
+        lo = np.where(wide, lo + np.asarray(margin_lower, dtype=float), lo)
+    if margin_upper is not None:
+        hi = np.where(wide, hi - np.asarray(margin_upper, dtype=float), hi)
     return list(lo), list(hi)
 
 

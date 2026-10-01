@@ -287,7 +287,30 @@ out.wait_and_see     # E[min] <= min E[.], the value of knowing theta in advance
 not the constraint itself. A terminal ball of radius 0.02 belongs in the event
 bounds; passing 0.02 as `slack` as well would quietly ask for a ball of radius
 0.04. Zero demands the declared bounds hold everywhere in the set, which the
-inward `margin` on the design is what makes attainable.
+inward margin on the design is what makes attainable.
+
+That margin comes from `tighten`, which gives up a fraction of each two-sided
+bound's half width at both ends. Both ends is often wrong, because a bound's two
+ends need not mean the same thing. A heating rate declared on `[0, 1e6]` has an
+upper end that is a requirement and a lower end that says the quantity cannot be
+negative, and `tighten=0.9` asks the design to hold that rate above `5e4`, which
+no vehicle does at the start of an entry. The result is a problem that is
+infeasible for a reason unconnected with robustness. `margin=` sets the margins
+directly, by family or by end:
+
+```python
+out = rp.solve(alg, tighten=0.9,
+               # the three lower bounds state a sign, so they get no margin; the
+               # upper ends are the requirements and keep what tighten derives
+               margin=dict(path_lower=0.0),
+               generate=True)
+```
+
+A key left out of the dict is derived from `tighten`; a key present with value
+`None` gets no margin at all. One-ended keys (`path_lower`, `path_upper`,
+`events_lower`, `events_upper`) are also the only way to give a **one-sided**
+bound a margin, there being no half width there to take a fraction of, and the
+driver warns when it finds such a bound with nothing of its own.
 
 Scenario sets come from an unscented rule (`scenarios="sigma-points"`), a
 low-discrepancy sequence (`"qmc"`), or a list (`Explicit`). With `generate=True`
