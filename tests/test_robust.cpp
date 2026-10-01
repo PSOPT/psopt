@@ -395,6 +395,89 @@ TEST(Robust, MarginsVanishAtTightenOne)
     EXPECT_DOUBLE_EQ(mg(1), 0.0);
 }
 
+// The derivation is symmetric and a bound's two ends often do not mean the same thing.
+// An end given a margin of its own takes that one; an end left empty still derives its
+// own from the half width, so one end can be overridden without disturbing the other.
+TEST(Robust, MarginsTakePerEndOverridesAndDeriveTheRest)
+{
+    RowVectorXd lo(2), hi(2), ovl(2), ovu(0), ml, mu;
+    int one_sided = -1;
+    lo <<  0.0,  0.0;
+    hi << 10.0,  4.0;
+    ovl << 0.0, 0.25;
+    robust_margins(lo, hi, 0.9, ovl, ovu, ml, mu, one_sided);
+    EXPECT_EQ(one_sided, 0);
+    EXPECT_DOUBLE_EQ(ml(0), 0.0);                    // asked for nothing on this end
+    EXPECT_DOUBLE_EQ(ml(1), 0.25);                   // asked for this much
+    EXPECT_NEAR(mu(0), 0.1*5.0, 1.0e-15);            // and both upper ends derived
+    EXPECT_NEAR(mu(1), 0.1*2.0, 1.0e-15);
+}
+
+// A single entry stands for all of them, which is how a user says "a tenth of a unit on
+// every upper end" without writing the length of the vector out.
+TEST(Robust, MarginsBroadcastASingleOverrideEntry)
+{
+    RowVectorXd lo(3), hi(3), ovl(1), ovu(0), ml, mu;
+    int one_sided = 0;
+    lo << 0.0, -1.0, 2.0;
+    hi << 1.0,  1.0, 6.0;
+    ovl << 0.05;
+    robust_margins(lo, hi, 0.9, ovl, ovu, ml, mu, one_sided);
+    EXPECT_DOUBLE_EQ(ml(0), 0.05);
+    EXPECT_DOUBLE_EQ(ml(1), 0.05);
+    EXPECT_DOUBLE_EQ(ml(2), 0.05);
+}
+
+// The case the overrides exist for. A one-sided bound has no half width, so the
+// derivation gives it nothing and the driver says so; an explicit margin is what it can
+// be given instead, and once it has one there is nothing left to report.
+TEST(Robust, AnExplicitMarginReachesAOneSidedBoundAndEndsTheReport)
+{
+    RowVectorXd lo(1), hi(1), none(0), ovu(1), ml, mu;
+    int one_sided = -1;
+    lo << -1.0e30;
+    hi <<  2.0;
+
+    robust_margins(lo, hi, 0.9, none, none, ml, mu, one_sided);
+    EXPECT_EQ(one_sided, 1);                         // nothing to take a fraction of
+    EXPECT_DOUBLE_EQ(mu(0), 0.0);
+
+    ovu << 0.01;
+    robust_margins(lo, hi, 0.9, none, ovu, ml, mu, one_sided);
+    EXPECT_EQ(one_sided, 0);                         // the end that binds has a margin
+    EXPECT_DOUBLE_EQ(mu(0), 0.01);
+    EXPECT_DOUBLE_EQ(ml(0), 0.0);                    // and the vacuous end still none
+}
+
+// A pinned bound is an equality, and an override may not touch it either. A margin there
+// does not make the constraint tight, it makes it empty, and the user who wrote a margin
+// for a whole vector of constraints did not mean that for the one that happens to be an
+// equality.
+TEST(Robust, MarginsLeaveAPinnedBoundAloneWhateverTheOverrideSays)
+{
+    RowVectorXd lo(2), hi(2), ov(1), ml, mu;
+    int one_sided = 0;
+    lo << 0.5, 0.0;
+    hi << 0.5, 1.0;
+    ov << 0.2;
+    robust_margins(lo, hi, 0.9, ov, ov, ml, mu, one_sided);
+    EXPECT_DOUBLE_EQ(ml(0), 0.0);
+    EXPECT_DOUBLE_EQ(mu(0), 0.0);
+    EXPECT_DOUBLE_EQ(ml(1), 0.2);
+    EXPECT_DOUBLE_EQ(mu(1), 0.2);
+}
+
+// Zero, one or one per constraint, and nothing else: a vector of some other length
+// cannot be matched to the constraints without guessing which one each entry meant.
+TEST(Robust, OverrideLengthsAreZeroOneOrOnePerConstraint)
+{
+    EXPECT_TRUE(robust_margin_override_is_sized(zeros(1, 0), 3));
+    EXPECT_TRUE(robust_margin_override_is_sized(zeros(1, 1), 3));
+    EXPECT_TRUE(robust_margin_override_is_sized(zeros(1, 3), 3));
+    EXPECT_FALSE(robust_margin_override_is_sized(zeros(1, 2), 3));
+    EXPECT_FALSE(robust_margin_override_is_sized(zeros(1, 4), 3));
+}
+
 // The mechanism the whole model interface rests on: a nominal dae written once for the
 // derivative tape, called numerically on plain doubles with the scenario as data. If this
 // were not exact the library could not build a warm start out of the user's own equations
@@ -1033,6 +1116,163 @@ TEST(Robust, AMalformedGivenGainIsRefused)
     RobustModel s = checkable_model();
     s.feedback_kind = ROBUST_FEEDBACK_SCHEDULED;   // and no feedback_schedule
     EXPECT_THROW({ const int rc = try_solve(s); (void) rc; }, ErrorHandler);
+}
+
+namespace {
+// A path-constrained robust problem whose answer can be written down.
+//
+//   maximise x(1)   subject to   xdot = u,   x(0) = 0,   u in [0, 10],
+//                                g = x + u - theta <= 2,   |theta| <= 1.
+//
+// The constraint binds throughout, and it binds hardest at theta = -1, which is the
+// scenario the generation loop has to find. There the design satisfies x + u <= 1 - m,
+// m being the inward margin on the upper end of g, so u = (1 - m) - x and
+//
+//   x(t) = (1 - m)(1 - exp(-t)),       x(1) = (1 - m)(1 - 1/e).
+//
+// The bound on g is ONE-SIDED, so the symmetric derivation has no half width to take a
+// fraction of and the margin can come only from path_margin_upper. That is what makes
+// this a test of the overrides and not only of the path rows: without one the design sits
+// exactly on the bound, which is where the between-scenario overshoot appears.
+//
+// Every scenario's state copy follows the same xdot = u, so the copies are identical and
+// it is the worst scenario's bound that shapes the control. That is why the answer is
+// available in closed form, and it is the only thing about this problem that is special.
+void margin_dae(adouble* d, adouble* path, adouble* x, adouble* u, adouble* /*p*/,
+                adouble& /*t*/, const double* theta, int ntheta,
+                adouble* /*xad*/, int /*iphase*/, Workspace* /*ws*/)
+{
+    d[0]    = u[0];
+    path[0] = x[0] + u[0] - ((ntheta > 0) ? theta[0] : 0.0);
+}
+
+void margin_event(adouble* e, adouble* xi, adouble* /*xf*/, adouble* /*p*/,
+                  adouble& /*t0*/, adouble& /*tf*/, const double* /*theta*/,
+                  int /*ntheta*/, adouble* /*xad*/, int /*iphase*/, Workspace* /*ws*/)
+{
+    e[0] = xi[0];
+}
+
+adouble margin_cost(adouble* /*xi*/, adouble* xf, adouble* /*p*/, adouble& /*t0*/,
+                    adouble& /*tf*/, adouble* /*xad*/, int /*iphase*/,
+                    Workspace* /*ws*/)
+{
+    return -xf[0];
+}
+
+RobustModel margin_model(void)
+{
+    RobustModel m;
+    m.nstates = 1; m.ncontrols = 1; m.nevents = 1; m.npath = 1;
+    m.dae = &margin_dae; m.events = &margin_event; m.endpoint_cost = &margin_cost;
+    m.initial_state  = zeros(1, 1);
+    m.events_lower   = zeros(1, 1);      m.events_upper   = zeros(1, 1);
+    m.states_lower   = zeros(1, 1);      m.states_upper   = 2.0*ones(1, 1);
+    m.controls_lower = zeros(1, 1);      m.controls_upper = 10.0*ones(1, 1);
+    m.path_lower     = -1.0e30*ones(1, 1);
+    m.path_upper     = 2.0*ones(1, 1);
+    m.t0_lower = 0.0; m.t0_upper = 0.0;
+    m.tf_lower = 1.0; m.tf_upper = 1.0;
+    m.nodes.resize(1); m.nodes << 40;
+    m.guess_states   = zeros(1, 40);
+    m.guess_controls = ones(1, 40);
+    m.guess_time     = linspace(0.0, 1.0, 40);
+    m.verify_substeps = 16;
+    return m;
+}
+
+// |theta| <= 1 as a one-dimensional Gaussian set of two standard deviations.
+int solve_margin_model(RobustModel& model, RobustSpec& spec)
+{
+    Prob problem; Alg algorithm; Sol solution;
+    RowVectorXd mean(1);  mean << 0.0;
+    MatrixXd    cov(1,1); cov  << 0.25;
+    spec.uncertainty   = robust_gaussian(mean, cov, 2.0);
+    spec.verbose       = false;
+    spec.slack         = 1.0e-4;
+    spec.max_iterations = 6;
+    return psopt_solve_robust(solution, spec, model, problem, algorithm);
+}
+}  // namespace
+
+// A path-constrained RobustModel solved end to end to an answer written down in advance.
+// Nothing else in this file solves one, and the gap mattered: a defect in the augmented
+// path rows would have passed every row-count test here.
+TEST(Robust, APathConstrainedModelReachesItsClosedFormAnswer)
+{
+    const double exact = 1.0 - exp(-1.0);
+
+    RobustModel m = margin_model();
+    m.path_margin_upper = 0.01*ones(1, 1);
+    RobustSpec spec;
+    const int rc = solve_margin_model(m, spec);
+    ASSERT_EQ(rc, 0);
+    EXPECT_TRUE(spec.converged);
+    // The objective is -x(1), and x(1) = (1 - m)(1 - 1/e) at the worst scenario.
+    EXPECT_NEAR(-spec.design.objective, 0.99*exact, 2.0e-3);
+    // Which requires the edge of the set, and the starting rule does not contain it: for
+    // one Gaussian the unscented points are {0, +-sqrt(3) sigma} and sigma is a half, so
+    // the thinnest scenario it starts from is -0.866. The loop has to find the rest.
+    double thinnest = 0.0;
+    for (size_t i = 0; i < spec.scenarios.size(); ++i)
+        thinnest = std::min(thinnest, spec.scenarios[i](0));
+    EXPECT_LT(thinnest, -0.99);
+}
+
+// And the margin is what it says it is: the answer moves by exactly the amount the closed
+// form says, which a margin written into the wrong rows, or applied to the wrong end, or
+// applied once per scenario instead of once, would not do.
+//
+// Both margins here are small enough that the edge of the set still binds. Above
+// m = 0.134 it stops binding, the starting rule's -0.866 being enough on its own to keep
+// the whole set feasible, and the answer becomes (1.134 - m)(1 - 1/e) instead: measured
+// 0.590350 at m = 0.2 against 0.590295 predicted. That regime is left out of the
+// assertions because it rests on which points the starting rule happens to contain.
+TEST(Robust, APathMarginMovesTheAnswerByWhatItPromises)
+{
+    const double exact = 1.0 - exp(-1.0);
+
+    RobustModel a = margin_model();
+    a.path_margin_upper = 0.02*ones(1, 1);
+    RobustSpec sa;
+    ASSERT_EQ(solve_margin_model(a, sa), 0);
+    EXPECT_NEAR(-sa.design.objective, 0.98*exact, 2.0e-3);
+
+    RobustModel b = margin_model();
+    b.path_margin_upper = 0.10*ones(1, 1);
+    RobustSpec sb;
+    ASSERT_EQ(solve_margin_model(b, sb), 0);
+    EXPECT_NEAR(-sb.design.objective, 0.90*exact, 2.0e-3);
+}
+
+// The refusals, each before a solve starts. A margin the driver cannot match to the
+// constraints, one that would move a bound outwards, and a pair that leaves no box: all
+// three reach IPOPT as a locally infeasible problem if they are not caught here, reported
+// in the solver's language rather than in the model's.
+TEST(Robust, AMarginOverrideOfTheWrongLengthIsRefused)
+{
+    RobustModel m = margin_model();
+    m.path_margin_upper = zeros(1, 2);           // the phase declares one path constraint
+    RobustSpec spec;
+    EXPECT_THROW({ const int rc = solve_margin_model(m, spec); (void) rc; }, ErrorHandler);
+}
+
+TEST(Robust, ANegativeMarginIsRefused)
+{
+    RobustModel m = margin_model();
+    m.path_margin_upper = -0.01*ones(1, 1);
+    RobustSpec spec;
+    EXPECT_THROW({ const int rc = solve_margin_model(m, spec); (void) rc; }, ErrorHandler);
+}
+
+TEST(Robust, MarginsThatCloseABoundsBoxAreRefused)
+{
+    RobustModel m = margin_model();
+    m.path_lower        = zeros(1, 1);           // make it two-sided, [0, 2]
+    m.path_margin_lower = 1.5*ones(1, 1);
+    m.path_margin_upper = 1.5*ones(1, 1);        // which leaves [1.5, 0.5]
+    RobustSpec spec;
+    EXPECT_THROW({ const int rc = solve_margin_model(m, spec); (void) rc; }, ErrorHandler);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -716,6 +716,66 @@ void robust_margins(const RowVectorXd& lower, const RowVectorXd& upper,
     }
 }
 
+bool robust_margin_override_is_sized(const RowVectorXd& override_vector, int n)
+{
+    const int m = (int) override_vector.size();
+    return m == 0 || m == 1 || m == n;
+}
+
+// One override entry for constraint j, or false when the vector does not supply one. A
+// vector of the wrong length supplies nothing: the alternative is to read entry j of a
+// vector that was meant for a different set of constraints, and the driver refuses such
+// a vector before any of this runs.
+static bool robust_margin_at(const RowVectorXd& override_vector, int j, int n,
+                             double& value)
+{
+    if (!robust_margin_override_is_sized(override_vector, n)) return false;
+    const int m = (int) override_vector.size();
+    if (m == 0) return false;
+    value = override_vector(m == 1 ? 0 : j);
+    return true;
+}
+
+void robust_margins(const RowVectorXd& lower, const RowVectorXd& upper, double tighten,
+                    const RowVectorXd& override_lower, const RowVectorXd& override_upper,
+                    RowVectorXd& margin_lower, RowVectorXd& margin_upper,
+                    int& n_one_sided)
+{
+    const int n = (int) lower.size();
+    margin_lower = zeros(1, n);
+    margin_upper = zeros(1, n);
+    n_one_sided = 0;
+    if ((int) upper.size() != n) return;
+
+    for (int j = 0; j < n; ++j) {
+        const double half = 0.5*(upper(j) - lower(j));
+        const bool one_sided = !std::isfinite(half) || fabs(half) > 1.0e29;
+        const bool pinned    = !one_sided && half <= 0.0;
+
+        double ml = 0.0, mu = 0.0;
+        const bool have_l = robust_margin_at(override_lower, j, n, ml);
+        const bool have_u = robust_margin_at(override_upper, j, n, mu);
+
+        // A pinned bound is an equality. Neither source may touch it: a margin there
+        // does not make it tight, it makes it empty.
+        if (pinned) continue;
+
+        const double derived = one_sided ? 0.0 : (1.0 - tighten)*half;
+        margin_lower(j) = have_l ? ml : derived;
+        margin_upper(j) = have_u ? mu : derived;
+
+        // Counted per CONSTRAINT, as the two-argument form counts, and only when the end
+        // that actually constrains is left at its bound with nothing to give it room.
+        // An end the caller has given a margin to has been dealt with and is not news,
+        // and a constraint unbounded at both ends constrains nothing and never was.
+        if (one_sided) {
+            const bool lo_binds = std::isfinite(lower(j)) && fabs(lower(j)) <= 1.0e29;
+            const bool hi_binds = std::isfinite(upper(j)) && fabs(upper(j)) <= 1.0e29;
+            if ((lo_binds && !have_l) || (hi_binds && !have_u)) ++n_one_sided;
+        }
+    }
+}
+
 void robust_dae_value(const RobustModel& model, const double* theta, int ntheta,
                       const double* states, const double* controls,
                       const double* parameters, double time,
@@ -1797,28 +1857,34 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
 
         // The tightening. Applied to the events and the path constraints, per scenario,
         // and reported once rather than per scenario.
-        RowVectorXd emargin, pmargin;
+        RowVectorXd emargin_lo, emargin_hi, pmargin_lo, pmargin_hi;
         int e_one_sided = 0, p_one_sided = 0;
         (void) e_one_sided; (void) p_one_sided;   // reported once, by the driver
         if (ne > 0)
             robust_margins(ph.events_lower, ph.events_upper, model.tighten,
-                           emargin, e_one_sided);
+                           ph.events_margin_lower, ph.events_margin_upper,
+                           emargin_lo, emargin_hi, e_one_sided);
         if (np > 0)
             robust_margins(ph.path_lower, ph.path_upper, model.tighten,
-                           pmargin, p_one_sided);
+                           ph.path_margin_lower, ph.path_margin_upper,
+                           pmargin_lo, pmargin_hi, p_one_sided);
 
         for (int i = 0; i < M; ++i) {
             for (int j = 0; j < ne; ++j) {
                 const double lo = ph.events_lower(j), up = ph.events_upper(j);
-                const double mg = (up > lo) ? emargin(j) : 0.0;
-                problem.phases(p).bounds.lower.events(ne*i + j) = lo + mg;
-                problem.phases(p).bounds.upper.events(ne*i + j) = up - mg;
+                const bool wide = up > lo;
+                problem.phases(p).bounds.lower.events(ne*i + j) =
+                    lo + (wide ? emargin_lo(j) : 0.0);
+                problem.phases(p).bounds.upper.events(ne*i + j) =
+                    up - (wide ? emargin_hi(j) : 0.0);
             }
             for (int j = 0; j < np; ++j) {
                 const double lo = ph.path_lower(j), up = ph.path_upper(j);
-                const double mg = (up > lo) ? pmargin(j) : 0.0;
-                problem.phases(p).bounds.lower.path(np*i + j) = lo + mg;
-                problem.phases(p).bounds.upper.path(np*i + j) = up - mg;
+                const bool wide = up > lo;
+                problem.phases(p).bounds.lower.path(np*i + j) =
+                    lo + (wide ? pmargin_lo(j) : 0.0);
+                problem.phases(p).bounds.upper.path(np*i + j) =
+                    up - (wide ? pmargin_hi(j) : 0.0);
             }
         }
 
@@ -1992,6 +2058,76 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
     }
 }
 
+// Whether one phase's inward margin overrides are a set the design can be solved
+// against. Each refusal names the vector and the entry, because a margin is a number the
+// user wrote down and the useful thing to be told is which one.
+//
+// Checked here and not where they are applied, because by then the bounds have already
+// been written into the problem: an override that closes a bound's box would reach IPOPT
+// as a locally infeasible problem, which is the silent failure these overrides exist to
+// remove, and it would be reported in the solver's language rather than in the model's.
+static bool robust_margin_overrides_are_usable(const RowVectorXd& lower,
+                                               const RowVectorXd& upper,
+                                               const RowVectorXd& ov_lower,
+                                               const RowVectorXd& ov_upper,
+                                               int n, double tighten, const char* kind,
+                                               const char* where)
+{
+    char msg[640];
+    const char* const names[2] = { "_margin_lower", "_margin_upper" };
+    const RowVectorXd* const ov[2] = { &ov_lower, &ov_upper };
+
+    for (int s = 0; s < 2; ++s) {
+        if (!robust_margin_override_is_sized(*ov[s], n)) {
+            snprintf(msg, sizeof msg,
+                "psopt_solve_robust: %s%s of %s has %d entries, and the phase declares "
+                "%d %s constraint(s). Give one entry per constraint, or a single entry "
+                "to be broadcast to all of them, or leave it empty to have the margins "
+                "derived from tighten. A vector of some other length cannot be matched "
+                "to the constraints without guessing which one each entry meant.",
+                kind, names[s], where, (int) ov[s]->size(), n, kind);
+            error_message(msg);
+            return false;
+        }
+        for (int j = 0; j < (int) ov[s]->size(); ++j) {
+            const double m = (*ov[s])(j);
+            if (!std::isfinite(m) || m < 0.0) {
+                snprintf(msg, sizeof msg,
+                    "psopt_solve_robust: %s%s(%d) of %s is %g. An inward margin must be "
+                    "finite and must not be negative: a negative one would move the "
+                    "bound outwards, which loosens a constraint the model declares and "
+                    "certifies a design against a problem the user did not state. Use "
+                    "zero to leave that end of the bound exactly where it was.",
+                    kind, names[s], j, where, m);
+                error_message(msg);
+                return false;
+            }
+        }
+    }
+
+    // And the pair, per constraint: the box the two margins leave between them. Asked of
+    // robust_margins itself rather than recomputed here, so that what is checked is
+    // exactly what will be applied, including each end's fallback to the derived margin.
+    RowVectorXd ml, mu;
+    int ignored = 0;
+    robust_margins(lower, upper, tighten, ov_lower, ov_upper, ml, mu, ignored);
+    for (int j = 0; j < n && j < (int) ml.size(); ++j) {
+        const double lo = lower(j), up = upper(j);
+        if (!(up > lo)) continue;                    // pinned, and left alone
+        if (lo + ml(j) >= up - mu(j)) {
+            snprintf(msg, sizeof msg,
+                "psopt_solve_robust: the inward margins on %s constraint %d of %s close "
+                "its box: the bound is [%g, %g] and the margins %g and %g leave nothing "
+                "between %g and %g. A margin is meant to make a constraint tight, not "
+                "empty.",
+                kind, j, where, lo, up, ml(j), mu(j), lo + ml(j), up - mu(j));
+            error_message(msg);
+            return false;
+        }
+    }
+    return true;
+}
+
 // What the caller is owed before the loop starts: whether the model is complete, and
 // whether the tightening will actually reach every constraint it is meant to.
 static bool robust_model_is_usable(const RobustModel& model, RobustRisk risk,
@@ -2024,6 +2160,16 @@ static bool robust_model_is_usable(const RobustModel& model, RobustRisk risk,
                           "a nominal guess");
             return false;
         }
+        if (!robust_margin_overrides_are_usable(
+                ph[p-1]->events_lower, ph[p-1]->events_upper,
+                ph[p-1]->events_margin_lower, ph[p-1]->events_margin_upper,
+                ph[p-1]->nevents, model.tighten, "events", where))
+            return false;
+        if (!robust_margin_overrides_are_usable(
+                ph[p-1]->path_lower, ph[p-1]->path_upper,
+                ph[p-1]->path_margin_lower, ph[p-1]->path_margin_upper,
+                ph[p-1]->npath, model.tighten, "path", where))
+            return false;
     }
 
     // What a second phase does not yet reach. Each of these is a real increment and not a
@@ -2130,23 +2276,27 @@ static bool robust_model_is_usable(const RobustModel& model, RobustRisk risk,
         // augmentation applies them, so a report that read only the first phase would
         // stay silent about a one-sided bound in the phase that carries the terminal
         // condition, which is the phase where it matters most.
-        RowVectorXd mg;
+        RowVectorXd mlo, mhi;
         int e1 = 0, p1 = 0;
         for (int p = 1; p <= P; ++p) {
             int e = 0, q = 0;
             if (ph[p-1]->nevents > 0)
                 robust_margins(ph[p-1]->events_lower, ph[p-1]->events_upper,
-                               model.tighten, mg, e);
+                               model.tighten, ph[p-1]->events_margin_lower,
+                               ph[p-1]->events_margin_upper, mlo, mhi, e);
             if (ph[p-1]->npath > 0)
                 robust_margins(ph[p-1]->path_lower, ph[p-1]->path_upper,
-                               model.tighten, mg, q);
+                               model.tighten, ph[p-1]->path_margin_lower,
+                               ph[p-1]->path_margin_upper, mlo, mhi, q);
             e1 += e; p1 += q;
         }
         if (e1 + p1 > 0)
-            printf("\npsopt_solve_robust: %d event and %d path bound(s)%s are one-sided, "
-                   "so tighten gives\n  them no margin. A design left sitting on such a "
-                   "bound is where the between-scenario\n  overshoot appears; widen the "
-                   "bound or state it two-sided if the loop will not converge.\n",
+            printf("\npsopt_solve_robust: %d event and %d path bound(s)%s are one-sided "
+                   "with no margin\n  of their own, so tighten gives them none: there is "
+                   "no half width to take a fraction\n  of. A design left sitting on such "
+                   "a bound is where the between-scenario overshoot\n  appears. Set "
+                   "events_margin_lower/upper or path_margin_lower/upper on the phase if "
+                   "\n  the loop will not converge.\n",
                    e1, p1, (P > 1) ? ", over all phases," : "");
     }
     return true;

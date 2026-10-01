@@ -522,6 +522,35 @@ struct RobustPhase {
     // infinity norm, which is right only when the constraints share units.
     RowVectorXd event_scale, path_scale;
 
+    // Inward margins, one per constraint and per END, overriding what `tighten` would
+    // derive for this phase's events and path constraints. Empty, which is the default,
+    // every margin is derived as before. A single entry is broadcast to every constraint
+    // in the vector; otherwise there must be one entry per nominal event or per nominal
+    // path constraint of THIS phase, for the same reason the scales are per phase: they
+    // are the length of the phase's own vectors.
+    //
+    // They exist because `tighten` is necessarily symmetric while a bound's two ends
+    // often do not mean the same thing. A heating rate declared on [0, 1.0e6] has an
+    // upper end that is a requirement and a lower end that is a statement of sign: the
+    // quantity cannot be negative, and the design is not being asked to hold it away
+    // from zero. A margin derived from the half width gives that lower end 5.0e4, which
+    // a vehicle at an entry interface misses by a factor of four and can do nothing
+    // about, its initial state being pinned by its own events. The design is then
+    // infeasible for a reason that has nothing to do with robustness, and the solver
+    // reports it as an infeasible problem rather than as a tightening that overreached.
+    // Setting the lower margins to zero leaves the statement of sign alone and tightens
+    // the requirement, which is what was meant.
+    //
+    // A margin must be finite and must not be negative: a negative one would loosen a
+    // bound the user declared, which is not a margin but a different problem. A pair
+    // that closes a bound's box is refused, an empty box being exactly the silent
+    // infeasibility these exist to prevent. A pinned bound is an equality and takes no
+    // margin from either source. An explicitly given margin IS applied to a one-sided
+    // bound, which is how such a bound gets the margin the symmetric derivation has no
+    // half width to produce.
+    RowVectorXd events_margin_lower, events_margin_upper;
+    RowVectorXd path_margin_lower,   path_margin_upper;
+
     RobustPhase()
         : nstates(0), ncontrols(0), nevents(0), npath(0),
           dae(0), events(0), endpoint_cost(0), integrand_cost(0),
@@ -690,6 +719,25 @@ const int robust_warm_substeps_max = 256;
 // `nonefinite` is set to the number of one-sided entries found.
 void robust_margins(const RowVectorXd& lower, const RowVectorXd& upper,
                     double tighten, RowVectorXd& margin, int& n_one_sided);
+
+// The same with per-end overrides, which is what the design is actually tightened with.
+// `override_lower` and `override_upper` are each empty (derive from `tighten`), a single
+// entry (broadcast) or one entry per constraint; any other length is a caller error that
+// robust_model_is_usable refuses before a solve starts, and that this function treats as
+// absent rather than guessing which constraint a short vector meant.
+//
+// An explicitly given margin is applied whether the bound is two-sided or not, a pinned
+// bound excepted. `n_one_sided` counts only the ends left WITHOUT a margin, those being
+// the ends the driver has something to tell the user about.
+void robust_margins(const RowVectorXd& lower, const RowVectorXd& upper, double tighten,
+                    const RowVectorXd& override_lower, const RowVectorXd& override_upper,
+                    RowVectorXd& margin_lower, RowVectorXd& margin_upper,
+                    int& n_one_sided);
+
+// Whether one override vector is a length this interface accepts for `n` constraints:
+// zero (absent), one (broadcast) or n. Exposed so that a caller validating a model of
+// its own asks the same question the driver asks.
+bool robust_margin_override_is_sized(const RowVectorXd& override_vector, int n);
 
 // Evaluate a RobustModel's nominal dae numerically at one scenario, on plain doubles.
 //
