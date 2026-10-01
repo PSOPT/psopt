@@ -901,11 +901,11 @@ static double robust_bound_excess(double value, double lo, double up, double sca
     return e;
 }
 
-// How the transcription reads the control between two stored values. A verification has to
-// use the same reading or it measures a different controller.
-namespace {
-enum RobustControlShape { ROBUST_HELD, ROBUST_LINEAR, ROBUST_PARABOLA };
-
+// How the transcription reads the control between two stored values. Everything that
+// reproduces the designed control has to use the same reading or it measures a different
+// controller. Declared in robust.h, for the same reason robust_phase_dae_value is: the
+// header requires a caller writing a verification integrator to reproduce the designed
+// control, and until these were public it gave them nothing to do it with.
 RobustControlShape robust_control_shape(Alg& algorithm, const MatrixXd& controls_full,
                                         const MatrixXd& time_full)
 {
@@ -926,9 +926,6 @@ RobustControlShape robust_control_shape(Alg& algorithm, const MatrixXd& controls
 // The control on interval i at fraction w of it, as the design means it. For the parabola
 // the three values are the node, the midpoint and the next node, which controls_full holds
 // at columns 2i, 2i+1 and 2i+2.
-void robust_control_at(const MatrixXd& controls, const MatrixXd& controls_full,
-                       RobustControlShape shape, int i, double w, int nc, double* u);
-
 void robust_control_at(const RobustPhaseTrajectory& traj, RobustControlShape shape,
                        int i, double w, int nc, double* u)
 {
@@ -952,7 +949,6 @@ void robust_control_at(const MatrixXd& controls, const MatrixXd& controls_full,
         u[j] = (2.0*w - 1.0)*(w - 1.0)*ua - 4.0*w*(w - 1.0)*um + w*(2.0*w - 1.0)*ub;
     }
 }
-}  // namespace
 
 // The gain at one instant, numerically, for the verifier and the warm start. The
 // companion of robust_gain_adouble, and it has to agree with it: a verification that used
@@ -1596,11 +1592,17 @@ static void robust_augmented_linkages(adouble* link, adouble* xad, Workspace* wo
 // The warm start: each scenario's own plant integrated through the previous control.
 //
 // A guess that is merely the right shape leaves the augmented problem with M copies of an
-// infeasible arc and the solver free to wander to a distant local minimum. The control is
-// read as held under a constant parameterisation and as a straight line otherwise, which
-// is approximate for the two parameterisations that carry a midpoint control; that is
-// admissible HERE, because this is a guess, and is not admissible in a verification,
-// where it would measure a different controller.
+// infeasible arc and the solver free to wander to a distant local minimum.
+//
+// The control is read through robust_control_shape and robust_control_at, which is the
+// same reading the VERIFIER uses, so the two routes integrate the same controller. This
+// code read the nodal table as a chord instead, on the argument that an approximate
+// control is admissible in a guess even though it is not admissible in a verification.
+// That argument is wrong, and the HORUS entry is where it broke: under Hermite-Simpson the
+// chord discards the midpoint control, the integration of the design's own nominal
+// scenario left the trajectory well before the final time, and the guess was lost
+// altogether rather than merely blunted. An approximation that costs a guess is not
+// cheaper than the exact reading, and the exact reading is already stored.
 //
 // UNDER FEEDBACK it integrates the CLOSED loop, and it has to. The warm start is not only
 // a convenience here: the loop follows one chain of warm starts through a nonconvex problem
@@ -1617,19 +1619,35 @@ static void robust_augmented_linkages(adouble* link, adouble* xad, Workspace* wo
 static bool robust_warm_states(const RobustModel& model, const RobustPhase& phase,
                                const std::vector<RowVectorXd>& scenarios,
                                const RobustDesign& previous,
-                               const MatrixXd& prev_time, const MatrixXd& prev_controls,
+                               const RobustPhaseTrajectory& traj,
                                const std::vector<double>& start,
                                Alg& algorithm, MatrixXd& x_guess,
                                std::vector<double>& finish)
 {
+    const MatrixXd& prev_time     = traj.time;
+    const MatrixXd& prev_controls = traj.controls;
     const int ns = phase.nstates, nc = phase.ncontrols, M = (int) scenarios.size();
     const int N  = (int) prev_time.cols();
     const int nrows = (int) prev_controls.rows();
     if (N < 2 || (int) prev_controls.cols() != N) return false;
     if ((int) start.size() < ns*M)               return false;
 
-    const bool held = is_multiple_shooting(algorithm)
-                      && algorithm.ms_control_parameterisation == "constant";
+    // The designed control, read the way the TRANSCRIPTION means it, which is the same
+    // reading the verifier uses. Reading the nodal table alone under Hermite-Simpson or
+    // under multiple shooting with a quadratic control gives two thirds of the control
+    // variables and none of the curvature, and the warm start then integrates a control
+    // the design does not have. Measured on the HORUS entry at 80 nodes: with the nodal
+    // table the integration of the design's own nominal scenario left the trajectory by
+    // t = 626 s of 653, reaching h = 8.75 km where the design is near 30, a bank angle of
+    // 11.4 rad against a state bound of 1.553, and a velocity that went negative, where
+    // the heat-rate term v^3.15 is not a number. Every substep count from 8 to 256 failed
+    // the same way at the same node, which is the signature of a wrong integrand and not
+    // of too coarse a step.
+    const RobustControlShape shape = robust_control_shape(algorithm, traj.controls_full,
+                                                          traj.time_full);
+    if (shape == ROBUST_PARABOLA && (int) traj.controls_full.cols() != 2*N - 1)
+        return false;
+
     std::vector<double> par(model.nparameters > 0 ? model.nparameters : 1, 0.0);
     for (int j = 0; j < model.nparameters && j < (int) model.guess_parameters.size(); ++j)
         par[j] = model.guess_parameters(j);
@@ -1668,13 +1686,9 @@ static bool robust_warm_states(const RobustModel& model, const RobustPhase& phas
                     // Every row, not only the user's controls: a co-designed gain
                     // schedule rides in the trailing ones and robust_gain_double reads
                     // it from there.
-                    for (int j = 0; j < nrows; ++j) {
-                        const double aa = prev_controls(j, c);
-                        const double bb = prev_controls(j, c+1);
-                        uA[j] = held ? aa : aa + w0*(bb - aa);
-                        uH[j] = held ? aa : aa + wh*(bb - aa);
-                        uB[j] = held ? aa : aa + w1*(bb - aa);
-                    }
+                    robust_control_at(traj, shape, c, w0, nrows, &uA[0]);
+                    robust_control_at(traj, shape, c, wh, nrows, &uH[0]);
+                    robust_control_at(traj, shape, c, w1, nrows, &uB[0]);
                     const double* th = scenarios[i].data();
                     const int     nt = (int) scenarios[i].size();
                     const double* thr_d = thr.data();
@@ -1944,8 +1958,7 @@ static void robust_model_setup(Prob& problem, Alg& algorithm, const RobustModel&
         for (int p = 1; p <= P && warm; ++p) {
             const RobustPhase& ph = *aug.p(p);
             if (!robust_warm_states(model, ph, scenarios, previous,
-                                    previous.phase[p-1].time,
-                                    previous.phase[p-1].controls,
+                                    previous.phase[p-1],
                                     start, algorithm, x_guess[p-1], finish))
                 { warm = false; break; }
             if (p < P) {

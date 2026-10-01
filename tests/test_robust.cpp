@@ -395,6 +395,99 @@ TEST(Robust, MarginsVanishAtTightenOne)
     EXPECT_DOUBLE_EQ(mg(1), 0.0);
 }
 
+//////////////////////////////////////////////////////////////////////////
+//  Reading a design's control
+//////////////////////////////////////////////////////////////////////////
+
+// The reading the transcription means, and every route that reproduces a designed control
+// has to use this one: the verifier, the warm start, and a verification integrator of the
+// caller's own. The parabola needs a complete table, so a design that reports none is read
+// as a chord whatever the algorithm said.
+TEST(Robust, TheControlShapeAsksTheAlgorithmAndTheDesignTogether)
+{
+    Alg alg;
+    MatrixXd uf = zeros(1, 5), tf = zeros(1, 5), none;
+
+    alg.transcription_method = "automatic";
+    EXPECT_EQ(robust_control_shape(alg, uf, tf), ROBUST_PARABOLA);
+    EXPECT_EQ(robust_control_shape(alg, none, none), ROBUST_LINEAR);
+    EXPECT_EQ(robust_control_shape(alg, uf, none), ROBUST_LINEAR);   // half a table is none
+
+    alg.transcription_method = "multiple-shooting";
+    alg.ms_control_parameterisation = "constant";
+    EXPECT_EQ(robust_control_shape(alg, none, none), ROBUST_HELD);
+    EXPECT_EQ(robust_control_shape(alg, uf, tf), ROBUST_PARABOLA);
+    alg.ms_control_parameterisation = "linear";
+    EXPECT_EQ(robust_control_shape(alg, none, none), ROBUST_LINEAR);
+}
+
+// At the nodes all three readings agree with the nodal table, which is the invariant the
+// warm start rests on: it writes its guess at the nodes and must not move the control
+// there. Between them they differ, and the parabola is the only one that sees the midpoint.
+TEST(Robust, TheThreeReadingsAgreeAtTheNodesAndDifferBetweenThem)
+{
+    // One interval, nodes 0 and 1, with a midpoint well off the chord.
+    MatrixXd un(1, 2), uf(1, 3);
+    un << 0.0, 1.0;
+    uf << 0.0, 0.9, 1.0;                 // the chord's midpoint would be 0.5
+    double u = -1.0;
+
+    for (int s = 0; s < 3; ++s) {
+        const RobustControlShape shape = (s == 0) ? ROBUST_HELD
+                                       : (s == 1) ? ROBUST_LINEAR : ROBUST_PARABOLA;
+        robust_control_at(un, uf, shape, 0, 0.0, 1, &u);
+        EXPECT_DOUBLE_EQ(u, 0.0) << "shape " << s << " moved node 0";
+        if (shape == ROBUST_HELD) continue;             // held does not reach node 1
+        robust_control_at(un, uf, shape, 0, 1.0, 1, &u);
+        EXPECT_DOUBLE_EQ(u, 1.0) << "shape " << s << " moved node 1";
+    }
+
+    robust_control_at(un, uf, ROBUST_HELD, 0, 0.5, 1, &u);
+    EXPECT_DOUBLE_EQ(u, 0.0);
+    robust_control_at(un, uf, ROBUST_LINEAR, 0, 0.5, 1, &u);
+    EXPECT_DOUBLE_EQ(u, 0.5);
+    robust_control_at(un, uf, ROBUST_PARABOLA, 0, 0.5, 1, &u);
+    EXPECT_DOUBLE_EQ(u, 0.9);            // the midpoint value itself, not the chord's
+}
+
+// The parabola is the Lagrange interpolant through the three stored values, so a control
+// that IS a quadratic is reproduced exactly and the chord is not. Checked against the
+// polynomial written out by hand, at points that are not the three nodes.
+TEST(Robust, TheParabolaReproducesAQuadraticControlExactly)
+{
+    MatrixXd un(1, 2), uf(1, 3);
+    // u(w) = 2 + 3w - 5w^2, whose values at 0, 1/2 and 1 are 2, 2.25 and 0.
+    un << 2.0, 0.0;
+    uf << 2.0, 2.25, 0.0;
+    const double w[4] = { 0.1, 0.25, 0.7, 0.95 };
+    for (int k = 0; k < 4; ++k) {
+        double u = 0.0, chord = 0.0;
+        robust_control_at(un, uf, ROBUST_PARABOLA, 0, w[k], 1, &u);
+        robust_control_at(un, uf, ROBUST_LINEAR, 0, w[k], 1, &chord);
+        EXPECT_NEAR(u, 2.0 + 3.0*w[k] - 5.0*w[k]*w[k], 1.0e-14);
+        EXPECT_GT(fabs(u - chord), 1.0e-3);          // and the chord is not the same curve
+    }
+}
+
+// Every row, not only the user's controls. A co-designed gain schedule rides in the
+// trailing rows and a caller reading only the first nc would reproduce a design whose gain
+// never varies, which is a different controller.
+TEST(Robust, TheReadingCoversEveryRowOfTheTable)
+{
+    MatrixXd un(3, 2), uf(3, 3);
+    un << 0.0, 1.0,
+          1.0, 3.0,
+         -2.0, 2.0;
+    uf << 0.0, 0.5, 1.0,
+          1.0, 2.0, 3.0,
+         -2.0, 0.5, 2.0;
+    double u[3] = { 0.0, 0.0, 0.0 };
+    robust_control_at(un, uf, ROBUST_PARABOLA, 0, 0.5, 3, u);
+    EXPECT_DOUBLE_EQ(u[0], 0.5);
+    EXPECT_DOUBLE_EQ(u[1], 2.0);
+    EXPECT_DOUBLE_EQ(u[2], 0.5);
+}
+
 // The derivation is symmetric and a bound's two ends often do not mean the same thing.
 // An end given a margin of its own takes that one; an end left empty still derives its
 // own from the half width, so one end can be overridden without disturbing the other.

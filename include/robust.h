@@ -947,6 +947,41 @@ void robust_events_value(const RobustModel& model, const double* theta, int nthe
                          const double* parameters, double t0, double tf,
                          double* e);
 
+// How a design's control is to be read BETWEEN the stored values. The transcription
+// decides it, and everything that reproduces the designed control has to use the same
+// reading or it integrates a different controller: the library's verifier, the warm start,
+// and a verification integrator a caller writes of their own.
+//
+// Exposed for the same reason robust_phase_dae_value is. RobustDesign's note on
+// controls_full tells a caller that anything reproducing the designed control must prefer
+// the complete table, and gives the measured cost of not doing so; until these were public
+// the header asked for that and supplied nothing to do it with, and the library's own warm
+// start was reading the nodal table as a chord while its verifier read the parabola. Two
+// routes that must agree about one controller should not each carry their own arithmetic.
+//
+//   ROBUST_HELD      the stored value, held across the interval
+//   ROBUST_LINEAR    the chord between the two stored values
+//   ROBUST_PARABOLA  the parabola through node, midpoint and node, from controls_full
+//
+// `robust_control_shape` asks the algorithm and the design together: the parabola needs a
+// complete table to read, so a design that reports none is read as a chord whatever the
+// transcription was. A caller that wants the parabola should check for it, because a
+// silent fall back to the chord is charged to the design.
+enum RobustControlShape { ROBUST_HELD, ROBUST_LINEAR, ROBUST_PARABOLA };
+
+RobustControlShape robust_control_shape(Alg& algorithm, const MatrixXd& controls_full,
+                                        const MatrixXd& time_full);
+
+// The control on interval i at fraction w of it, w running from zero at node i to one at
+// node i+1. `nc` is the number of ROWS of the design's control table, which under a
+// co-designed gain schedule is wider than the user's control vector: the gain rides in the
+// trailing rows, put there by the transcription, and a caller reading only the user's
+// controls would read a design whose gain never varies.
+void robust_control_at(const MatrixXd& controls, const MatrixXd& controls_full,
+                       RobustControlShape shape, int i, double w, int nc, double* u);
+void robust_control_at(const RobustPhaseTrajectory& traj, RobustControlShape shape,
+                       int i, double w, int nc, double* u);
+
 // How badly a design serves one parameter vector, by an integrator built from the model's
 // own equations. This is what psopt_solve_robust uses when the caller supplies a model and
 // leaves spec.violation null, and it is exposed so that a caller can call it directly,
