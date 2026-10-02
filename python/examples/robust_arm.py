@@ -1,5 +1,11 @@
 """A robust optimal control problem, posed by scenario augmentation.
 
+The arm is Weinreb and Bryson (1985), Section IV, whose equations carry the tip
+mass symbolically as the ratio mu = M/m; Luus (2000), Section 12.4.2, is the mu = 1
+case with the coefficients evaluated, which is what ``examples/twolinkarm`` solves.
+The payload used here is mu = 1 + m_p. That identity is checked and not assumed:
+substituting it into their equations reproduces this model exactly.
+
 The two-link arm of ``examples/twolinkarm`` carries a payload whose mass is not
 known exactly. One torque history and one final time must be committed BEFORE the
 payload is revealed, and must bring every plant in the uncertainty set to the

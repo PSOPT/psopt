@@ -6,8 +6,10 @@
 //////// Title:   The two-link arm with an uncertain payload,        //////
 ////////          through psopt_solve_robust and a nominal model     //////
 //////// Last modified: 30 September 2026                            //////
-//////// Reference:     the arm is the PROPT user's guide problem, as //////
-////////                in examples/twolinkarm                       //////
+//////// Reference:     Weinreb and Bryson (1985), Sec. IV, which    //////
+////////                carries the tip mass symbolically;           //////
+////////                Luus (2000), Sec. 12.4.2, for the mu = 1     //////
+////////                case solved in examples/twolinkarm           //////
 //////////////////////////////////////////////////////////////////////////
 ////////     Copyright (c) Victor M. Becerra, 2026         ///////////////
 //////////////////////////////////////////////////////////////////////////
@@ -54,6 +56,22 @@
 //  Setting m_p = 0 reproduces the shipped dynamics to 2.8e-15 over 200000 random states
 //  and torques, which was checked before anything was built on it, and a payload of 0.5
 //  changes the joint accelerations by 12 to 17 per cent.
+//
+//  THE RECONSTRUCTION IS NOW CONFIRMED AGAINST THE ORIGINAL, and it did not have to be.
+//  Weinreb and Bryson (1985), Section IV, state this arm with the tip mass present
+//  SYMBOLICALLY, as the ratio mu = M/m of tip mass to link mass, in their equations (23)
+//  to (27). Their denominator is 7/36 + (2/3)mu + (mu + 1/2)^2 sin^2(theta) and their
+//  torque coefficients are (mu + 1/3) and -[mu + 1/3 + (mu + 1/2)cos(theta)].
+//
+//  Substituting mu = 1 + m_p into their equations gives this file's model exactly: the
+//  difference is identically zero in both dynamic states, by symbolic algebra, and the
+//  two torque coefficients agree term for term. So the payload reconstructed here by
+//  working backwards from seven evaluated numbers IS their tip mass, offset by one
+//  because their nominal arm already carries a tip mass equal to a link mass.
+//
+//  That matters for a reason beyond provenance. The reconstruction was the one step in
+//  this example that rested on inference instead of on a source, and it is the step
+//  everything else is built on. It is now a citation.
 //
 //  WHY THE ROBUST SLEW IS A SLOW ONE
 //

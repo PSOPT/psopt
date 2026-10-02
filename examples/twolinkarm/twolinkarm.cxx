@@ -6,7 +6,8 @@
 //////////////////////////////////////////////////////////////////////////
 //////// Title:                 Two link arm problem      ////////////////
 //////// Last modified:         17 September 2026         ////////////////
-//////// Reference:             PROPT users guide         ////////////////
+//////// Reference:   Weinreb and Bryson (1985), Sec. IV; ////////////////
+////////              Luus (2000), Sec. 12.4.2            ////////////////
 //////// (See PSOPT handbook for full reference)          ////////////////
 //////////////////////////////////////////////////////////////////////////
 ////////                                                  ////////////////
@@ -35,6 +36,39 @@
 //////// 24.04, IPOPT 3.11.9, one core), with the same    ////////////////
 //////// 40 nodes -- 39 shooting segments -- in each      ////////////////
 //////// case, and the same at 80:                        ////////////////
+////////                                                  ////////////////
+////////                                                  ////////////////
+//////// PROVENANCE. This problem was reached through the ////////////////
+//////// PROPT user's guide, which is where the header    ////////////////
+//////// used to point, but that is not its source. The   ////////////////
+//////// original is Weinreb and Bryson (1985), Section   ////////////////
+//////// IV and equations (23) to (27), where the arm is  ////////////////
+//////// two equal rigid links of length l and mass m in  ////////////////
+//////// the horizontal plane, direct-driven by shoulder  ////////////////
+//////// and elbow torques, with a tip mass M entering    ////////////////
+//////// through the ratio mu = M/m. Their equations      ////////////////
+//////// carry mu symbolically. Luus (2000), Section      ////////////////
+//////// 12.4.2, equations (12.22) to (12.29), is the     ////////////////
+//////// mu = 1 case with the coefficients evaluated,     ////////////////
+//////// which is the form solved here and the form the   ////////////////
+//////// PROPT guide carries.                             ////////////////
+////////                                                  ////////////////
+//////// Checked and not assumed: Luus's equations minus  ////////////////
+//////// Weinreb and Bryson's at mu = 1 is identically    ////////////////
+//////// zero in both states, by symbolic algebra. The    ////////////////
+//////// boundary conditions are also theirs, x(0) =      ////////////////
+//////// [0 0 0.5 0] and x(t_f) = [0 0 0.5 0.522], with   ////////////////
+//////// |u_j| <= 1, so the final times below compare     ////////////////
+//////// directly with theirs.                            ////////////////
+////////                                                  ////////////////
+//////// AN EXTERNAL CHECK ON t_f. Luus reports           ////////////////
+//////// t_f = 2.98228, computed by iterative dynamic     ////////////////
+//////// programming, which shares no machinery with      ////////////////
+//////// anything here. The refinement below descends     ////////////////
+//////// towards it, 2.988660, 2.985042, 2.983629,        ////////////////
+//////// 2.983021, which is the behaviour a converging    ////////////////
+//////// minimum-time transcription should show against   ////////////////
+//////// a value obtained by a different method.          ////////////////
 ////////                                                  ////////////////
 ////////   nodes  method        CPU(s)   t_f       max    ////////////////
 ////////                                          rel err ////////////////

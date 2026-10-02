@@ -29,9 +29,19 @@
 
 // The HORUS-2B was studied as a fully reusable second stage for Ariane 5. It
 // enters at 122 km and must reach the terminal area energy management interface
-// at 25 km and Mach 2.5, and it is asked here to do so while accumulating as
+// at 26.92 km and Mach 2.5, and it is asked here to do so while accumulating as
 // little heat as possible, subject to limits on heat flux, load factor and
 // dynamic pressure.
+//
+// THE HANDOVER ALTITUDE IS 26.92 KM AND NOT 25. This comment said 25 for a long
+// time and that was wrong against the code below it, which has always used 26920 m,
+// and against the source this example cites. There are two HORUS reference missions
+// in the literature and they differ: Bergsma and Mooij (2016), Table 1, give a
+// terminal altitude of 24.86 km with a heat flux limit of 530 kW/m^2, while Sagliano
+// and Mooij (2021), Table 3, give 26.92 +/- 2 km at Mach 2.5 +/- 0.5. This example
+// follows the second. The 25 came from an earlier reading that took one paper's
+// altitude with the other's tolerances, which is why it looked like a harmless
+// rounding of 26.92 when it is in fact a different mission.
 //
 // Two of its ingredients deserve a word, because neither is quoted from anyone.
 //
