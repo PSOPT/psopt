@@ -997,7 +997,8 @@ static double robust_verify_phase(const RobustModel& model, const RobustPhase& p
                                   const RobustPhaseTrajectory& traj,
                                   const RowVectorXd* theta_ref,
                                   std::vector<double>& x, std::vector<double>& r,
-                                  double* control_excess)
+                                  double* control_excess,
+                                  RobustVerifyHistory* hist)
 {
     const int ns = phase.nstates, nc = phase.ncontrols;
     const int ne = phase.nevents, np = phase.npath, npar = model.nparameters;
@@ -1037,6 +1038,17 @@ static double robust_verify_phase(const RobustModel& model, const RobustPhase& p
 
     const std::vector<double> x0 = x;          // this phase's entry state, for its events
     double worst = 0.0, uex = 0.0;
+
+    // The recording buffers, and nothing is allocated for them unless a caller asked. The
+    // columns are collected flat and reshaped at the end, because the count is known only
+    // once the integration has run to completion: a verification that gives up early returns
+    // without filling anything, which is what the header promises.
+    std::vector<double> ht, hx, hu, hg;
+    if (hist) {
+        const int M = (N - 1)*((model.verify_substeps > 0) ? model.verify_substeps : 16) + 1;
+        ht.reserve(M); hx.reserve((size_t) M*ns); hu.reserve((size_t) M*nc);
+        if (np > 0) hg.reserve((size_t) M*np);
+    }
 
     // The realised control at one instant, given the nominal column and both trajectories.
     // Written as a lambda because the four Runge-Kutta stages each need it at a different
@@ -1097,6 +1109,16 @@ static double robust_verify_phase(const RobustModel& model, const RobustPhase& p
             } else {
                 robust_phase_dae_value(phase, model, th, nt, &x[0], &ur[0], &par[0], tA, &k1[0], 0);
             }
+            // The step start, as it was checked: the plant's state, the control the plant
+            // saw, and the path values the excess above was taken from. Recorded here and
+            // not recomputed anywhere, so what a caller plots is what the certificate is
+            // about.
+            if (hist) {
+                ht.push_back(tA);
+                for (int j = 0; j < ns; ++j) hx.push_back(x[j]);
+                for (int j = 0; j < nc; ++j) hu.push_back(ur[j]);
+                for (int j = 0; j < np; ++j) hg.push_back(g[j]);
+            }
             if (fb) robust_phase_dae_value(phase, model, thr_d, nthr, &r[0], &ub[0], &par[0], tA,
                                      &r1[0], 0);
 
@@ -1141,6 +1163,39 @@ static double robust_verify_phase(const RobustModel& model, const RobustPhase& p
         }
     }
 
+    // The final node, recorded and NOT checked. The loop above checks each step start, so the
+    // last checked point is one substep short of the end; this column exists so that a caller
+    // can see where the trajectory arrived. It must not move the two numbers this function
+    // reports, so the control excess is put back afterwards: `realise` raises it as a side
+    // effect, and a column added for a figure that changed a certificate would be a defect
+    // dressed as a feature.
+    if (hist) {
+        const double uex_keep = uex;
+        std::vector<double> kend(ns);
+        robust_control_at(traj, shape, N-2, 1.0, nrows, &ufull[0]);
+        realise(&x[0], &r[0], &ufull[0], traj.time(0, N-1));
+        uex = uex_keep;
+        if (np > 0)
+            robust_phase_dae_value(phase, model, th, nt, &x[0], &ur[0], &par[0],
+                                   traj.time(0, N-1), &kend[0], &g[0]);
+        ht.push_back(traj.time(0, N-1));
+        for (int j = 0; j < ns; ++j) hx.push_back(x[j]);
+        for (int j = 0; j < nc; ++j) hu.push_back(ur[j]);
+        for (int j = 0; j < np; ++j) hg.push_back(g[j]);
+
+        const int M = (int) ht.size();
+        hist->time    = zeros(1, M);
+        hist->states  = zeros(ns, M);
+        hist->controls = zeros(nc, M);
+        if (np > 0) hist->path = zeros(np, M);
+        for (int c = 0; c < M; ++c) {
+            hist->time(0, c) = ht[c];
+            for (int j = 0; j < ns; ++j) hist->states(j, c)   = hx[(size_t) c*ns + j];
+            for (int j = 0; j < nc; ++j) hist->controls(j, c) = hu[(size_t) c*nc + j];
+            for (int j = 0; j < np; ++j) hist->path(j, c)     = hg[(size_t) c*np + j];
+        }
+    }
+
     if (ne > 0) {
         std::vector<double> e(ne);
         robust_phase_events_value(phase, model, th, nt, &x0[0], &x[0], &par[0],
@@ -1159,10 +1214,12 @@ static double robust_verify_phase(const RobustModel& model, const RobustPhase& p
 
 double robust_model_violation(const RobustModel& model, Alg& algorithm,
                               const RowVectorXd& theta, const RobustDesign& design,
-                              const RowVectorXd* theta_ref, double* control_excess)
+                              const RowVectorXd* theta_ref, double* control_excess,
+                              std::vector<RobustVerifyHistory>* history)
 {
     const double inf = std::numeric_limits<double>::infinity();
     if (control_excess) *control_excess = 0.0;
+    if (history) history->clear();
     if (!model.initial_state_fn
         && (int) model.initial_state.size() != model.nstates) return inf;
 
@@ -1195,8 +1252,13 @@ double robust_model_violation(const RobustModel& model, Alg& algorithm,
             design.phase.empty() ? flat : design.phase[p-1];
         if (p > 1 && (int) design.phase.size() < p) return inf;
 
+        // One history per phase, appended in phase order. It is appended BEFORE the finite
+        // check so that a caller debugging a verification that gave up can see how far it got,
+        // which the header says is all it is good for.
+        if (history) history->push_back(RobustVerifyHistory());
         const double v = robust_verify_phase(model, *ph[p-1], algorithm, theta, design,
-                                             traj, theta_ref, x, r, control_excess);
+                                             traj, theta_ref, x, r, control_excess,
+                                             history ? &history->back() : 0);
         if (!std::isfinite(v)) return inf;
         worst = std::max(worst, v);
 

@@ -1013,10 +1013,49 @@ void robust_control_at(const RobustPhaseTrajectory& traj, RobustControlShape sha
 // leaves the user's control bounds, which is reported separately rather than added to the
 // violation, because a design whose corrections ask for more actuator than exists is a
 // different fault from one that misses a constraint, and the two want different remedies.
+// The history the verifier walks, handed back so that a caller can show what was checked
+// without integrating the design a second time.
+//
+// WHY THIS IS IN THE LIBRARY AND NOT IN THE CALLER. A certificate is one number and a
+// picture of a certificate is a history, so a caller who wants to display what the number is
+// about has two routes: re-integrate the design, or be given what the verifier already
+// computed. The first route is a second integrator, and a second integrator is a second
+// CONTROLLER unless every detail agrees: the substep count, the control shape, the realised
+// control under an ancillary gain, the initial-state hook, and the normalisation of the
+// bound excess. Several of those are not public, so a caller writing their own would
+// reproduce them by eye, and a figure that disagrees with the certificate printed beside it
+// is worse than no figure at all. Recording costs the verifier nothing it was not already
+// doing.
+//
+// One entry per phase, in order, appended in phase order. Each column but the last is one
+// RK4 STEP START, so a phase with N nodes and `verify_substeps` steps per node interval
+// gives (N-1)*verify_substeps + 1 columns. `controls` is the REALISED control, the one the
+// plant saw, which under an ancillary gain is not the designed one. `path` is empty when the
+// phase declares no path constraints.
+//
+// THE LAST COLUMN IS RECORDED AND NOT CHECKED, and the distinction matters. The verifier
+// evaluates the path constraints at every step start, so the last point it checks is one
+// substep before the final node; the final node's own path values are therefore outside the
+// certificate. That is the behaviour this library has always had, and adding the final node
+// to the check would move every certificate already in print, so it is not changed here. The
+// final column is filled so that a caller can see where the trajectory ended and can see
+// that value for itself.
+//
+// A verification that returns a non-finite violation abandons the integration, so the
+// history is then whatever had been walked when it gave up and should not be read as a
+// trajectory.
+struct RobustVerifyHistory {
+    MatrixXd time;      // 1 x M
+    MatrixXd states;    // nstates x M
+    MatrixXd controls;  // ncontrols x M, the REALISED control
+    MatrixXd path;      // npath x M, or empty when the phase declares none
+};
+
 double robust_model_violation(const RobustModel& model, Alg& algorithm,
                               const RowVectorXd& theta, const RobustDesign& design,
                               const RowVectorXd* theta_ref = 0,
-                              double* control_excess = 0);
+                              double* control_excess = 0,
+                              std::vector<RobustVerifyHistory>* history = 0);
 
 // Which of two candidate designs the polish step keeps: prefer one the caller's own
 // violation function certifies, and among certified designs the cheaper; if neither

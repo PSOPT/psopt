@@ -1369,6 +1369,121 @@ TEST(Robust, MarginsThatCloseABoundsBoxAreRefused)
 }
 
 //////////////////////////////////////////////////////////////////////////
+//  The verifier's recorded history
+//////////////////////////////////////////////////////////////////////////
+
+// Asking for the history must not change what the verifier reports. That is the whole basis
+// on which a figure may be drawn from it, and it is easy to break: the recording needs the
+// realised control at the final node, and forming one raises the control excess as a side
+// effect.
+TEST(Robust, AskingForTheVerifyHistoryChangesNothingItReports)
+{
+    const double d = 0.5;
+    RobustDesign design = flat_design();
+    Alg alg = ms_alg("linear");
+    RobustModel closed = disturbed_model(-1.0);
+    const RowVectorXd ref = one(0.0);
+
+    double ex_plain = -1.0, ex_rec = -1.0;
+    const double v_plain = robust_model_violation(closed, alg, one(d), design, &ref, &ex_plain);
+    std::vector<RobustVerifyHistory> h;
+    const double v_rec = robust_model_violation(closed, alg, one(d), design, &ref, &ex_rec, &h);
+
+    EXPECT_EQ(v_plain, v_rec);
+    EXPECT_EQ(ex_plain, ex_rec);
+}
+
+// The recorded trajectory is the one that was integrated, checked against a closed form.
+// With u_bar = 0 and no gain the plant is x' = theta from x(0) = 0, so x(t) = theta t, and
+// the recorded control is identically zero.
+TEST(Robust, TheVerifyHistoryIsTheTrajectoryThatWasIntegrated)
+{
+    const double d = 0.5;
+    RobustDesign design = flat_design();          // two nodes, t in [0, 1], u_bar = 0
+    Alg alg = ms_alg("linear");
+    RobustModel open = disturbed_model(0.0);      // verify_substeps = 64
+
+    std::vector<RobustVerifyHistory> h;
+    robust_model_violation(open, alg, one(d), design, 0, 0, &h);
+
+    ASSERT_EQ((int) h.size(), 1);
+    const int M = 1*64 + 1;                       // one interval, 64 steps, plus the end
+    ASSERT_EQ((int) h[0].time.cols(), M);
+    EXPECT_EQ((int) h[0].states.rows(), 1);
+    EXPECT_EQ((int) h[0].controls.rows(), 1);
+    EXPECT_EQ((int) h[0].path.size(), 0);         // this model declares no path constraints
+
+    EXPECT_NEAR(h[0].time(0, 0), 0.0, 1.0e-12);
+    EXPECT_NEAR(h[0].time(0, M-1), 1.0, 1.0e-12);
+    EXPECT_NEAR(h[0].states(0, 0), 0.0, 1.0e-12);
+    EXPECT_NEAR(h[0].states(0, M-1), d, 1.0e-12);
+    for (int c = 0; c < M; ++c) {
+        EXPECT_NEAR(h[0].states(0, c), d*h[0].time(0, c), 1.0e-12);
+        EXPECT_NEAR(h[0].controls(0, c), 0.0, 1.0e-12);
+    }
+}
+
+// Under a gain the recorded control is the REALISED one and not the designed one, which is
+// the column a figure of a closed-loop design has to show. With u_bar = 0, K = -1, a
+// reference at theta = 0 and a plant at theta = d, the deviation reaches d(1 - 1/e) at t = 1
+// and the realised control there is minus that.
+TEST(Robust, TheVerifyHistoryRecordsTheRealisedControl)
+{
+    const double d = 0.5;
+    const double e_end = d*(1.0 - exp(-1.0));
+    RobustDesign design = flat_design();
+    Alg alg = ms_alg("linear");
+    RobustModel closed = disturbed_model(-1.0);
+    const RowVectorXd ref = one(0.0);
+
+    std::vector<RobustVerifyHistory> h;
+    robust_model_violation(closed, alg, one(d), design, &ref, 0, &h);
+
+    ASSERT_EQ((int) h.size(), 1);
+    const int M = (int) h[0].time.cols();
+    EXPECT_NEAR(h[0].controls(0, 0), 0.0, 1.0e-12);          // no deviation yet
+    EXPECT_NEAR(h[0].controls(0, M-1), -e_end, 1.0e-6);      // and the designed control is 0
+}
+
+// The claim a figure rests on: the worst recorded path excess IS the certificate. And the
+// boundary the header states, pinned so that it cannot drift silently: the final column is
+// recorded and not checked, so on a problem whose path value is still rising at the end the
+// last column is worse than the number the verifier returned.
+//
+// The design is u = 10 held over t in [0, 1], so x(t) = 10t and g = x + u - theta rises from
+// 10 - theta to 20 - theta against an upper bound of 2. With 40 nodes and 16 substeps the
+// last CHECKED point is one substep short of t = 1.
+TEST(Robust, TheVerifyHistoryPathAgreesWithTheCertificate)
+{
+    RobustModel m = margin_model();               // npath = 1, no path_scale, verify 16
+    Alg alg = ms_alg("linear");
+    const int N = 40;
+
+    RobustDesign design;
+    design.time     = linspace(0.0, 1.0, N);
+    design.controls = 10.0*ones(1, N);
+    design.valid    = true;
+
+    std::vector<RobustVerifyHistory> h;
+    const double v = robust_model_violation(m, alg, one(0.0), design, 0, 0, &h);
+
+    ASSERT_EQ((int) h.size(), 1);
+    const int M = (N - 1)*16 + 1;
+    ASSERT_EQ((int) h[0].time.cols(), M);
+    ASSERT_EQ((int) h[0].path.rows(), 1);
+
+    // The worst excess over the CHECKED columns, which is every column but the last.
+    double checked = 0.0;
+    for (int c = 0; c < M - 1; ++c)
+        checked = std::max(checked, h[0].path(0, c) - m.path_upper(0));
+    EXPECT_NEAR(checked, v, 1.0e-9);
+
+    // And the last column, recorded only, is beyond it on this problem.
+    const double last = h[0].path(0, M-1) - m.path_upper(0);
+    EXPECT_GT(last, v);
+}
+
+//////////////////////////////////////////////////////////////////////////
 //  Several phases
 //////////////////////////////////////////////////////////////////////////
 
